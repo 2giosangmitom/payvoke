@@ -11,9 +11,19 @@
     "test:watch": "pnpm test:clean && pnpm test:compile && vitest",
     "test:typecheck": "ttsc --noEmit -p tsconfig.test.json",
     "swagger": "nestia swagger",
-    "sdk": "nestia sdk"
+    "sdk": "nestia sdk",
+    "db": "node --import ttsc/register node_modules/@mikro-orm/cli/cli.js",
+    "db:migration:create": "pnpm db migration:create",
+    "db:migration:up": "pnpm db migration:up",
+    "db:migration:down": "pnpm db migration:down",
+    "db:migration:list": "pnpm db migration:list"
   },
   "dependencies": {
+    "@mikro-orm/core": "7.2.5",
+    "@mikro-orm/decorators": "7.2.5",
+    "@mikro-orm/migrations": "7.2.5",
+    "@mikro-orm/nestjs": "7.1.0",
+    "@mikro-orm/postgresql": "7.2.5",
     "@nestia/core": "^14.0.3",
     "@nestia/fetcher": "^14.0.3",
     "@nestia/sdk": "^14.0.3",
@@ -26,11 +36,16 @@
     "typia": "15.0.0"
   },
   "devDependencies": {
+    "@mikro-orm/cli": "7.2.5",
     "@nestjs/testing": "^12.1.3",
+    "@ttsc/unplugin": "0.32.0",
     "@types/node": "^24.19.2",
     "nestia": "^14.0.3",
     "ttsc": "^0.32.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"
+  },
+  "mikro-orm": {
+    "preferTs": true
   }
 }

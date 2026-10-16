@@ -1,2 +1,5 @@
 .vitest/
 dist/
+.env
+.env.*
+!.env.example
