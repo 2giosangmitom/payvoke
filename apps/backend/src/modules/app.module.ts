@@ -11,18 +11,16 @@ export interface Environment {
   PORT?: number & tags.Type<"uint32"> & tags.Minimum<1> & tags.Maximum<65535>;
 }
 
-export function validateEnvironment(config: Record<string, unknown>): Environment {
-  return typia.assert<Environment>({
-    DATABASE_URL: config.DATABASE_URL,
-    PORT: config.PORT === undefined ? 8000 : Number(config.PORT),
-  });
-}
-
 export const appConfigModule = ConfigModule.forRoot({
   isGlobal: true,
   cache: true,
   envFilePath: fileURLToPath(new URL("../../.env", import.meta.url)),
-  validate: validateEnvironment,
+  validate(config) {
+    return typia.assert<Environment>({
+      DATABASE_URL: config.DATABASE_URL,
+      PORT: config.PORT === undefined ? 8000 : Number(config.PORT),
+    });
+  },
 });
 
 @Module({
