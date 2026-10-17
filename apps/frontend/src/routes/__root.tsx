@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { WagmiProvider } from "wagmi";
@@ -24,9 +25,19 @@ export const Route = createRootRoute({
   component: RootComponent,
 });
 
-const queryClient = new QueryClient();
-
 function RootComponent() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            retry: false,
+          },
+        },
+      }),
+  );
+
   return (
     <RootDocument>
       <WagmiProvider config={wagmiConfig}>

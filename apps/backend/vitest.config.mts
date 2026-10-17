@@ -1,8 +1,10 @@
+import ttsc from "@ttsc/unplugin/vite";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [ttsc()],
   test: {
-    include: [".test-build/test/**/*.spec.mjs"],
+    include: ["test/**/*.spec.mts"],
     environment: "node",
     clearMocks: true,
     restoreMocks: true,
