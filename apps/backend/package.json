@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "build": "ttsc -p tsconfig.build.json",
+    "build": "NESTIA_SDK_TRANSFORM=1 ttsc -p tsconfig.build.json",
     "typecheck": "ttsc --noEmit -p tsconfig.json",
     "start": "node dist/main.js",
-    "start:dev": "node --watch --import ttsc/register src/main.ts",
+    "start:dev": "NESTIA_SDK_TRANSFORM=1 node --watch --import ttsc/register src/main.ts",
     "test": "vitest run",
     "test:typecheck": "ttsc --noEmit -p tsconfig.json",
     "swagger": "pnpm build && nestia swagger",

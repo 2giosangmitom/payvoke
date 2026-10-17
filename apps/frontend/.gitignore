@@ -1,1 +1,4 @@
 .tanstack/
+.env
+.env.*
+!.env.example

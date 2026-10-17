@@ -20,6 +20,8 @@ pnpm --filter backend start:dev
 
 The default port is `8000`. Swagger UI is at `/docs`; its OpenAPI document is at `/docs-json`.
 
+The `build` and `start:dev` scripts enable `NESTIA_SDK_TRANSFORM=1` so Nestia emits the route metadata used by runtime Swagger. If you invoke `ttsc` or `ttsc/register` directly, set that flag too; otherwise the API can run while `/docs-json` has no paths. Restart the dev command after changing its script, or rebuild before running `start`.
+
 ```sh
 pnpm --filter backend build
 pnpm --filter backend start
@@ -31,9 +33,9 @@ pnpm --filter backend sdk
 
 ## Authentication
 
-Sign in, refresh sessions and sign out through Supabase Auth. Enable email OTP and Ethereum Web3 in Supabase, configure redirect URLs, SMTP and rate limits there. Use a publishable key, never a service-role key in the browser.
+Sign in, refresh sessions and sign out through Supabase Auth. Enable email magic links and Ethereum Web3 in Supabase, configure redirect URLs, SMTP and rate limits there. Use a publishable key, never a service-role key in the browser.
 
-The frontend browser client is `getSupabase()` from `~/lib/supabase`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` using `apps/frontend/.env.example`. Login screens are not implemented yet.
+The frontend browser client is `getSupabase()` from `~/lib/supabase`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `apps/frontend/.env`. The frontend sign-in dialog uses email magic links; see [frontend setup](../frontend/README.md) for email templates. There are no backend login or OTP endpoints to display in Swagger; the documented profile routes are `GET /v1/me` and `PATCH /v1/me`.
 
 Send the Supabase access token as `Authorization: Bearer <token>`. The backend verifies it with `auth.getUser(token)` and exposes only `GET /v1/me` and `PATCH /v1/me` for profiles. `public.app_users.id` matches `auth.users.id`; the first authenticated request creates the profile. RLS and revoked browser grants keep profile writes behind the backend.
 
