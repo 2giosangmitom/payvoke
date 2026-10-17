@@ -1,13 +1,10 @@
 import { Result, TaggedError } from "better-result";
 
-export const identityErrorStatus = {
-  INVALID_AVATAR_URL: 400,
-  INVALID_DISPLAY_NAME: 400,
-  INVALID_SESSION: 401,
-  ACCOUNT_UNAVAILABLE: 403,
-} as const;
-
-export type IdentityErrorCode = keyof typeof identityErrorStatus;
+export type IdentityErrorCode =
+  | "INVALID_AVATAR_URL"
+  | "INVALID_DISPLAY_NAME"
+  | "INVALID_SESSION"
+  | "ACCOUNT_UNAVAILABLE";
 
 export class IdentityError extends TaggedError("IdentityError")<{
   code: IdentityErrorCode;

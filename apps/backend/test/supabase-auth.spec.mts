@@ -1,10 +1,17 @@
-import "reflect-metadata";
-import { ConfigService } from "@nestjs/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SupabaseAuthService } from "../src/modules/identity/auth/supabase-auth.service.js";
+import type { Environment } from "../src/config/environment.js";
+import { SupabaseAuthService } from "../src/modules/identity/infrastructure/supabase-auth.service.js";
 
 const mocks = vi.hoisted(() => ({ createClient: vi.fn(), getUser: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: mocks.createClient }));
+
+const env = {
+  DATABASE_URL: "postgresql://localhost:5432/agentne",
+  SUPABASE_URL: "https://project.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "test-key",
+  AUTH_ORIGIN: "http://localhost:3000",
+  PORT: 8000,
+} satisfies Environment;
 
 describe("Supabase Auth adapter", () => {
   let service: SupabaseAuthService;
@@ -12,12 +19,7 @@ describe("Supabase Auth adapter", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.createClient.mockReturnValue({ auth: { getUser: mocks.getUser } });
-    service = new SupabaseAuthService(
-      new ConfigService({
-        SUPABASE_URL: "https://project.supabase.co",
-        SUPABASE_PUBLISHABLE_KEY: "test-key",
-      }),
-    );
+    service = new SupabaseAuthService({ env });
   });
 
   it("uses the verified Supabase user ID as the account ID", async () => {

@@ -1,6 +1,6 @@
 # Backend
 
-NestJS, Fastify, MikroORM/PostgreSQL, Supabase Auth and Nestia.
+Fastify, MikroORM/PostgreSQL, Supabase Auth and TypeBox.
 
 ## Run
 
@@ -20,7 +20,7 @@ pnpm --filter backend start:dev
 
 The default port is `8000`. Swagger UI is at `/docs`; its OpenAPI document is at `/docs-json`.
 
-The `build` and `start:dev` scripts enable `NESTIA_SDK_TRANSFORM=1` so Nestia emits the route metadata used by runtime Swagger. If you invoke `ttsc` or `ttsc/register` directly, set that flag too; otherwise the API can run while `/docs-json` has no paths. Restart the dev command after changing its script, or rebuild before running `start`.
+The backend is ESM. `start:dev` runs TypeScript sources directly with `tsx watch src/main.ts`; run `typecheck` separately to check types. `build` compiles to `dist` with `tsc`, and `start` runs `dist/main.js`. Every `db:*` command builds first and runs the MikroORM CLI against `dist`.
 
 ```sh
 pnpm --filter backend build
@@ -29,7 +29,20 @@ pnpm --filter backend swagger
 pnpm --filter backend sdk
 ```
 
-`swagger` writes `dist/swagger.json`; `sdk` generates `packages/api/src`. Both commands need the backend environment and a reachable database. Do not edit generated SDK files.
+`swagger` uses Fastify CLI's `generate-swagger` command with the application plugin in `dist/app.js` to write `dist/swagger.json` without touching the database; `sdk` regenerates `apps/frontend/src/lib/schema.d.ts` with `openapi-typescript`. Change API sources first, then regenerate outputs; do not edit generated files by hand.
+
+## Structure
+
+The backend is a modular monolith. Identity owns its profiles and has four small layers:
+
+- `src/modules/identity/domain`: plain `AppUser` objects, profile rules and typed failures; no ORM or HTTP dependencies.
+- `src/modules/identity/application`: account use cases and the profile repository interface.
+- `src/modules/identity/infrastructure`: explicit MikroORM `EntitySchema`, PostgreSQL repository and Supabase adapter.
+- `src/modules/identity/http`: Fastify routes, authentication preHandler, TypeBox schemas and HTTP error mapping.
+
+`src/plugins/awilix.ts` composes these layers. Each request gets a forked entity manager and scoped repository/use cases; Supabase authentication is shared. Profile creation handles concurrent first requests with `ON CONFLICT DO NOTHING`. Schema metadata is registered explicitly in `src/database/mikro-orm.options.ts`, without decorators or `reflect-metadata`; migrations still own database changes.
+
+Add future business modules alongside identity, keeping persistence and transport out of their domain rules. There are no generic base repositories, event buses or separate deployments to maintain.
 
 ## Authentication
 
@@ -37,7 +50,7 @@ Sign in, refresh sessions and sign out through Supabase Auth. Enable email magic
 
 The frontend browser client is `getSupabase()` from `~/lib/supabase`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `apps/frontend/.env`. The frontend sign-in dialog uses email magic links; see [frontend setup](../frontend/README.md) for email templates. There are no backend login or OTP endpoints to display in Swagger; the documented profile routes are `GET /v1/me` and `PATCH /v1/me`.
 
-Send the Supabase access token as `Authorization: Bearer <token>`. The backend verifies it with `auth.getUser(token)` and exposes only `GET /v1/me` and `PATCH /v1/me` for profiles. `public.app_users.id` matches `auth.users.id`; the first authenticated request creates the profile. RLS and revoked browser grants keep profile writes behind the backend.
+Send the Supabase access token as `Authorization: Bearer <token>`. The `requireAuth` preHandler verifies it with `auth.getUser(token)` and exposes only `GET /v1/me` and `PATCH /v1/me` for profiles. `public.app_users.id` matches `auth.users.id`; the first authenticated request creates the profile. RLS and revoked browser grants keep profile writes behind the backend.
 
 Supabase owns identity linking; use its supported `updateUser`/`linkIdentity` flows. Separate Supabase user IDs remain separate accounts. There is no custom account merge, session registry, project membership or immediate application-level token revocation. Signed-out access tokens may remain valid until Supabase rejects them or they expire.
 
@@ -51,12 +64,14 @@ TEST_DATABASE_URL=postgresql://test:test@127.0.0.1:55433/test pnpm --filter back
 docker compose down
 ```
 
-The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles with mocked Supabase verification. Never use a development or production database.
+The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles with a stubbed Supabase verifier. Never use a development or production database.
 
 ## Resources
 
-- [NestJS](https://docs.nestjs.com/) · [OpenAPI / Swagger](https://docs.nestjs.com/openapi/introduction)
-- [Nestia](https://nestia.io/docs/) · [Swagger generation](https://nestia.io/docs/swagger/) · [SDK generation](https://nestia.io/docs/sdk/)
+- [Fastify](https://fastify.dev/docs/latest/) · [Plugins](https://fastify.dev/docs/latest/Reference/Plugins/)
+- [@fastify/swagger](https://github.com/fastify/fastify-swagger) · [@fastify/swagger-ui](https://github.com/fastify/fastify-swagger-ui)
+- [TypeBox](https://github.com/sinclairzx81/typebox) · [Type provider](https://github.com/fastify/fastify-type-provider-typebox)
+- [Awilix](https://github.com/jeffijoe/awilix) · [@fastify/awilix](https://github.com/fastify/fastify-awilix)
+- [openapi-typescript](https://openapi-ts.dev/) · [openapi-fetch](https://openapi-ts.dev/openapi-fetch/)
 - [Supabase Auth](https://supabase.com/docs/guides/auth) · [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless) · [Web3](https://supabase.com/docs/guides/auth/auth-web3)
 - [MikroORM](https://mikro-orm.io/docs) · [Migrations](https://mikro-orm.io/docs/migrations)
-- [Fastify](https://fastify.dev/docs/latest/) · [Typia](https://typia.io/docs/)

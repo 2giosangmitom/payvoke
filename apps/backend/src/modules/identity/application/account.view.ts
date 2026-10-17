@@ -1,5 +1,5 @@
-import type { AppUser } from "../identity.entity.js";
-import type { UserView } from "../identity.types.js";
+import type { AppUser } from "../domain/app-user.js";
+import type { UserView } from "../domain/identity.types.js";
 
 export function toUserView(user: AppUser): UserView {
   return {

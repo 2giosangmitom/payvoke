@@ -1,7 +1,6 @@
-import { functional, type IConnection } from "api";
+import createClient from "openapi-fetch";
+import type { paths } from "./schema";
 
-export const api = functional.v1;
-
-export const connection: IConnection = {
-  host: import.meta.env.VITE_API_HOST ?? "http://localhost:8000",
-};
+export const api = createClient<paths>({
+  baseUrl: import.meta.env.VITE_API_HOST ?? "http://localhost:8000",
+});

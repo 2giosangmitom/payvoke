@@ -13,8 +13,6 @@
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "outDir": "dist",
     "rootDir": ".",
     "types": ["node"]

@@ -1,9 +1,11 @@
 packages:
   - apps/*
-  - packages/*
 
 allowBuilds:
   esbuild: true
   unrs-resolver: false
   vue-demi: false
   "@scarf/scarf": false
+
+minimumReleaseAgeExclude:
+  - typebox@1.4.2

@@ -1,31 +1,29 @@
-import { NestFactory } from "@nestjs/core";
-import { ConfigService } from "@nestjs/config";
-import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
-import { SwaggerModule } from "@nestjs/swagger";
-import { NestiaSwaggerComposer } from "@nestia/sdk";
-import type { Environment } from "./config/environment.js";
-import { AppModule } from "./modules/app.module.js";
+import { createApp } from "./app.js";
+import { loadEnvironment } from "./config/environment.js";
+import { createOrm } from "./database/orm.js";
 
-async function main() {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
-  app.enableShutdownHooks();
-  const config = app.get<ConfigService<Environment>>(ConfigService);
-  app.enableCors({
-    origin: new URL(config.getOrThrow<string>("AUTH_ORIGIN")).origin,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  });
+async function main(): Promise<void> {
+  const env = loadEnvironment();
+  const orm = await createOrm(env);
+  const app = await createApp({ env, orm });
 
-  const document = await NestiaSwaggerComposer.document(app, {
-    security: { bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
-  });
-  SwaggerModule.setup(
-    "docs",
-    app,
-    document as unknown as Parameters<typeof SwaggerModule.setup>[2],
-  );
+  const shutdown = (signal: NodeJS.Signals) => {
+    app.log.info({ signal }, "shutting down");
+    app.close().then(
+      () => process.exit(0),
+      (error) => {
+        app.log.error(error);
+        process.exit(1);
+      },
+    );
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 
-  await app.listen(config.getOrThrow<number>("PORT"));
+  await app.listen({ host: "0.0.0.0", port: env.PORT });
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

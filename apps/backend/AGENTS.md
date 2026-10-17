@@ -2,13 +2,14 @@
 
 ## Execution and checks
 
-- From the repository root: `pnpm --filter backend start:dev` runs source in watch mode via `ttsc/register`; `pnpm --filter backend build` compiles with `ttsc`, then `pnpm --filter backend start` runs `dist/main.js`.
-- Focused source typecheck: `pnpm --filter backend exec ttsc --noEmit -p tsconfig.build.json`.
-- `test` runs source tests through `@ttsc/unplugin/vite` using `tsconfig.json`; run `test:typecheck` separately. Integration tests migrate and clear profiles only when `TEST_DATABASE_URL` is explicitly supplied; use a disposable database. Without it, integration tests skip.
+- From the repository root: `pnpm --filter backend start:dev` runs `tsx watch src/main.ts` without typechecking; `pnpm --filter backend build` compiles with `tsc`, then `pnpm --filter backend start` runs `dist/main.js`.
+- Focused source typecheck: `pnpm --filter backend exec tsc --noEmit -p tsconfig.build.json`.
+- `test` runs source tests through Vitest with the default transform; run `test:typecheck` separately. Integration tests migrate and clear profiles only when `TEST_DATABASE_URL` is explicitly supplied; use a disposable database. Without it, integration tests skip.
 
 ## Wiring and code generation
 
-- `src/main.ts` boots Nest/Fastify; `AppModule` wires MikroORM and profile APIs. Before auth changes, read `README.md#authentication`. Supabase owns authentication and sessions; application profile IDs match Supabase user IDs. MikroORM must not manage Supabase's `auth` schema.
-- Backend TypeScript uses NodeNext resolution with CommonJS output (`type: commonjs`) and decorator metadata. Local `.js` imports resolve to TypeScript sources during development. In Vitest, use ESM imports and `vi.mock`; native `require` bypasses Vite transforms. Integration tests import migrations through `migrationsList`; add new migrations there as needed.
-- `nestia.config.ts` creates its own Nest/Fastify app from `AppModule`, rather than invoking `main.ts`. Generation uses the standard Nestia CLI after a build for compiled entity discovery; keep discovery wired through that module.
-- From the root, `pnpm --filter backend swagger` writes `dist/swagger.json`; `pnpm --filter backend sdk` writes `packages/api/src`. Change API sources first, then regenerate outputs.
+- `src/main.ts` boots Fastify through `src/app.ts` (`createApp`); `src/plugins/awilix.ts` wires MikroORM, config and the identity services into the Awilix container. Before auth changes, read `README.md#authentication`. Supabase owns authentication and sessions; application profile IDs match Supabase user IDs. MikroORM must not manage Supabase's `auth` schema.
+- Backend TypeScript is ESM (`type: module`) with NodeNext resolution. Local `.js` imports resolve to TypeScript sources during development. In Vitest, use ESM imports and `vi.mock`. Integration tests import migrations through `migrationsList`; add new migrations there as needed.
+- Identity uses `domain` (plain objects and rules), `application` (use cases and repository interface), `infrastructure` (MikroORM schemas/repository and Supabase), and `http` (Fastify and TypeBox). Domain and application code are independent of Fastify and MikroORM.
+- The ORM uses explicit `EntitySchema` registration in `src/database/mikro-orm.options.ts`, without decorators or reflection. The CLI loads `dist/mikro-orm.config.js` and `dist/database/migrations`; run `pnpm --filter backend build` before `db:*` commands.
+- From the root, `pnpm --filter backend swagger` uses Fastify CLI's `generate-swagger` with the default plugin export in `src/app.ts` to write `dist/swagger.json`; `pnpm --filter backend sdk` regenerates `apps/frontend/src/lib/schema.d.ts` with `openapi-typescript`. Change API sources first, then regenerate outputs. Do not edit generated files by hand.

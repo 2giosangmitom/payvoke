@@ -1,17 +1,13 @@
-import { ReflectMetadataProvider } from "@mikro-orm/decorators/legacy";
 import { Migrator } from "@mikro-orm/migrations";
 import { defineConfig } from "@mikro-orm/postgresql";
-import type { ConfigService } from "@nestjs/config";
 import type { Environment } from "../config/environment.js";
+import { AppUserSchema } from "../modules/identity/infrastructure/app-user.schema.js";
 
-export function createMikroOrmOptions(config: ConfigService<Environment>) {
+export function createMikroOrmOptions(env: Environment) {
   return defineConfig({
     baseDir: process.cwd(),
-    clientUrl: config.getOrThrow<string>("DATABASE_URL"),
-    entities: ["dist/**/*.entity.js"],
-    entitiesTs: ["src/**/*.entity.ts"],
-    preferTs: __filename.endsWith(".ts"),
-    metadataProvider: ReflectMetadataProvider,
+    clientUrl: env.DATABASE_URL,
+    entities: [AppUserSchema],
     ensureDatabase: false,
     extensions: [Migrator],
     schemaGenerator: {
@@ -33,7 +29,6 @@ export function createMikroOrmOptions(config: ConfigService<Environment>) {
     },
     migrations: {
       path: "dist/database/migrations",
-      pathTs: "src/database/migrations",
       emit: "ts",
       snapshot: false,
     },

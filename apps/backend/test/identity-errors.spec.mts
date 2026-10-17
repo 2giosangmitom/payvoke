@@ -1,5 +1,3 @@
-import "reflect-metadata";
-import { HttpException } from "@nestjs/common";
 import { Result } from "better-result";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
@@ -7,16 +5,16 @@ import {
   IdentityError,
   type IdentityErrorCode,
   type IdentityResult,
-} from "../src/modules/identity/shared/identity.errors.js";
-import { httpValue } from "../src/modules/identity/shared/identity-http.js";
+} from "../src/modules/identity/domain/identity.errors.js";
+import { ApiHttpError, httpValue } from "../src/modules/identity/http/identity-http.js";
 
 describe("typed identity errors", () => {
-  it("returns a tagged error with a closed code, not an HTTP exception", () => {
+  it("returns a tagged error with a closed code, not an HTTP error", () => {
     const result = failure("INVALID_SESSION", "Invalid session.");
     expect(result.status).toBe("error");
     expect(IdentityError.is(result.error)).toBe(true);
     expect(result.error._tag).toBe("IdentityError");
-    expect(result.error).not.toBeInstanceOf(HttpException);
+    expect(result.error).not.toBeInstanceOf(ApiHttpError);
     // @ts-expect-error Unknown codes have no HTTP policy and cannot be constructed.
     const invalid: IdentityErrorCode = "UNREGISTERED_ERROR";
     void invalid;
@@ -46,11 +44,10 @@ describe("typed identity errors", () => {
       } catch (error) {
         caught = error;
       }
-      expect(caught).toBeInstanceOf(HttpException);
-      if (!(caught instanceof HttpException))
-        throw new Error("Expected the HTTP adapter to throw.");
-      expect(caught.getStatus()).toBe(status);
-      expect(caught.getResponse()).toEqual({ code, message: "Safe public message." });
+      expect(caught).toBeInstanceOf(ApiHttpError);
+      if (!(caught instanceof ApiHttpError)) throw new Error("Expected the HTTP adapter to throw.");
+      expect(caught.status).toBe(status);
+      expect(caught.body).toEqual({ code, message: "Safe public message." });
     },
   );
 });
