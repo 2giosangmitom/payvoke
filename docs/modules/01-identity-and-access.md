@@ -2,6 +2,8 @@
 
 Owns accounts, sessions, wallet bindings, project memberships and application grants. Spending authority belongs to [M06](06-smart-accounts-and-payments.md).
 
+Implementation status: the backend provides Supabase email/EOA-wallet login, application-level identity linking, session admission/revocation, profiles and project membership APIs. See the [backend setup and limitations](../../apps/backend/README.md#identity-api-m01). Client grants, support access, smart-wallet authentication and complete wallet/payment compatibility remain unimplemented or unverified; the requirements below remain the target.
+
 ## Login and linking
 
 Support email and wallet login, with MetaMask as the primary wallet experience. No social login. Email OTP is the proposed email method.

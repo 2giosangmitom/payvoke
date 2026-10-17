@@ -1,6 +1,6 @@
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
-import { appConfigModule, type Environment } from "./modules/app.module.js";
+import { appConfigModule, type Environment } from "./config/environment.js";
 import { createMikroOrmOptions } from "./database/mikro-orm.options.js";
 
 // Load the same validated Nest configuration without booting the application or database.
@@ -13,4 +13,4 @@ async function loadMikroOrmConfig() {
   }
 }
 
-export default await loadMikroOrmConfig();
+export default loadMikroOrmConfig();

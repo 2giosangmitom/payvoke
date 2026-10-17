@@ -1,4 +1,5 @@
 .vitest/
+.test-build/
 dist/
 .env
 .env.*

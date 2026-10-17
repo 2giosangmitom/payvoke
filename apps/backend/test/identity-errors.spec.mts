@@ -1,0 +1,59 @@
+import "reflect-metadata";
+import { HttpException } from "@nestjs/common";
+import { Result } from "better-result";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+  failure,
+  IdentityError,
+  type IdentityErrorCode,
+  type IdentityResult,
+} from "../src/modules/identity/shared/identity.errors.js";
+import { httpValue } from "../src/modules/identity/shared/identity-http.js";
+
+describe("typed identity errors", () => {
+  it("returns a tagged error with a closed code, not an HTTP exception", () => {
+    const result = failure("INVALID_OTP", "Invalid code.");
+    expect(result.status).toBe("error");
+    expect(IdentityError.is(result.error)).toBe(true);
+    expect(result.error._tag).toBe("IdentityError");
+    expect(result.error).not.toBeInstanceOf(HttpException);
+    // @ts-expect-error Unknown codes have no HTTP policy and cannot be constructed.
+    const invalid: IdentityErrorCode = "UNREGISTERED_ERROR";
+    void invalid;
+  });
+
+  it("requires handling Err before reading success and preserves the HTTP success type", () => {
+    const read = (result: IdentityResult<number>) => {
+      // @ts-expect-error A Result has no success value until its branch is narrowed.
+      const unhandled: number = result.value;
+      void unhandled;
+      return result.isOk() ? result.value : 0;
+    };
+    expect(read(Result.ok(42))).toBe(42);
+    expectTypeOf(httpValue(Result.ok(42))).toEqualTypeOf<number>();
+  });
+
+  it.each([
+    ["INVALID_OTP", 401],
+    ["FORBIDDEN", 403],
+    ["PROJECT_NOT_FOUND", 404],
+    ["IDENTITY_CONFLICT", 409],
+    ["RATE_LIMITED", 429],
+    ["OTP_UNAVAILABLE", 503],
+  ] satisfies [IdentityErrorCode, number][])(
+    "maps %s to HTTP %s without wrapping it in Panic",
+    (code, status) => {
+      let caught: unknown;
+      try {
+        httpValue(failure(code, "Safe public message."));
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(HttpException);
+      if (!(caught instanceof HttpException))
+        throw new Error("Expected the HTTP adapter to throw.");
+      expect(caught.getStatus()).toBe(status);
+      expect(caught.getResponse()).toEqual({ code, message: "Safe public message." });
+    },
+  );
+});

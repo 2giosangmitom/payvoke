@@ -191,14 +191,14 @@ importers:
         specifier: 7.2.5
         version: 7.2.5(@mikro-orm/core@7.2.5)
       '@nestia/core':
-        specifier: ^14.0.3
-        version: 14.0.3(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.3)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))
+        specifier: 14.0.4
+        version: 14.0.4(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.4)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))
       '@nestia/fetcher':
-        specifier: ^14.0.3
-        version: 14.0.3
+        specifier: 14.0.4
+        version: 14.0.4
       '@nestia/sdk':
-        specifier: ^14.0.3
-        version: 14.0.3(@nestia/core@14.0.3(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.3)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0)))
+        specifier: 14.0.4
+        version: 14.0.4(@nestia/core@14.0.4(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.4)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0)))
       '@nestjs/common':
         specifier: ^12.1.3
         version: 12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
@@ -211,6 +211,15 @@ importers:
       '@nestjs/platform-fastify':
         specifier: ^12.1.3
         version: 12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@supabase/supabase-js':
+        specifier: 2.118.0
+        version: 2.118.0
+      better-result:
+        specifier: 3.0.1
+        version: 3.0.1
+      fastify:
+        specifier: 5.12.5
+        version: 5.12.5
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -220,6 +229,9 @@ importers:
       typia:
         specifier: 15.0.0
         version: 15.0.0(ttsc@0.32.0)
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
     devDependencies:
       '@mikro-orm/cli':
         specifier: 7.2.5
@@ -234,8 +246,8 @@ importers:
         specifier: ^24.19.2
         version: 24.19.2
       nestia:
-        specifier: ^14.0.3
-        version: 14.0.3
+        specifier: 14.0.4
+        version: 14.0.4
       ttsc:
         specifier: ^0.32.0
         version: 0.32.0
@@ -632,11 +644,11 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@nestia/core@14.0.3':
-    resolution: {integrity: sha512-5+4P9nugCDDjHQ6fJ1SHiEiy6JDEXtPuUm4jktHuGKLZ+g48O6YroxyPmMvFyygfry5/dlVqVlDqtQ9DhNDQwg==}
+  '@nestia/core@14.0.4':
+    resolution: {integrity: sha512-pdGVzFXGunHy9LsDyIB2A2rJPneKxivpzGKjvA5T9hNANQQxjZXbgofz4rGDcSWuJh3OCYfPIiTudhZGnd7bhw==}
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.18.0
-      '@nestia/fetcher': ^14.0.3
+      '@nestia/fetcher': ^14.0.4
       '@nestjs/common': '>=11.0.0'
       '@nestjs/core': '>=11.0.0'
       reflect-metadata: '>=0.1.12'
@@ -649,14 +661,14 @@ packages:
       ttsc:
         optional: true
 
-  '@nestia/fetcher@14.0.3':
-    resolution: {integrity: sha512-rj2l+Fam9grDtDRQMjXgHX3F4zBPOICa/g4MdvpAtUyd4Riqjm/p7z2y77xkyT5xQmLA4tw9l7Q5HGShg9+bHg==}
+  '@nestia/fetcher@14.0.4':
+    resolution: {integrity: sha512-DFpcNbNe3Unkx2LM7zZu5JN+QZIhgszRgAjef5550EMvwB41UIi+nGkxGD6RFgeBzsuekhK9Wb4O+X20ErwixQ==}
 
-  '@nestia/sdk@14.0.3':
-    resolution: {integrity: sha512-yAaA090lMrsc1ZaAaKDywGxjd0YY4bEDSRG/1A+fw9+kuEjO95QrPDQ+E96wNKWZVOlncCizvsETLnLq74Wufw==}
+  '@nestia/sdk@14.0.4':
+    resolution: {integrity: sha512-NolRUTu5G4yaVV03veDx/dEZ33sUV8GBIEw8YN1FFt1f/o992n5SzNNMs+ahJHt2LhTpVjD7EOnDMW8YlU4cXA==}
     hasBin: true
     peerDependencies:
-      '@nestia/core': ^14.0.3
+      '@nestia/core': ^14.0.4
 
   '@nestjs/common@12.1.3':
     resolution: {integrity: sha512-A9grrnTGNE+sD77bwkHw89LNsrtsIv/tbnmzRsy3dlI5H4WgT6I4wiLSc4JLv8B5pOZttVi5iF/RW/5iZe997w==}
@@ -1135,6 +1147,38 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@supabase/auth-js@2.118.0':
+    resolution: {integrity: sha512-xWfPXyhS2KDSfAneMtI6p/tBnbdiz/5vaRKXEqUfzfC9WCniKr2Ds5o5G7RIGig0bom4z6wUY9zaV07WDVTfnQ==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/functions-js@2.118.0':
+    resolution: {integrity: sha512-4ofletPa/noKAU6KHeqsd3FztGzRPUEJRey1MKY0o+PIHaVePqRPShIXtl37gcVyIWaFM+zNg6r9zh0uUSFOSA==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/phoenix@0.4.5':
+    resolution: {integrity: sha512-aAn9H9ovVyeApKy11OWOrrOGq8DV68yWeH4ud2lN9fzn4aO8Zb5GLL9m1pUg9nLqIcT+ZDfAcsZe0E/nqdv2lw==}
+
+  '@supabase/postgrest-js@2.118.0':
+    resolution: {integrity: sha512-JXy+37KPApHsyotaQACovv/Jy9E22rfiWLRuT+2UjoEAcAIelDFIrsF/FY47Dy19mO7lI0Tq+zDCX8oJ2Ozfiw==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/realtime-js@2.118.0':
+    resolution: {integrity: sha512-pzCIEWjqD5/xqEZQerpt+q9rsgYkcrkgCJgf0W2ULqC4fYUeB/p9CFa3t9vn+IVh6dMN9r4ZCE262lZvUC+Bfw==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/storage-js@2.118.0':
+    resolution: {integrity: sha512-5MNkKt2Moy7Jud/sPX7/28BwdDxZMCVHGJT00b8op3KRa9LKSjOAYU5IcfGWIstaasAqY8GkbA6oI3IRDgB1YQ==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/supabase-js@2.118.0':
+    resolution: {integrity: sha512-FxI8UXMVC2UG7IkeiI8fuQZqq2oI3JeSuN8MPIC2RLVaoEAxKS0nqE6kii9Ewpq8f9gNPM6git1Y8f0vN/QLFw==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0'
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
 
   '@tailwindcss/node@4.3.3':
     resolution: {integrity: sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==}
@@ -1804,6 +1848,9 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+  better-result@3.0.1:
+    resolution: {integrity: sha512-rnCeqEXkKPHmz5MO5ZroPRDyHe4YvlNPyy7qj8cVcWs/GnvSvC3086G74/220W+wWcIWlXgzvcjskFV0A4blUQ==}
+
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
     engines: {node: '>=18'}
@@ -2360,6 +2407,10 @@ packages:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
 
+  iceberg-js@0.8.1:
+    resolution: {integrity: sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==}
+    engines: {node: '>=20.0.0'}
+
   iconv-lite@0.4.24:
     resolution: {integrity: sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==}
     engines: {node: '>=0.10.0'}
@@ -2813,8 +2864,8 @@ packages:
     resolution: {integrity: sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg==}
     engines: {node: '>=18'}
 
-  nestia@14.0.3:
-    resolution: {integrity: sha512-IEZk0obSzxosgvrhS7f9VbXqo23Wie3hIb+qps8iMM/dd8Ss8xRujaklj6lPkqIe8PRaqCLcCmAqqHw06E9UVg==}
+  nestia@14.0.4:
+    resolution: {integrity: sha512-cOU7v0qh1FnxJrfHn7p3c/MeD7ZnD+l3FpAq3kkwbSM/5G0vkPSxAoGmOi3/H5mkiJ1t7wrYIqFFQouKuvCzfw==}
     hasBin: true
 
   nf3@0.3.24:
@@ -4238,9 +4289,9 @@ snapshots:
       - supports-color
     optional: true
 
-  '@nestia/core@14.0.3(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.3)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))':
+  '@nestia/core@14.0.4(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.4)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))':
     dependencies:
-      '@nestia/fetcher': 14.0.3
+      '@nestia/fetcher': 14.0.4
       '@nestjs/common': 12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
       '@nestjs/core': 12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@typia/interface': 15.1.0
@@ -4261,16 +4312,16 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@nestia/fetcher@14.0.3':
+  '@nestia/fetcher@14.0.4':
     dependencies:
       '@typia/interface': 15.1.0
       '@typia/utils': 15.1.0
 
-  '@nestia/sdk@14.0.3(@nestia/core@14.0.3(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.3)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0)))':
+  '@nestia/sdk@14.0.4(@nestia/core@14.0.4(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.4)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0)))':
     dependencies:
       '@babel/parser': 7.29.9
-      '@nestia/core': 14.0.3(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.3)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))
-      '@nestia/fetcher': 14.0.3
+      '@nestia/core': 14.0.4(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7))(@nestia/fetcher@14.0.4)(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.3(@nestjs/common@12.1.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)(ttsc@0.32.0)(typia@15.0.0(ttsc@0.32.0))
+      '@nestia/fetcher': 14.0.4
       '@ttsc/factory': 0.28.6
       '@typia/interface': 15.1.0
       '@typia/utils': 15.1.0
@@ -4587,6 +4638,38 @@ snapshots:
   '@sindresorhus/merge-streams@4.0.0': {}
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@supabase/auth-js@2.118.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/functions-js@2.118.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/phoenix@0.4.5': {}
+
+  '@supabase/postgrest-js@2.118.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/realtime-js@2.118.0':
+    dependencies:
+      '@supabase/phoenix': 0.4.5
+      tslib: 2.8.1
+
+  '@supabase/storage-js@2.118.0':
+    dependencies:
+      iceberg-js: 0.8.1
+      tslib: 2.8.1
+
+  '@supabase/supabase-js@2.118.0':
+    dependencies:
+      '@supabase/auth-js': 2.118.0
+      '@supabase/functions-js': 2.118.0
+      '@supabase/postgrest-js': 2.118.0
+      '@supabase/realtime-js': 2.118.0
+      '@supabase/storage-js': 2.118.0
 
   '@tailwindcss/node@4.3.3':
     dependencies:
@@ -5105,6 +5188,11 @@ snapshots:
       typescript: 7.0.2
       zod: 3.25.76
 
+  abitype@1.2.3(typescript@7.0.2)(zod@4.6.7):
+    optionalDependencies:
+      typescript: 7.0.2
+      zod: 4.6.7
+
   abstract-logging@2.0.1: {}
 
   accepts@2.0.0:
@@ -5170,6 +5258,8 @@ snapshots:
   balanced-match@4.0.4: {}
 
   baseline-browser-mapping@2.11.28: {}
+
+  better-result@3.0.1: {}
 
   body-parser@2.3.0(supports-color@7.2.0):
     dependencies:
@@ -5717,6 +5807,8 @@ snapshots:
 
   human-signals@8.0.1: {}
 
+  iceberg-js@0.8.1: {}
+
   iconv-lite@0.4.24:
     dependencies:
       safer-buffer: 2.1.2
@@ -6024,7 +6116,7 @@ snapshots:
     dependencies:
       content-type: 2.1.0
 
-  nestia@14.0.3: {}
+  nestia@14.0.4: {}
 
   nf3@0.3.24: {}
 
@@ -6119,6 +6211,21 @@ snapshots:
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
+      eventemitter3: 5.0.1
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - zod
+
+  ox@0.14.56(typescript@7.0.2)(zod@4.6.7):
+    dependencies:
+      '@adraffy/ens-normalize': 1.11.1
+      '@noble/ciphers': 1.3.0
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -6852,6 +6959,23 @@ snapshots:
       abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
       isows: 1.0.7(ws@8.21.0)
       ox: 0.14.56(typescript@7.0.2)(zod@3.25.76)
+      ws: 8.21.0
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
+  viem@2.57.7(typescript@7.0.2)(zod@4.6.7):
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
+      isows: 1.0.7(ws@8.21.0)
+      ox: 0.14.56(typescript@7.0.2)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
       typescript: 7.0.2
