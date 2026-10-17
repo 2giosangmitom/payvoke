@@ -48,6 +48,8 @@ Add future business modules alongside identity, keeping persistence and transpor
 
 `src/modules/workspace` follows the same four-layer shape for the initial M02 slice: private workspaces, briefs, conversations, and idempotent text turns. See the [M02 implementation status and replay contract](../../docs/modules/02-workspace-and-conversation.md#implementation-status). It uses an explicitly labelled deterministic development responder, not a real model or provider. Apply the new workspace migration before using `/workspace`; no spending or provider execution is enabled.
 
+`src/modules/publishing` implements the [M07 publishing core](../../docs/modules/07-provider-publishing.md#implemented-core): owner-only provider profiles/listings, immutable manifest candidates, operator catalog review, publication/pause and public discovery. Apply the publishing migration before use. `publishing:review` is a trusted local operator command; it is not available through provider HTTP tokens. Catalog review never enables execution or makes endpoint probes. A single-purpose [Logo Designer](../../packages/logo-designer/README.md), implemented with Mastra, lives under `packages/`.
+
 ## Authentication
 
 Sign in, refresh sessions and sign out through Supabase Auth. Enable email magic links and Ethereum Web3 in Supabase, configure redirect URLs, SMTP and rate limits there. Use a publishable key, never a service-role key in the browser.
@@ -68,7 +70,7 @@ TEST_DATABASE_URL=postgresql://test:test@127.0.0.1:55433/test pnpm --filter back
 docker compose down
 ```
 
-The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles (cascading to their workspaces/conversations) with a stubbed Supabase verifier. They also roll back/reapply the workspace migration in the disposable database. Never use a development or production database.
+The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles (cascading to their workspaces, conversations and provider listings) with a stubbed Supabase verifier. They also roll back/reapply post-identity migrations in the disposable database. Never use a development or production database.
 
 ## Resources
 

@@ -9,6 +9,7 @@
     "start:dev": "tsx watch src/main.ts",
     "test": "vitest run",
     "test:typecheck": "tsc --noEmit -p tsconfig.json",
+    "publishing:review": "tsx src/modules/publishing/review.ts",
     "swagger": "pnpm build && fastify generate-swagger dist/app.js > dist/swagger.json",
     "sdk": "pnpm swagger && pnpm --filter frontend generate:api",
     "db": "MIKRO_ORM_CLI_CONFIG=dist/mikro-orm.config.js node node_modules/@mikro-orm/cli/cli.js",

@@ -104,7 +104,7 @@ export function ConversationThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
+      <ThreadPrimitive.Root className="market-thread flex min-h-0 flex-1 flex-col">
         <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto py-4">
           <ThreadPrimitive.Empty>
             <div className="mx-auto flex h-full max-w-3xl items-end px-4 pb-4">
@@ -137,7 +137,7 @@ export function ConversationThread({
           <ComposerPrimitive.Root className="flex items-end gap-2 rounded-3xl border bg-background p-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
             <ComposerPrimitive.Input
               aria-label="Message"
-              placeholder="Describe the outcome you need…"
+              placeholder="Write a message…"
               maxLength={4000}
               rows={1}
               className="max-h-60 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-base outline-none"

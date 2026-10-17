@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { api } from "~/lib/api";
 import { useSession } from "~/lib/use-session";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { SignInDialog } from "~/components/sign-in-dialog";
+import { Choice, LoadingState, SignInState } from "~/components/marketplace/shared";
 import { ConversationThread } from "./conversation-thread";
 import type { paths } from "~/lib/schema";
 
@@ -21,27 +21,19 @@ export function WorkspacePage() {
   const { accountId, checking, error } = useSession();
   if (checking)
     return (
-      <p role="status" className="p-6 text-sm text-muted-foreground">
-        Checking session…
-      </p>
+      <div className="market-page">
+        <LoadingState label="Checking session…" />
+      </div>
     );
   if (!accountId)
     return (
-      <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 p-6">
-        <Link to="/" className="text-sm text-muted-foreground">
-          ← AgentNe
-        </Link>
-        <h1 className="text-xl font-semibold">Your private workspace</h1>
-        <p className="text-sm text-muted-foreground">
-          Sign in to create workspaces and keep your conversations.
-        </p>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        <SignInDialog />
-      </main>
+      <div className="market-page">
+        <SignInState
+          title="Your private workspace"
+          description="Sign in to create workspaces and keep your conversations."
+          error={error}
+        />
+      </div>
     );
   return <SignedInWorkspace key={accountId} accountId={accountId} />;
 }
@@ -161,17 +153,15 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
   }
 
   return (
-    <main className="flex h-dvh min-w-0 flex-col bg-background">
-      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
-        <Link to="/" className="font-semibold">
-          AgentNe<span className="text-muted-foreground">.</span>
-        </Link>
-        <span className="hidden text-xs text-muted-foreground sm:block">
-          Private workspace · Development
-        </span>
+    <section className="market-workspace-page">
+      <header className="market-workspace-heading">
+        <div className="min-w-0">
+          <h1 className="truncate">{selected?.title ?? "Your workspaces"}</h1>
+          <p className="market-caption">Private workspace</p>
+        </div>
         <Button
           variant="outline"
-          className="md:hidden"
+          className="market-workspace-mobile-toggle"
           aria-expanded={showNavigation}
           aria-controls="workspace-navigation"
           onClick={() => setShowNavigation(!showNavigation)}
@@ -179,11 +169,11 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
           {showNavigation ? "Back to conversation" : "Workspaces"}
         </Button>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="market-workspace-layout" data-navigation-open={showNavigation}>
         <aside
           id="workspace-navigation"
           aria-label="Workspaces and conversations"
-          className={`${showNavigation ? "flex" : "hidden"} min-h-0 w-full shrink-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:flex md:w-72 md:flex-none md:border-r`}
+          className="market-workspace-nav"
         >
           <form onSubmit={createWorkspace} className="space-y-2">
             <label htmlFor="workspace-title" className="text-sm font-medium">
@@ -221,22 +211,16 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
               <label htmlFor="workspace-select" className="text-sm font-medium">
                 Workspace
               </label>
-              <select
-                id="workspace-select"
+              <Choice
+                label="Workspace"
                 value={selected?.id ?? ""}
-                className="h-10 w-full min-w-0 rounded-lg border bg-background px-2 text-base md:text-sm"
-                onChange={(event) => {
-                  setWorkspaceId(event.target.value);
+                options={workspaces.data.map((entry) => ({ value: entry.id, label: entry.title }))}
+                onChange={(value) => {
+                  setWorkspaceId(value);
                   setConversationId("");
                   setConversationOffset(0);
                 }}
-              >
-                {workspaces.data.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.title}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           )}
           <div className="flex gap-2">
@@ -324,14 +308,8 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
               </div>
             </>
           )}
-          <div className="mt-auto pt-4">
-            <SignInDialog />
-          </div>
         </aside>
-        <section
-          aria-label="Conversation"
-          className={`${showNavigation ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 flex-col md:flex`}
-        >
+        <section aria-label="Conversation" className="market-conversation-panel">
           {(error || workspaces.error || conversations.error) && (
             <div
               role="alert"
@@ -358,7 +336,7 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
           ) : (
             !workspaces.isPending && (
               <div className="m-auto max-w-md p-6">
-                <h1 className="text-xl font-semibold">A workspace for your next task</h1>
+                <h2>A workspace for your next task</h2>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                   Create a workspace to save a brief and keep related conversations together. Only
                   you can access it.
@@ -373,17 +351,28 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
               </div>
             )
           )}
+          {selected && !conversation && !conversations.isPending && (
+            <div className="market-state">
+              <p className="text-muted-foreground">
+                Create a conversation to start with your task brief.
+              </p>
+              <Button variant="outline" onClick={createConversation} disabled={creating}>
+                <PlusIcon />
+                Start conversation
+              </Button>
+            </div>
+          )}
           {conversation && (
             <>
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2">
-                <h1
+              <div className="market-conversation-header flex shrink-0 items-center justify-between gap-3">
+                <h2
                   ref={headingRef}
                   id="conversation-heading"
                   tabIndex={-1}
                   className="truncate text-sm font-medium outline-none"
                 >
                   {conversation.title}
-                </h1>
+                </h2>
                 <Button variant="ghost" size="sm" onClick={() => setReload(reload + 1)}>
                   Reload saved messages
                 </Button>
@@ -397,7 +386,7 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
           )}
         </section>
       </div>
-    </main>
+    </section>
   );
 }
 
@@ -431,7 +420,7 @@ function BriefEditor({
     }
   }
   return (
-    <form onSubmit={save} className="shrink-0 space-y-2 border-b p-4">
+    <form onSubmit={save} className="market-brief shrink-0 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <label htmlFor="workspace-brief" className="text-sm font-medium">
           Task brief
@@ -446,7 +435,7 @@ function BriefEditor({
         maxLength={8000}
         value={brief}
         onChange={(event) => setBrief(event.target.value)}
-        className="max-h-32 w-full resize-y rounded-lg border bg-background px-3 py-2 text-base outline-none focus:border-ring focus:ring-2 focus:ring-ring/30 md:text-sm"
+        className="market-textarea"
         placeholder="Outcome, available inputs, and constraints…"
       />
       {status && (

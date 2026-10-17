@@ -19,3 +19,6 @@ export const api = createClient<paths>({
   baseUrl: apiHost,
   fetch: authenticatedFetch,
 });
+
+/** Wallet-free discovery must not require or forward a marketplace session. */
+export const publicApi = createClient<paths>({ baseUrl: apiHost });

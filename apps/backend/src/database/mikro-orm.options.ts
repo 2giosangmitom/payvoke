@@ -5,15 +5,21 @@ import { AppUserSchema } from "../modules/identity/infrastructure/app-user.schem
 import { workspaceSchemas } from "../modules/workspace/infrastructure/workspace.schemas.js";
 import { Migration20261017070519 } from "./migrations/Migration20261017070519.js";
 import { Migration20261017100000 } from "./migrations/Migration20261017100000.js";
+import { Migration20261018010000 } from "./migrations/Migration20261018010000.js";
+import { publishingSchemas } from "../modules/publishing/infrastructure/publishing.schemas.js";
 
 // Source-controlled allowlist: obsolete files left in dist must never become migrations.
-export const applicationMigrations = [Migration20261017070519, Migration20261017100000];
+export const applicationMigrations = [
+  Migration20261017070519,
+  Migration20261017100000,
+  Migration20261018010000,
+];
 
 export function createMikroOrmOptions(env: Environment) {
   return defineConfig({
     baseDir: process.cwd(),
     clientUrl: env.DATABASE_URL,
-    entities: [AppUserSchema, ...workspaceSchemas],
+    entities: [AppUserSchema, ...workspaceSchemas, ...publishingSchemas],
     ensureDatabase: false,
     extensions: [Migrator],
     schemaGenerator: {

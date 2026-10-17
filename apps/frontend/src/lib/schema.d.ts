@@ -1085,6 +1085,1468 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/provider/listings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            publishedVersionId: string | null;
+                            paused: boolean;
+                            createdAt: string;
+                        } & {
+                            name: string | null;
+                            /** Format: uuid */
+                            candidateVersionId: string | null;
+                            candidateState: string | null;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            displayName: string;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        displayName: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            displayName: string;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-manifest-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": unknown;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            versionId: string;
+                            digest: string;
+                            providerName: string;
+                            manifest: {
+                                /** @enum {number} */
+                                schemaVersion: 1;
+                                name: string;
+                                description: string;
+                                actions: {
+                                    id: string;
+                                    description: string;
+                                    /** @enum {string} */
+                                    input: "text-v1";
+                                    /** @enum {string} */
+                                    output: "text-v1";
+                                }[];
+                                variants: {
+                                    id: string;
+                                    model: string;
+                                    description: string;
+                                }[];
+                                pricing: {
+                                    /** @enum {string} */
+                                    kind: "fixed";
+                                    amountMinor: string;
+                                    /** @enum {string} */
+                                    currency: "test-credit";
+                                };
+                                runtime: {
+                                    /** @enum {string} */
+                                    protocol: "provider-text-v1";
+                                    /** @enum {boolean} */
+                                    streaming: false;
+                                    /** @enum {boolean} */
+                                    cancellation: false;
+                                    /** @enum {boolean} */
+                                    startDeduplication: true;
+                                    /** @enum {boolean} */
+                                    statusRecovery: true;
+                                };
+                                limits: {
+                                    inputChars: number;
+                                    outputTokens: number;
+                                    timeoutSeconds: number;
+                                };
+                                dataPolicy: {
+                                    destinations: string[];
+                                    retention: string;
+                                    terms: string;
+                                };
+                            };
+                            /** @enum {string} */
+                            verification: "catalog-review-only";
+                            /** @enum {boolean} */
+                            executionEnabled: false;
+                        }[];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            versionId: string;
+                            digest: string;
+                            providerName: string;
+                            manifest: {
+                                /** @enum {number} */
+                                schemaVersion: 1;
+                                name: string;
+                                description: string;
+                                actions: {
+                                    id: string;
+                                    description: string;
+                                    /** @enum {string} */
+                                    input: "text-v1";
+                                    /** @enum {string} */
+                                    output: "text-v1";
+                                }[];
+                                variants: {
+                                    id: string;
+                                    model: string;
+                                    description: string;
+                                }[];
+                                pricing: {
+                                    /** @enum {string} */
+                                    kind: "fixed";
+                                    amountMinor: string;
+                                    /** @enum {string} */
+                                    currency: "test-credit";
+                                };
+                                runtime: {
+                                    /** @enum {string} */
+                                    protocol: "provider-text-v1";
+                                    /** @enum {boolean} */
+                                    streaming: false;
+                                    /** @enum {boolean} */
+                                    cancellation: false;
+                                    /** @enum {boolean} */
+                                    startDeduplication: true;
+                                    /** @enum {boolean} */
+                                    statusRecovery: true;
+                                };
+                                limits: {
+                                    inputChars: number;
+                                    outputTokens: number;
+                                    timeoutSeconds: number;
+                                };
+                                dataPolicy: {
+                                    destinations: string[];
+                                    retention: string;
+                                    terms: string;
+                                };
+                            };
+                            /** @enum {string} */
+                            verification: "catalog-review-only";
+                            /** @enum {boolean} */
+                            executionEnabled: false;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": ({
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            publishedVersionId: string | null;
+                            paused: boolean;
+                            createdAt: string;
+                        } & {
+                            name: string | null;
+                            /** Format: uuid */
+                            candidateVersionId: string | null;
+                            candidateState: string | null;
+                        })[];
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            publishedVersionId: string | null;
+                            paused: boolean;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/listings/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            manifest: {
+                                /** @enum {number} */
+                                schemaVersion: 1;
+                                name: string;
+                                description: string;
+                                endpoint: string;
+                                actions: {
+                                    id: string;
+                                    description: string;
+                                    /** @enum {string} */
+                                    input: "text-v1";
+                                    /** @enum {string} */
+                                    output: "text-v1";
+                                }[];
+                                variants: {
+                                    id: string;
+                                    model: string;
+                                    description: string;
+                                }[];
+                                pricing: {
+                                    /** @enum {string} */
+                                    kind: "fixed";
+                                    amountMinor: string;
+                                    /** @enum {string} */
+                                    currency: "test-credit";
+                                };
+                                runtime: {
+                                    /** @enum {string} */
+                                    protocol: "provider-text-v1";
+                                    /** @enum {boolean} */
+                                    streaming: false;
+                                    /** @enum {boolean} */
+                                    cancellation: false;
+                                    /** @enum {boolean} */
+                                    startDeduplication: true;
+                                    /** @enum {boolean} */
+                                    statusRecovery: true;
+                                };
+                                limits: {
+                                    inputChars: number;
+                                    outputTokens: number;
+                                    timeoutSeconds: number;
+                                };
+                                dataPolicy: {
+                                    destinations: string[];
+                                    retention: string;
+                                    terms: string;
+                                };
+                            };
+                            digest: string;
+                            state: string;
+                            reviewedAt: string | null;
+                            reviewNote: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        manifest: {
+                            /** @enum {number} */
+                            schemaVersion: 1;
+                            name: string;
+                            description: string;
+                            endpoint: string;
+                            actions: {
+                                id: string;
+                                description: string;
+                                /** @enum {string} */
+                                input: "text-v1";
+                                /** @enum {string} */
+                                output: "text-v1";
+                            }[];
+                            variants: {
+                                id: string;
+                                model: string;
+                                description: string;
+                            }[];
+                            pricing: {
+                                /** @enum {string} */
+                                kind: "fixed";
+                                amountMinor: string;
+                                /** @enum {string} */
+                                currency: "test-credit";
+                            };
+                            runtime: {
+                                /** @enum {string} */
+                                protocol: "provider-text-v1";
+                                /** @enum {boolean} */
+                                streaming: false;
+                                /** @enum {boolean} */
+                                cancellation: false;
+                                /** @enum {boolean} */
+                                startDeduplication: true;
+                                /** @enum {boolean} */
+                                statusRecovery: true;
+                            };
+                            limits: {
+                                inputChars: number;
+                                outputTokens: number;
+                                timeoutSeconds: number;
+                            };
+                            dataPolicy: {
+                                destinations: string[];
+                                retention: string;
+                                terms: string;
+                            };
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            manifest: {
+                                /** @enum {number} */
+                                schemaVersion: 1;
+                                name: string;
+                                description: string;
+                                endpoint: string;
+                                actions: {
+                                    id: string;
+                                    description: string;
+                                    /** @enum {string} */
+                                    input: "text-v1";
+                                    /** @enum {string} */
+                                    output: "text-v1";
+                                }[];
+                                variants: {
+                                    id: string;
+                                    model: string;
+                                    description: string;
+                                }[];
+                                pricing: {
+                                    /** @enum {string} */
+                                    kind: "fixed";
+                                    amountMinor: string;
+                                    /** @enum {string} */
+                                    currency: "test-credit";
+                                };
+                                runtime: {
+                                    /** @enum {string} */
+                                    protocol: "provider-text-v1";
+                                    /** @enum {boolean} */
+                                    streaming: false;
+                                    /** @enum {boolean} */
+                                    cancellation: false;
+                                    /** @enum {boolean} */
+                                    startDeduplication: true;
+                                    /** @enum {boolean} */
+                                    statusRecovery: true;
+                                };
+                                limits: {
+                                    inputChars: number;
+                                    outputTokens: number;
+                                    timeoutSeconds: number;
+                                };
+                                dataPolicy: {
+                                    destinations: string[];
+                                    retention: string;
+                                    terms: string;
+                                };
+                            };
+                            digest: string;
+                            state: string;
+                            reviewedAt: string | null;
+                            reviewNote: string | null;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/listings/{id}/versions/{versionId}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    versionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            manifest: {
+                                /** @enum {number} */
+                                schemaVersion: 1;
+                                name: string;
+                                description: string;
+                                endpoint: string;
+                                actions: {
+                                    id: string;
+                                    description: string;
+                                    /** @enum {string} */
+                                    input: "text-v1";
+                                    /** @enum {string} */
+                                    output: "text-v1";
+                                }[];
+                                variants: {
+                                    id: string;
+                                    model: string;
+                                    description: string;
+                                }[];
+                                pricing: {
+                                    /** @enum {string} */
+                                    kind: "fixed";
+                                    amountMinor: string;
+                                    /** @enum {string} */
+                                    currency: "test-credit";
+                                };
+                                runtime: {
+                                    /** @enum {string} */
+                                    protocol: "provider-text-v1";
+                                    /** @enum {boolean} */
+                                    streaming: false;
+                                    /** @enum {boolean} */
+                                    cancellation: false;
+                                    /** @enum {boolean} */
+                                    startDeduplication: true;
+                                    /** @enum {boolean} */
+                                    statusRecovery: true;
+                                };
+                                limits: {
+                                    inputChars: number;
+                                    outputTokens: number;
+                                    timeoutSeconds: number;
+                                };
+                                dataPolicy: {
+                                    destinations: string[];
+                                    retention: string;
+                                    terms: string;
+                                };
+                            };
+                            digest: string;
+                            state: string;
+                            reviewedAt: string | null;
+                            reviewNote: string | null;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/listings/{id}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    versionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            publishedVersionId: string | null;
+                            paused: boolean;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider/listings/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            publishedVersionId: string | null;
+                            paused: boolean;
+                            createdAt: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {

@@ -6,6 +6,8 @@ import { WagmiProvider } from "wagmi";
 import { config as wagmiConfig } from "~/lib/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "~/assets/css/main.css";
+import "~/assets/css/marketplace.css";
+import { AppShell } from "~/components/marketplace/app-shell";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -42,7 +44,9 @@ function RootComponent() {
     <RootDocument>
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
-          <Outlet />
+          <AppShell>
+            <Outlet />
+          </AppShell>
         </QueryClientProvider>
       </WagmiProvider>
     </RootDocument>
@@ -57,7 +61,9 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </head>
       <body>
         {children}
-        <TanStackRouterDevtools position="bottom-left" />
+        {import.meta.env.DEV && import.meta.env.VITE_ROUTER_DEVTOOLS === "true" && (
+          <TanStackRouterDevtools position="bottom-left" />
+        )}
         <Scripts />
       </body>
     </html>

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "Logo Designer",
+  "description": "Designs one original SVG logo symbol from a brand brief. Returns SVG source as an inert code block, not a rendered or verified artifact. No browsing, tools, mockups, or financial actions. Model usage is provider-asserted.",
+  "endpoint": "https://provider.example.com",
+  "actions": [
+    {
+      "id": "design-logo",
+      "description": "Create one simple SVG logo symbol from the brand name, audience, visual direction and preferred colors. No lettering, alternatives or brand kit; output is inert SVG source.",
+      "input": "text-v1",
+      "output": "text-v1"
+    }
+  ],
+  "variants": [
+    {
+      "id": "default",
+      "model": "openai/gpt-4.1-mini",
+      "description": "One bounded model call; no automatic fallback."
+    }
+  ],
+  "pricing": { "kind": "fixed", "amountMinor": "0", "currency": "test-credit" },
+  "runtime": {
+    "protocol": "provider-text-v1",
+    "streaming": false,
+    "cancellation": false,
+    "startDeduplication": true,
+    "statusRecovery": true
+  },
+  "limits": { "inputChars": 8000, "outputTokens": 2048, "timeoutSeconds": 30 },
+  "dataPolicy": {
+    "destinations": ["https://api.openai.com"],
+    "retention": "Operation inputs and results remain in the provider's local SQLite database until the operator deletes the database offline. Upstream model retention follows the operator's OpenAI agreement.",
+    "terms": "Development sample only. Real model calls cost the provider money. SVG source is not a verified image artifact, trademark clearance, or guarantee of originality. No marketplace billing, uptime guarantee, cancellation, or artifact delivery. Replace the placeholder endpoint and review policies before publishing."
+  }
+}

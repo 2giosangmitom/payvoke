@@ -13,7 +13,14 @@ import { AppUser } from "../src/modules/identity/domain/app-user.js";
 import { AppUserSchema } from "../src/modules/identity/infrastructure/app-user.schema.js";
 import { failure } from "../src/modules/identity/domain/identity.errors.js";
 import { workspaceSchemas } from "../src/modules/workspace/infrastructure/workspace.schemas.js";
+import { publishingSchemas } from "../src/modules/publishing/infrastructure/publishing.schemas.js";
 import { Conversation, ConversationTurn } from "../src/modules/workspace/domain/conversation.js";
+import { readFileSync } from "node:fs";
+import { MikroOrmPublishingRepository } from "../src/modules/publishing/infrastructure/mikro-orm-publishing.repository.js";
+import {
+  manifestDigest,
+  type ProviderManifest,
+} from "../src/modules/publishing/domain/publishing.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? "";
 const accountId = randomUUID();
@@ -28,7 +35,7 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     orm = await MikroORM.init({
       driver: PostgreSqlDriver,
       clientUrl: databaseUrl,
-      entities: [AppUserSchema, ...workspaceSchemas],
+      entities: [AppUserSchema, ...workspaceSchemas, ...publishingSchemas],
       extensions: [Migrator],
       migrations: {
         migrationsList: applicationMigrations,
@@ -380,7 +387,7 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     const freshOrm = await MikroORM.init({
       driver: PostgreSqlDriver,
       clientUrl: databaseUrl,
-      entities: [AppUserSchema, ...workspaceSchemas],
+      entities: [AppUserSchema, ...workspaceSchemas, ...publishingSchemas],
     });
     const freshApp = await createApp({
       orm: freshOrm,
@@ -459,7 +466,7 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     expect(await orm.em.fork().count(ConversationTurn, { conversationId })).toBe(1);
   });
 
-  it("rolls back only the workspace migration and can apply it again", async () => {
+  it("rolls back post-identity migrations and can apply them again", async () => {
     await orm.migrator.down({ to: "Migration20261017070519" });
     expect((await app.inject({ method: "GET", url: "/v1/me", headers })).statusCode).toBe(200);
     await orm.migrator.up();
@@ -467,9 +474,316 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     const tables = await orm.em
       .getConnection()
       .execute<{ relname: string; relrowsecurity: boolean }[]>(
-        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns')",
+        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns', 'provider_profiles', 'agent_listings', 'manifest_versions')",
       );
-    expect(tables).toHaveLength(3);
+    expect(tables).toHaveLength(6);
     expect(tables.every((table) => table.relrowsecurity)).toBe(true);
+  });
+
+  const manifest = JSON.parse(
+    readFileSync(
+      new URL("../../../packages/logo-designer/src/manifest.json", import.meta.url),
+      "utf8",
+    ),
+  ) as ProviderManifest;
+  async function createCandidate() {
+    const listingId = randomUUID();
+    const versionId = randomUUID();
+    const profile = await app.inject({
+      method: "POST",
+      url: "/v1/provider/profile",
+      headers,
+      payload: { displayName: "Example provider" },
+    });
+    expect(profile.statusCode, profile.body).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/provider/listings",
+          headers,
+          payload: { id: listingId },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const candidate = await app.inject({
+      method: "POST",
+      url: `/v1/provider/listings/${listingId}/versions`,
+      headers,
+      payload: { id: versionId, manifest },
+    });
+    expect(candidate.statusCode, candidate.body).toBe(200);
+    return { listingId, versionId, digest: candidate.json().digest as string };
+  }
+  async function approve(listingId: string, versionId: string, digest: string) {
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/listings/${listingId}/versions/${versionId}/submit`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const result = await new MikroOrmPublishingRepository(orm.em.fork()).review(
+      listingId,
+      versionId,
+      {
+        digest,
+        decision: "approved",
+        reviewer: "test-operator",
+        note: "Catalog schema and disclosures reviewed; not endpoint admission.",
+      },
+    );
+    expect(result.isOk()).toBe(true);
+  }
+  it("publishes only reviewed versions and hides endpoints, account IDs and review internals from discovery", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    const publish = () =>
+      app.inject({
+        method: "POST",
+        url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+        headers,
+      });
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()).toEqual([]);
+    expect((await publish()).statusCode).toBe(409);
+    await approve(listingId, versionId, digest);
+    expect((await publish()).statusCode).toBe(200);
+    expect((await publish()).statusCode).toBe(200);
+    const catalog = await app.inject({ method: "GET", url: "/v1/agents" });
+    expect(catalog.json()).toMatchObject([
+      {
+        id: listingId,
+        versionId,
+        digest,
+        providerName: "Example provider",
+        executionEnabled: false,
+        verification: "catalog-review-only",
+      },
+    ]);
+    expect(catalog.body).not.toContain(manifest.endpoint);
+    expect(catalog.body).not.toContain(accountId);
+    expect(catalog.body).not.toContain("test-operator");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/listings/${listingId}/pause`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()).toEqual([]);
+    await publish();
+    await orm.em.fork().nativeUpdate(AppUser, accountId, { status: "suspended" });
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()).toEqual([]);
+  });
+  it("keeps manifests immutable, deduplicates retries, and leaves publication pinned during rollout", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    expect(digest).toBe(manifestDigest(manifest));
+    const url = `/v1/provider/listings/${listingId}/versions`;
+    const duplicates = await Promise.all(
+      [0, 1].map(() =>
+        app.inject({ method: "POST", url, headers, payload: { id: versionId, manifest } }),
+      ),
+    );
+    expect(duplicates.every((response) => response.statusCode === 200)).toBe(true);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers,
+          payload: { id: versionId, manifest: { ...manifest, name: "Changed" } },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await approve(listingId, versionId, digest);
+    await app.inject({ method: "POST", url: `${url}/${versionId}/publish`, headers });
+    const nextId = randomUUID();
+    const next = { ...manifest, endpoint: "https://next.example.com", name: "Next candidate" };
+    expect(
+      (await app.inject({ method: "POST", url, headers, payload: { id: nextId, manifest: next } }))
+        .statusCode,
+    ).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()[0].versionId).toBe(
+      versionId,
+    );
+    await approve(listingId, nextId, manifestDigest(next));
+    expect(
+      (await app.inject({ method: "POST", url: `${url}/${nextId}/publish`, headers })).statusCode,
+    ).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()[0].versionId).toBe(
+      nextId,
+    );
+    expect(
+      (await app.inject({ method: "POST", url: `${url}/${versionId}/publish`, headers }))
+        .statusCode,
+    ).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()[0].versionId).toBe(
+      versionId,
+    );
+  });
+  it("denies cross-owner publishing and has no provider-accessible review endpoint", async () => {
+    const { listingId, versionId } = await createCandidate();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/listings/${listingId}/versions/${versionId}/approve`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    authenticate.mockResolvedValue(Result.ok({ accountId: randomUUID() }));
+    const versions = `/v1/provider/listings/${listingId}/versions`;
+    expect(
+      (await app.inject({ method: "GET", url: "/v1/provider/listings", headers })).json(),
+    ).toEqual([]);
+    expect((await app.inject({ method: "GET", url: versions, headers })).statusCode).toBe(404);
+    for (const suffix of ["submit", "publish"])
+      expect(
+        (await app.inject({ method: "POST", url: `${versions}/${versionId}/${suffix}`, headers }))
+          .statusCode,
+      ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/listings/${listingId}/pause`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: versions,
+          headers,
+          payload: { id: randomUUID(), manifest },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/v1/provider/listings" })).statusCode).toBe(
+      401,
+    );
+  });
+  it("binds operator review to the exact digest and makes rejection terminal", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    const base = `/v1/provider/listings/${listingId}/versions/${versionId}`;
+    await app.inject({ method: "POST", url: `${base}/submit`, headers });
+    const repository = () => new MikroOrmPublishingRepository(orm.em.fork());
+    const review = {
+      digest,
+      decision: "rejected" as const,
+      reviewer: "operator",
+      note: "Incomplete disclosures.",
+    };
+    expect(
+      (
+        await repository().review(listingId, versionId, { ...review, digest: "0".repeat(64) })
+      ).isErr(),
+    ).toBe(true);
+    expect((await repository().review(listingId, versionId, review)).isOk()).toBe(true);
+    expect((await repository().review(listingId, versionId, review)).isOk()).toBe(true);
+    expect(
+      (
+        await repository().review(listingId, versionId, { ...review, decision: "approved" })
+      ).isErr(),
+    ).toBe(true);
+    expect((await app.inject({ method: "POST", url: `${base}/submit`, headers })).statusCode).toBe(
+      409,
+    );
+    expect((await app.inject({ method: "POST", url: `${base}/publish`, headers })).statusCode).toBe(
+      409,
+    );
+  });
+  it("validates manifest declarations before persistence and exposes the schema without auth", async () => {
+    const { listingId, versionId } = await createCandidate();
+    expect(
+      (await app.inject({ method: "GET", url: "/v1/provider/profile", headers })).json()
+        .displayName,
+    ).toBe("Example provider");
+    expect(
+      (await app.inject({ method: "GET", url: "/v1/provider-manifest-schema" })).json().properties
+        .schemaVersion.const,
+    ).toBe(1);
+    for (const invalid of [
+      { ...manifest, credentials: "secret" },
+      { ...manifest, endpoint: "http://localhost" },
+      { ...manifest, runtime: { ...manifest.runtime, streaming: true } },
+      { ...manifest, variants: [manifest.variants[0], manifest.variants[0]] },
+      { ...manifest, pricing: { ...manifest.pricing, amountMinor: "1.5" } },
+      { ...manifest, dataPolicy: { ...manifest.dataPolicy, destinations: ["https://127.0.0.1"] } },
+    ]) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/provider/listings/${listingId}/versions`,
+        headers,
+        payload: { id: randomUUID(), manifest: invalid },
+      });
+      expect(response.statusCode, response.body).toBe(400);
+    }
+    const versions = (
+      await app.inject({
+        method: "GET",
+        url: `/v1/provider/listings/${listingId}/versions`,
+        headers,
+      })
+    ).json();
+    expect(versions).toHaveLength(1);
+    expect(versions[0].id).toBe(versionId);
+  });
+
+  it("serves safe public detail links and owner-only listing summaries", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    const detail = () => app.inject({ method: "GET", url: `/v1/agents/${listingId}` });
+    expect((await detail()).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: `/v1/provider/listings/${listingId}`, headers }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: `/v1/provider/listings/${randomUUID()}`, headers }))
+        .statusCode,
+    ).toBe(404);
+    const summary = (
+      await app.inject({ method: "GET", url: "/v1/provider/listings", headers })
+    ).json();
+    expect(summary).toMatchObject([
+      {
+        id: listingId,
+        name: "Logo Designer",
+        candidateState: "draft",
+        candidateVersionId: versionId,
+      },
+    ]);
+    authenticate.mockResolvedValue(Result.ok({ accountId: randomUUID() }));
+    expect(
+      (await app.inject({ method: "GET", url: `/v1/provider/listings/${listingId}`, headers }))
+        .statusCode,
+    ).toBe(404);
+    authenticate.mockResolvedValue(Result.ok({ accountId }));
+    await approve(listingId, versionId, digest);
+    await app.inject({
+      method: "POST",
+      url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+      headers,
+    });
+    const response = await detail();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: listingId, versionId, executionEnabled: false });
+    expect(response.body).not.toContain(manifest.endpoint);
+    expect(response.body).not.toContain(accountId);
+    await app.inject({ method: "POST", url: `/v1/provider/listings/${listingId}/pause`, headers });
+    expect((await detail()).statusCode).toBe(404);
+    await app.inject({
+      method: "POST",
+      url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+      headers,
+    });
+    await orm.em.fork().nativeUpdate(AppUser, accountId, { status: "suspended" });
+    expect((await detail()).statusCode).toBe(404);
   });
 });

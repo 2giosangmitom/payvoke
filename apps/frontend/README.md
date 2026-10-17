@@ -2,9 +2,22 @@
 
 Run `pnpm --filter frontend dev` from the repository root, then open http://localhost:3000.
 
+## Marketplace and provider console
+
+The UI follows the approved marketplace + console layout: shared navigation, a light canvas, fine-bordered cards, the existing Geist font and an indigo accent. The shipped screens are:
+
+- `/`: wallet-free agent discovery with task/provider search and filters **on the current 50-item page**, URL-persisted filters and pagination. No sample listings, ratings or usage metrics are inserted into real data.
+- `/agents/:agentId`: direct public agent details with overview/input/output/terms tabs. Paused, unpublished and suspended-provider listings return unavailable. Pricing is a declaration, not a payable quote; execution remains disabled.
+- `/provider`: authenticated provider profile creation, listings, immutable manifest creation, review submission, publication, pause/resume and rollback by publishing an older approved version. There is no provider-side approval action. Manifest input is complete JSON validated by the backend; credentials never belong in it.
+- `/workspace`: the existing private chat and versioned briefs, restyled to match the shared shell. On narrow screens, **Workspaces** switches between workspace/conversation navigation and chat; the header menu opens the main app navigation.
+
+Public catalog requests use a separate API client without Supabase bearer tokens. Provider/workspace calls still use the authenticated client. Apply backend migrations and configure `VITE_API_HOST` before using the API. An empty catalog is expected until an operator-reviewed version is published.
+
+The accent and font live in `src/assets/css/main.css`; shared marketplace layout and semantic state colors live in `src/assets/css/marketplace.css`. Existing dark tokens remain available, but this redesign does not add a theme switcher. Router devtools are opt-in during development with `VITE_ROUTER_DEVTOOLS=true`.
+
 ## Workspace chat (initial M02 slice)
 
-Open `/workspace` after signing in. Create a workspace, save a task brief, and create a conversation. The UI uses assistant-ui's official AG-UI runtime; the backend streams AG-UI events over SSE. The existing Geist font and monochrome theme tokens are reused, including the existing dark theme. Mobile navigation uses the **Workspaces** button so the conversation keeps the available screen height.
+Open `/workspace` after signing in. Create a workspace, save a task brief, and create a conversation. The UI uses assistant-ui's official AG-UI runtime; the backend streams AG-UI events over SSE. The existing Geist font and semantic theme tokens are reused with the shared marketplace shell. Mobile navigation uses the **Workspaces** button so the conversation keeps the available screen height.
 
 Set `VITE_API_HOST` to the backend origin (default `http://localhost:8000`), and set the backend's `AUTH_ORIGIN` to the frontend origin. Apply backend migrations first. API calls and subscriptions obtain the current Supabase bearer token for every request. No token is placed in a URL.
 
@@ -20,11 +33,11 @@ pnpm --filter frontend exec playwright install chromium
 pnpm --filter frontend test:e2e
 ```
 
-Unit tests exercise the reconnect transport and Markdown boundary. Browser tests start an isolated Vite server on port 3100 with test-only public settings and mock Supabase sessions/API responses; they do not use your `.env` credentials or prove live email/wallet authentication. They cover assistant-ui rendering, brief editing, streaming, saved-history reload, sign-in gating, and 375px mobile layout. Database-backed API tests live in the backend suite.
+Unit tests exercise catalog filtering/pricing, the reconnect transport and Markdown boundary. Browser tests start an isolated Vite server on port 3100 with test-only public settings and mock Supabase sessions/API responses; they do not use your `.env` credentials or prove live email/wallet authentication. They cover wallet-free catalog/details, empty/error states, provider draft/review/publication/pause controls, assistant-ui rendering, brief editing, streaming, saved-history reload, sign-in gating, and 375px mobile layout. Operator approval in browser tests is simulated externally, not granted to the provider UI. Database-backed API tests live in the backend suite.
 
 ## Email sign-in
 
-The homepage's sign-in dialog uses Supabase email magic links. New email addresses create an account; existing users sign in. Enter an email, then follow the link in the email to finish signing in. There is no code-entry step and no password or wallet connection is required.
+The shared navigation's sign-in dialog uses Supabase email magic links. New email addresses create an account; existing users sign in. Enter an email, then follow the link in the email to finish signing in. There is no code-entry step and no password or wallet connection is required.
 
 Set these public browser settings in `apps/frontend/.env`:
 
@@ -63,7 +76,7 @@ Wallet accounts may not have an email; the UI uses the wallet address from the S
 ## Verification
 
 ```sh
-pnpm --filter frontend exec tsc --noEmit
+pnpm --filter frontend typecheck
 pnpm --filter frontend build
 pnpm exec oxlint apps/frontend/src/components apps/frontend/src/routes/index.tsx
 pnpm exec oxfmt --check apps/frontend/src/components apps/frontend/src/routes/index.tsx

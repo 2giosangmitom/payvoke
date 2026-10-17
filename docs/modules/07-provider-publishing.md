@@ -2,6 +2,51 @@
 
 Owns provider identities/listings, versioned manifests, endpoint configuration, admission evidence and publication state. Providers deploy their own runtime; the marketplace admits an integration, not their private source.
 
+## Implemented core
+
+The backend implements provider profiles (one per Supabase account), owner-only listings, immutable manifest candidates, submitted/approved/rejected review states, publication pointers, pause and rollback to a previously approved version. Public discovery is wallet-free. The manifest subset is deliberately narrow: `provider-text-v1`, final-only text actions, declared model variants, fixed test-credit prices and bounded input/output/deadlines. It does not support paid execution, arbitrary JSON schemas, widgets, files, streaming or cancellation claims yet.
+
+**Catalog publication is not endpoint admission.** Every discovered listing says `verification: catalog-review-only` and `executionEnabled: false`. No publishing command makes network requests to provider endpoints. HTTPS declaration validation rejects local/IP hosts and credential/query-bearing URLs but does not prove DNS, TLS, endpoint control, data policy or runtime behavior. Platform probes, encrypted credential configuration, fixtures/admission evidence, execution integration, operator UI and playground remain deferred. Never put secrets in a manifest, including free-text fields; rejected credential fields are not a secret scanner.
+
+### Publishing workflow
+
+Authenticated commands use the same Supabase bearer/session and suspension checks as M01. Owners cannot supply another provider ID or approve their own candidates. Profile names are immutable in this first slice; exact creation retries recover the profile. Lists are paged at 50 with `offset` (maximum 10,000).
+
+| API                                                          | Purpose                                                           |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `GET /v1/provider-manifest-schema`                           | Public version-1 schema for local tooling                         |
+| `GET/POST /v1/provider/profile`                              | Read/create the current provider; body `{ displayName }`          |
+| `GET/POST /v1/provider/listings`                             | Read/create owned listings; create body `{ id }` (client UUID)    |
+| `GET/POST /v1/provider/listings/:id/versions`                | Read/create immutable candidates; create body `{ id, manifest }`  |
+| `POST /v1/provider/listings/:id/versions/:versionId/submit`  | Submit a draft for catalog review                                 |
+| `POST /v1/provider/listings/:id/versions/:versionId/publish` | Point discovery at an approved version (also resumes/rolls back)  |
+| `POST /v1/provider/listings/:id/pause`                       | Hide a listing from new discovery                                 |
+| `GET /v1/agents`                                             | Discover published, unpaused listings from active providers       |
+| `GET /v1/agents/:id`                                         | Direct public detail with the same visibility and redaction rules |
+| `GET /v1/provider/listings/:id`                              | Owner-only listing summary, independent of pagination             |
+
+Creation IDs bind immutable content. Changed content under an existing version UUID conflicts; a new endpoint, model, price, destination or terms requires a new version UUID. Versions have a deterministic SHA-256 digest over recursively key-sorted JSON (array order is preserved), binding operator review to the exact manifest. Publication changes a listing pointer; it never mutates a prior version or any future order's pinned configuration. Draft candidates remain private while the previous published version stays visible. Catalog reads use a repeatable-read database snapshot. Public projections omit integration endpoints, account IDs and internal review notes. Digests are integrity identifiers, not confidential commitments.
+
+Review is a trusted, database-privileged operator command—not an HTTP role exposed to provider tokens:
+
+```sh
+pnpm --filter backend publishing:review <listing-uuid> <version-uuid> <digest> approved <operator-name> "Catalog content and disclosures reviewed; endpoint not admitted"
+```
+
+Use `rejected` instead of `approved` to reject a candidate. The command records operator, note and timestamp and checks the expected digest. An exact review retry is harmless; a terminal decision cannot be overwritten. Rejection requires a new candidate. It does not pretend that a manually reviewed declaration has passed runtime tests. There is no dedicated cryptographic attestation or tamper-proof audit store in this slice.
+
+Apply registered migrations with `pnpm --filter backend db:migration:up`. Integration tests use only the disposable `TEST_DATABASE_URL`; they cover ownership, admission gates, immutability/retries, digest-bound reviews, rollout/rollback, suspension, schema parity and migration rollback/reapply. Provider tables enable RLS and revoke browser/public table grants, like the existing modules. Regenerate API types with `pnpm --filter backend sdk`.
+
+### Logo Designer example
+
+[`packages/logo-designer`](../../packages/logo-designer/README.md) is a single-purpose provider: one Mastra `Agent`, one `design-logo` action, and one SVG logo symbol per brand brief. It returns restricted SVG source as inert fenced text, not a rendered or verified artifact. It retains the final-only HTTP contract and SQLite operation recovery. The backend manifest tests validate its shipped manifest. It has a separate integration token and provider-owned OpenAI key; local/CI contract tests require explicit opt-in to real model expense. Its automatic tests use synthetic responses, not live models. No backend execution adapter calls it yet. Providers are named for their work, not their implementation framework.
+
+### Web interface
+
+The frontend exposes a wallet-free Store at `/`, public details at `/agents/:id`, and the authenticated publishing console at `/provider`. Owner listing summaries include the latest candidate name/ID/state without disclosing other owners' records. The console supports profile creation, complete manifest JSON drafts, submission, and approved-version publication/pause/rollback. Review authority remains operator-only through the CLI. Catalog filters currently apply to the displayed 50-item page, not a global search index. No sample listings or metrics are seeded into production data.
+
+The rest of this document describes the target design, not completed admission/execution capabilities.
+
 ## Manifest and customization
 
 | Declaration              | Purpose                                                                                    |

@@ -20,6 +20,7 @@ import swaggerPlugin from "./plugins/swagger.js";
 import { identityRoutes } from "./modules/identity/http/identity.plugin.js";
 import { ApiHttpError } from "./modules/identity/http/identity-http.js";
 import { workspaceRoutes } from "./modules/workspace/http/workspace.plugin.js";
+import { publishingRoutes } from "./modules/publishing/http/publishing.plugin.js";
 
 export interface CreateAppOptions {
   env: Environment;
@@ -64,6 +65,7 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
   await app.register(swaggerPlugin);
   await app.register(identityRoutes);
   await app.register(workspaceRoutes);
+  await app.register(publishingRoutes);
 
   app.addHook("onClose", async () => {
     if (await orm.isConnected()) await orm.close();

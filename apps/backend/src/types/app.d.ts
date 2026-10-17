@@ -6,6 +6,8 @@ import type { SupabaseAuthService } from "../modules/identity/infrastructure/sup
 import type { Principal } from "../modules/identity/domain/identity.types.js";
 import type { WorkspaceRepository } from "../modules/workspace/application/workspace.repository.js";
 import type { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
+import type { PublishingRepository } from "../modules/publishing/application/publishing.repository.js";
+import type { PublishingService } from "../modules/publishing/application/publishing.service.js";
 
 // Fastify request augmentation: set by the `requireAuth` preHandler.
 declare module "fastify" {
@@ -25,5 +27,7 @@ declare module "@fastify/awilix" {
     profiles: ProfileRepository;
     workspaces: WorkspaceRepository;
     workspaceService: WorkspaceService;
+    publishing: PublishingRepository;
+    publishingService: PublishingService;
   }
 }

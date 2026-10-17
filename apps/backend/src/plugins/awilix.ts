@@ -9,6 +9,8 @@ import { SupabaseAuthService } from "../modules/identity/infrastructure/supabase
 import { MikroOrmProfileRepository } from "../modules/identity/infrastructure/mikro-orm-profile.repository.js";
 import { MikroOrmWorkspaceRepository } from "../modules/workspace/infrastructure/mikro-orm-workspace.repository.js";
 import { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
+import { PublishingService } from "../modules/publishing/application/publishing.service.js";
+import { MikroOrmPublishingRepository } from "../modules/publishing/infrastructure/mikro-orm-publishing.repository.js";
 
 export interface DiOptions {
   env: Environment;
@@ -28,6 +30,12 @@ const diPlugin: FastifyPluginAsync<DiOptions> = async (fastify, options) => {
       lifetime: Lifetime.SCOPED,
     }),
     workspaceService: asFunction(({ workspaces }) => new WorkspaceService(workspaces), {
+      lifetime: Lifetime.SCOPED,
+    }),
+    publishing: asFunction(({ em }) => new MikroOrmPublishingRepository(em), {
+      lifetime: Lifetime.SCOPED,
+    }),
+    publishingService: asFunction(({ publishing }) => new PublishingService(publishing), {
       lifetime: Lifetime.SCOPED,
     }),
   });

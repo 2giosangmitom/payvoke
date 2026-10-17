@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "playwright test",
     "generate:api": "openapi-typescript ../backend/dist/swagger.json -o src/lib/schema.d.ts"
