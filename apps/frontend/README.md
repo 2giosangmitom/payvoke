@@ -2,6 +2,26 @@
 
 Run `pnpm --filter frontend dev` from the repository root, then open http://localhost:3000.
 
+## Workspace chat (initial M02 slice)
+
+Open `/workspace` after signing in. Create a workspace, save a task brief, and create a conversation. The UI uses assistant-ui's official AG-UI runtime; the backend streams AG-UI events over SSE. The existing Geist font and monochrome theme tokens are reused, including the existing dark theme. Mobile navigation uses the **Workspaces** button so the conversation keeps the available screen height.
+
+Set `VITE_API_HOST` to the backend origin (default `http://localhost:8000`), and set the backend's `AUTH_ORIGIN` to the frontend origin. Apply backend migrations first. API calls and subscriptions obtain the current Supabase bearer token for every request. No token is placed in a URL.
+
+The responder is explicitly **development-only**: no model calls, real agent execution, hiring, or spending. Briefs and messages persist in PostgreSQL. Sending is an idempotent command; reconnection only replays saved events. Reloading restores saved history, and the selected workspace/conversation is kept in URL search parameters. Safe Markdown rendering excludes images, raw HTML, non-HTTPS links, and provider components.
+
+See [M02 implementation status](../../docs/modules/02-workspace-and-conversation.md#implementation-status) for API limits and deferred behavior. The registered widget/action catalog and real coordinator/provider integration are not implemented yet.
+
+### Chat tests
+
+```sh
+pnpm --filter frontend test
+pnpm --filter frontend exec playwright install chromium
+pnpm --filter frontend test:e2e
+```
+
+Unit tests exercise the reconnect transport and Markdown boundary. Browser tests start an isolated Vite server on port 3100 with test-only public settings and mock Supabase sessions/API responses; they do not use your `.env` credentials or prove live email/wallet authentication. They cover assistant-ui rendering, brief editing, streaming, saved-history reload, sign-in gating, and 375px mobile layout. Database-backed API tests live in the backend suite.
+
 ## Email sign-in
 
 The homepage's sign-in dialog uses Supabase email magic links. New email addresses create an account; existing users sign in. Enter an email, then follow the link in the email to finish signing in. There is no code-entry step and no password or wallet connection is required.

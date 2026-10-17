@@ -19,6 +19,7 @@ import diPlugin from "./plugins/awilix.js";
 import swaggerPlugin from "./plugins/swagger.js";
 import { identityRoutes } from "./modules/identity/http/identity.plugin.js";
 import { ApiHttpError } from "./modules/identity/http/identity-http.js";
+import { workspaceRoutes } from "./modules/workspace/http/workspace.plugin.js";
 
 export interface CreateAppOptions {
   env: Environment;
@@ -57,10 +58,12 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
     origin: new URL(env.AUTH_ORIGIN).origin,
     methods: ["GET", "POST", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["X-Stream-Reset"],
   });
   await app.register(diPlugin, { env, orm });
   await app.register(swaggerPlugin);
   await app.register(identityRoutes);
+  await app.register(workspaceRoutes);
 
   app.addHook("onClose", async () => {
     if (await orm.isConnected()) await orm.close();

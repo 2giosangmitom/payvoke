@@ -22,6 +22,8 @@ The default port is `8000`. Swagger UI is at `/docs`; its OpenAPI document is at
 
 The backend is ESM. `start:dev` runs TypeScript sources directly with `tsx watch src/main.ts`; run `typecheck` separately to check types. `build` compiles to `dist` with `tsc`, and `start` runs `dist/main.js`. Every `db:*` command builds first and runs the MikroORM CLI against `dist`.
 
+Migration execution uses the explicit `applicationMigrations` registry in `src/database/mikro-orm.options.ts`, shared with integration tests. TypeScript does not remove obsolete files from `dist`; the registry prevents an old compiled migration from being discovered and executed. After generating a migration, add its class to that registry before running it. The migration-discovery test checks that every source migration is registered and stale output is ignored.
+
 ```sh
 pnpm --filter backend build
 pnpm --filter backend start
@@ -44,6 +46,8 @@ The backend is a modular monolith. Identity owns its profiles and has four small
 
 Add future business modules alongside identity, keeping persistence and transport out of their domain rules. There are no generic base repositories, event buses or separate deployments to maintain.
 
+`src/modules/workspace` follows the same four-layer shape for the initial M02 slice: private workspaces, briefs, conversations, and idempotent text turns. See the [M02 implementation status and replay contract](../../docs/modules/02-workspace-and-conversation.md#implementation-status). It uses an explicitly labelled deterministic development responder, not a real model or provider. Apply the new workspace migration before using `/workspace`; no spending or provider execution is enabled.
+
 ## Authentication
 
 Sign in, refresh sessions and sign out through Supabase Auth. Enable email magic links and Ethereum Web3 in Supabase, configure redirect URLs, SMTP and rate limits there. Use a publishable key, never a service-role key in the browser.
@@ -64,7 +68,7 @@ TEST_DATABASE_URL=postgresql://test:test@127.0.0.1:55433/test pnpm --filter back
 docker compose down
 ```
 
-The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles with a stubbed Supabase verifier. Never use a development or production database.
+The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles (cascading to their workspaces/conversations) with a stubbed Supabase verifier. They also roll back/reapply the workspace migration in the disposable database. Never use a development or production database.
 
 ## Resources
 

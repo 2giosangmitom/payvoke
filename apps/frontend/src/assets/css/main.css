@@ -128,3 +128,58 @@
     @apply font-sans;
   }
 }
+
+.chat-markdown :is(p, ul, ol, pre, blockquote) + :is(p, ul, ol, pre, blockquote) {
+  margin-top: 1rem;
+}
+.chat-markdown :is(h1, h2, h3) {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-block: 1rem 0.5rem;
+}
+.chat-markdown ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.chat-markdown ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.chat-markdown pre {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 1rem;
+}
+.chat-markdown code {
+  font-family: monospace;
+  font-size: 0.875em;
+}
+.chat-markdown blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+}
+
+@supports (scrollbar-color: auto) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover,
+  *:focus-within {
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+}
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+}

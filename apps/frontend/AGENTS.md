@@ -3,7 +3,7 @@
 ## Execution and checks
 
 - From the repository root: `pnpm --filter frontend dev` serves on port 3000; `pnpm --filter frontend build` builds the TanStack Start/Nitro app, not just a client-only SPA.
-- Run `pnpm --filter frontend exec tsc --noEmit` separately: the build script only runs Vite. There is no frontend test script or test suite configured.
+- Run `pnpm --filter frontend exec tsc --noEmit` separately: the build script only runs Vite. `test` covers chat transport/Markdown; `test:e2e` runs browser flows against mocked sessions/API responses, not live Supabase or PostgreSQL. Test setup is in `README.md#chat-tests`.
 
 ## Routing and UI
 
@@ -12,3 +12,4 @@
 - The source alias is `~/…` (not `@/…`). UI components use shadcn's `base-nova` style with Base UI primitives, not Radix; see `components.json` before adding components.
 - Tailwind v4 is wired through the Vite plugin and CSS imports. Theme tokens live in `src/assets/css/main.css`; there is no Tailwind JS config.
 - Wallet configuration in `src/lib/wagmi.ts` currently targets Avalanche Fuji only; a working wallet connection is not evidence that marketplace payments are implemented.
+- Chat uses assistant-ui's AG-UI runtime with the compatible AG-UI 0.0.59 client/encoder. Before stream changes, read M02's replay contract and run the snapshot-reset browser test; assistant-ui's active accumulator needs canonical-history restoration after reset.

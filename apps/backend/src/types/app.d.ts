@@ -4,6 +4,8 @@ import type { AccountService } from "../modules/identity/application/account.ser
 import type { ProfileRepository } from "../modules/identity/application/profile.repository.js";
 import type { SupabaseAuthService } from "../modules/identity/infrastructure/supabase-auth.service.js";
 import type { Principal } from "../modules/identity/domain/identity.types.js";
+import type { WorkspaceRepository } from "../modules/workspace/application/workspace.repository.js";
+import type { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
 
 // Fastify request augmentation: set by the `requireAuth` preHandler.
 declare module "fastify" {
@@ -21,5 +23,7 @@ declare module "@fastify/awilix" {
     em: EntityManager;
     accounts: AccountService;
     profiles: ProfileRepository;
+    workspaces: WorkspaceRepository;
+    workspaceService: WorkspaceService;
   }
 }

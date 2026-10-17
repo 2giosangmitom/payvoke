@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { SignInDialog } from "~/components/sign-in-dialog";
 
 export const Route = createFileRoute("/")({
@@ -25,6 +25,9 @@ function Home() {
           </p>
         </div>
         <SignInDialog />
+        <Link to="/workspace" className="text-sm underline underline-offset-4">
+          Open workspace
+        </Link>
       </section>
     </main>
   );

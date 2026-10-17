@@ -7,6 +7,8 @@ import type { Environment } from "../config/environment.js";
 import { AccountService } from "../modules/identity/application/account.service.js";
 import { SupabaseAuthService } from "../modules/identity/infrastructure/supabase-auth.service.js";
 import { MikroOrmProfileRepository } from "../modules/identity/infrastructure/mikro-orm-profile.repository.js";
+import { MikroOrmWorkspaceRepository } from "../modules/workspace/infrastructure/mikro-orm-workspace.repository.js";
+import { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
 
 export interface DiOptions {
   env: Environment;
@@ -22,6 +24,12 @@ const diPlugin: FastifyPluginAsync<DiOptions> = async (fastify, options) => {
     em: asFunction(({ orm }) => orm.em.fork(), { lifetime: Lifetime.SCOPED }),
     profiles: asClass(MikroOrmProfileRepository, { lifetime: Lifetime.SCOPED }),
     accounts: asClass(AccountService, { lifetime: Lifetime.SCOPED }),
+    workspaces: asFunction(({ em }) => new MikroOrmWorkspaceRepository(em), {
+      lifetime: Lifetime.SCOPED,
+    }),
+    workspaceService: asFunction(({ workspaces }) => new WorkspaceService(workspaces), {
+      lifetime: Lifetime.SCOPED,
+    }),
   });
 
   await fastify.register(fastifyAwilixPlugin, {

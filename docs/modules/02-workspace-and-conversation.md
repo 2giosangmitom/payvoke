@@ -4,6 +4,39 @@ Owns projects, briefs, conversations, message parts, interactions and stream che
 
 For the MVP, each workspace/conversation has one owner identified by their Supabase user ID. Shared projects, invitations and collaborator roles are deferred. Project-scoped requirements below describe the later design, not implemented collaboration.
 
+## Implementation status
+
+The initial M02 slice implements private workspaces, versioned briefs, conversations, persistent text turns, and an **assistant-ui + AG-UI over SSE** chat at `/workspace`. A workspace is the MVP's project container; there is no second project entity.
+
+The responder is deterministic and explicitly labelled **development-only**. It makes no model calls, discovers no agents, executes no provider work, and cannot authorize purchases. A whole development turn and its ordered internal events are committed atomically before its text is streamed in paced chunks. This is durable replay of an already-completed response, not a long-running agent implementation.
+
+Implemented safeguards include owner checks on every command/read/subscription, Supabase profile suspension checks, run/message idempotency, original-text preservation, provenance labels, restricted Markdown, bounded history/events, and reset-to-snapshot recovery. History and its revision use one repeatable-read database snapshot.
+
+Still pending: a real clarification coordinator and disclosed quotas, the registered interactive widget catalog and action receipts, provider event/attempt adapters, ongoing-run snapshot/tail/live handoff, and production proxy/slow-reader/restart verification. M03/M04/M05/M06 remain separate dependencies; this slice does not make the full target design below complete.
+
+### API and replay contract
+
+- `GET/POST /v1/workspaces`: list (50 per page, `offset`) or create using a client-generated UUID.
+- `PATCH /v1/workspaces/:id/brief`: replace a brief with its expected `revision`. Stale changes conflict; an exact retry of the last replacement recovers it.
+- `GET/POST /v1/workspaces/:id/conversations`: list (50 per page, `offset`) or create a conversation using a client-generated UUID.
+- `GET /v1/conversations/:id`: canonical AG-UI message projection, conversation revision, and responder label.
+- `POST /v1/conversations/:id/runs`: accept AG-UI-shaped input and commit one development turn. Only the final plain-text user message is admitted; preceding browser messages/state are not authoritative. Tools/context are not accepted for execution. The returned `runId` identifies the existing operation.
+- `GET /v1/conversations/:id/runs/:runId/events?after=N`: authenticated, read-only SSE replay. Each complete event has an integer SSE `id`; `after` is exclusive and scoped to that run. The frontend's fetch transport reconnects here, never by starting a new run.
+
+The wire subset is `RUN_STARTED`, `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`, and `RUN_FINISHED`. The database owns framework-independent messages/parts/events; the HTTP adapter projects AG-UI. The AG-UI packages are pinned to `0.0.59` to match the assistant-ui adapter's supported client, rather than mixing incompatible 1.x and 0.x types.
+
+Run and user-message IDs bind the same original input: an exact retry returns the original turn, and changed input or key reuse returns `409`. Conversations cap at 100 turns, messages at 4,000 characters, and briefs at 8,000. Event tails retain the latest four turns; older canonical messages remain available. An expired/out-of-range cursor returns `X-Stream-Reset: true` and `RUN_STARTED → MESSAGES_SNAPSHOT → RUN_FINISHED`, replacing client state rather than appending it. Subscriptions are capped at three per user per backend process and 30 seconds; these are implementation safety bounds, not a commercial quota policy.
+
+The frontend sends only the new user message instead of uploading its transcript. Its replay adapter bounds SSE parsing at 4 MiB (including a full bounded snapshot), closes partial display blocks on reset, and suppresses a duplicate run start. After a reset run settles, the chat runtime is rebuilt from the canonical history endpoint: assistant-ui's active text accumulator would otherwise overwrite the imported snapshot. Browser regression coverage exercises this replacement, not just event receipt. This completed-run recovery does not implement ongoing provider-run recovery.
+
+There are no provider events, private reasoning, image downloads, HTML rendering, custom component fallbacks, or executable tool calls in this slice. Links are HTTPS-only; unfinished fenced blocks remain inert code. A disconnected stream does not remove the saved turn. `RUN_FINISHED` is not job delivery or settlement.
+
+### Verification
+
+Run `pnpm --filter backend test` with the disposable `TEST_DATABASE_URL` from the backend README to exercise actual PostgreSQL migrations, ownership, concurrent retries, stale briefs, replay/reset, suspension checks, fresh application recovery, and migration rollback/reapply. Without that URL, database tests skip.
+
+`pnpm --filter frontend test` checks fragmented UTF-8/JSON, cursor replay, reset, lost command responses, authorization failures, official HttpAgent compatibility, and the admitted Markdown subset. `pnpm --filter frontend test:e2e` exercises assistant-ui, workspace/brief creation, streaming, history reload, and a 375px viewport **with mocked Supabase sessions and API responses**. It does not prove live Supabase configuration, real provider recovery, or deployment proxy behavior.
+
 ## Conversation and controls
 
 Users describe a task, answer questions, select an agent/model variant and review the scope. Free clarification has disclosed quotas. A message alone must not become a purchase; automatic starts require an explicit user mandate covering that action and cost ceiling.
@@ -23,7 +56,7 @@ flowchart LR
   Adapter --> Widgets[Typed result widgets]
 ```
 
-Use a framework-independent ordered message/part model. AI SDK UI Message Stream over SSE is a proposed client adapter, not a requirement to use that library inside provider code. Provider protocols, including LangChain streams, need tested adapters. [M04](04-jobs-and-provider-execution.md) owns upstream recovery.
+Use a framework-independent ordered message/part model. AG-UI over SSE is the selected client adapter, rendered through assistant-ui; providers do not need to use either library internally. Provider protocols, including LangChain streams, need tested adapters. [M04](04-jobs-and-provider-execution.md) owns upstream recovery.
 
 Text parts have stable IDs and start/delta/end events. Data parts carry versioned structured values or checked artifact references. Strip private reasoning and debug traces. Provider tools/approval events never become executable platform commands.
 
