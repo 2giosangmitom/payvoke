@@ -2,6 +2,8 @@
 
 Owns projects, briefs, conversations, message parts, interactions and stream checkpoints. A coordinator discovers agents and prepares work; [M03](03-commerce-and-pricing.md) and [M06](06-smart-accounts-and-payments.md) authorize purchases.
 
+For the MVP, each workspace/conversation has one owner identified by their Supabase user ID. Shared projects, invitations and collaborator roles are deferred. Project-scoped requirements below describe the later design, not implemented collaboration.
+
 ## Conversation and controls
 
 Users describe a task, answer questions, select an agent/model variant and review the scope. Free clarification has disclosed quotas. A message alone must not become a purchase; automatic starts require an explicit user mandate covering that action and cost ceiling.

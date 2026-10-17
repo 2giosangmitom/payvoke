@@ -10,7 +10,7 @@ Start with the [architecture](docs/architecture.md). Each module owns its behavi
 
 | Module                                                                            | Covers                                                      |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| [M01 Identity and Access](docs/modules/01-identity-and-access.md)                 | Email/wallet login, account linking and project permissions |
+| [M01 Identity and Access](docs/modules/01-identity-and-access.md)                 | Supabase authentication and application profiles            |
 | [M02 Workspace and Conversation](docs/modules/02-workspace-and-conversation.md)   | Chat, interactive controls, streaming and reconnect         |
 | [M03 Commerce and Pricing](docs/modules/03-commerce-and-pricing.md)               | Model selection, fixed/metered quotes, orders and revisions |
 | [M04 Jobs and Provider Execution](docs/modules/04-jobs-and-provider-execution.md) | Provider contract, attempts, cancellation and recovery      |

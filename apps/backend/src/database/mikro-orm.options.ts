@@ -14,11 +14,28 @@ export function createMikroOrmOptions(config: ConfigService<Environment>) {
     metadataProvider: ReflectMetadataProvider,
     ensureDatabase: false,
     extensions: [Migrator],
+    schemaGenerator: {
+      ignoreSchema: [
+        "auth",
+        "storage",
+        "realtime",
+        "extensions",
+        "vault",
+        "graphql",
+        "graphql_public",
+        "supabase_functions",
+        "supabase_migrations",
+        "net",
+        "cron",
+        "pgsodium",
+        "pgsodium_masks",
+      ],
+    },
     migrations: {
       path: "dist/database/migrations",
       pathTs: "src/database/migrations",
       emit: "ts",
-      snapshotName: ".snapshot",
+      snapshot: false,
     },
   });
 }

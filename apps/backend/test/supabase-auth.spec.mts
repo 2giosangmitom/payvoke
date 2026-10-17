@@ -3,13 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseAuthService } from "../src/modules/identity/auth/supabase-auth.service.js";
 
-const mocks = vi.hoisted(() => ({
-  createClient: vi.fn(),
-  getClaims: vi.fn(),
-  getUser: vi.fn(),
-  signInWithOtp: vi.fn(),
-}));
-
+const mocks = vi.hoisted(() => ({ createClient: vi.fn(), getUser: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: mocks.createClient }));
 
 describe("Supabase Auth adapter", () => {
@@ -17,7 +11,7 @@ describe("Supabase Auth adapter", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.createClient.mockReturnValue({ auth: mocks });
+    mocks.createClient.mockReturnValue({ auth: { getUser: mocks.getUser } });
     service = new SupabaseAuthService(
       new ConfigService({
         SUPABASE_URL: "https://project.supabase.co",
@@ -26,49 +20,24 @@ describe("Supabase Auth adapter", () => {
     );
   });
 
-  it("maps a verified Supabase session to the backend principal", async () => {
-    const subjectId = "161edc3c-8bc6-4f35-a225-e6a6b3a37839";
-    const sessionId = "161edc3c-8bc6-4f35-a225-e6a6b3a37840";
-    mocks.getClaims.mockResolvedValue({
-      data: {
-        claims: {
-          sub: subjectId,
-          session_id: sessionId,
-          role: "authenticated",
-          aud: "authenticated",
-          iss: "https://project.supabase.co/auth/v1",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-        },
-      },
+  it("uses the verified Supabase user ID as the account ID", async () => {
+    const accountId = "161edc3c-8bc6-4f35-a225-e6a6b3a37839";
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: accountId, aud: "authenticated" } },
       error: null,
     });
-    mocks.getUser.mockResolvedValue({ data: { user: { id: subjectId } }, error: null });
-
     await expect(service.authenticate("token")).resolves.toMatchObject({
       status: "ok",
-      value: { subjectId, sessionId },
+      value: { accountId },
     });
-    expect(mocks.getClaims).toHaveBeenCalledWith("token");
     expect(mocks.getUser).toHaveBeenCalledWith("token");
   });
 
-  it("rejects a session refused by Supabase", async () => {
-    mocks.getClaims.mockResolvedValue({ data: null, error: new Error("Invalid token") });
+  it("rejects tokens refused by Supabase", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null }, error: new Error("Invalid token") });
     await expect(service.authenticate("invalid-token")).resolves.toMatchObject({
       status: "error",
       error: { code: "INVALID_SESSION" },
-    });
-    expect(mocks.getUser).not.toHaveBeenCalled();
-  });
-
-  it("maps OTP delivery failures without exposing provider details", async () => {
-    mocks.signInWithOtp.mockResolvedValue({ error: new Error("Private SMTP details") });
-    await expect(service.sendOtp("buyer@example.com")).resolves.toMatchObject({
-      status: "error",
-      error: {
-        code: "OTP_UNAVAILABLE",
-        message: "Unable to send a verification code. Try again later.",
-      },
     });
   });
 });

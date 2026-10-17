@@ -29,6 +29,16 @@ pnpm --filter backend sdk
 
 `swagger` writes `dist/swagger.json`; `sdk` generates `packages/api/src`. Both commands need the backend environment and a reachable database. Do not edit generated SDK files.
 
+## Authentication
+
+Sign in, refresh sessions and sign out through Supabase Auth. Enable email OTP and Ethereum Web3 in Supabase, configure redirect URLs, SMTP and rate limits there. Use a publishable key, never a service-role key in the browser.
+
+The frontend browser client is `getSupabase()` from `~/lib/supabase`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` using `apps/frontend/.env.example`. Login screens are not implemented yet.
+
+Send the Supabase access token as `Authorization: Bearer <token>`. The backend verifies it with `auth.getUser(token)` and exposes only `GET /v1/me` and `PATCH /v1/me` for profiles. `public.app_users.id` matches `auth.users.id`; the first authenticated request creates the profile. RLS and revoked browser grants keep profile writes behind the backend.
+
+Supabase owns identity linking; use its supported `updateUser`/`linkIdentity` flows. Separate Supabase user IDs remain separate accounts. There is no custom account merge, session registry, project membership or immediate application-level token revocation. Signed-out access tokens may remain valid until Supabase rejects them or they expire.
+
 ## Test database
 
 From the repository root:
@@ -39,7 +49,7 @@ TEST_DATABASE_URL=postgresql://test:test@127.0.0.1:55433/test pnpm --filter back
 docker compose down
 ```
 
-The test database is disposable; stopping the container clears its data. Integration tests migrate and truncate its tables. Never use a development or production database.
+The test database is disposable; stopping the container clears its data. Integration tests apply migrations and clear application profiles with mocked Supabase verification. Never use a development or production database.
 
 ## Resources
 

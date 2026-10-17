@@ -1,37 +1,30 @@
 # M01 Identity and Access
 
-Owns accounts, sessions, wallet bindings, project memberships and application grants. Spending authority belongs to [M06](06-smart-accounts-and-payments.md).
+Supabase Auth owns users, email OTP, wallet authentication, sessions, token refresh and identity linking. The frontend uses the Supabase SDK directly. Configure providers, redirect URLs, email delivery and rate limits in Supabase.
 
-Implementation status: the backend provides Supabase email/EOA-wallet login, application-level identity linking, session admission/revocation, profiles and project membership APIs. See the [backend setup and limitations](../../apps/backend/README.md#identity-api-m01). Client grants, support access, smart-wallet authentication and complete wallet/payment compatibility remain unimplemented or unverified; the requirements below remain the target.
+The backend verifies `Authorization: Bearer <accessToken>` with Supabase `auth.getUser(token)`. It does not issue tokens or maintain its own login challenges, session admissions or identity bindings.
 
-## Login and linking
+## Application profiles
 
-Support email and wallet login, with MetaMask as the primary wallet experience. No social login. Email OTP is the proposed email method.
+`public.app_users` stores display name, avatar URL, account status and timestamps. Its primary key is the Supabase user ID. A verified request creates the profile if it does not exist; suspended profiles cannot access protected API routes.
 
-```mermaid
-flowchart LR
-  Start[Choose login method] --> Email[Verify email OTP]
-  Start --> Wallet[Connect wallet and sign challenge]
-  Email --> Session[Create application session]
-  Wallet --> Verify[Verify domain, nonce, expiry and signer]
-  Verify --> Session
-  Session --> Project[Open authorized workspace]
-```
+- `GET /v1/me` reads the current profile.
+- `PATCH /v1/me` updates its display name and HTTPS avatar URL.
 
-Connecting a wallet is not authentication. A login signature proves control without transferring tokens or granting usage authority. Challenges are single-use, time-limited and bound to the intended domain; contract-wallet signatures require the correct chain validation path. Rate-limit OTP/challenge attempts and expire or revoke sessions.
+RLS is enabled without browser policies. The backend uses a trusted database connection and checks the current user before reading or changing a profile. MikroORM migrations manage application tables only, never Supabase's `auth` schema.
 
-A signed-in user can add an email by OTP or a wallet by signature. Verify the new method and the current session. If it already belongs to another account, report a conflict; do not silently merge accounts. Wallet replacement must not redirect old refunds or account ownership.
+## MVP boundary
 
-## Access rules
+Each workspace or conversation belongs to one user. Project collaboration and `project_memberships` are out of scope. Agents are provider listings, not projects; selecting an agent does not create a shared workspace.
 
-- Every conversation, quote, job and artifact belongs to an account/project. Check the requested action on every read, write, subscription and export.
-- Collaborators may read or draft changes according to their role. Membership does not grant permission to spend.
-- Resource IDs, payment hashes and stream cursors do not grant access. Preview sharing grants only its stated preview scope.
-- Keep buyer, provider, operator, verifier and financial-approver privileges separate. Log time-limited support access.
-- Revoke application sessions/client scopes separately from on-chain delegation; show both states accurately.
+Use Supabase's supported identity-linking flows. Different Supabase user IDs remain separate application accounts; there is no automatic merge or custom email/wallet linking protocol. Sign-out and access-token validity follow Supabase's session behavior; there is no separate application revocation list.
 
-## Wallet readiness
+Authentication does not grant spending permission. [M06](06-smart-accounts-and-payments.md) owns payment authorization; real funds remain disabled until [verification](../verification.md) passes.
 
-Login does not create a smart account or require a deposit. Paid use adds wallet binding and the [payment setup](06-smart-accounts-and-payments.md#personal-account-and-usage-policy).
+## Resources
 
-Validate chain, wallet selection, owner/payer identity and supported methods before requesting financial authority. Never request seed phrases or private keys. Test MetaMask and at least one other named EVM wallet on the complete deposit/policy/payment/recovery path. List mobile, hardware and smart-wallet variants separately; unsupported paths fail without weakening policy.
+- [Supabase Auth](https://supabase.com/docs/guides/auth)
+- [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless)
+- [Web3 authentication](https://supabase.com/docs/guides/auth/auth-web3)
+- [Identity linking](https://supabase.com/docs/guides/auth/auth-identity-linking)
+- [Backend setup](../../apps/backend/README.md#authentication)

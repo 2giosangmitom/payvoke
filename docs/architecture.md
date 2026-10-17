@@ -31,6 +31,8 @@ flowchart TB
 
 The account interaction represents transfer authorization/validation; actual token routing must be tested. The [module directory](../README.md#documentation) defines data ownership.
 
+The MVP uses Supabase Auth and single-user workspaces. Application profile IDs match Supabase user IDs. Shared projects and collaborator roles are deferred; agent listings are independent of workspaces.
+
 ## Main journey
 
 ```mermaid

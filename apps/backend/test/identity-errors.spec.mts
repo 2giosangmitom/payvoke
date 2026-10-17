@@ -12,7 +12,7 @@ import { httpValue } from "../src/modules/identity/shared/identity-http.js";
 
 describe("typed identity errors", () => {
   it("returns a tagged error with a closed code, not an HTTP exception", () => {
-    const result = failure("INVALID_OTP", "Invalid code.");
+    const result = failure("INVALID_SESSION", "Invalid session.");
     expect(result.status).toBe("error");
     expect(IdentityError.is(result.error)).toBe(true);
     expect(result.error._tag).toBe("IdentityError");
@@ -34,12 +34,9 @@ describe("typed identity errors", () => {
   });
 
   it.each([
-    ["INVALID_OTP", 401],
-    ["FORBIDDEN", 403],
-    ["PROJECT_NOT_FOUND", 404],
-    ["IDENTITY_CONFLICT", 409],
-    ["RATE_LIMITED", 429],
-    ["OTP_UNAVAILABLE", 503],
+    ["INVALID_SESSION", 401],
+    ["ACCOUNT_UNAVAILABLE", 403],
+    ["INVALID_DISPLAY_NAME", 400],
   ] satisfies [IdentityErrorCode, number][])(
     "maps %s to HTTP %s without wrapping it in Panic",
     (code, status) => {

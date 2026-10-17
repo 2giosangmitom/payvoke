@@ -1,15 +1,26 @@
 import { EntityManager } from "@mikro-orm/postgresql";
 import { Injectable } from "@nestjs/common";
 import { Result } from "better-result";
-import { AppUser, AuthIdentity } from "../identity.entity.js";
-import { recordIdentityAudit } from "../shared/identity-audit.js";
+import { AppUser } from "../identity.entity.js";
 import { failure, type IdentityResult } from "../shared/identity.errors.js";
-import type { IdentityView, Principal, ProfileUpdate, UserView } from "../identity.types.js";
+import type { Principal, ProfileUpdate, UserView } from "../identity.types.js";
 import { toUserView } from "./account.view.js";
 
 @Injectable()
 export class AccountService {
   constructor(private readonly em: EntityManager) {}
+
+  async ensureProfile(principal: Principal): Promise<IdentityResult<void>> {
+    let user = await this.em.findOne(AppUser, principal.accountId);
+    if (!user) {
+      const profile = new AppUser();
+      profile.id = principal.accountId;
+      await this.em.createQueryBuilder(AppUser).insert(profile).onConflict("id").ignore().execute();
+      user = await this.em.findOneOrFail(AppUser, principal.accountId);
+    }
+    if (user.status !== "active") return failure("ACCOUNT_UNAVAILABLE", "Account unavailable.");
+    return Result.ok(undefined);
+  }
 
   async me(principal: Principal): Promise<UserView> {
     const user = await this.em.findOneOrFail(AppUser, principal.accountId);
@@ -31,17 +42,7 @@ export class AccountService {
     const user = await this.em.findOneOrFail(AppUser, principal.accountId);
     if (displayName !== undefined) user.displayName = displayName;
     if (input.avatarUrl !== undefined) user.avatarUrl = input.avatarUrl;
-    recordIdentityAudit(this.em, principal.accountId, "profile.updated", principal.accountId);
     await this.em.flush();
     return Result.ok(toUserView(user));
-  }
-
-  async identities(principal: Principal): Promise<IdentityView[]> {
-    const rows = await this.em.find(
-      AuthIdentity,
-      { userId: principal.accountId },
-      { orderBy: { createdAt: "asc" } },
-    );
-    return rows.map(({ id, method, identifier }) => ({ id, method, identifier }));
   }
 }
