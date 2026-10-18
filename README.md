@@ -1,25 +1,41 @@
-# AI Agent Marketplace
+# AgentNe — product and system specification
 
-A conversational marketplace for hiring provider-hosted AI agents. Buyers choose a model variant, set a spending budget, and receive streamed text and typed results. Providers keep their code, prompts, model keys and infrastructure.
+A marketplace for hiring provider-operated AI agents. Buyers purchase bounded work; providers retain their code, prompts, model credentials and infrastructure.
 
-These documents describe the technical design, independent of implementation frameworks. The demo targets Avalanche Fuji and test tokens; payment compatibility and the metered settlement policy still need proof.
+**vNext design · 2026-10-18 · Not implemented.** This documentation specifies the intended product. APIs, events, contract functions and screens are proposed interfaces, not claims about the existing prototype.
 
-## Documentation
+## Reading order
 
-Start with the [architecture](docs/architecture.md). Each module owns its behavior, failure handling and relevant arXiv references.
+1. [Product scope and decisions](docs/product/scope.md).
+2. [Business workflows](docs/business-workflows.md) and [user experience](docs/product/ux.md).
+3. [Architecture and ownership](docs/architecture.md).
+4. [Agent capabilities and capacity](docs/protocols/agent-capabilities.md), then [events and streaming](docs/protocols/agent-events.md).
+5. [Verification and production gates](docs/verification.md).
+6. [Research supporting the design](docs/research/design-evidence.md) and [technical sources](docs/research/technical-sources.md).
 
-| Module                                                                            | Covers                                                      |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| [M01 Identity and Access](docs/modules/01-identity-and-access.md)                 | Supabase authentication and application profiles            |
-| [M02 Workspace and Conversation](docs/modules/02-workspace-and-conversation.md)   | Chat, interactive controls, streaming and reconnect         |
-| [M03 Commerce and Pricing](docs/modules/03-commerce-and-pricing.md)               | Model selection, fixed/metered quotes, orders and revisions |
-| [M04 Jobs and Provider Execution](docs/modules/04-jobs-and-provider-execution.md) | Provider contract, attempts, cancellation and recovery      |
-| [M05 Artifacts and Verification](docs/modules/05-artifacts-and-verification.md)   | Typed results, private files, checks and safe previews      |
-| [M06 Smart Accounts and Payments](docs/modules/06-smart-accounts-and-payments.md) | Per-user funds, usage policy, x402, accounting and refunds  |
-| [M07 Provider Publishing](docs/modules/07-provider-publishing.md)                 | Manifests, developer tooling, admission and version rollout |
-| [M08 External Client Access](docs/modules/08-external-client-access.md)           | MCP tools, scopes and transport compatibility               |
-| [M09 Reputation and Operations](docs/modules/09-reputation-and-operations.md)     | Reviews, disputes, incidents and restoration                |
+## Modules
 
-[Verification](docs/verification.md) lists the checks needed before enabling paid use.
+| Module                                                                              | Planned responsibility                                                     |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [M01 Identity and Access](docs/modules/01-identity-and-access.md)                   | Application identity, wallet binding, roles and authorization              |
+| [M02 Workspace and Conversation](docs/modules/02-workspace-and-conversation.md)     | Briefs, addressed conversations, inputs and interaction                    |
+| [M03 Commerce and Pricing](docs/modules/03-commerce-and-pricing.md)                 | Fixed pricing, immutable quotes, orders and consent                        |
+| [M04 Jobs and Provider Execution](docs/modules/04-jobs-and-provider-execution.md)   | Gateway, admission, capacity, runs, attempts and recovery                  |
+| [M05 Artifacts and Verification](docs/modules/05-artifacts-and-verification.md)     | Outputs, checks, delivery, acceptance and retention                        |
+| [M06 Central Payments and Refunds](docs/modules/06-central-payments-and-refunds.md) | Direct payment router, treasury refunds, accounting and upgrade governance |
+| [M07 Provider Publishing](docs/modules/07-provider-publishing.md)                   | Listings, capability manifests, admission and version rollout              |
+| [M08 External Client Access](docs/modules/08-external-client-access.md)             | MCP access, scoped clients and shared checkout                             |
+| [M09 Reputation and Operations](docs/modules/09-reputation-and-operations.md)       | Reviews, disputes, incident response and recovery                          |
 
-The [Hardhat 3 contracts workspace](packages/contracts/README.md) contains the Fuji-configured M06 account prototype. M06 targets Circle test USDC and x402 v2 `exact` on Fuji; the current account is not x402-compatible, deployed or enabled for payment.
+## Design changes
+
+The user-selected payment model is **direct upfront payment with subsequent refunds**, using a central upgradeable business contract. Per-user smart accounts, account factories, delegated spending and x402 facilitators are removed from the target design. A proxy, implementation, timelock and multisig are infrastructure for that central contract, not accounts deployed per buyer.
+
+The proposed recipient is the platform treasury; provider payouts are separate. This recipient and commercial seller model still need product approval. Funds are not escrowed and refunds are not guaranteed by the original transfer. The design makes refund funding and failure states explicit.
+
+“Production-ready” is a set of required evidence, not a property established by adding a proxy. No code, deployment, migration or payment enablement is included in this documentation task.
+
+## Existing prototype
+
+- [Backend](apps/backend/README.md), [frontend](apps/frontend/README.md), [contracts](packages/contracts/README.md) and [provider SDK](packages/provider-sdk/README.md) describe the existing prototype and may differ from vNext.
+- Implementation must begin with an explicit prototype-to-spec gap assessment. Do not infer that these proposed endpoints already exist.

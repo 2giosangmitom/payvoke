@@ -1,37 +1,70 @@
-# Verification
+# Verification and production-readiness register
 
-These are proof obligations for the design, not a record of passing tests. The demo remains on Fuji/test assets. Papers cited in module documents motivate controls; their experiments have not been reproduced here and do not validate this implementation.
+**This is a plan for evidence, not a list of passing tests.** All gates below start **Not demonstrated** for vNext. Existing prototype tests cannot be relabelled as proof of this redesigned system.
 
-## Before paid use
+## Acceptance register
 
-| Area                 | Required evidence                                                                                                                              |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity             | Email/wallet login, secure linking, role isolation, session/client revocation and no wallet ownership confusion                                |
-| Smart account        | Separate owners/balances, deposit/withdrawal, constrained delegation, aggregate reservations, replay rejection, expiry and revocation races    |
-| Actual payment route | MetaMask plus another named wallet; deployed token/account/facilitator; canonical effect matching; no alternate-path policy bypass             |
-| Commerce             | Pinned variant/rates/ceiling, stale quote rejection and same-operation recovery across web/MCP; no duplicated purchase under concurrency       |
-| Metered billing      | Billable dimensions, trusted evidence level, rounding/fees, retry/failure rules, missing usage handling and a proven collection/refund profile |
-| Provider admission   | Endpoint control/authentication, SSRF defenses, duplicate/lost starts, status lookup, declared capabilities and useful diagnostics             |
-| Streaming            | Ordered text/data, malicious partial input, bounded buffering, checkpoint restore, expired cursors and no duplicate job/message/charge         |
-| Artifacts            | Complete retained files, schema/digest checks, isolated builds/previews, quarantine, export and dispute-safe retention                         |
-| Financial operations | Balanced journal, funded refunds, held liabilities, payout races and independent reconciliation                                                |
-| External clients     | One named reference client, scoped access, unsupported-capability rejection and separate app/financial revocation                              |
-| Operations           | Provider pause/rollback, scoped support, backup restoration and safe reopening after chain/database divergence                                 |
-| Product and rules    | Selected launch profiles; clear terms; real buyer/provider trials; organizer confirmation of custody/treasury and chain requirements           |
+| Gate                      | Required evidence                                                                                           | Responsible area            | Release                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------- |
+| V01 Identity              | Session/wallet challenge replay, cross-owner access, role separation and recovery tests                     | M01                         | P1                            |
+| V02 Scope and consent     | Quote/UI/ticket canonical vectors, changed payer/variant/recipient rejection, idempotent order tests        | M02/M03                     | P1                            |
+| V03 Central contract      | Unit/property/fuzz/invariant suite over real ERC-20 behavior and failure tokens                             | M06/security                | P1 then independent review P2 |
+| V04 Chain admission       | Real testnet pay → finality → journal → one run; expired/late/reverted/reorg cases                          | M03/M04/M06                 | P1                            |
+| V05 Provider runtime      | Real SDK → Gateway → database; duplicate delivery, lost ack, restart and uncertainty                        | M04                         | P1                            |
+| V06 Capability/capacity   | Schema/profile negotiation, last-slot race, stale heartbeat and old-revision drain                          | M04/M07                     | P1                            |
+| V07 Streaming             | Sequence conflicts, batch partial commit, snapshot/tail race, slow readers and proxy disconnect             | M02/M04                     | P1                            |
+| V08 Artifacts             | Partial upload, wrong digest/type, malware/quarantine, isolation and retained downloads                     | M05                         | P1                            |
+| V09 Refunds               | Actual funded full/partial refunds, overlapping targets, insufficient balance/allowance and lost receipt    | M06/M09                     | P1                            |
+| V10 Treasury/payout       | Balanced journal, coverage, dispute/payout races, post-payout refund loss and receipt deduplication         | M06/M09                     | P2                            |
+| V11 Upgrades              | Populated-state upgrade simulation, layout/initializer checks, epoch handling and timelock rehearsal        | Security/governance         | P2                            |
+| V12 Recovery              | Database/object restore followed by canonical chain reconciliation and safe reopening                       | Operations                  | P2                            |
+| V13 Adversarial content   | Injection utility/attack metrics; forbidden effects blocked at command boundary                             | M02/M04/M08                 | P2; MCP-specific before P3    |
+| V14 UX                    | Buyer/provider/operator sessions, accessible mobile/keyboard flow, honest payment/refund labels             | Product                     | P2                            |
+| V15 External access       | Named MCP client/version, scoped tokens, checkout binding and cross-channel idempotency                     | M08                         | P3                            |
+| V16 Operational readiness | Approved policies/addresses, staffed alerts, reserve funding, key custody and independent security sign-off | Product/security/operations | P2                            |
 
-For the selected Fuji profile, prove the exact Circle test USDC address `0x5425890298aed601595a70AB815c96711a31Bc65`, 6-decimal integer accounting, x402 v2 `exact` on `eip155:43113`, and a configured treasury. Record the chosen facilitator's live `/supported` network/scheme capabilities and demonstrate its actual account-funded transfer method. EIP-3009 from an owner EOA does not prove delegated spending from `PersonalAccount`; the proposed ERC-7710 route requires a compatible account and delegation manager. Reconcile successful USDC `Transfer` effects against order identity, amount, payer and treasury before enabling execution.
+Each evidence record must include commit/build, dependency/protocol versions, environment and addresses, fixture, expected/actual outcome, logs/transaction IDs, date, reviewer and unresolved findings. Gate status is one of `not_demonstrated`, `failed`, `passed_for_test_profile`, `approved_for_release`; the last requires an accountable approval, not a test runner label.
 
-## Failure drills
+## Contract invariants
 
-- Crash before/after authorization submission, chain settlement, journal/outbox commit and workflow start. Recover the same commercial operation.
-- Lose a provider start response, receive duplicate callbacks, then receive an old attempt's result. Recover without blind restart or stale publication.
-- Race two jobs for the remaining budget and race cancellation against worker claim. Only the permitted transition/capacity wins.
-- Disconnect a stream, expire its cursor and restart the process. Restore an exact snapshot/tail or explicit reset; never concatenate a fresh generation.
-- Inject a new payee, component, unsafe preview link or cross-project artifact ID into provider output. Observe actual denied effects, not just reassuring model text.
-- Restore an older backup after settlement/refund/payout. Replay canonical effects without duplicate transfers and verify paid artifacts before reopening.
+1. An order and quote can be paid at most once; paid amount is positive and exact.
+2. `0 <= refundedAmount <= amountPaid` for every order under arbitrary call sequences.
+3. Refund recipient/token derive from the paid record; no caller can redirect them.
+4. Failed token transfers revert record changes and voucher consumption.
+5. Overlapping cumulative refund targets cannot over-refund; replay cannot create another effect.
+6. Payment/refund signatures cannot replay across chain, router, type or invalid epochs.
+7. No unauthorized account can initialize, upgrade, configure or unpause; implementation initialization is disabled.
+8. Upgrades preserve paid/refunded amounts, consumed identities and usable refund paths.
+9. Pausing new sales leaves safe reads and independently controlled refund recovery available.
+10. Router balance is not represented as escrow; unexpected direct token transfers cannot fund an order.
 
-## Evaluation discipline
+These invariants do not prove treasury solvency, honest dispute decisions or useful agent output. Test those boundaries separately.
 
-Use real transactional and chain tests for concurrency and money invariants; mocks alone are insufficient. Use deterministic fixtures for transport/state tests and repeated independent trials for model behavior. Record versions, task fixtures, costs, latency, sample counts and check limits. Keep provider assertions, platform observations and human judgments separate.
+## Required failure drills
 
-Unknown payment or usage outcomes remain pending. Do not substitute an unguarded payment route, promise untested metered capture or accept real customer funds to bypass a failing check.
+- Crash before/after payment submission, canonical confirmation, journal commit, outbox dispatch and provider acceptance.
+- Drop a wallet callback after successful payment; index the order from chain without buyer resubmission.
+- Include payment just before quote expiry and index it after the application marked the order expired.
+- Lose provider acknowledgment after model execution; resume the same assignment or preserve uncertainty.
+- Replay changed event bytes at an existing sequence; submit from an obsolete attempt or another application.
+- Refresh during a session's last permitted turn and race two responses to the same input request.
+- Complete output upload partially; swap artifact revision; inject active content into previews.
+- Approve refund targets 40 and 70 concurrently; execute in either order; lose receipts and retry.
+- Empty treasury or revoke allowance before refund; show the remaining entitlement and halt unsafe payouts.
+- Broadcast a payout, then receive a valid dispute; reconcile payout and cover refund without assuming transaction reversal.
+- Rotate treasury/signers with outstanding tickets and old paid orders; retain old-order refund support.
+- Upgrade with populated state, migrate safely, simulate failed governance execution and reject unsafe rollback.
+- Restore a backup older than confirmed payments/refunds/payouts; replay effects without double spending.
+- Exercise finality/RPC disagreement and storage outage during buyer review; suspend unsafe transitions.
+
+## Production release checklist
+
+Freeze the supported network/token profile, compiler/library/protocol versions and contract addresses. Verify source and deployed bytecode. Complete independent review covering governance and treasury controls as well as business functions. Resolve critical/high findings under a documented policy; record accepted residual risks and owners.
+
+Demonstrate the full testnet vertical slice using named wallets and a real provider integration, with synthetic low-cost fixtures where appropriate. Real model trials need explicit cost budgets. Measure queue/runtime/stream behavior under expected load and test proxy limits; set service targets only from evidence and staffing.
+
+Configure treasury coverage alerts, refund liquidity, multisig/timelock custody, backup restoration, sensitive logging rules, retention jobs, support escalation and incident runbooks. Approve commercial seller/recipient/refund terms and required jurisdictional review before taking customer funds. No automatic mainnet enablement follows a successful testnet run.
+
+## Research-driven evaluation
+
+Use the [design evidence](research/design-evidence.md) as test inspiration, not certification. AgentDojo motivates measuring useful completion and prohibited effects separately; τ-bench motivates repeated trials plus process/trace checks. Record sample counts, task distributions, latency, cost and limitations; distinguish provider assertions, observed checks and human judgment.

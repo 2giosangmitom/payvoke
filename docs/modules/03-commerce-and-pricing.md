@@ -1,52 +1,61 @@
-# M03 Commerce and Pricing
+# M03 — Commerce and Pricing
 
-Owns pricing snapshots, quotes, operation IDs, orders and entitlements. In the target commercial design, a quote fixes the commercial rules, a funded order records one purchase, and a job executes it. An entitlement is the buyer's durable right to the purchased work/result.
+**Status: planned specification.** Owns immutable commercial terms, buyer consent, orders and scope changes. Release one supports fixed-price tasks and bounded sessions only.
 
-## Implementation status
+## Features
 
-The current M03 slice supports **fixed test-credit quote previews and durable order intents** for an owner's workspace and an operator-reviewed, currently published catalog version. `POST /v1/quotes` pins the exact listing/version/manifest digest, action, model variant, input, workspace brief and revision, fixed price, limits and provider terms for 15 minutes. `GET /v1/quotes/:id` recovers that immutable preview. Quote IDs are idempotent: identical retries recover the original quote, while changed input under the same ID conflicts. A stale brief or unavailable version blocks a new quote.
+- Resolve admitted listing/capability/variant prices and output promises.
+- Produce an expiring immutable quote with all fees and cancellation/refund terms.
+- Require explicit confirmation and persist one order before generating its payment ticket.
+- Recover the same order across web/MCP, retries, wallet rejection and page refresh.
+- Activate paid access only after M06 proves canonical payment.
+- Track completion, included repairs and new-scope revision orders separately.
 
-`POST /v1/orders` requires the exact quote digest and `confirmTerms: true`, then records a single `pending_admission` intent under a buyer-scoped operation UUID. The same operation and same quote recover one order under concurrent retries; a changed operation binding or second order for the quote conflicts. Expiry, brief revision, current publication and provider status are rechecked before recording. `GET /v1/orders/:id` is owner-only. The buyer can prepare a preview and record an intent from the agent detail page after selecting a workspace.
+## Quote contract
 
-These records have `paymentEnabled: false` and `executionEnabled: false`. **A pending intent is not a purchase, funded order, entitlement, or job.** Catalog review does not establish commercial provider admission. There is no funding-account binding, chain/token/recipient quote, settlement, usage evidence, artifact parent, repair contract or metered/hybrid billing yet. M06 must provide an approved payment and authorization profile, M07 must admit provider execution, and M05 must define verified output/artifact profiles before those transitions can be enabled. No endpoint activates an entitlement or dispatches buyer work in this slice. A quote preview is limited to the current fixed-price, final-text manifest; other pricing profiles remain proposals below.
+A quote binds `quoteId`, `orderId`, buyer application ID, payer address, chain ID, router address, treasury address, token, integer amount, fee policy, listing/manifest/capability/variant versions, input/brief/context commitments, output/check profile, execution duration, review duration, turn limits, repair limits, cancellation/refund policy version and expiry.
 
-## Variants and prices
+Private fields stay off-chain; a salted canonical terms commitment binds the public payment ticket to the full quote. Serialization and hashing must have versioned cross-language test vectors. The UI renders the exact persisted quote, not a regenerated model summary.
 
-An agent may offer variants such as fast, quality or research, each with declared capabilities, parameters and pricing. Resolve them from an admitted [manifest](07-provider-publishing.md), never free-form model/provider text. No silent variant switch or more expensive fallback.
+A quote is valid only for the admitted version and allowed payer. Price or scope edits require a new quote. One quote funds at most one order. A rejected wallet prompt leaves the same unpaid order recoverable until expiry.
 
-| Pricing profile   | Quote fixes                                           | Final bill                                         |
-| ----------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| Fixed             | Scope, total price, included repairs                  | Agreed total                                       |
-| Metered, proposed | Rates, billable dimensions, limits and maximum charge | Accepted usage at pinned rates, within the ceiling |
-| Hybrid, proposed  | Base fee plus metered rules and ceiling               | Base fee plus accepted usage, within the ceiling   |
-
-Billable dimensions may include input/output/cache/reasoning tokens, media or tool calls only when explicitly declared. Define rounding, fees, retry costs and failure/cancellation billing before selling a profile. Calculate money in integer token units; an estimate is not an authorization limit.
-
-## Quote and admission
+## Order lifecycle
 
 ```mermaid
-flowchart LR
-  Scope[Task, variant and parameters] --> Quote[Immutable quote with expiry]
-  Quote --> Authority[Explicit approval or existing scoped mandate]
-  Authority --> Order[Persist unique pending order]
-  Order --> Payment[M06 reservation and settlement profile]
-  Payment --> Entitlement[Activate executable entitlement]
-  Entitlement --> Job[M04 job]
+stateDiagram-v2
+  [*] --> awaiting_payment
+  awaiting_payment --> expired: no valid on-chain payment
+  awaiting_payment --> paid: reconciled canonical payment
+  paid --> queued: execution admitted
+  queued --> active
+  active --> review: verified delivery
+  review --> completed: acceptance or policy timeout
+  paid --> resolution_required: cannot admit
+  queued --> resolution_required: timeout or cancellation
+  active --> resolution_required: failure or dispute
+  review --> resolution_required: dispute or repair
+  resolution_required --> review: valid included repair
+  resolution_required --> closed: refund / documented resolution
 ```
 
-A quote binds buyer/project/funding account, brief/input commitment, agent/action/variant/version, parameters, parent artifact, output/check profile, pricing/fee/terms versions, cost ceiling or fixed total, token/chain/recipient, deadline and expiry. Show these terms before granting authority. Changed terms require a new quote.
+Refund and payout states remain separate M06 dimensions. `closed` does not mean a refund transfer succeeded. A late indexer may correct an expired application projection to `paid` when inclusion was before ticket expiry; preserve the correction audit and resolve delivery obligations.
 
-The same account and operation key with the same fingerprint returns the original order across transports. Different fields conflict. One quote admits one order; an authorization or chain effect cannot fund two orders. Keep durable identities beyond cache expiry.
+## Proposed commands and consistency
 
-New buyer scope creates a revision order linked to its parent artifact. Repairs needed for a fixed-price promise remain in the original bounded job. Status, reconnect, retries and retained downloads do not create additional purchases. Metered attempt costs must follow the quoted retry rules without exceeding the ceiling.
+`createQuote`, `confirmQuote`, `getOrder`, `requestCancellation`, `requestRepair`, `createRevisionQuote`. HTTP surfaces: `/v1/quotes`, `/v1/orders`, `/v1/orders/:id/cancellation`, `/v1/orders/:id/repairs`.
 
-## Metering trust
+The buyer-scoped `operationId` and request fingerprint have a durable uniqueness constraint. Same key/same request returns the record; same key/different terms conflicts. Quotes and operation records survive payment-ticket and browser cache expiry. An order does not change payer after payment.
 
-External providers report structured usage bound to operation, attempt, variant and pricing version. Separate cumulative snapshots from deltas, deduplicate them and distinguish live estimates from accepted final usage. Missing/conflicting evidence enters reconciliation or dispute; do not automatically bill the maximum.
+After payment, one transaction creates executable access, initial run and outbox item. Capacity is checked again. Capacity estimates before payment are not reservations unless explicitly persisted with an expiry. A paid but unavailable provider queues within the quoted deadline or triggers a refund entitlement; money cannot be ignored because admission changed.
 
-Provider signatures attest the reporter, not truthful usage. Output text cannot reveal hidden prompts, cached tokens or internal model loops. Stronger evidence may come from observed upstream usage or an optional gateway, but routing all model calls through the platform is not required. Independent usage verification and the [collection/refund method](06-smart-accounts-and-payments.md#settlement-and-metered-billing) remain prerequisites for enabling metered sales.
+## Pricing, repairs and refunds
 
-## Papers used
+Prices are integer token units; display exact decimal conversion without floating-point accounting. The buyer total includes a disclosed fee. Proposed accounting: `netSale = paid - refunded`; `platformFee = floor(netSale * feeBps / 10000)`; `providerGross = netSale - platformFee`. Fee version is pinned and fractional dust stays in providerGross under this formula.
 
-- [A Formal Analysis of Agent Payment Protocols, v1](https://arxiv.org/abs/2609.00060v1): preserve intent/authorization/effect bindings and durable operation identity. Prior targeted readings; formal findings, schema witnesses and live PoCs provide different evidence.
-- [Signing the Transaction but Not the Decision, v1](https://arxiv.org/abs/2609.11757v1): bind purchases to the scope the user saw. Prior structural-binding readings; AP2 findings motivate these controls but do not prove x402 defects or eliminate semantic manipulation.
+Before payout, refunds reduce unpaid earnings and fee revenue using compensating journal entries. After payout, the platform must fund buyer refunds and record provider recovery separately; it must not pretend an old payout was reversed.
+
+An included repair retains the order and price but creates a separately identified repair run. Only one active run per order; finite count and agreed deadline extension. New scope requires a new quote with `parentOrderId`/artifact reference. Transport retries, downloads and status reads are free.
+
+## Acceptance conditions
+
+Concurrent confirms create one order; replay cannot pay twice. Changed terms/payer are rejected. Valid late-indexed payments recover correctly. Capacity loss after payment creates a visible obligation. Repair counters and deadlines cannot be bypassed by reconnect or new message IDs. Every checkout amount matches its ticket and accounting formula.

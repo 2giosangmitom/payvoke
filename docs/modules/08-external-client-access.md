@@ -1,38 +1,36 @@
-# M08 External Client Access
+# M08 — External Client Access
 
-Owns MCP transport mapping, client capability negotiation and platform-controlled tool metadata. External clients call the same commerce, payment, job and artifact commands as the workspace.
+**Status: planned, after the web vertical slice.** Exposes the same marketplace operations to authorized clients through MCP. It owns transport/grants, not a second commerce or payment engine.
 
-## Tool surface
+## Features and tool surface
 
-| Tools                        | Behavior                                                           |
-| ---------------------------- | ------------------------------------------------------------------ |
-| `search_agents`, `get_agent` | Discover admitted actions, variants, pricing and evidence          |
-| `quote_task`                 | Create a version-bound quote within free-work limits               |
-| `run_task`, `revise_task`    | Admit work using explicit approval or a matching delegated mandate |
-| `get_job`, `get_artifact`    | Retrieve authorized state/results without another charge           |
-| `cancel_job`                 | Request the same cancellation transition as the workspace          |
+| Tool                                               | Effect                                                                  |
+| -------------------------------------------------- | ----------------------------------------------------------------------- |
+| `search_agents`, `get_agent`                       | Read catalog, capability and evidence data                              |
+| `create_quote`                                     | Prepare fixed terms from explicit inputs; never pay                     |
+| `create_checkout`                                  | Confirm intended order and return an expiring buyer-facing checkout URL |
+| `get_order`, `get_run`                             | Read canonical status and durable handles                               |
+| `get_artifact`                                     | Return authorized result metadata or a scoped download                  |
+| `request_cancel`, `request_repair`, `open_dispute` | Invoke the same policy-bound commands as the web                        |
 
-Return durable handles, structured results, authorized resource references and concise text fallback. Large files use scoped transfer, not model context.
+No `sign_transaction`, `approve_token`, `spend_budget` or arbitrary provider-defined financial tool. The buyer reviews and signs through web/wallet checkout. Revoking client access does not reverse completed payments or remove refund rights.
 
-## Authorization and compatibility
+## Authorization
 
-```mermaid
-flowchart LR
-  Client[Authenticate client] --> Scope[Check account and project scope]
-  Scope --> Capability{Required capabilities supported?}
-  Capability -->|No| Unsupported[Explain unsupported action]
-  Capability -->|Yes| Command[Invoke shared command]
-  Command --> Result[Return existing or newly admitted handle]
-```
+Use the pinned MCP HTTP authorization specification and audience-bound access tokens. Grants are scoped to catalog, selected workspaces, order creation and permitted mutations; application access is not wallet authority. The platform owns tool names and descriptions; provider listing text is untrusted data.
 
-Application access and financial delegation are separate grants. Bind tokens to the intended resource/audience; never pass client bearer tokens to providers. Payment proof alone gives no project access. Switching transports preserves the same operation identity and cannot reset budgets.
+Client identity and buyer identity must both be validated. Never pass client tokens to providers. The redirect/checkout target is allowlisted and bound to the same order; a model cannot substitute a payee through tool arguments.
 
-A payment-aware client verifies quote scope, price/ceiling and the user's mandate before authorization. Unsupported clients cannot run paid actions. Pin/test named protocol, client and payment adapter versions; ordinary transport HTTP 402 is not automatically equivalent to negotiated payment metadata.
+## Compatibility and recovery
 
-Optional long-running Tasks or interactive views require negotiated support and separate safety tests. Task cancellation does not promise a refund. Embedded views cannot bypass project permissions or financial policy. Client revocation must show application-scope and on-chain authority states separately.
+Pin and test a named MCP client/version. Structured content has concise text fallback and durable order/run references. Large files use private download grants rather than injecting bytes into model context. Unsupported streaming or interaction features return an explicit capability error.
 
-Provider listings are untrusted data, not privileged tool definitions. The platform owns the small tool surface; no provider text can add a payment tool or expand a client's mandate.
+Use the same buyer-scoped operation identity across web and MCP. Changing transports cannot create a new payment for an existing order. Optional MCP tasks or embedded UI remain deferred until cancellation, authorization and restart semantics are tested.
 
-## Paper used
+Owned records: `ClientRegistration`, `ClientGrant`, `ClientAuditEvent`; all order/run/artifact records remain in their original modules.
 
-[MCPTox, v1](https://arxiv.org/abs/2508.14925v1) motivates platform-controlled metadata and tests for tool hijacking/parameter tampering. Previously read §§3, 5; mainly single-turn, human-guided attacks, not complete real-world coverage.
+## Acceptance conditions
+
+Token audience and workspace restrictions are enforced; revocation takes effect on new commands/subscriptions. Tool prompt injection cannot create payment authority or alter checkout terms. Same-operation retries across channels recover one order. A checkout link opened by the wrong user cannot claim ownership.
+
+Primary protocol source: [MCP HTTP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization). The security rationale and limitations of MCPTox are evaluated in the [design evidence](../research/design-evidence.md).

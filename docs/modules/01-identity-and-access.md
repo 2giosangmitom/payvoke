@@ -1,30 +1,40 @@
-# M01 Identity and Access
+# M01 — Identity and Access
 
-Supabase Auth owns users, email OTP, wallet authentication, sessions, token refresh and identity linking. The frontend uses the Supabase SDK directly. Configure providers, redirect URLs, email delivery and rate limits in Supabase.
+**Status: planned specification.** Owns application users, authorization and wallet ownership bindings. Authentication never grants permission to pay.
 
-The backend verifies `Authorization: Bearer <accessToken>` with Supabase `auth.getUser(token)`. It does not issue tokens or maintain its own login challenges, session admissions or identity bindings.
+## Features
 
-## Application profiles
+| Feature              | Behavior                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in and sessions | Supabase-managed email and supported wallet sign-in; session refresh, logout and reauthentication                                 |
+| Profile              | Display name/avatar, preferences and account status                                                                               |
+| Roles                | Buyer/provider are normal user capabilities; catalog reviewer, support, dispute approver and finance roles are separately granted |
+| Wallet binding       | Challenge binds user, address, chain, nonce, audience and expiry; verify current ownership before recording                       |
+| Access enforcement   | Check owner and account status on every command, read, file grant and subscription                                                |
+| Account recovery     | Recover application login through supported identity flows; no implicit wallet transfer or duplicate-account merge                |
+| Security history     | Record sensitive role, wallet and session-management actions with restricted audit access                                         |
 
-`public.app_users` stores display name, avatar URL, account status and timestamps. Its primary key is the Supabase user ID. A verified request creates the profile if it does not exist; suspended profiles cannot access protected API routes.
+One user owns a workspace. A provider application has one provider owner initially; organization roles are deferred. A public profile is separate from legal/commercial seller verification.
 
-- `GET /v1/me` reads the current profile.
-- `PATCH /v1/me` updates its display name and HTTPS avatar URL.
+## Owned records and interfaces
 
-RLS is enabled without browser policies. The backend uses a trusted database connection and checks the current user before reading or changing a profile. MikroORM migrations manage application tables only, never Supabase's `auth` schema.
+Owns `UserProfile`, `RoleGrant`, `WalletBinding`, `WalletChallenge` and sensitive-access audit references. Supabase owns authentication sessions; M01 does not invent a second session issuer.
 
-## MVP boundary
+Proposed commands: `getMe`, `updateProfile`, `createWalletChallenge`, `verifyWalletChallenge`, `removeWalletBinding`, `suspendAccount`, `grantRole`, `revokeRole`. HTTP adapters use `/v1/me`, `/v1/me/wallet-challenges`, `/v1/me/wallets` and protected operator routes. Signature formats and supported wallet types must be pinned and tested before release.
 
-Each workspace or conversation belongs to one user. Project collaboration and `project_memberships` are out of scope. Agents are provider listings, not projects; selecting an agent does not create a shared workspace.
+A quote names one payer wallet. Changing the connected wallet invalidates checkout preparation and requires re-binding the quote. Existing payment/refund history retains the original payer. Removing a wallet binding does not redirect refunds; losing wallet keys cannot be repaired by changing an application profile.
 
-Use Supabase's supported identity-linking flows. Different Supabase user IDs remain separate application accounts; there is no automatic merge or custom email/wallet linking protocol. Sign-out and access-token validity follow Supabase's session behavior; there is no separate application revocation list.
+## Authorization and failure behavior
 
-Authentication does not grant spending permission. [M06](06-smart-accounts-and-payments.md) owns payment authorization; real funds remain disabled until [verification](../verification.md) passes.
+Expired sessions stop protected commands and live streams, while re-login restores the same operation. Suspension blocks new work; provide a separately authorized support/export/refund route rather than confiscating already owed funds. Browser logout does not revoke provider API keys or external client grants; each has explicit management.
 
-## Resources
+Wallet challenges are single-use, bounded and replay-protected. Signing an ownership challenge is not signing a payment ticket. Address case, chain mismatch, expired challenges and contract-wallet verification require deterministic handling. Never merge two application IDs because a model or email field suggests they belong together.
 
-- [Supabase Auth](https://supabase.com/docs/guides/auth)
-- [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless)
-- [Web3 authentication](https://supabase.com/docs/guides/auth/auth-web3)
-- [Identity linking](https://supabase.com/docs/guides/auth/auth-identity-linking)
-- [Backend setup](../../apps/backend/README.md#authentication)
+## Acceptance conditions
+
+- Cross-owner reads, writes, streams and file grants fail; operator permissions are least-privilege and audited.
+- Stolen/expired challenges cannot bind another user or another chain; exact retries recover a completed binding safely.
+- Switching wallet during checkout cannot pay a quote bound to another payer.
+- Profile or role edits cannot modify paid order ownership, refund destination or provider payout history.
+
+Dependencies: M02/M07 resource ownership; M06 payment bindings; M08 external grants. Authentication provider details belong in deployment documentation, not business policy.

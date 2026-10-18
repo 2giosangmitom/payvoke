@@ -1,59 +1,51 @@
-# M05 Artifacts and Verification
+# M05 — Artifacts and Verification
 
-Owns uploads, result manifests, artifact revisions, check reports, receipts, sharing and retention. Transactional records hold metadata/rights; private object storage holds bytes.
+**Status: planned specification.** Owns output contracts, artifact revisions, technical checks, delivery evidence and acceptance records. It does not decide subjective disputes or move money.
 
-## Implementation status
+## Features
 
-The development Gateway now has an owner-only `POST/GET /v1/provider/applications/:applicationId/dev-invocations/:invocationId/verified-result`. For a completed invocation, `POST` validates the bounded, nonempty final text, pins the invocation/application/command revision/listing version and terminal digest, and writes one immutable `text-v1` result with a deterministic digest. Exact retries recover the same record; other owners cannot read it. The check is labelled `format-valid` and `deliveryEnabled: false`. It does not establish factual correctness, safety, buyer acceptance or payment. There are no file artifacts, uploads, previews, independent checks, receipts or buyer delivery yet. The target design below remains unimplemented beyond this development-only text profile.
+- Retain text, structured data and files as immutable revisions bound to order/run/attempt.
+- Issue narrowly scoped uploads; require completion, byte size and content digest before accepting an artifact.
+- Apply a versioned check profile promised in the quote.
+- Render safe previews and authorize private downloads.
+- Present delivery for buyer review, accept explicit decisions and record included-repair requests.
+- Retain evidence for refunds/disputes; export before scheduled deletion and honor documented holds.
 
-## Common result contract
+## Initial output profiles
 
-All results use a versioned envelope binding operation/job, agent version, attempt generation, schema/profile version, ordered message parts and artifact references. [M02](02-workspace-and-conversation.md) renders parts; providers cannot choose arbitrary executable code.
+| Profile    | Required checks                                                               | What is not established                  |
+| ---------- | ----------------------------------------------------------------------------- | ---------------------------------------- |
+| `text-v1`  | Non-empty bounded UTF-8, safe rendering, declared sections if applicable      | Truth, originality or domain correctness |
+| `json-v1`  | Pinned JSON Schema, size/depth bounds, required fields                        | Semantic correctness of values           |
+| `file-v1`  | Complete bytes, digest, allowlisted media type, scan result and safe download | Fitness for buyer purpose                |
+| `image-v1` | File checks plus decode, dimensions and safe raster preview                   | Trademark rights or aesthetic quality    |
 
-| Part/profile  | Content                                                       | Viewer                      |
-| ------------- | ------------------------------------------------------------- | --------------------------- |
-| Text/report   | Markdown, sections and source references                      | Reader                      |
-| Image/gallery | Items, stable selection IDs, captions and artifact references | Image/gallery               |
-| Table/chart   | Column definitions, bounded pages and chart data              | Data viewer                 |
-| Diagram       | Validated nodes/edges or restricted syntax                    | Diagram viewer              |
-| Audio/video   | Media references, metadata and optional transcript            | Media player                |
-| Website/code  | Promised source/assets/dependencies and preview               | Isolated preview and export |
-| File          | Manifest entry and rights                                     | Safe preview or download    |
+Domain-specific profiles such as web builds, SVG validation or research citations require separate specifications and fixtures before admission. No arbitrary code runs in the main application to verify an output. PDF/HTML/SVG need isolated handling; never trust extensions or provider MIME declarations.
 
-Profiles are shared across agents. Admit schema/version and check coverage before quoting work. A result may combine several profiles. Source of a purchased output may be required; the provider's private agent source is not.
+## Pipeline and state
 
-## File and delivery flow
+`uploading → stored → checking → verified | rejected | quarantined → delivered → accepted | review_expired | disputed`.
 
-```mermaid
-flowchart LR
-  Grant[Scoped upload or import] --> Stage[Private staging]
-  Stage --> Validate[Validate schema, bytes, digest and attempt]
-  Validate --> Check[Run quoted independent checks]
-  Check --> Decision{Safe and passing?}
-  Decision -->|Yes| Publish[Commit immutable manifest and report]
-  Publish --> Access[Authorized preview or export]
-  Decision -->|No| Hold[Repair, fail or quarantine]
-```
+These are artifact/delivery states, not payment states. A provider terminal frame starts checks. Streaming text remains provisional and may differ from the retained final revision; clearly identify the final deliverable. A failed check never produces a verified badge or starts the review clock.
 
-File metadata includes media type, size, digest and access classification. Validate actual bytes and decoding limits, not MIME alone. Image profiles can admit PNG/JPEG/WebP; SVG needs separate review and preferably raster previews. Use scoped uploads, not inline Base64 or uncontrolled remote URLs by default.
+Delivery requires complete retained output, passed mandatory checks and an authorized buyer access path. Persist `deliveredAt`, the immutable revision, check report and notification outbox together. Notification failure retries delivery notification, not agent execution. The review deadline is derived from `deliveredAt`; material access outages pause the application review deadline and hold payouts under an audited policy.
 
-Verify required files exist before marking delivery. SQL rollback does not undo file writes: persist publication intent, reconcile incomplete staging and clean only unreferenced objects after retention/grace checks. Upload notifications are hints, not delivery authority.
+Owned records: `Artifact`, `ArtifactRevision`, `UploadGrant`, `VerificationProfile`, `CheckResult`, `DeliveryRecord`, `AcceptanceRecord`, `RetentionHold`. Input attachments remain M02-owned.
 
-New revisions preserve parents; concurrent edits branch or conflict. Short-lived access URLs are bearer grants, not permanent artifact identities. Reauthorize retrieval and keep preview access separate from source/project access.
+## Interfaces and rights
 
-## Checks, safety and rights
+Proposed commands: `createUploadGrant`, `finalizeUpload`, `verifyResult`, `deliverResult`, `acceptDelivery`, `requestRepair`, `getDownloadGrant`, `exportOrder`. Buyer routes include `/v1/orders/:id/artifacts`, `/v1/orders/:id/acceptance` and `/v1/artifacts/:id/download`.
 
-Every profile checks structure/files. Website checks may add isolated build, pinned viewport rendering, interaction and accessibility tests. Research needs its own evidence checks. Show format validity, technical checks, security findings, delivery and buyer satisfaction separately.
+Upload grants bind application/attempt, storage key, permitted size/type and expiry; provider-supplied remote URLs are not automatically fetched. Downloads require current ownership/entitlement; short-lived links are bearer capabilities and must not enter public logs.
 
-Streamed text and early previews are provisional. Rendering, a passing build or provider `succeeded` does not establish truth, complete security or buyer acceptance. Quarantine unsafe output even if other checks pass.
+Payment creates the right to inspect delivered work. Refunding may stop future service but cannot retract a downloaded file. Artifact/license terms state post-refund rights explicitly; do not imply technical revocation can undo possession.
 
-Untrusted previews use a separate origin, restrictive sandbox/CSP and validated messaging, without marketplace cookies, project credentials or wallet access. Bound archives, paths, decompression and remote imports; block SSRF and extraction escapes.
+## Repairs and retention
 
-Quotes disclose retention/export/license rights. Proposed baseline: retain paid artifacts/reports for at least 30 days and through open disputes. Provider removal must not delete purchased results. Support eligible deletion; explain on-chain and external-provider limits. Training/portfolio reuse needs explicit buyer consent.
+A repair creates a new immutable revision and a bounded M04 run; preserve the earlier result and buyer feedback. New-scope work belongs to a revision order. Repeated repair requests cannot reset policy clocks without explicit recorded agreement.
 
-Retain signed receipts for delivered or technically failed orders, binding quote, input/output commitments, attempts, checks, outcome and payment evidence. Use a separate evidence key with canonical encoding, key versions and rotation history. A receipt does not replace file retention.
+Proposed baseline: at least 90 days downloadable after closure, longer for active disputes, with retention costs included in pricing. Define deletion jobs, orphan upload cleanup, backup retention and legal/privacy exceptions before production. A deletion request must disclose any active evidence hold.
 
-## Papers used
+## Acceptance conditions
 
-- [SoK: Decentralized Agent Economic Infrastructure, v1](https://arxiv.org/abs/2610.01756v1): evidence must constrain later acceptance/settlement. Prior closure-findings readings; signed approval alone does not prove task conformance.
-- [Design2Code, v3](https://arxiv.org/abs/2403.03163v3): assess rendered output and element/layout details separately. Previously read §§2.3, 4.3; static screenshot evaluation is not a universal quality/security certification.
+Cross-order artifact grants fail; partial/mutated uploads never verify. Unsafe previews cannot execute active content. A provider success frame cannot create delivery. Access outage and failed notification do not silently forfeit review rights. Revisions, check evidence and refund cases remain traceable after repair or rollback.
