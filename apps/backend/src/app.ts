@@ -24,6 +24,7 @@ import { publishingRoutes } from "./modules/publishing/http/publishing.plugin.js
 import websocket from "@fastify/websocket";
 import { providerRoutes } from "./modules/provider-gateway/http/provider.plugin.js";
 import { ProviderError } from "./modules/provider-gateway/domain/provider.js";
+import { commerceRoutes } from "./modules/commerce/http/commerce.plugin.js";
 
 export interface CreateAppOptions {
   env: Environment;
@@ -84,6 +85,7 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
   await app.register(identityRoutes);
   await app.register(workspaceRoutes);
   await app.register(publishingRoutes);
+  await app.register(commerceRoutes);
   await app.register(websocket, { options: { maxPayload: 65536 } });
   await app.register(providerRoutes);
 

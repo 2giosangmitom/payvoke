@@ -13,6 +13,8 @@ import { PublishingService } from "../modules/publishing/application/publishing.
 import { MikroOrmPublishingRepository } from "../modules/publishing/infrastructure/mikro-orm-publishing.repository.js";
 import { ProviderService } from "../modules/provider-gateway/application/provider.service.js";
 import { MikroOrmProviderRepository } from "../modules/provider-gateway/infrastructure/mikro-orm-provider.repository.js";
+import { CommerceService } from "../modules/commerce/application/commerce.service.js";
+import { MikroOrmCommerceRepository } from "../modules/commerce/infrastructure/mikro-orm-commerce.repository.js";
 
 export interface DiOptions {
   env: Environment;
@@ -42,6 +44,10 @@ const diPlugin: FastifyPluginAsync<DiOptions> = async (fastify, options) => {
     }),
     providerService: asFunction(
       ({ em }) => new ProviderService(new MikroOrmProviderRepository(em)),
+      { lifetime: Lifetime.SCOPED },
+    ),
+    commerceService: asFunction(
+      ({ em }) => new CommerceService(new MikroOrmCommerceRepository(em)),
       { lifetime: Lifetime.SCOPED },
     ),
   });

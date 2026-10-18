@@ -1,6 +1,14 @@
 # M03 Commerce and Pricing
 
-Owns pricing snapshots, quotes, operation IDs, orders and entitlements. A quote fixes the commercial rules; an order records one purchase; a job executes it. An entitlement is the buyer's durable right to the purchased work/result.
+Owns pricing snapshots, quotes, operation IDs, orders and entitlements. In the target commercial design, a quote fixes the commercial rules, a funded order records one purchase, and a job executes it. An entitlement is the buyer's durable right to the purchased work/result.
+
+## Implementation status
+
+The current M03 slice supports **fixed test-credit quote previews and durable order intents** for an owner's workspace and an operator-reviewed, currently published catalog version. `POST /v1/quotes` pins the exact listing/version/manifest digest, action, model variant, input, workspace brief and revision, fixed price, limits and provider terms for 15 minutes. `GET /v1/quotes/:id` recovers that immutable preview. Quote IDs are idempotent: identical retries recover the original quote, while changed input under the same ID conflicts. A stale brief or unavailable version blocks a new quote.
+
+`POST /v1/orders` requires the exact quote digest and `confirmTerms: true`, then records a single `pending_admission` intent under a buyer-scoped operation UUID. The same operation and same quote recover one order under concurrent retries; a changed operation binding or second order for the quote conflicts. Expiry, brief revision, current publication and provider status are rechecked before recording. `GET /v1/orders/:id` is owner-only. The buyer can prepare a preview and record an intent from the agent detail page after selecting a workspace.
+
+These records have `paymentEnabled: false` and `executionEnabled: false`. **A pending intent is not a purchase, funded order, entitlement, or job.** Catalog review does not establish commercial provider admission. There is no funding-account binding, chain/token/recipient quote, settlement, usage evidence, artifact parent, repair contract or metered/hybrid billing yet. M06 must provide an approved payment and authorization profile, M07 must admit provider execution, and M05 must define verified output/artifact profiles before those transitions can be enabled. No endpoint activates an entitlement or dispatches buyer work in this slice. A quote preview is limited to the current fixed-price, final-text manifest; other pricing profiles remain proposals below.
 
 ## Variants and prices
 

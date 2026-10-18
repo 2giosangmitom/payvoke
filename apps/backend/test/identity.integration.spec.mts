@@ -15,6 +15,8 @@ import { failure } from "../src/modules/identity/domain/identity.errors.js";
 import { workspaceSchemas } from "../src/modules/workspace/infrastructure/workspace.schemas.js";
 import { publishingSchemas } from "../src/modules/publishing/infrastructure/publishing.schemas.js";
 import { providerGatewaySchemas } from "../src/modules/provider-gateway/infrastructure/provider.schemas.js";
+import { commerceSchemas } from "../src/modules/commerce/infrastructure/commerce.schemas.js";
+import { Order, Quote } from "../src/modules/commerce/domain/commerce.js";
 import {
   CommandInvocation,
   CommandRevision,
@@ -53,6 +55,7 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
         ...workspaceSchemas,
         ...publishingSchemas,
         ...providerGatewaySchemas,
+        ...commerceSchemas,
       ],
       extensions: [Migrator],
       migrations: {
@@ -844,7 +847,13 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     const freshOrm = await MikroORM.init({
       driver: PostgreSqlDriver,
       clientUrl: databaseUrl,
-      entities: [AppUserSchema, ...workspaceSchemas, ...publishingSchemas],
+      entities: [
+        AppUserSchema,
+        ...workspaceSchemas,
+        ...publishingSchemas,
+        ...providerGatewaySchemas,
+        ...commerceSchemas,
+      ],
     });
     const freshApp = await createApp({
       orm: freshOrm,
@@ -931,14 +940,14 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     const tables = await orm.em
       .getConnection()
       .execute<{ relname: string; relrowsecurity: boolean }[]>(
-        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns', 'provider_profiles', 'agent_listings', 'manifest_versions', 'provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations')",
+        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns', 'provider_profiles', 'agent_listings', 'manifest_versions', 'provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations', 'commerce_quotes', 'commerce_orders')",
       );
-    expect(tables).toHaveLength(10);
+    expect(tables).toHaveLength(12);
     expect(tables.every((table) => table.relrowsecurity)).toBe(true);
     const grants = await orm.em
       .getConnection()
       .execute(
-        "select table_name, grantee from information_schema.table_privileges where table_schema = 'public' and table_name in ('provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations') and grantee in ('PUBLIC', 'anon', 'authenticated')",
+        "select table_name, grantee from information_schema.table_privileges where table_schema = 'public' and table_name in ('provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations', 'commerce_quotes', 'commerce_orders') and grantee in ('PUBLIC', 'anon', 'authenticated')",
       );
     expect(grants).toEqual([]);
   });
@@ -1000,6 +1009,180 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     );
     expect(result.isOk()).toBe(true);
   }
+  it("pins quote terms and creates one inert order intent across concurrent retries", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    await approve(listingId, versionId, digest);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const workspaceId = randomUUID();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/workspaces",
+          headers,
+          payload: { id: workspaceId, title: "Brand" },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const request = {
+      id: randomUUID(),
+      workspaceId,
+      listingId,
+      versionId,
+      actionId: "design-logo",
+      variantId: "default",
+      input: { text: "Moon logo" },
+      briefRevision: 0,
+    };
+    const makeQuote = (payload = request) =>
+      app.inject({ method: "POST", url: "/v1/quotes", headers, payload });
+    const quoted = await makeQuote();
+    expect(quoted.statusCode, quoted.body).toBe(200);
+    const quote = quoted.json();
+    expect(quote).toMatchObject({
+      paymentEnabled: false,
+      executionEnabled: false,
+      terms: {
+        manifestDigest: digest,
+        listingId,
+        versionId,
+        actionId: "design-logo",
+        variantId: "default",
+        pricing: manifest.pricing,
+        admission: "catalog-review-only",
+      },
+    });
+    expect((await makeQuote()).json()).toEqual(quote);
+    expect((await makeQuote({ ...request, input: { text: "Changed" } })).statusCode).toBe(409);
+    expect(
+      (await makeQuote({ ...request, id: randomUUID(), variantId: "unknown" })).statusCode,
+    ).toBe(400);
+    expect(
+      (await makeQuote({ ...request, id: randomUUID(), input: { text: "   " } })).statusCode,
+    ).toBe(400);
+    const orderRequest = {
+      id: randomUUID(),
+      operationId: randomUUID(),
+      quoteId: quote.id,
+      quoteDigest: quote.digest,
+      confirmTerms: true,
+    };
+    const createOrder = (payload = orderRequest) =>
+      app.inject({ method: "POST", url: "/v1/orders", headers, payload });
+    const orders = await Promise.all([createOrder(), createOrder()]);
+    expect(
+      orders.map((result) => result.statusCode),
+      orders.map((result) => result.body),
+    ).toEqual([200, 200]);
+    expect(orders[0]!.json()).toEqual(orders[1]!.json());
+    expect(orders[0]!.json()).toMatchObject({
+      status: "pending_admission",
+      paymentEnabled: false,
+      executionEnabled: false,
+    });
+    expect(await orm.em.fork().count(Quote, { id: quote.id })).toBe(1);
+    expect(await orm.em.fork().count(Order, { quoteId: quote.id })).toBe(1);
+    await orm.em.fork().nativeUpdate(Quote, quote.id, { expiresAt: new Date(0) });
+    expect((await createOrder()).statusCode).toBe(200);
+    expect((await createOrder({ ...orderRequest, id: randomUUID() })).statusCode).toBe(409);
+    expect(
+      (await createOrder({ ...orderRequest, id: randomUUID(), operationId: randomUUID() }))
+        .statusCode,
+    ).toBe(409);
+    const otherId = randomUUID();
+    authenticate.mockResolvedValue(Result.ok({ accountId: otherId }));
+    expect(
+      (await app.inject({ method: "GET", url: `/v1/quotes/${quote.id}`, headers })).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: `/v1/orders/${orderRequest.id}`, headers }))
+        .statusCode,
+    ).toBe(404);
+  });
+
+  it("rejects stale briefs and paused catalog versions before a new order", async () => {
+    const { listingId, versionId, digest } = await createCandidate();
+    await approve(listingId, versionId, digest);
+    await app.inject({
+      method: "POST",
+      url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+      headers,
+    });
+    const workspaceId = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/v1/workspaces",
+      headers,
+      payload: { id: workspaceId, title: "Brand" },
+    });
+    const request = {
+      id: randomUUID(),
+      workspaceId,
+      listingId,
+      versionId,
+      actionId: "design-logo",
+      variantId: "default",
+      input: { text: "Moon logo" },
+      briefRevision: 0,
+    };
+    const quote = (
+      await app.inject({ method: "POST", url: "/v1/quotes", headers, payload: request })
+    ).json();
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${workspaceId}/brief`,
+      headers,
+      payload: { revision: 0, brief: "New brief" },
+    });
+    const order = {
+      id: randomUUID(),
+      operationId: randomUUID(),
+      quoteId: quote.id,
+      quoteDigest: quote.digest,
+      confirmTerms: true,
+    };
+    expect(
+      (await app.inject({ method: "POST", url: "/v1/orders", headers, payload: order })).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/quotes",
+          headers,
+          payload: { ...request, id: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const fresh = (
+      await app.inject({
+        method: "POST",
+        url: "/v1/quotes",
+        headers,
+        payload: { ...request, id: randomUUID(), briefRevision: 1 },
+      })
+    ).json();
+    await app.inject({ method: "POST", url: `/v1/provider/listings/${listingId}/pause`, headers });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/orders",
+          headers,
+          payload: { ...order, quoteId: fresh.id, quoteDigest: fresh.digest },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(await orm.em.fork().count(Order, {})).toBe(0);
+  });
   it("publishes only reviewed versions and hides endpoints, account IDs and review internals from discovery", async () => {
     const { listingId, versionId, digest } = await createCandidate();
     const publish = () =>

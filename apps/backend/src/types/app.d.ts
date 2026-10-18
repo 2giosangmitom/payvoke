@@ -9,6 +9,7 @@ import type { WorkspaceService } from "../modules/workspace/application/workspac
 import type { PublishingRepository } from "../modules/publishing/application/publishing.repository.js";
 import type { PublishingService } from "../modules/publishing/application/publishing.service.js";
 import type { ProviderService } from "../modules/provider-gateway/application/provider.service.js";
+import type { CommerceService } from "../modules/commerce/application/commerce.service.js";
 
 // Fastify request augmentation: set by the `requireAuth` preHandler.
 declare module "fastify" {
@@ -31,5 +32,6 @@ declare module "@fastify/awilix" {
     publishing: PublishingRepository;
     publishingService: PublishingService;
     providerService: ProviderService;
+    commerceService: CommerceService;
   }
 }

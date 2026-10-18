@@ -89,6 +89,111 @@ test("wallet-free store, search, direct agent details, and mobile navigation", a
   expect(errors).toEqual([]);
 });
 
+test("buyer reviews a pinned quote and records one inert intent", async ({ page }) => {
+  await signIn(page);
+  const workspaceId = "00000000-0000-4000-8000-000000000031";
+  let quotes = 0;
+  let orders = 0;
+  await page.route("http://localhost:8100/**", (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    if (path === `/v1/agents/${listingId}`) {
+      expect(request.headers().authorization).toBeUndefined();
+      return route.fulfill({ json: agent, headers: cors });
+    }
+    expect(request.headers().authorization).toBe("Bearer browser-test-token");
+    if (path === "/v1/workspaces")
+      return route.fulfill({
+        json: [
+          {
+            id: workspaceId,
+            title: "Brand",
+            brief: "Moon identity",
+            revision: 0,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        headers: cors,
+      });
+    if (path === "/v1/quotes") {
+      quotes++;
+      const input = request.postDataJSON();
+      expect(input).toMatchObject({
+        workspaceId,
+        listingId,
+        versionId,
+        actionId: "design-logo",
+        variantId: "default",
+        input: { text: "Moon logo" },
+        briefRevision: 0,
+      });
+      return route.fulfill({
+        json: {
+          id: input.id,
+          digest: "b".repeat(64),
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          createdAt: new Date().toISOString(),
+          paymentEnabled: false,
+          executionEnabled: false,
+          terms: {
+            listingId,
+            versionId,
+            manifestDigest: agent.digest,
+            providerId: "00000000-0000-4000-8000-000000000001",
+            actionId: input.actionId,
+            variantId: input.variantId,
+            model: manifest.variants[0].model,
+            input: input.input,
+            workspaceId,
+            briefRevision: 0,
+            brief: "Moon identity",
+            briefDigest: "c".repeat(64),
+            pricing: manifest.pricing,
+            limits: manifest.limits,
+            dataPolicy: manifest.dataPolicy,
+            profile: "text-v1",
+            admission: "catalog-review-only",
+          },
+        },
+        headers: cors,
+      });
+    }
+    if (path === "/v1/orders") {
+      orders++;
+      const input = request.postDataJSON();
+      expect(input).toMatchObject({ quoteDigest: "b".repeat(64), confirmTerms: true });
+      return route.fulfill({
+        json: {
+          id: input.id,
+          operationId: input.operationId,
+          quoteId: input.quoteId,
+          quoteDigest: input.quoteDigest,
+          status: "pending_admission",
+          createdAt: new Date().toISOString(),
+          paymentEnabled: false,
+          executionEnabled: false,
+        },
+        headers: cors,
+      });
+    }
+    return route.fulfill({ status: 404, json: { message: "Unknown route" }, headers: cors });
+  });
+  await page.goto(`/agents/${listingId}`);
+  await page.getByRole("button", { name: "Preview fixed quote" }).click();
+  await page.getByLabel("Workspace").selectOption(workspaceId);
+  await page.getByLabel("text").fill("Moon logo");
+  await page.getByRole("button", { name: "Prepare quote" }).click();
+  await expect(page.getByText("Brief revision 0: Moon identity")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record intent" })).toBeDisabled();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Record intent" }).click();
+  await expect(page.getByText(/saved as pending admission/)).toBeVisible();
+  expect({ quotes, orders }).toEqual({ quotes: 1, orders: 1 });
+  await page.reload();
+  expect({ quotes, orders }).toEqual({ quotes: 1, orders: 1 });
+});
+
 test("catalog errors and empty states do not manufacture sample listings", async ({ page }) => {
   let failed = true;
   await page.route("http://localhost:8100/**", (route) =>

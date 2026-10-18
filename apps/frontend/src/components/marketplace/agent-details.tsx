@@ -5,6 +5,7 @@ import { publicApi } from "~/lib/api";
 import { agentActions, declaredPrice } from "~/lib/catalog";
 import { Button } from "~/components/ui/button";
 import { AgentMark, ErrorState, LoadingState, StatusBadge } from "./shared";
+import { CommercePreview } from "./commerce-preview";
 
 export function AgentDetails() {
   const { agentId } = useParams({ from: "/agents/$agentId" });
@@ -192,6 +193,7 @@ export function AgentDetails() {
               </section>
             </>
           )}
+          <CommercePreview agent={agent} />
         </article>
         <aside className="market-card market-action-panel">
           <p className="market-label">Declared demo price</p>
