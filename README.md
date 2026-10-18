@@ -21,3 +21,5 @@ Start with the [architecture](docs/architecture.md). Each module owns its behavi
 | [M09 Reputation and Operations](docs/modules/09-reputation-and-operations.md)     | Reviews, disputes, incidents and restoration                |
 
 [Verification](docs/verification.md) lists the checks needed before enabling paid use.
+
+The [Hardhat 3 contracts workspace](packages/contracts/README.md) contains the Fuji-configured M06 account prototype. M06 targets Circle test USDC and x402 v2 `exact` on Fuji; the current account is not x402-compatible, deployed or enabled for payment.

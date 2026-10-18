@@ -16,6 +16,7 @@ import { workspaceSchemas } from "../src/modules/workspace/infrastructure/worksp
 import { publishingSchemas } from "../src/modules/publishing/infrastructure/publishing.schemas.js";
 import { providerGatewaySchemas } from "../src/modules/provider-gateway/infrastructure/provider.schemas.js";
 import { commerceSchemas } from "../src/modules/commerce/infrastructure/commerce.schemas.js";
+import { TextResultSchema } from "../src/modules/verification/infrastructure/text-result.schema.js";
 import { Order, Quote } from "../src/modules/commerce/domain/commerce.js";
 import {
   CommandInvocation,
@@ -56,6 +57,7 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
         ...publishingSchemas,
         ...providerGatewaySchemas,
         ...commerceSchemas,
+        TextResultSchema,
       ],
       extensions: [Migrator],
       migrations: {
@@ -274,6 +276,8 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
       headers,
       payload: { id, revisionId: revision.id, command: "logo", input: { brief: "Moon" } },
     });
+    const checkedPath = `/v1/provider/applications/${applicationId}/dev-invocations/${id}/verified-result`;
+    expect((await app.inject({ method: "POST", url: checkedPath, headers })).statusCode).toBe(409);
     const executorId = randomUUID();
     const socket = await app.injectWS("/v1/provider/gateway", { headers: keyHeaders });
     const next = frames(socket);
@@ -327,6 +331,22 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
         progress: "Working",
         result: "Safe inert SVG source",
       });
+      const checked = await app.inject({ method: "POST", url: checkedPath, headers });
+      expect(checked.statusCode, checked.body).toBe(200);
+      expect(checked.json()).toMatchObject({
+        text: "Safe inert SVG source",
+        profile: "text-v1",
+        check: "format-valid",
+        deliveryEnabled: false,
+      });
+      expect((await app.inject({ method: "POST", url: checkedPath, headers })).json()).toEqual(
+        checked.json(),
+      );
+      expect((await app.inject({ method: "GET", url: checkedPath, headers })).json()).toEqual(
+        checked.json(),
+      );
+      authenticate.mockResolvedValueOnce(Result.ok({ accountId: randomUUID() }));
+      expect((await app.inject({ method: "GET", url: checkedPath, headers })).statusCode).toBe(404);
       send(resumed, "completed", "Conflicting result");
       expect((await resumedNext("error")).code).toBe("CONFLICT");
     } finally {

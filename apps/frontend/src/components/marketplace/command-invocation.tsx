@@ -4,6 +4,8 @@ import { CheckIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Choice, StatusBadge } from "./shared";
 import { SafeMarkdown } from "~/components/workspace/safe-markdown";
+import { api } from "~/lib/api";
+import type { paths } from "~/lib/schema";
 import {
   commandFields,
   errorMessage,
@@ -141,7 +143,38 @@ export function CommandForm({
   );
 }
 
-export function InvocationCard({ invocation }: { invocation: CommandInvocation }) {
+type CheckedResult =
+  paths["/v1/provider/applications/{applicationId}/dev-invocations/{invocationId}/verified-result"]["post"]["responses"][200]["content"]["application/json"];
+
+export function InvocationCard({
+  invocation,
+  applicationId,
+}: {
+  invocation: CommandInvocation;
+  applicationId?: string;
+}) {
+  const [checked, setChecked] = useState<CheckedResult | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  async function checkResult() {
+    if (!applicationId || checking) return;
+    setChecking(true);
+    setCheckError("");
+    try {
+      const response = await api.POST(
+        "/v1/provider/applications/{applicationId}/dev-invocations/{invocationId}/verified-result",
+        {
+          params: { path: { applicationId, invocationId: invocation.id } },
+        },
+      );
+      if (!response.data) throw new Error(response.error?.message ?? "Could not check result.");
+      setChecked(response.data);
+    } catch (error) {
+      setCheckError(errorMessage(error));
+    } finally {
+      setChecking(false);
+    }
+  }
   return (
     <article className="gateway-invocation" aria-label={`Command /${invocation.command}`}>
       <header className="gateway-section-heading">
@@ -177,6 +210,29 @@ export function InvocationCard({ invocation }: { invocation: CommandInvocation }
           External work may have occurred. Inspect the provider journal; do not start another
           invocation as a retry.
         </p>
+      )}
+      {applicationId && invocation.state === "completed" && (
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={checking || !!checked}
+            onClick={() => void checkResult()}
+          >
+            {checking ? "Checking…" : checked ? "Text result pinned" : "Check and pin text result"}
+          </Button>
+          {checked && (
+            <p className="market-caption mt-2">
+              Format-valid text-v1 · Digest <span className="market-mono">{checked.digest}</span>.
+              This check does not verify content accuracy or deliver a buyer artifact.
+            </p>
+          )}
+          {checkError && (
+            <p role="alert" className="market-form-error mt-2">
+              {checkError}
+            </p>
+          )}
+        </div>
       )}
       <p className="market-caption market-mono mt-3">
         Invocation {invocation.id} · Revision {invocation.revisionId.slice(0, 8)}

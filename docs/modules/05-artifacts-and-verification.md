@@ -2,6 +2,10 @@
 
 Owns uploads, result manifests, artifact revisions, check reports, receipts, sharing and retention. Transactional records hold metadata/rights; private object storage holds bytes.
 
+## Implementation status
+
+The development Gateway now has an owner-only `POST/GET /v1/provider/applications/:applicationId/dev-invocations/:invocationId/verified-result`. For a completed invocation, `POST` validates the bounded, nonempty final text, pins the invocation/application/command revision/listing version and terminal digest, and writes one immutable `text-v1` result with a deterministic digest. Exact retries recover the same record; other owners cannot read it. The check is labelled `format-valid` and `deliveryEnabled: false`. It does not establish factual correctness, safety, buyer acceptance or payment. There are no file artifacts, uploads, previews, independent checks, receipts or buyer delivery yet. The target design below remains unimplemented beyond this development-only text profile.
+
 ## Common result contract
 
 All results use a versioned envelope binding operation/job, agent version, attempt generation, schema/profile version, ordered message parts and artifact references. [M02](02-workspace-and-conversation.md) renders parts; providers cannot choose arbitrary executable code.

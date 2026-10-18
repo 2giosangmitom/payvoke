@@ -12,6 +12,8 @@ import { Migration20261018020000 } from "./migrations/Migration20261018020000.js
 import { Migration20261018030000 } from "./migrations/Migration20261018030000.js";
 import { Migration20261018040000 } from "./migrations/Migration20261018040000.js";
 import { commerceSchemas } from "../modules/commerce/infrastructure/commerce.schemas.js";
+import { TextResultSchema } from "../modules/verification/infrastructure/text-result.schema.js";
+import { Migration20261018050000 } from "./migrations/Migration20261018050000.js";
 
 // Source-controlled allowlist: obsolete files left in dist must never become migrations.
 export const applicationMigrations = [
@@ -21,6 +23,7 @@ export const applicationMigrations = [
   Migration20261018020000,
   Migration20261018030000,
   Migration20261018040000,
+  Migration20261018050000,
 ];
 
 export function createMikroOrmOptions(env: Environment) {
@@ -33,6 +36,7 @@ export function createMikroOrmOptions(env: Environment) {
       ...publishingSchemas,
       ...providerGatewaySchemas,
       ...commerceSchemas,
+      TextResultSchema,
     ],
     ensureDatabase: false,
     extensions: [Migrator],

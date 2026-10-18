@@ -19,6 +19,8 @@ These are proof obligations for the design, not a record of passing tests. The d
 | Operations           | Provider pause/rollback, scoped support, backup restoration and safe reopening after chain/database divergence                                 |
 | Product and rules    | Selected launch profiles; clear terms; real buyer/provider trials; organizer confirmation of custody/treasury and chain requirements           |
 
+For the selected Fuji profile, prove the exact Circle test USDC address `0x5425890298aed601595a70AB815c96711a31Bc65`, 6-decimal integer accounting, x402 v2 `exact` on `eip155:43113`, and a configured treasury. Record the chosen facilitator's live `/supported` network/scheme capabilities and demonstrate its actual account-funded transfer method. EIP-3009 from an owner EOA does not prove delegated spending from `PersonalAccount`; the proposed ERC-7710 route requires a compatible account and delegation manager. Reconcile successful USDC `Transfer` effects against order identity, amount, payer and treasury before enabling execution.
+
 ## Failure drills
 
 - Crash before/after authorization submission, chain settlement, journal/outbox commit and workflow start. Recover the same commercial operation.

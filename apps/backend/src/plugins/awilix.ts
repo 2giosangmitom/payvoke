@@ -15,6 +15,7 @@ import { ProviderService } from "../modules/provider-gateway/application/provide
 import { MikroOrmProviderRepository } from "../modules/provider-gateway/infrastructure/mikro-orm-provider.repository.js";
 import { CommerceService } from "../modules/commerce/application/commerce.service.js";
 import { MikroOrmCommerceRepository } from "../modules/commerce/infrastructure/mikro-orm-commerce.repository.js";
+import { TextResultService } from "../modules/verification/application/text-result.service.js";
 
 export interface DiOptions {
   env: Environment;
@@ -48,6 +49,10 @@ const diPlugin: FastifyPluginAsync<DiOptions> = async (fastify, options) => {
     ),
     commerceService: asFunction(
       ({ em }) => new CommerceService(new MikroOrmCommerceRepository(em)),
+      { lifetime: Lifetime.SCOPED },
+    ),
+    textResultService: asFunction(
+      ({ em, providerService }) => new TextResultService(em, providerService),
       { lifetime: Lifetime.SCOPED },
     ),
   });

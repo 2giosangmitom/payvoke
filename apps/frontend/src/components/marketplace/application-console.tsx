@@ -620,7 +620,7 @@ function Playground({
         )}
         {focused.data &&
           !invocations.data?.some((invocation) => invocation.id === focused.data.id) && (
-            <InvocationCard invocation={focused.data} />
+            <InvocationCard invocation={focused.data} applicationId={applicationId} />
           )}
         {invocations.isPending ? (
           <LoadingState label="Loading invocations…" />
@@ -631,7 +631,11 @@ function Playground({
           />
         ) : invocations.data?.length ? (
           invocations.data.map((invocation) => (
-            <InvocationCard key={invocation.id} invocation={invocation} />
+            <InvocationCard
+              key={invocation.id}
+              invocation={invocation}
+              applicationId={applicationId}
+            />
           ))
         ) : (
           <p className="py-8 text-muted-foreground">
