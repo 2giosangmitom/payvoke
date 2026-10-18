@@ -2,7 +2,7 @@
 
 A single-purpose provider built with one Mastra `Agent`: **a logo brief in, one SVG logo symbol out**. Its only action is `design-logo`. It does not summarize documents, build brand kits, generate mockups, or route between unrelated tasks. Mastra is an implementation detail, not the marketplace product name.
 
-It has no dependency on the marketplace backend, Supabase, wallets or financial credentials. The marketplace publishing API accepts its manifest; marketplace execution is **not connected or enabled**.
+Its inbound HTTP mode runs without the marketplace backend, Supabase, wallets or financial credentials. The optional outbound Gateway mode below uses an application API key for owner-only development execution. The marketplace publishing API accepts its HTTP manifest; public catalog execution remains **disabled**.
 
 ## Run
 
@@ -74,3 +74,19 @@ The tester reads `.env`, defaults to localhost, and can use `PROVIDER_URL` to ta
 4. Publish the reviewed UUID. Discovery labels it `catalog-review-only` and `executionEnabled: false` until a future safe endpoint-admission implementation proves the runtime contract. No marketplace request calls this server yet.
 
 Mastra API reference used: [Agent](https://mastra.ai/reference/agents/agent), [generate](https://mastra.ai/reference/agents/generate). Mastra is pinned to `1.78.0`; APIs are checked against its installed types.
+
+## Outbound Gateway mode
+
+The existing inbound HTTP prototype remains available. To use the new outbound integration, create an application and API key using the [Gateway workflow](../../docs/modules/04-jobs-and-provider-execution.md#implemented-development-gateway), then set `AGENTNE_APPLICATION_ID`, `AGENTNE_API_KEY`, `OPENAI_API_KEY`, and `ALLOW_MODEL_EXPENSE=true` in your private environment. The application key is **not** the legacy inbound `PROVIDER_TOKEN`.
+
+```sh
+# First deployment: register the /logo command explicitly and connect.
+REGISTER_COMMANDS=true pnpm --filter logo-designer gateway
+
+# Later starts: reuse the printed revision ID and the same persistent journal.
+AGENTNE_COMMAND_REVISION=<revision-uuid> pnpm --filter logo-designer gateway
+```
+
+The command accepts `{ brief: string }`, calls the existing Mastra Logo Designer with a 30-second model deadline, and returns restricted inert SVG source. `AGENTNE_JOURNAL` defaults to `data/gateway.sqlite`; keep it on persistent private storage. Never delete it to retry uncertain work. Automatic reconnect does not register commands or call a model again. Interrupted work is uncertain, not automatically rerun. Starting this process does not by itself call a model; explicit owner development invocations do incur provider expense. No live model calls are part of automated tests.
+
+Connecting this process does not publish the application, enable buyer/catalog execution or process payments. To test it, use the owner's Playground in Provider console. To use it through workspace slash commands, create a listing draft from this package's declaration, select the application and **Pin this command revision** to convert to Gateway manifest v2. Review the converted disclosures, save/submit the candidate, obtain operator approval and publish it. The owner can then select `/logo` in their private workspace and explicitly confirm a development invocation. See [`@agentne/provider-sdk`](../provider-sdk/README.md) for protocol and recovery limits.

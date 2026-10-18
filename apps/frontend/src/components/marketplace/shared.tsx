@@ -5,6 +5,15 @@ import { Select } from "@base-ui/react/select";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 const statuses: Record<string, { label: string; tone: string }> = {
+  queued: { label: "Queued", tone: "neutral" },
+  running: { label: "Running", tone: "neutral" },
+  completed: { label: "Completed", tone: "success" },
+  failed: { label: "Failed", tone: "danger" },
+  uncertain: { label: "Uncertain", tone: "warning" },
+  connected: { label: "Gateway connected", tone: "success" },
+  offline: { label: "Gateway offline", tone: "neutral" },
+  revoked: { label: "Revoked", tone: "neutral" },
+  expired: { label: "Expired", tone: "warning" },
   draft: { label: "Draft", tone: "neutral" },
   submitted: { label: "Submitted", tone: "warning" },
   approved: { label: "Approved", tone: "success" },

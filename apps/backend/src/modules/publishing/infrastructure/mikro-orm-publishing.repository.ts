@@ -17,6 +17,7 @@ import {
   type OwnedListing,
 } from "../domain/publishing.js";
 import { AppUser } from "../../identity/domain/app-user.js";
+import { CommandRevision, ProviderApplication } from "../../provider-gateway/domain/provider.js";
 
 const missing = () => failure("NOT_FOUND", "Provider, listing, or version not found.");
 export class MikroOrmPublishingRepository implements PublishingRepository {
@@ -83,6 +84,20 @@ export class MikroOrmPublishingRepository implements PublishingRepository {
           ))
         )
           return missing();
+        if (manifest.schemaVersion === 2) {
+          const application = await em.findOne(ProviderApplication, {
+            id: manifest.gateway.applicationId,
+            providerId: ownerId,
+          });
+          if (
+            !application ||
+            !(await em.findOne(CommandRevision, {
+              id: manifest.gateway.commandRevisionId,
+              applicationId: application.id,
+            }))
+          )
+            return missing();
+        }
         const digest = manifestDigest(manifest);
         const existing = await em.findOne(ManifestVersion, id);
         if (existing) {
@@ -216,10 +231,25 @@ export class MikroOrmPublishingRepository implements PublishingRepository {
             (provider) => [provider.id, provider],
           ),
         );
+        const revisions = await em.find(CommandRevision, {
+          id: {
+            $in: [...versions.values()].flatMap((version) =>
+              version.manifest.schemaVersion === 2
+                ? [version.manifest.gateway.commandRevisionId]
+                : [],
+            ),
+          },
+        });
         return rows.map((row) => ({
           listing: listings.get(row.listing_id)!,
           version: versions.get(row.version_id)!,
           provider: providers.get(row.provider_id)!,
+          commands: revisions.find((revision) => {
+            const manifest = versions.get(row.version_id)!.manifest;
+            return (
+              manifest.schemaVersion === 2 && revision.id === manifest.gateway.commandRevisionId
+            );
+          })?.commands,
         }));
       },
       { isolationLevel: IsolationLevel.REPEATABLE_READ },

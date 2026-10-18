@@ -3,16 +3,13 @@ import { isIP } from "node:net";
 import { Result, TaggedError } from "better-result";
 
 /** Version 1 deliberately admits final-only text providers, not arbitrary executable schemas. */
-export interface ProviderManifest {
-  schemaVersion: 1;
+interface ManifestCommon {
   name: string;
   description: string;
-  endpoint: string;
-  actions: { id: string; description: string; input: "text-v1"; output: "text-v1" }[];
   variants: { id: string; model: string; description: string }[];
   pricing: { kind: "fixed"; amountMinor: string; currency: "test-credit" };
   runtime: {
-    protocol: "provider-text-v1";
+    protocol: "provider-text-v1" | "provider-gateway-v1";
     streaming: false;
     cancellation: false;
     startDeduplication: true;
@@ -21,6 +18,18 @@ export interface ProviderManifest {
   limits: { inputChars: number; outputTokens: number; timeoutSeconds: number };
   dataPolicy: { destinations: string[]; retention: string; terms: string };
 }
+export interface HttpProviderManifest extends ManifestCommon {
+  schemaVersion: 1;
+  endpoint: string;
+  actions: { id: string; description: string; input: "text-v1"; output: "text-v1" }[];
+  runtime: ManifestCommon["runtime"] & { protocol: "provider-text-v1" };
+}
+export interface GatewayProviderManifest extends ManifestCommon {
+  schemaVersion: 2;
+  gateway: { applicationId: string; commandRevisionId: string };
+  runtime: ManifestCommon["runtime"] & { protocol: "provider-gateway-v1" };
+}
+export type ProviderManifest = HttpProviderManifest | GatewayProviderManifest;
 
 export class PublishingError extends TaggedError("PublishingError")<{
   code: "NOT_FOUND" | "CONFLICT" | "INVALID_MANIFEST";
@@ -55,7 +64,7 @@ function publicHttps(value: string): boolean {
 
 export function validateManifest(manifest: ProviderManifest): PublishingResult<ProviderManifest> {
   if (
-    !publicHttps(manifest.endpoint) ||
+    (manifest.schemaVersion === 1 && !publicHttps(manifest.endpoint)) ||
     manifest.dataPolicy.destinations.some((url) => !publicHttps(url))
   ) {
     return failure(
@@ -64,7 +73,8 @@ export function validateManifest(manifest: ProviderManifest): PublishingResult<P
     );
   }
   if (
-    new Set(manifest.actions.map((action) => action.id)).size !== manifest.actions.length ||
+    (manifest.schemaVersion === 1 &&
+      new Set(manifest.actions.map((action) => action.id)).size !== manifest.actions.length) ||
     new Set(manifest.variants.map((variant) => variant.id)).size !== manifest.variants.length
   ) {
     return failure("INVALID_MANIFEST", "Action and variant identifiers must be unique.");

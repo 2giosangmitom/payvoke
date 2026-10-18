@@ -14,12 +14,25 @@ import { AppUserSchema } from "../src/modules/identity/infrastructure/app-user.s
 import { failure } from "../src/modules/identity/domain/identity.errors.js";
 import { workspaceSchemas } from "../src/modules/workspace/infrastructure/workspace.schemas.js";
 import { publishingSchemas } from "../src/modules/publishing/infrastructure/publishing.schemas.js";
+import { providerGatewaySchemas } from "../src/modules/provider-gateway/infrastructure/provider.schemas.js";
+import {
+  CommandInvocation,
+  CommandRevision,
+  ProviderApiKey,
+  ProviderApplication,
+  digest,
+} from "../src/modules/provider-gateway/domain/provider.js";
+import { MikroOrmProviderRepository } from "../src/modules/provider-gateway/infrastructure/mikro-orm-provider.repository.js";
+import type WebSocket from "ws";
+import { ProviderClient } from "@agentne/provider-sdk";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { Conversation, ConversationTurn } from "../src/modules/workspace/domain/conversation.js";
 import { readFileSync } from "node:fs";
 import { MikroOrmPublishingRepository } from "../src/modules/publishing/infrastructure/mikro-orm-publishing.repository.js";
 import {
   manifestDigest,
-  type ProviderManifest,
+  type HttpProviderManifest as ProviderManifest,
 } from "../src/modules/publishing/domain/publishing.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? "";
@@ -35,7 +48,12 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     orm = await MikroORM.init({
       driver: PostgreSqlDriver,
       clientUrl: databaseUrl,
-      entities: [AppUserSchema, ...workspaceSchemas, ...publishingSchemas],
+      entities: [
+        AppUserSchema,
+        ...workspaceSchemas,
+        ...publishingSchemas,
+        ...providerGatewaySchemas,
+      ],
       extensions: [Migrator],
       migrations: {
         migrationsList: applicationMigrations,
@@ -64,6 +82,445 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
   beforeEach(async () => {
     authenticate.mockReset().mockResolvedValue(Result.ok({ accountId }));
     await orm.em.fork().nativeDelete(AppUser, {});
+  });
+
+  const slashCommands = [
+    {
+      name: "logo",
+      description: "Design a logo",
+      inputSchema: {
+        type: "object" as const,
+        properties: { brief: { type: "string" as const, maxLength: 8000 } },
+        required: ["brief"],
+        additionalProperties: false as const,
+      },
+    },
+  ];
+  async function gatewayApplication(scopes = ["commands:write", "gateway:connect"]) {
+    await app.inject({
+      method: "POST",
+      url: "/v1/provider/profile",
+      headers,
+      payload: { displayName: "Gateway Studio" },
+    });
+    const applicationId = randomUUID();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/provider/applications",
+      headers,
+      payload: { id: applicationId, name: "Logo Designer" },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const key = await app.inject({
+      method: "POST",
+      url: `/v1/provider/applications/${applicationId}/keys`,
+      headers,
+      payload: { label: "Development", scopes },
+    });
+    expect(key.statusCode, key.body).toBe(200);
+    return { applicationId, key: key.json().key, secret: key.json().secret as string };
+  }
+  function frames(socket: WebSocket) {
+    const values: Record<string, any>[] = [];
+    socket.on("message", (raw) => values.push(JSON.parse(raw.toString())));
+    return async (type: string) => {
+      await vi.waitFor(() => expect(values.some((frame) => frame.type === type)).toBe(true), {
+        timeout: 5000,
+      });
+      const index = values.findIndex((frame) => frame.type === type);
+      return values.splice(index, 1)[0]!;
+    };
+  }
+
+  it("creates owner applications and hashed, scoped, expiring, revocable keys", async () => {
+    const { applicationId, key, secret } = await gatewayApplication(["commands:write"]);
+    const stored = await orm.em.fork().findOneOrFail(ProviderApiKey, key.id);
+    expect(stored.hash).toBe(digest(secret));
+    expect(stored.hash).not.toContain(secret);
+    const listed = await app.inject({
+      method: "GET",
+      url: `/v1/provider/applications/${applicationId}/keys`,
+      headers,
+    });
+    expect(listed.body).not.toContain(secret);
+    expect(listed.body).not.toContain(stored.hash);
+    expect(listed.headers["cache-control"]).toBe("no-store");
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    await expect(app.injectWS("/v1/provider/gateway", { headers: keyHeaders })).rejects.toThrow();
+    authenticate.mockResolvedValue(Result.ok({ accountId: randomUUID() }));
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/v1/provider/applications/${applicationId}/keys`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    authenticate.mockResolvedValue(Result.ok({ accountId }));
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: `/v1/provider/applications/${randomUUID()}/commands`,
+          headers: keyHeaders,
+          payload: { commands: slashCommands },
+        })
+      ).statusCode,
+    ).toBe(404);
+    await app.inject({
+      method: "DELETE",
+      url: `/v1/provider/applications/${applicationId}/keys/${key.id}`,
+      headers,
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: `/v1/provider/applications/${applicationId}/commands`,
+          headers: keyHeaders,
+          payload: { commands: slashCommands },
+        })
+      ).statusCode,
+    ).toBe(401);
+    authenticate.mockResolvedValueOnce(failure("INVALID_SESSION", "Not a Supabase session."));
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/provider/applications",
+          headers: keyHeaders,
+          payload: { id: randomUUID(), name: "Bad" },
+        })
+      ).statusCode,
+    ).toBe(401);
+  });
+
+  it("registers immutable command sets idempotently and pins sandbox invocations", async () => {
+    const { applicationId, secret } = await gatewayApplication();
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    const register = (commands = slashCommands) =>
+      app.inject({
+        method: "PUT",
+        url: `/v1/provider/applications/${applicationId}/commands`,
+        headers: keyHeaders,
+        payload: { commands },
+      });
+    const response = await register();
+    expect(response.statusCode, response.body).toBe(200);
+    const revision = response.json();
+    expect((await register()).json().id).toBe(revision.id);
+    expect((await register([...slashCommands, ...slashCommands])).statusCode).toBe(400);
+    const invalid = structuredClone(slashCommands);
+    invalid[0]!.inputSchema.required = ["missing"];
+    expect((await register(invalid)).statusCode).toBe(400);
+    const id = randomUUID();
+    const payload = {
+      id,
+      revisionId: revision.id,
+      command: "logo",
+      input: { brief: "A moon symbol" },
+    };
+    const invoke = (
+      body: {
+        id: string;
+        revisionId: string;
+        command: string;
+        input: Record<string, string>;
+      } = payload,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+        headers,
+        payload: body,
+      });
+    expect((await invoke()).json()).toMatchObject({ id, developmentOnly: true, state: "queued" });
+    expect((await invoke()).statusCode).toBe(200);
+    expect((await invoke({ ...payload, input: { brief: "Changed" } })).statusCode).toBe(409);
+    expect(
+      (await invoke({ ...payload, id: randomUUID(), input: { extra: "bad" } })).statusCode,
+    ).toBe(400);
+    const changed = structuredClone(slashCommands);
+    changed[0]!.description = "Changed description";
+    const second = (await register(changed)).json();
+    expect(second.id).not.toBe(revision.id);
+    expect((await invoke({ ...payload, id: randomUUID() })).statusCode).toBe(409);
+    expect((await invoke()).statusCode).toBe(200);
+    expect((await orm.em.fork().findOneOrFail(CommandRevision, revision.id)).commands).toEqual(
+      slashCommands,
+    );
+    expect((await app.inject({ method: "GET", url: "/v1/agents" })).json()).toEqual([]);
+  });
+
+  it("delivers durable WebSocket invocations, replays after disconnect, and deduplicates results", async () => {
+    const { applicationId, secret } = await gatewayApplication();
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    const revision = (
+      await app.inject({
+        method: "PUT",
+        url: `/v1/provider/applications/${applicationId}/commands`,
+        headers: keyHeaders,
+        payload: { commands: slashCommands },
+      })
+    ).json();
+    const id = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+      headers,
+      payload: { id, revisionId: revision.id, command: "logo", input: { brief: "Moon" } },
+    });
+    const executorId = randomUUID();
+    const socket = await app.injectWS("/v1/provider/gateway", { headers: keyHeaders });
+    const next = frames(socket);
+    socket.send(JSON.stringify({ type: "identify", protocol: "provider-gateway-v1", executorId }));
+    await next("ready");
+    const event = await next("command.invoked");
+    expect(event.invocation).toMatchObject({ id, revisionId: revision.id, developmentOnly: true });
+    expect((await orm.em.fork().findOneOrFail(CommandInvocation, id)).executorId).toBe(executorId);
+    const send = (ws: WebSocket, type: string, text?: string) =>
+      ws.send(
+        JSON.stringify({
+          type,
+          requestId: randomUUID(),
+          invocationId: id,
+          ...(text ? { text } : {}),
+        }),
+      );
+    send(socket, "accepted");
+    await next("ack");
+    send(socket, "progress", "Working");
+    await next("ack");
+    socket.terminate();
+    await vi.waitFor(async () =>
+      expect(
+        (await orm.em.fork().findOneOrFail(ProviderApplication, applicationId)).sessionId,
+      ).toBeNull(),
+    );
+    const resumed = await app.injectWS("/v1/provider/gateway", { headers: keyHeaders });
+    const resumedNext = frames(resumed);
+    try {
+      resumed.send(
+        JSON.stringify({ type: "identify", protocol: "provider-gateway-v1", executorId }),
+      );
+      await resumedNext("ready");
+      expect((await resumedNext("command.invoked")).eventId).toBe(id);
+      send(resumed, "completed", "Safe inert SVG source");
+      await resumedNext("ack");
+      send(resumed, "completed", "Safe inert SVG source");
+      await resumedNext("ack");
+      send(resumed, "accepted");
+      await resumedNext("ack");
+      send(resumed, "progress", "Replayed old progress");
+      await resumedNext("ack");
+      const result = await app.inject({
+        method: "GET",
+        url: `/v1/provider/applications/${applicationId}/dev-invocations/${id}`,
+        headers,
+      });
+      expect(result.json()).toMatchObject({
+        state: "completed",
+        progress: "Working",
+        result: "Safe inert SVG source",
+      });
+      send(resumed, "completed", "Conflicting result");
+      expect((await resumedNext("error")).code).toBe("CONFLICT");
+    } finally {
+      resumed.terminate();
+    }
+  });
+
+  it("fences connections and executors, checks key revocation, and never redispatches uncertain work", async () => {
+    const { applicationId, key, secret } = await gatewayApplication();
+    const repo = () => new MikroOrmProviderRepository(orm.em.fork());
+    const principal = await repo().authenticate(digest(secret), "gateway:connect");
+    const revision = await repo().register(principal, slashCommands);
+    const invocation = await repo().invoke(
+      accountId,
+      applicationId,
+      randomUUID(),
+      revision.id,
+      "logo",
+      { brief: "Moon" },
+    );
+    const session = randomUUID();
+    const executor = randomUUID();
+    await repo().connect(principal, session);
+    await expect(repo().connect(principal, randomUUID())).rejects.toMatchObject({
+      code: "GATEWAY_BUSY",
+    });
+    expect((await repo().next(principal, session, executor))?.invocation.id).toBe(invocation.id);
+    await repo().receive(principal, session, executor, invocation.id, "accepted");
+    await repo().disconnect(applicationId, session);
+    const second = randomUUID();
+    await repo().connect(principal, second);
+    expect(await repo().next(principal, second, randomUUID())).toBeNull();
+    await expect(
+      repo().receive(principal, session, executor, invocation.id, "completed", "Stale"),
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    await orm.em.fork().nativeUpdate(CommandInvocation, invocation.id, { deadlineAt: new Date(0) });
+    expect(await repo().next(principal, second, executor)).toBeNull();
+    expect((await repo().invocation(accountId, applicationId, invocation.id)).state).toBe(
+      "uncertain",
+    );
+    await app.inject({
+      method: "DELETE",
+      url: `/v1/provider/applications/${applicationId}/keys/${key.id}`,
+      headers,
+    });
+    await expect(repo().next(principal, second, executor)).rejects.toMatchObject({
+      code: "INVALID_KEY",
+    });
+  });
+
+  it("disconnects live gateways when keys are revoked and rejects browser/query authentication", async () => {
+    const { applicationId, secret, key } = await gatewayApplication();
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    await expect(
+      app.injectWS(`/v1/provider/gateway?key=${secret}`, { headers: keyHeaders }),
+    ).rejects.toThrow();
+    await expect(
+      app.injectWS("/v1/provider/gateway", {
+        headers: { ...keyHeaders, origin: "http://localhost:3000" },
+      }),
+    ).rejects.toThrow();
+    const socket = await app.injectWS("/v1/provider/gateway", { headers: keyHeaders });
+    const next = frames(socket);
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "identify",
+          protocol: "provider-gateway-v1",
+          executorId: randomUUID(),
+        }),
+      );
+      await next("ready");
+      await app.inject({
+        method: "DELETE",
+        url: `/v1/provider/applications/${applicationId}/keys/${key.id}`,
+        headers,
+      });
+      expect((await next("error")).code).toBe("INVALID_KEY");
+    } finally {
+      socket.terminate();
+    }
+  });
+
+  it("runs a synthetic command through the real SDK, Gateway and PostgreSQL without model calls", async () => {
+    const { applicationId, secret } = await gatewayApplication();
+    if (!app.server.listening) await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === "string") throw new Error("Missing test listener.");
+    const directory = mkdtempSync("/tmp/opencode/provider-e2e-");
+    const errors: Error[] = [];
+    const client = new ProviderClient({
+      apiKey: secret,
+      applicationId,
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      journalPath: join(directory, "journal.sqlite"),
+      onError: (error) => errors.push(error),
+    });
+    try {
+      const revision = await client.registerCommands(slashCommands);
+      const handler = vi.fn(async ({ input, progress }) => {
+        await progress("Preparing synthetic output");
+        return `Synthetic symbol for ${input.brief}`;
+      });
+      client.onCommand("logo", revision.id, handler);
+      await client.connect();
+      const id = randomUUID();
+      const invoke = () =>
+        app.inject({
+          method: "POST",
+          url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+          headers,
+          payload: { id, revisionId: revision.id, command: "logo", input: { brief: "Moon" } },
+        });
+      expect((await invoke()).statusCode).toBe(200);
+      await vi.waitFor(
+        async () =>
+          expect((await orm.em.fork().findOneOrFail(CommandInvocation, id)).state).toBe(
+            "completed",
+          ),
+        { timeout: 5000 },
+      );
+      expect((await invoke()).json()).toMatchObject({
+        state: "completed",
+        result: "Synthetic symbol for Moon",
+      });
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await client.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects expired keys, suspended providers, unsupported command schemas and malformed Gateway frames", async () => {
+    const { applicationId, secret, key } = await gatewayApplication();
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    const url = `/v1/provider/applications/${applicationId}/commands`;
+    const invalid = structuredClone(slashCommands);
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url,
+          headers: keyHeaders,
+          payload: {
+            commands: [
+              {
+                ...invalid[0],
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    brief: { type: "string", maxLength: 8000, $ref: "https://example.com/schema" },
+                  },
+                  required: ["brief"],
+                  additionalProperties: false,
+                },
+              },
+            ],
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const socket = await app.injectWS("/v1/provider/gateway", { headers: keyHeaders });
+    const next = frames(socket);
+    try {
+      socket.send(
+        JSON.stringify({ type: "identify", protocol: "unknown", executorId: randomUUID() }),
+      );
+      expect((await next("error")).code).toBe("INVALID_INPUT");
+    } finally {
+      socket.terminate();
+    }
+    await orm.em.fork().nativeUpdate(ProviderApiKey, key.id, { expiresAt: new Date(0) });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url,
+          headers: keyHeaders,
+          payload: { commands: slashCommands },
+        })
+      ).statusCode,
+    ).toBe(401);
+    await orm.em
+      .fork()
+      .nativeUpdate(ProviderApiKey, key.id, { expiresAt: new Date(Date.now() + 60_000) });
+    await orm.em.fork().nativeUpdate(AppUser, accountId, { status: "suspended" });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url,
+          headers: keyHeaders,
+          payload: { commands: slashCommands },
+        })
+      ).statusCode,
+    ).toBe(403);
   });
 
   it("maps explicit schemas to the existing migration without database changes", async () => {
@@ -474,10 +931,16 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     const tables = await orm.em
       .getConnection()
       .execute<{ relname: string; relrowsecurity: boolean }[]>(
-        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns', 'provider_profiles', 'agent_listings', 'manifest_versions')",
+        "select relname, relrowsecurity from pg_class where relname in ('workspaces', 'conversations', 'conversation_turns', 'provider_profiles', 'agent_listings', 'manifest_versions', 'provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations')",
       );
-    expect(tables).toHaveLength(6);
+    expect(tables).toHaveLength(10);
     expect(tables.every((table) => table.relrowsecurity)).toBe(true);
+    const grants = await orm.em
+      .getConnection()
+      .execute(
+        "select table_name, grantee from information_schema.table_privileges where table_schema = 'public' and table_name in ('provider_applications', 'provider_api_keys', 'provider_command_revisions', 'provider_command_invocations') and grantee in ('PUBLIC', 'anon', 'authenticated')",
+      );
+    expect(grants).toEqual([]);
   });
 
   const manifest = JSON.parse(
@@ -734,6 +1197,301 @@ describe.skipIf(databaseUrl === "")("Identity API", () => {
     ).json();
     expect(versions).toHaveLength(1);
     expect(versions[0].id).toBe(versionId);
+  });
+
+  it("pins reviewed Gateway commands through catalog and conversation execution without retargeting", async () => {
+    const { applicationId, secret } = await gatewayApplication();
+    const keyHeaders = { authorization: `Bearer ${secret}` };
+    const register = (commands = slashCommands) =>
+      app.inject({
+        method: "PUT",
+        url: `/v1/provider/applications/${applicationId}/commands`,
+        headers: keyHeaders,
+        payload: { commands },
+      });
+    const revision = (await register()).json();
+    const listingId = randomUUID();
+    const versionId = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/v1/provider/listings",
+      headers,
+      payload: { id: listingId },
+    });
+    const {
+      endpoint: _endpoint,
+      actions: _actions,
+      schemaVersion: _schemaVersion,
+      runtime: _runtime,
+      ...common
+    } = manifest;
+    const gatewayManifest = {
+      ...common,
+      limits: { ...common.limits, inputChars: 100 },
+      schemaVersion: 2,
+      gateway: { applicationId, commandRevisionId: revision.id },
+      runtime: { ...manifest.runtime, protocol: "provider-gateway-v1" },
+    };
+    const create = (body: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/v1/provider/listings/${listingId}/versions`,
+        headers,
+        payload: body,
+      });
+    const invalid = await create({
+      id: randomUUID(),
+      manifest: {
+        ...gatewayManifest,
+        gateway: { applicationId: randomUUID(), commandRevisionId: revision.id },
+      },
+    });
+    expect(invalid.statusCode, invalid.body).toBe(404);
+    const otherAppId = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/v1/provider/applications",
+      headers,
+      payload: { id: otherAppId, name: "Another agent" },
+    });
+    expect(
+      (
+        await create({
+          id: randomUUID(),
+          manifest: {
+            ...gatewayManifest,
+            gateway: { applicationId: otherAppId, commandRevisionId: revision.id },
+          },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const version = await create({ id: versionId, manifest: gatewayManifest });
+    expect(version.statusCode, version.body).toBe(200);
+    expect(
+      (
+        await create({
+          id: versionId,
+          manifest: { ...gatewayManifest, description: "Changed declaration" },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({ method: "GET", url: "/v1/provider-manifest-schema?schemaVersion=2" })
+      ).json().properties.schemaVersion.const,
+    ).toBe(2);
+    const workspaceId = randomUUID();
+    const conversationId = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/v1/workspaces",
+      headers,
+      payload: { id: workspaceId, title: "Command test" },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/conversations`,
+      headers,
+      payload: { id: conversationId, title: "Logo task" },
+    });
+    const available = () =>
+      app.inject({ method: "GET", url: `/v1/conversations/${conversationId}/commands`, headers });
+    expect((await available()).json()).toEqual([]);
+    await approve(listingId, versionId, version.json().digest);
+    await app.inject({
+      method: "POST",
+      url: `/v1/provider/listings/${listingId}/versions/${versionId}/publish`,
+      headers,
+    });
+    const changed = structuredClone(slashCommands);
+    changed[0]!.inputSchema.properties.brief.maxLength = 10;
+    const newRevision = (await register(changed)).json();
+    expect(newRevision.id).not.toBe(revision.id);
+    expect((await available()).json()).toMatchObject([
+      { versionId, revisionId: revision.id, commands: slashCommands },
+    ]);
+    const publicAgent = (
+      await app.inject({ method: "GET", url: `/v1/agents/${listingId}` })
+    ).json();
+    expect(publicAgent).toMatchObject({
+      manifest: { schemaVersion: 2 },
+      commands: slashCommands,
+      executionEnabled: false,
+    });
+    expect(publicAgent.manifest).not.toHaveProperty("endpoint");
+    expect(publicAgent.manifest).not.toHaveProperty("actions");
+    const id = randomUUID();
+    const payload = {
+      id,
+      listingId,
+      versionId,
+      command: "logo",
+      input: { brief: "An original moon symbol" },
+      confirmModelExpense: true,
+    };
+    const invoke = (body: Record<string, unknown> = payload) =>
+      app.inject({
+        method: "POST",
+        url: `/v1/conversations/${conversationId}/command-invocations`,
+        headers,
+        payload: body,
+      });
+    expect((await invoke({ ...payload, confirmModelExpense: false })).statusCode).toBe(400);
+    const created = await invoke();
+    expect(created.statusCode, created.body).toBe(200);
+    expect(created.json()).toMatchObject({
+      id,
+      revisionId: revision.id,
+      conversationId,
+      listingVersionId: versionId,
+      developmentOnly: true,
+    });
+    expect(
+      Date.parse(created.json().deadlineAt) - Date.parse(created.json().createdAt),
+    ).toBeLessThanOrEqual(30_010);
+    expect(
+      (await invoke({ ...payload, id: randomUUID(), input: { brief: "x".repeat(101) } }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+          headers,
+          payload: { id, revisionId: revision.id, command: "logo", input: payload.input },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect((await invoke({ ...payload, input: { brief: "Changed input" } })).statusCode).toBe(409);
+    await app.inject({ method: "POST", url: `/v1/provider/listings/${listingId}/pause`, headers });
+    expect((await available()).json()).toEqual([]);
+    expect((await invoke()).statusCode).toBe(200);
+    expect((await invoke({ ...payload, id: randomUUID() })).statusCode).toBe(409);
+    authenticate.mockResolvedValue(Result.ok({ accountId: randomUUID() }));
+    expect((await available()).statusCode).toBe(404);
+    expect((await invoke()).statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/v1/conversations/${conversationId}/command-invocations`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    const buyerWorkspace = randomUUID();
+    const buyerConversation = randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/v1/workspaces",
+      headers,
+      payload: { id: buyerWorkspace, title: "Buyer workspace" },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${buyerWorkspace}/conversations`,
+      headers,
+      payload: { id: buyerConversation, title: "Buyer conversation" },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/conversations/${buyerConversation}/command-invocations`,
+          headers,
+          payload: { ...payload, id: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(404);
+    authenticate.mockResolvedValue(Result.ok({ accountId }));
+    if (!app.server.listening) await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === "string") throw new Error("Missing listener");
+    const directory = mkdtempSync("/tmp/opencode/conversation-provider-");
+    const errors: Error[] = [];
+    const sdk = new ProviderClient({
+      apiKey: secret,
+      applicationId,
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      journalPath: join(directory, "journal.sqlite"),
+      onError: (error) => errors.push(error),
+    });
+    try {
+      const handler = vi.fn(async ({ progress }) => {
+        await progress("Making a synthetic logo");
+        return '```svg\n<svg viewBox="0 0 256 256"></svg>\n```';
+      });
+      sdk.onCommand("logo", revision.id, handler);
+      await sdk.connect();
+      await vi.waitFor(
+        async () =>
+          expect((await orm.em.fork().findOneOrFail(CommandInvocation, id)).state).toBe(
+            "completed",
+          ),
+        { timeout: 5000 },
+      );
+      const history = (
+        await app.inject({
+          method: "GET",
+          url: `/v1/conversations/${conversationId}/command-invocations`,
+          headers,
+        })
+      ).json();
+      expect(history).toMatchObject([
+        { id, state: "completed", revisionId: revision.id, progress: "Making a synthetic logo" },
+      ]);
+      expect((await invoke()).json().state).toBe("completed");
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(errors).toEqual([]);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+            headers,
+          })
+        ).json(),
+      ).toMatchObject([{ id, conversationId }]);
+    } finally {
+      await sdk.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers expired offline work through history reads without dispatch or restart", async () => {
+    const { applicationId, secret } = await gatewayApplication();
+    const repo = () => new MikroOrmProviderRepository(orm.em.fork());
+    const principal = await repo().authenticate(digest(secret), "gateway:connect");
+    const revision = await repo().register(principal, slashCommands);
+    const first = await repo().invoke(accountId, applicationId, randomUUID(), revision.id, "logo", {
+      brief: "First",
+    });
+    const second = await repo().invoke(
+      accountId,
+      applicationId,
+      randomUUID(),
+      revision.id,
+      "logo",
+      { brief: "Second" },
+    );
+    const session = randomUUID();
+    await repo().connect(principal, session);
+    const delivered = await repo().next(principal, session, randomUUID());
+    expect(delivered).not.toBeNull();
+    await orm.em
+      .fork()
+      .nativeUpdate(CommandInvocation, { applicationId }, { deadlineAt: new Date(0) });
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/provider/applications/${applicationId}/dev-invocations`,
+      headers,
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const rows = response.json() as { id: string; state: string }[];
+    expect(rows.find((row) => row.id === delivered!.invocation.id)?.state).toBe("uncertain");
+    expect(rows.find((row) => row.id !== delivered!.invocation.id)?.state).toBe("failed");
+    expect(new Set(rows.map((row) => row.id))).toEqual(new Set([first.id, second.id]));
   });
 
   it("serves safe public detail links and owner-only listing summaries", async () => {

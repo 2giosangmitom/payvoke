@@ -21,6 +21,9 @@ import { identityRoutes } from "./modules/identity/http/identity.plugin.js";
 import { ApiHttpError } from "./modules/identity/http/identity-http.js";
 import { workspaceRoutes } from "./modules/workspace/http/workspace.plugin.js";
 import { publishingRoutes } from "./modules/publishing/http/publishing.plugin.js";
+import websocket from "@fastify/websocket";
+import { providerRoutes } from "./modules/provider-gateway/http/provider.plugin.js";
+import { ProviderError } from "./modules/provider-gateway/domain/provider.js";
 
 export interface CreateAppOptions {
   env: Environment;
@@ -37,6 +40,21 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
 
   // Register the error contract before plugins so it propagates into their contexts.
   app.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error instanceof ProviderError)
+      return reply
+        .status(
+          {
+            NOT_FOUND: 404,
+            CONFLICT: 409,
+            INVALID_INPUT: 400,
+            INVALID_KEY: 401,
+            FORBIDDEN: 403,
+            CAPACITY: 429,
+            GATEWAY_BUSY: 409,
+            SESSION_EXPIRED: 409,
+          }[error.code],
+        )
+        .send({ code: error.code, message: error.message });
     if (error instanceof ApiHttpError) {
       return reply.status(error.status).send(error.body);
     }
@@ -57,7 +75,7 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
 
   await app.register(cors, {
     origin: new URL(env.AUTH_ORIGIN).origin,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["X-Stream-Reset"],
   });
@@ -66,6 +84,8 @@ const application: FastifyPluginAsync<Partial<CreateAppOptions>> = async (app, o
   await app.register(identityRoutes);
   await app.register(workspaceRoutes);
   await app.register(publishingRoutes);
+  await app.register(websocket, { options: { maxPayload: 65536 } });
+  await app.register(providerRoutes);
 
   app.addHook("onClose", async () => {
     if (await orm.isConnected()) await orm.close();

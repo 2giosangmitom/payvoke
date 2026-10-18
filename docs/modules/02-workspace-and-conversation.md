@@ -12,7 +12,7 @@ The responder is deterministic and explicitly labelled **development-only**. It 
 
 Implemented safeguards include owner checks on every command/read/subscription, Supabase profile suspension checks, run/message idempotency, original-text preservation, provenance labels, restricted Markdown, bounded history/events, and reset-to-snapshot recovery. History and its revision use one repeatable-read database snapshot.
 
-Still pending: a real clarification coordinator and disclosed quotas, the registered interactive widget catalog and action receipts, provider event/attempt adapters, ongoing-run snapshot/tail/live handoff, and production proxy/slow-reader/restart verification. M03/M04/M05/M06 remain separate dependencies; this slice does not make the full target design below complete.
+Still pending: a real clarification coordinator and disclosed quotas, arbitrary interactive widgets, commercial provider event/attempt adapters, ongoing AG-UI provider-run snapshot/tail/live handoff, and production proxy/slow-reader/restart verification. M03/M04/M05/M06 remain separate dependencies; the owner-only command flow below does not make the commercial target design complete.
 
 ### API and replay contract
 
@@ -30,6 +30,14 @@ Run and user-message IDs bind the same original input: an exact retry returns th
 The frontend sends only the new user message instead of uploading its transcript. Its replay adapter bounds SSE parsing at 4 MiB (including a full bounded snapshot), closes partial display blocks on reset, and suppresses a duplicate run start. After a reset run settles, the chat runtime is rebuilt from the canonical history endpoint: assistant-ui's active text accumulator would otherwise overwrite the imported snapshot. Browser regression coverage exercises this replacement, not just event receipt. This completed-run recovery does not implement ongoing provider-run recovery.
 
 There are no provider events, private reasoning, image downloads, HTML rendering, custom component fallbacks, or executable tool calls in this slice. Links are HTTPS-only; unfinished fenced blocks remain inert code. A disconnected stream does not remove the saved turn. `RUN_FINISHED` is not job delivery or settlement.
+
+### Owner-only slash command development
+
+The workspace composer recognizes `/` and exposes reviewed, published, unpaused Gateway v2 listings **owned by the signed-in user**, not arbitrary public agents. Keyboard selection or the Commands button opens a schema-generated form. Running requires explicit model-expense confirmation; a normal message, autocomplete selection or page reload never grants execution.
+
+The [M04 Gateway](04-jobs-and-provider-execution.md#implemented-development-gateway) owns invocation persistence, provider delivery and result state. Each invocation has nullable conversation/listing-version references, a pinned command revision, exact input, deadline and stable ID. The backend checks conversation and provider ownership before reads/writes, validates the current published version for new IDs, and recovers existing IDs without retargeting them when registration/publication changes. No credentials, task brief or conversation transcript are automatically forwarded; only confirmed form input is sent. Paid buyer execution is still disabled.
+
+`GET /v1/conversations/:id/commands` returns pinned schemas and declared bounds; `POST /v1/conversations/:id/command-invocations` creates an explicit owner-only development invocation; `GET /v1/conversations/:id/command-invocations` recovers up to 50 saved records. Frontend REST uses generated **openapi-fetch** types and React Query polling (one second for active records). Outcomes appear in a separately labelled provider command history inside the conversation viewport, with inert safe Markdown/source rendering and clear uncertainty. Reload/reconnect only reads these snapshots. These records do not mutate the normal-text AG-UI turn/message/event log or change its SSE replay/reset contract. This is not generic provider event streaming or arbitrary widget rendering.
 
 ### Verification
 

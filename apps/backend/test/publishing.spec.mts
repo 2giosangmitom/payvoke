@@ -5,7 +5,7 @@ import { ManifestSchema } from "../src/modules/publishing/http/publishing.schema
 import {
   manifestDigest,
   validateManifest,
-  type ProviderManifest,
+  type HttpProviderManifest as ProviderManifest,
 } from "../src/modules/publishing/domain/publishing.js";
 
 const sampleManifest = JSON.parse(

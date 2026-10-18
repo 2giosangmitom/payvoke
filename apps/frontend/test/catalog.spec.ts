@@ -29,4 +29,29 @@ describe("catalog presentation", () => {
       declaredPrice({ kind: "fixed", amountMinor: "999999999999999999", currency: "test-credit" }),
     ).toBe("999999999999999999 test credits");
   });
+  it("searches the pinned Gateway command projection without HTTP actions", () => {
+    const { endpoint: _endpoint, actions: _actions, ...common } = manifest;
+    const gateway: CatalogAgent = {
+      ...agent,
+      manifest: {
+        ...common,
+        schemaVersion: 2,
+        gateway: { applicationId: "application", commandRevisionId: "revision" },
+        runtime: { ...manifest.runtime, protocol: "provider-gateway-v1" },
+      },
+      commands: [
+        {
+          name: "vector-symbol",
+          description: "Create a logo",
+          inputSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+            additionalProperties: false,
+          },
+        },
+      ],
+    };
+    expect(matchesAgent(gateway, "vector-symbol", "design")).toBe(true);
+  });
 });

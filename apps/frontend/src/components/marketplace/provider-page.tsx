@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { api } from "~/lib/api";
@@ -17,6 +17,8 @@ import {
   SignInState,
   StatusBadge,
 } from "./shared";
+import { ApplicationConsole } from "./application-console";
+import { GatewayBinding } from "./gateway-binding";
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "The request failed. Please try again.";
@@ -47,7 +49,7 @@ export function ProviderPage() {
 function ProviderConsole({ accountId }: { accountId: string }) {
   const client = useQueryClient();
   const key = ["provider", accountId];
-  const { listing } = useSearch({ from: "/provider" });
+  const { listing, section } = useSearch({ from: "/provider" });
   const navigate = useNavigate({ from: "/provider" });
   const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -68,7 +70,7 @@ function ProviderConsole({ accountId }: { accountId: string }) {
   });
   const listings = useQuery({
     queryKey: [...key, "listings", offset],
-    enabled: !!profile.data,
+    enabled: !!profile.data && section === "listings",
     queryFn: async ({ signal }) => {
       const result = await api.GET("/v1/provider/listings", {
         params: { query: { offset } },
@@ -100,10 +102,14 @@ function ProviderConsole({ accountId }: { accountId: string }) {
     <div className="market-page">
       <header className="market-page-heading">
         <div>
-          <h1>Your agents</h1>
-          <p>Publish one skill. Make its boundaries clear.</p>
+          <h1>{section === "applications" ? "Your applications" : "Your agents"}</h1>
+          <p>
+            {section === "applications"
+              ? "Connect your agent and manage its commands."
+              : "Publish one skill. Make its boundaries clear."}
+          </p>
         </div>
-        {profile.data && (
+        {profile.data && section !== "applications" && (
           <Button onClick={createListing} disabled={busy}>
             <PlusIcon />
             {busy ? "Creating…" : "Create listing"}
@@ -123,116 +129,143 @@ function ProviderConsole({ accountId }: { accountId: string }) {
         <ProfileForm onSaved={() => client.invalidateQueries({ queryKey: key })} />
       ) : (
         <>
-          <Notice>
-            Review is required before publication. Publishing a catalog version does not enable
-            provider execution.
-          </Notice>
-          <div className="market-tabs market-listing-tabs">
-            <span className="market-tab market-tab--active">All listings</span>
-            <span className="market-caption ml-auto self-center">{profile.data.displayName}</span>
-          </div>
-          {listings.isPending ? (
-            <LoadingState label="Loading listings…" />
-          ) : listings.error ? (
-            <ErrorState message={listings.error.message} retry={() => void listings.refetch()} />
-          ) : !listings.data?.length ? (
-            <div className="market-state">
-              <p className="text-muted-foreground">
-                No listings yet. Create a listing, then add its first manifest.
-              </p>
-            </div>
+          <nav className="market-tabs mb-6" aria-label="Provider sections">
+            <Link
+              to="/provider"
+              search={{ section: "listings" }}
+              className={`market-tab ${section === "listings" ? "market-tab--active" : ""}`}
+            >
+              Listings
+            </Link>
+            <Link
+              to="/provider"
+              search={{ section: "applications" }}
+              className={`market-tab ${section === "applications" ? "market-tab--active" : ""}`}
+            >
+              Applications
+            </Link>
+          </nav>
+          {section === "applications" ? (
+            <ApplicationConsole accountId={accountId} />
           ) : (
             <>
-              <table className="market-listing-table">
-                <thead>
-                  <tr>
-                    <th>Agent</th>
-                    <th>Candidate</th>
-                    <th>Status</th>
-                    <th>Availability</th>
-                    <th>
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {listings.data.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="flex items-center gap-3">
-                          <AgentMark />
-                          <div>
-                            <h2>{item.name ?? "Untitled listing"}</h2>
-                            <p className="market-caption market-mono">{item.id.slice(0, 8)}</p>
-                          </div>
+              <Notice>
+                Review is required before publication. Publishing a catalog version does not enable
+                provider execution.
+              </Notice>
+              <div className="market-tabs market-listing-tabs">
+                <span className="market-tab market-tab--active">All listings</span>
+                <span className="market-caption ml-auto self-center">
+                  {profile.data.displayName}
+                </span>
+              </div>
+              {listings.isPending ? (
+                <LoadingState label="Loading listings…" />
+              ) : listings.error ? (
+                <ErrorState
+                  message={listings.error.message}
+                  retry={() => void listings.refetch()}
+                />
+              ) : !listings.data?.length ? (
+                <div className="market-state">
+                  <p className="text-muted-foreground">
+                    No listings yet. Create a listing, then add its first manifest.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <table className="market-listing-table">
+                    <thead>
+                      <tr>
+                        <th>Agent</th>
+                        <th>Candidate</th>
+                        <th>Status</th>
+                        <th>Availability</th>
+                        <th>
+                          <span className="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listings.data.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <div className="flex items-center gap-3">
+                              <AgentMark />
+                              <div>
+                                <h2>{item.name ?? "Untitled listing"}</h2>
+                                <p className="market-caption market-mono">{item.id.slice(0, 8)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="market-mono">
+                            {item.candidateVersionId?.slice(0, 8) ?? "No manifest"}
+                          </td>
+                          <td>
+                            <StatusBadge status={item.candidateState ?? "draft"} />
+                          </td>
+                          <td>
+                            {item.publishedVersionId ? (
+                              <StatusBadge status={item.paused ? "paused" : "published"} />
+                            ) : (
+                              <span className="text-muted-foreground">Not published</span>
+                            )}
+                          </td>
+                          <td>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void navigate({ search: { listing: item.id } })}
+                            >
+                              Manage
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="market-listing-cards">
+                    {listings.data.map((item) => (
+                      <article className="market-card" key={item.id}>
+                        <div className="flex items-center justify-between gap-3">
+                          <h2>{item.name ?? "Untitled listing"}</h2>
+                          <StatusBadge status={item.candidateState ?? "draft"} />
                         </div>
-                      </td>
-                      <td className="market-mono">
-                        {item.candidateVersionId?.slice(0, 8) ?? "No manifest"}
-                      </td>
-                      <td>
-                        <StatusBadge status={item.candidateState ?? "draft"} />
-                      </td>
-                      <td>
-                        {item.publishedVersionId ? (
-                          <StatusBadge status={item.paused ? "paused" : "published"} />
-                        ) : (
-                          <span className="text-muted-foreground">Not published</span>
-                        )}
-                      </td>
-                      <td>
+                        <p className="market-caption mt-2">
+                          {item.publishedVersionId
+                            ? item.paused
+                              ? "Paused"
+                              : "Published"
+                            : "Not published"}
+                        </p>
                         <Button
+                          className="mt-4"
                           variant="outline"
-                          size="sm"
                           onClick={() => void navigate({ search: { listing: item.id } })}
                         >
-                          Manage
+                          Manage version
                         </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="market-listing-cards">
-                {listings.data.map((item) => (
-                  <article className="market-card" key={item.id}>
-                    <div className="flex items-center justify-between gap-3">
-                      <h2>{item.name ?? "Untitled listing"}</h2>
-                      <StatusBadge status={item.candidateState ?? "draft"} />
-                    </div>
-                    <p className="market-caption mt-2">
-                      {item.publishedVersionId
-                        ? item.paused
-                          ? "Paused"
-                          : "Published"
-                        : "Not published"}
-                    </p>
-                    <Button
-                      className="mt-4"
-                      variant="outline"
-                      onClick={() => void navigate({ search: { listing: item.id } })}
-                    >
-                      Manage version
-                    </Button>
-                  </article>
-                ))}
-              </div>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              )}
+              <Pagination
+                offset={offset}
+                hasMore={listings.data?.length === 50}
+                onChange={setOffset}
+                label="Listing pages"
+              />
+              {listing && (
+                <ListingEditor
+                  key={listing}
+                  listingId={listing}
+                  accountId={accountId}
+                  onClose={() => void navigate({ search: {} })}
+                  onChanged={() => client.invalidateQueries({ queryKey: key })}
+                />
+              )}
             </>
-          )}
-          <Pagination
-            offset={offset}
-            hasMore={listings.data?.length === 50}
-            onChange={setOffset}
-            label="Listing pages"
-          />
-          {listing && (
-            <ListingEditor
-              key={listing}
-              listingId={listing}
-              accountId={accountId}
-              onClose={() => void navigate({ search: {} })}
-              onChanged={() => client.invalidateQueries({ queryKey: key })}
-            />
           )}
         </>
       )}
@@ -460,6 +493,12 @@ function ListingEditor({
             )}
             {isNew ? (
               <form onSubmit={save} className="market-manifest-form">
+                <GatewayBinding
+                  accountId={accountId}
+                  source={source}
+                  onChange={setSource}
+                  disabled={busy}
+                />
                 <label htmlFor="manifest-source">
                   Complete manifest JSON <span className="text-destructive">*</span>
                 </label>
@@ -478,7 +517,8 @@ function ListingEditor({
                 />
                 <p className="market-caption">
                   Use the manifest from your provider package. Never include credentials, prompts or
-                  model keys. The server validates the complete version-1 schema.
+                  model keys. The server validates HTTP v1 or Gateway v2, including ownership of the
+                  pinned command revision.
                 </p>
                 <Button type="submit" disabled={busy || !source.trim()}>
                   {busy ? "Saving…" : "Save draft"}

@@ -380,6 +380,7 @@ function SignedInWorkspace({ accountId }: { accountId: string }) {
               <ConversationThread
                 key={`${conversation.id}-${reload}`}
                 conversationId={conversation.id}
+                accountId={accountId}
                 onSnapshotReset={() => setReload((revision) => revision + 1)}
               />
             </>

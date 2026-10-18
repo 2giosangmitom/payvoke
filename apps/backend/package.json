@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
-    "test": "vitest run",
+    "test": "pnpm --filter @agentne/provider-sdk build && vitest run",
     "test:typecheck": "tsc --noEmit -p tsconfig.json",
     "publishing:review": "tsx src/modules/publishing/review.ts",
     "swagger": "pnpm build && fastify generate-swagger dist/app.js > dist/swagger.json",
@@ -26,6 +26,7 @@
     "@fastify/swagger": "^9.9.2",
     "@fastify/swagger-ui": "^6.1.2",
     "@fastify/type-provider-typebox": "^6.3.0",
+    "@fastify/websocket": "^11.3.4",
     "@mikro-orm/core": "7.2.5",
     "@mikro-orm/migrations": "7.2.5",
     "@mikro-orm/postgresql": "7.2.5",
@@ -36,11 +37,14 @@
     "dotenv": "^18.0.8",
     "fastify": "5.12.5",
     "fastify-plugin": "^5.1.0",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.2",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@agentne/provider-sdk": "workspace:*",
     "@mikro-orm/cli": "7.2.5",
     "@types/node": "^24.19.2",
+    "@types/ws": "^8.18.2",
     "fastify-cli": "^8.0.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

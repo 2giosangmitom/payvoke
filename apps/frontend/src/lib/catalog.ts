@@ -13,7 +13,7 @@ export function matchesAgent(agent: CatalogAgent, query: string, filter: string)
     agent.manifest.name,
     agent.manifest.description,
     agent.providerName,
-    ...agent.manifest.actions.flatMap((action) => [action.id, action.description]),
+    ...agentActions(agent).flatMap((action) => [action.id, action.description]),
   ]
     .join(" ")
     .toLowerCase();
@@ -21,4 +21,12 @@ export function matchesAgent(agent: CatalogAgent, query: string, filter: string)
     text.includes(query.trim().toLowerCase()) &&
     (filter !== "design" || /design|logo|illustrat/.test(text))
   );
+}
+export function agentActions(agent: CatalogAgent) {
+  return agent.manifest.schemaVersion === 1
+    ? agent.manifest.actions
+    : (agent.commands ?? []).map((command) => ({
+        id: command.name,
+        description: command.description,
+      }));
 }

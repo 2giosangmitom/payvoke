@@ -4,13 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm --filter @agentne/provider-sdk build && tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "contract:test": "tsx src/contract-test.ts"
+    "contract:test": "tsx src/contract-test.ts",
+    "gateway": "pnpm --filter @agentne/provider-sdk build && tsx src/gateway.ts"
   },
   "dependencies": {
+    "@agentne/provider-sdk": "workspace:*",
     "@mastra/core": "1.78.0",
     "dotenv": "^18.0.8",
     "fastify": "5.12.5",

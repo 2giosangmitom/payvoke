@@ -17,13 +17,15 @@ import {
   ListingParams,
   ListingView,
   OwnedListingView,
-  ManifestSchema,
+  HttpManifestSchema,
+  GatewayManifestSchema,
   Page,
   ProfileInput,
   ProfileView,
   VersionParams,
   VersionView,
 } from "./publishing.schemas.js";
+import type { SlashCommand } from "../../provider-gateway/domain/provider.js";
 
 function value<T>(result: PublishingResult<T>) {
   if (result.isErr())
@@ -66,18 +68,24 @@ function catalogView({
   listing,
   version,
   provider,
+  commands,
 }: {
   listing: AgentListing;
   version: ManifestVersion;
   provider: ProviderProfile;
+  commands?: SlashCommand[];
 }) {
-  const { endpoint: _endpoint, ...manifest } = version.manifest;
+  const manifest =
+    version.manifest.schemaVersion === 1
+      ? (({ endpoint: _endpoint, ...publicManifest }) => publicManifest)(version.manifest)
+      : version.manifest;
   return {
     id: listing.id,
     versionId: version.id,
     digest: version.digest,
     providerName: provider.displayName,
     manifest,
+    ...(commands ? { commands } : {}),
     verification: "catalog-review-only" as const,
     executionEnabled: false as const,
   };
@@ -111,8 +119,15 @@ export const publishingRoutes: FastifyPluginAsyncTypebox = async (app) => {
   );
   app.get(
     "/v1/provider-manifest-schema",
-    { schema: { response: { 200: Type.Unknown() } } },
-    async () => ManifestSchema,
+    {
+      schema: {
+        querystring: Type.Object({
+          schemaVersion: Type.Optional(Type.Integer({ minimum: 1, maximum: 2 })),
+        }),
+        response: { 200: Type.Unknown() },
+      },
+    },
+    async (req) => (req.query.schemaVersion === 2 ? GatewayManifestSchema : HttpManifestSchema),
   );
   app.get(
     "/v1/agents",

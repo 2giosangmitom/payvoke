@@ -7,6 +7,7 @@ import type {
   Review,
   OwnedListing,
 } from "../domain/publishing.js";
+import type { SlashCommand } from "../../provider-gateway/domain/provider.js";
 
 export interface PublishingRepository {
   getProfile(ownerId: string): Promise<PublishingResult<ProviderProfile>>;
@@ -43,5 +44,12 @@ export interface PublishingRepository {
   catalog(
     offset: number,
     listingId?: string,
-  ): Promise<{ listing: AgentListing; version: ManifestVersion; provider: ProviderProfile }[]>;
+  ): Promise<
+    {
+      listing: AgentListing;
+      version: ManifestVersion;
+      provider: ProviderProfile;
+      commands?: SlashCommand[];
+    }[]
+  >;
 }

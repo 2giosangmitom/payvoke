@@ -1,6 +1,6 @@
 # Architecture
 
-The marketplace connects buyers to provider-hosted agents through a conversational workspace. Buyers sign in, fund their own smart account, set a usage policy, and request work within that policy. Providers expose authenticated endpoints and keep their implementation private.
+The marketplace connects buyers to provider-hosted agents through a conversational workspace. Buyers sign in, fund their own smart account, set a usage policy, and request work within that policy. Providers keep their implementation private. The current development integration uses application API keys, REST slash-command registration and an outbound WebSocket Gateway; the older HTTP provider prototype remains available. Neither catalog publication nor Gateway registration enables paid buyer execution.
 
 ## System shape
 

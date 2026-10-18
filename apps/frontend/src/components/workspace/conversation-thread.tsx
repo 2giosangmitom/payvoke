@@ -3,16 +3,16 @@ import { HttpAgent } from "@ag-ui/client";
 import { fromAgUiMessages, useAgUiRuntime } from "@assistant-ui/react-ag-ui";
 import {
   AssistantRuntimeProvider,
-  ComposerPrimitive,
   ExportedMessageRepository,
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import { ArrowDownIcon } from "lucide-react";
 import { api, apiHost, authenticatedFetch } from "~/lib/api";
 import { createAgUiFetch } from "~/lib/ag-ui-transport";
 import { Button } from "~/components/ui/button";
 import { SafeMarkdown } from "./safe-markdown";
+import { CommandInvocationHistory, SlashComposer, useCommandInvocations } from "./slash-commands";
 
 function UserMessage() {
   return (
@@ -41,12 +41,15 @@ function AssistantMessage() {
 
 export function ConversationThread({
   conversationId,
+  accountId,
   onSnapshotReset,
 }: {
   conversationId: string;
+  accountId: string;
   onSnapshotReset: () => void;
 }) {
   const [error, setError] = useState("");
+  const commandHistory = useCommandInvocations(accountId, conversationId);
   const needsHistoryReset = useRef(false);
   const agent = useMemo(
     () =>
@@ -106,15 +109,18 @@ export function ConversationThread({
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="market-thread flex min-h-0 flex-1 flex-col">
         <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto py-4">
-          <ThreadPrimitive.Empty>
-            <div className="mx-auto flex h-full max-w-3xl items-end px-4 pb-4">
-              <p className="max-w-md text-sm leading-6 text-muted-foreground">
-                Describe your task to start a private conversation. This development workspace saves
-                messages but does not call an AI model.
-              </p>
-            </div>
-          </ThreadPrimitive.Empty>
+          {!commandHistory.data?.length && (
+            <ThreadPrimitive.Empty>
+              <div className="mx-auto flex h-full max-w-3xl items-end px-4 pb-4">
+                <p className="max-w-md text-sm leading-6 text-muted-foreground">
+                  Describe your task to start a private conversation. This development workspace
+                  saves messages but does not call an AI model.
+                </p>
+              </div>
+            </ThreadPrimitive.Empty>
+          )}
           <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+          <CommandInvocationHistory history={commandHistory} />
         </ThreadPrimitive.Viewport>
         <div className="mx-auto w-full max-w-3xl px-4 pb-4">
           {error && (
@@ -134,26 +140,9 @@ export function ConversationThread({
               </Button>
             </ThreadPrimitive.ScrollToBottom>
           </div>
-          <ComposerPrimitive.Root className="flex items-end gap-2 rounded-3xl border bg-background p-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
-            <ComposerPrimitive.Input
-              aria-label="Message"
-              placeholder="Write a message…"
-              maxLength={4000}
-              rows={1}
-              className="max-h-60 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-base outline-none"
-            />
-            <ComposerPrimitive.Send asChild>
-              <Button
-                className="size-10 rounded-2xl disabled:opacity-30"
-                size="icon"
-                aria-label="Send message"
-              >
-                <ArrowUpIcon />
-              </Button>
-            </ComposerPrimitive.Send>
-          </ComposerPrimitive.Root>
+          <SlashComposer accountId={accountId} conversationId={conversationId} />
           <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">
-            Development responder · No model calls, agent hiring, or spending.
+            Development only · Commands may incur provider model costs.
           </p>
         </div>
       </ThreadPrimitive.Root>

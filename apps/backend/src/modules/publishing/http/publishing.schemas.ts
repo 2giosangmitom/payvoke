@@ -1,10 +1,11 @@
 import { Type } from "typebox";
+import { Commands } from "../../provider-gateway/http/provider.schemas.js";
 
 const strict = { additionalProperties: false };
 const text = (maxLength: number) => Type.String({ minLength: 1, maxLength, pattern: "\\S" });
 const identifier = Type.String({ pattern: "^[a-z][a-z0-9-]{0,63}$" });
 const uuid = Type.String({ format: "uuid" });
-export const ManifestSchema = Type.Object(
+export const HttpManifestSchema = Type.Object(
   {
     schemaVersion: Type.Literal(1),
     name: text(100),
@@ -63,6 +64,29 @@ export const ManifestSchema = Type.Object(
   },
   strict,
 );
+const {
+  schemaVersion: _schemaVersion,
+  endpoint: _endpoint,
+  actions: _actions,
+  runtime: _runtime,
+  ...common
+} = HttpManifestSchema.properties;
+export const GatewayManifestSchema = Type.Object(
+  {
+    ...common,
+    schemaVersion: Type.Literal(2),
+    gateway: Type.Object({ applicationId: uuid, commandRevisionId: uuid }, strict),
+    runtime: Type.Object(
+      {
+        ...HttpManifestSchema.properties.runtime.properties,
+        protocol: Type.Literal("provider-gateway-v1"),
+      },
+      strict,
+    ),
+  },
+  strict,
+);
+export const ManifestSchema = Type.Union([HttpManifestSchema, GatewayManifestSchema]);
 export const ProfileInput = Type.Object({ displayName: text(100) }, strict);
 export const CreateListing = Type.Object({ id: uuid }, strict);
 export const CreateVersion = Type.Object({ id: uuid, manifest: ManifestSchema }, strict);
@@ -95,13 +119,14 @@ export const VersionView = Type.Object({
   createdAt: Type.String(),
 });
 export const ProfileView = Type.Object({ displayName: Type.String(), createdAt: Type.String() });
-const { endpoint: _endpoint, ...publicProperties } = ManifestSchema.properties;
+const { endpoint: _privateEndpoint, ...publicProperties } = HttpManifestSchema.properties;
 export const CatalogView = Type.Object({
   id: uuid,
   versionId: uuid,
   digest: Type.String(),
   providerName: Type.String(),
-  manifest: Type.Object(publicProperties, strict),
+  manifest: Type.Union([Type.Object(publicProperties, strict), GatewayManifestSchema]),
+  commands: Type.Optional(Commands),
   verification: Type.Literal("catalog-review-only"),
   executionEnabled: Type.Literal(false),
 });

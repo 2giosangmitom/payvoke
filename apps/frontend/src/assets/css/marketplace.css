@@ -189,7 +189,7 @@
   border-radius: 8px;
   padding-inline: 12px;
 }
-.market-shell [data-slot="button"][aria-label] {
+.market-shell [data-size^="icon"] {
   width: 36px;
   padding-inline: 0;
 }

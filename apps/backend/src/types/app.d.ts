@@ -8,6 +8,7 @@ import type { WorkspaceRepository } from "../modules/workspace/application/works
 import type { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
 import type { PublishingRepository } from "../modules/publishing/application/publishing.repository.js";
 import type { PublishingService } from "../modules/publishing/application/publishing.service.js";
+import type { ProviderService } from "../modules/provider-gateway/application/provider.service.js";
 
 // Fastify request augmentation: set by the `requireAuth` preHandler.
 declare module "fastify" {
@@ -29,5 +30,6 @@ declare module "@fastify/awilix" {
     workspaceService: WorkspaceService;
     publishing: PublishingRepository;
     publishingService: PublishingService;
+    providerService: ProviderService;
   }
 }

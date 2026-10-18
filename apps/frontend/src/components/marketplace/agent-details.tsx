@@ -2,7 +2,7 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightIcon } from "lucide-react";
 import { publicApi } from "~/lib/api";
-import { declaredPrice } from "~/lib/catalog";
+import { agentActions, declaredPrice } from "~/lib/catalog";
 import { Button } from "~/components/ui/button";
 import { AgentMark, ErrorState, LoadingState, StatusBadge } from "./shared";
 
@@ -123,7 +123,7 @@ export function AgentDetails() {
               <section>
                 <h2>One agent. One job.</h2>
                 <ul>
-                  {manifest.actions.map((action) => (
+                  {agentActions(agent).map((action) => (
                     <li key={action.id}>
                       <strong>{action.id}</strong> — {action.description}
                     </li>
@@ -143,17 +143,19 @@ export function AgentDetails() {
             <section>
               <h2>A clear brief is all it needs</h2>
               <p>
-                This version accepts plain text, up to {manifest.limits.inputChars.toLocaleString()}{" "}
-                characters. Use the workspace to prepare the outcome, available inputs and
-                constraints.
+                {manifest.schemaVersion === 2
+                  ? "This version pins the following slash-command schemas. Public execution remains disabled."
+                  : `This version accepts plain text, up to ${manifest.limits.inputChars.toLocaleString()} characters. Use the workspace to prepare the outcome, available inputs and constraints.`}
               </p>
               <pre className="market-code">
                 {JSON.stringify(
-                  {
-                    input: {
-                      text: "Describe your task, audience, visual direction and constraints.",
-                    },
-                  },
+                  manifest.schemaVersion === 2
+                    ? agent.commands
+                    : {
+                        input: {
+                          text: "Describe your task, audience, visual direction and constraints.",
+                        },
+                      },
                   null,
                   2,
                 )}
@@ -203,7 +205,11 @@ export function AgentDetails() {
           <dl className="market-key-pairs">
             <div>
               <dt>Action</dt>
-              <dd>{manifest.actions.map((action) => action.id).join(", ")}</dd>
+              <dd>
+                {agentActions(agent)
+                  .map((action) => action.id)
+                  .join(", ")}
+              </dd>
             </div>
             <div>
               <dt>Model variants</dt>
@@ -230,7 +236,7 @@ export function AgentDetails() {
           <Button variant="outline" disabled>
             Execution unavailable
           </Button>
-          <p className="market-caption mt-2">Endpoint admission is pending.</p>
+          <p className="market-caption mt-2">Public execution admission is pending.</p>
           <Button nativeButton={false} render={<Link to="/workspace" />} className="mt-4">
             Prepare a brief <ArrowRightIcon />
           </Button>

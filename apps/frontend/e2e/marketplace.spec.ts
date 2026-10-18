@@ -135,6 +135,7 @@ test("provider profile, immutable manifest draft, review gate, publish and pause
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
     expect(req.headers().authorization).toBe("Bearer browser-test-token");
     if (req.method() === "POST") writes++;
+    if (path === "/v1/provider/applications") return route.fulfill({ json: [], headers: cors });
     if (path === "/v1/provider/profile") {
       if (req.method() === "POST")
         profile = {

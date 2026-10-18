@@ -7,6 +7,7 @@ import { config as wagmiConfig } from "~/lib/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "~/assets/css/main.css";
 import "~/assets/css/marketplace.css";
+import "~/assets/css/provider-gateway.css";
 import { AppShell } from "~/components/marketplace/app-shell";
 
 export const Route = createRootRoute({

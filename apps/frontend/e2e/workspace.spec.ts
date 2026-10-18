@@ -44,6 +44,8 @@ for (const resetStream of [false, true]) {
       };
       if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
       expect(req.headers().authorization).toBe("Bearer browser-test-token");
+      if (url.pathname.endsWith("/command-invocations") || url.pathname.endsWith("/commands"))
+        return route.fulfill({ json: [], headers });
       if (url.pathname === "/v1/workspaces") {
         if (req.method() === "POST")
           workspace = {

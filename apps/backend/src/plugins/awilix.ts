@@ -11,6 +11,8 @@ import { MikroOrmWorkspaceRepository } from "../modules/workspace/infrastructure
 import { WorkspaceService } from "../modules/workspace/application/workspace.service.js";
 import { PublishingService } from "../modules/publishing/application/publishing.service.js";
 import { MikroOrmPublishingRepository } from "../modules/publishing/infrastructure/mikro-orm-publishing.repository.js";
+import { ProviderService } from "../modules/provider-gateway/application/provider.service.js";
+import { MikroOrmProviderRepository } from "../modules/provider-gateway/infrastructure/mikro-orm-provider.repository.js";
 
 export interface DiOptions {
   env: Environment;
@@ -38,6 +40,10 @@ const diPlugin: FastifyPluginAsync<DiOptions> = async (fastify, options) => {
     publishingService: asFunction(({ publishing }) => new PublishingService(publishing), {
       lifetime: Lifetime.SCOPED,
     }),
+    providerService: asFunction(
+      ({ em }) => new ProviderService(new MikroOrmProviderRepository(em)),
+      { lifetime: Lifetime.SCOPED },
+    ),
   });
 
   await fastify.register(fastifyAwilixPlugin, {
