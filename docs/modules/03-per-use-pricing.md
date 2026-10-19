@@ -1,6 +1,6 @@
 # M03 · Giá mỗi lần gọi
 
-Provider đặt giá gộp cố định bằng USDC cho mỗi chức năng. Giá lưu bằng đơn vị nhỏ nhất của USDC (6 chữ số thập phân), không dùng số thực để tính tiền. Mỗi yêu cầu mới trừ đúng giá từ PayvokeVault; nạp USDC không phải mua số lượt. Phí nền tảng khấu trừ từ phần provider được nhận, không cộng thêm vào giá buyer đã thấy. Chi phí chạy, token hay thời gian xử lý của provider không làm đổi giá đã chốt.
+Provider đặt giá gộp cố định bằng USDC cho mỗi slash command/chức năng của sản phẩm. Parameters được validate và áp default trước khi chốt quote; MVP không tăng giá ngầm theo token/parameters. Giá lưu bằng đơn vị nhỏ nhất của USDC (6 chữ số thập phân), không dùng số thực để tính tiền. Mỗi yêu cầu mới trừ đúng giá từ PayvokeVault; nạp USDC không phải mua số lượt. Phí nền tảng khấu trừ từ phần provider được nhận, không cộng thêm vào giá buyer đã thấy. Chi phí chạy, token hay thời gian xử lý của provider không làm đổi giá đã chốt. [Quote API S01](../specs/01-api-and-provider-protocol.md), [hash/điều khoản S02](../specs/02-x402-and-vault.md).
 
 Trang sản phẩm cho thấy giá USDC trên Avalanche Fuji C-Chain, đầu vào/đầu ra, hạn giao, phạm vi sửa và điều kiện hoàn. Trước khi gửi, buyer thấy giá của yêu cầu, số dư còn lại sau khi trừ và dữ liệu sẽ chia sẻ. Không chọn số lượng lượt, token hoặc blockchain.
 

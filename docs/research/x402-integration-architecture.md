@@ -2,6 +2,8 @@
 
 Ngày nghiên cứu: 19/10/2026. Trạng thái: **đề xuất để triển khai**, chưa phải phần mềm đã chạy hoặc thay đổi quyết định sản phẩm. Phạm vi: M03, M04, M06, M09, M10; không mở rộng sang nhiều chain hay thiết kế marketplace mới.
 
+**Đã cụ thể hóa sau nghiên cứu:** [S01 API/provider](../specs/01-api-and-provider-protocol.md), [S02 x402/vault](../specs/02-x402-and-vault.md), [S03 MCP](../specs/03-mcp-client.md). Khi tên route/struct hoặc lựa chọn còn để mở ở bản nghiên cứu này khác đặc tả, dùng đặc tả làm contract triển khai; nghiên cứu giữ vai trò giải thích bối cảnh/nguồn.
+
 ## 1. Kết luận kiến trúc
 
 **Chọn x402 v2 + scheme PayvokeVault riêng, thanh toán `upfront` để giữ tiền onchain, giao việc bất đồng bộ qua transactional outbox.** Dùng một codebase backend có module rõ ràng; chạy tiến trình API và tiến trình settlement worker riêng để cách ly khóa và khả năng phục hồi. PostgreSQL là kho trạng thái workflow; vault là nguồn sự thật về tiền.

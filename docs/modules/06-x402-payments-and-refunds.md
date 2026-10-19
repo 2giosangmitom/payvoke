@@ -2,6 +2,8 @@
 
 Buyer nạp USDC vào [PayvokeVault](10-payvoke-vault.md) trên Avalanche Fuji C-Chain (chain ID 43113, `eip155:43113`). **Mỗi lần gọi phải thanh toán qua x402** từ số dư đó. Buyer không phải mở ví để ký lại: khóa phiên đã được buyer cấp quyền ký chứng từ cho từng yêu cầu. Số dư là USDC có thể rút, không phải lượt sử dụng.
 
+[S02](../specs/02-x402-and-vault.md) chốt scheme/payload/EIP-712/ABI và recovery; [S01](../specs/01-api-and-provider-protocol.md) chốt quote/invocation endpoints. Invocation mới từ chat, form hay MCP đều cùng luồng này. Polling, trả lời questionId và revision đúng phạm vi không tạo khoản thu mới. Với `upfront`, facilitator `settle` phải kiểm tra đầy đủ vì core không gọi `/verify` trong luồng chuẩn.
+
 ## Thu tiền
 
 M03 chốt chức năng, giá USDC, phiên bản điều khoản và dữ liệu sẽ chia sẻ. Gateway trả HTTP `402` cùng `PAYMENT-REQUIRED` cho yêu cầu đó: giá, USDC Fuji, PayvokeVault và hạn thanh toán. Client kiểm tra báo giá rồi ký chứng từ bằng khóa phiên, gắn với ví buyer, mã yêu cầu, báo giá và thời hạn; Payvoke không giữ khóa riêng này. [Luồng HTTP x402](https://github.com/x402-foundation/x402/blob/main/specs/transports-v2/http.md).
