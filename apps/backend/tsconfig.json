@@ -1,21 +1,9 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["DOM", "ESNext"],
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "resolveJsonModule": true,
-    "sourceMap": true,
-    "newLine": "lf",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2023",
     "strict": true,
-    "noImplicitReturns": true,
-    "noUncheckedIndexedAccess": true,
-    "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": ".",
-    "types": ["node"]
-  },
-  "include": ["src", "test"]
+    "esModuleInterop": true
+  }
 }

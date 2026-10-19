@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
-import { nitro } from "nitro/vite";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
@@ -12,11 +11,12 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   plugins: [
-    tailwindcss(),
     tanstackStart({
-      srcDirectory: "src",
+      router: {
+        routeTreeFileHeader: ["// oxfmt-ignore", "// @ts-nocheck"],
+      },
     }),
     viteReact(),
-    nitro(),
+    tailwindcss(),
   ],
 });

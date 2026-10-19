@@ -1,36 +1,11 @@
-# M08 — External Client Access
+# M08 · Client bên ngoài
 
-**Status: planned, after the web vertical slice.** Exposes the same marketplace operations to authorized clients through MCP. It owns transport/grants, not a second commerce or payment engine.
+Client dùng cùng sản phẩm, số dư PayvokeVault và trạng thái với web, triển khai sau luồng web. Không có số dư riêng cho client; mỗi lần gọi vẫn có khoản trừ tiền riêng.
 
-## Features and tool surface
+Buyer đăng nhập bằng ví để cấp cho client quyền có thời hạn theo workspace và hành động: tìm sản phẩm, đọc dữ liệu, chuẩn bị lần gọi, gửi yêu cầu trả phí hoặc xem kết quả. Client không nhận khóa ví chính. Muốn trả phí, client cần khóa phiên riêng được buyer đăng ký trong PayvokeVault và quyền gửi yêu cầu trong Payvoke; cả hai đều có thể thu hồi.
 
-| Tool                                               | Effect                                                                  |
-| -------------------------------------------------- | ----------------------------------------------------------------------- |
-| `search_agents`, `get_agent`                       | Read catalog, capability and evidence data                              |
-| `create_quote`                                     | Prepare fixed terms from explicit inputs; never pay                     |
-| `create_checkout`                                  | Confirm intended order and return an expiring buyer-facing checkout URL |
-| `get_order`, `get_run`                             | Read canonical status and durable handles                               |
-| `get_artifact`                                     | Return authorized result metadata or a scoped download                  |
-| `request_cancel`, `request_repair`, `open_dispute` | Invoke the same policy-bound commands as the web                        |
+Buyer cấp hoặc thay đổi giới hạn chi onchain qua ví trên web. Sau đó client có quyền phù hợp ký chứng từ x402 bằng khóa phiên khi buyer gửi yêu cầu, không bật ví chính mỗi lần. Client phải hiện giá, input và số dư còn lại; nếu chưa có quyền chi hoặc không đủ tiền, nó đưa buyer về web để nạp tiền hoặc cập nhật giới hạn. Client x402 bên ngoài phải triển khai scheme riêng của Payvoke.
 
-No `sign_transaction`, `approve_token`, `spend_budget` or arbitrary provider-defined financial tool. The buyer reviews and signs through web/wallet checkout. Revoking client access does not reverse completed payments or remove refund rights.
+Buyer có thể chuẩn bị trên client rồi xem kết quả ở cả hai nơi. Gửi lại cùng thao tác không thu thêm tiền hoặc phát thêm event. Client có thể hiển thị tool không dùng LLM và file qua quyền tải riêng. Nếu không hỗ trợ một bước bắt buộc, client chuyển buyer về web.
 
-## Authorization
-
-Use the pinned MCP HTTP authorization specification and audience-bound access tokens. Grants are scoped to catalog, selected workspaces, order creation and permitted mutations; application access is not wallet authority. The platform owns tool names and descriptions; provider listing text is untrusted data.
-
-Client identity and buyer identity must both be validated. Never pass client tokens to providers. The redirect/checkout target is allowlisted and bound to the same order; a model cannot substitute a payee through tool arguments.
-
-## Compatibility and recovery
-
-Pin and test a named MCP client/version. Structured content has concise text fallback and durable order/run references. Large files use private download grants rather than injecting bytes into model context. Unsupported streaming or interaction features return an explicit capability error.
-
-Use the same buyer-scoped operation identity across web and MCP. Changing transports cannot create a new payment for an existing order. Optional MCP tasks or embedded UI remain deferred until cancellation, authorization and restart semantics are tested.
-
-Owned records: `ClientRegistration`, `ClientGrant`, `ClientAuditEvent`; all order/run/artifact records remain in their original modules.
-
-## Acceptance conditions
-
-Token audience and workspace restrictions are enforced; revocation takes effect on new commands/subscriptions. Tool prompt injection cannot create payment authority or alter checkout terms. Same-operation retries across channels recover one order. A checkout link opened by the wrong user cannot claim ownership.
-
-Primary protocol source: [MCP HTTP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization). The security rationale and limitations of MCPTox are evaluated in the [design evidence](../research/design-evidence.md).
+Thu hồi quyền chặn thao tác mới từ client, không xóa tin nhắn, khoản đã trả hoặc quyền hoàn. Payvoke lưu lịch sử client nào đã thao tác trên tài khoản.

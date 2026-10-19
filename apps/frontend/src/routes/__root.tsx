@@ -1,55 +1,24 @@
-import type { ReactNode } from "react";
-import { useState } from "react";
-import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { WagmiProvider } from "wagmi";
-import { config as wagmiConfig } from "~/lib/wagmi";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import "~/assets/css/main.css";
-import "~/assets/css/marketplace.css";
-import "~/assets/css/provider-gateway.css";
-import { AppShell } from "~/components/marketplace/app-shell";
+import { createRootRoute, Outlet, Scripts, HeadContent } from "@tanstack/react-router";
+import { type ReactNode } from "react";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "AgentNe",
-      },
+      { charSet: "uft-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "Payvoke" },
     ],
   }),
   component: RootComponent,
+  notFoundComponent() {
+    return <div>This page is not available</div>;
+  },
 });
 
 function RootComponent() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            retry: false,
-          },
-        },
-      }),
-  );
-
   return (
     <RootDocument>
-      <WagmiProvider config={wagmiConfig}>
-        <QueryClientProvider client={queryClient}>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-        </QueryClientProvider>
-      </WagmiProvider>
+      <Outlet />
     </RootDocument>
   );
 }
@@ -62,9 +31,6 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </head>
       <body>
         {children}
-        {import.meta.env.DEV && import.meta.env.VITE_ROUTER_DEVTOOLS === "true" && (
-          <TanStackRouterDevtools position="bottom-left" />
-        )}
         <Scripts />
       </body>
     </html>

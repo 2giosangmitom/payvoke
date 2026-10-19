@@ -4,16 +4,17 @@ packages:
 
 allowBuilds:
   esbuild: true
-  unrs-resolver: false
-  vue-demi: false
-  "@scarf/scarf": false
+permissions:
+  '@prisma/engines':
+    build: true
+  "@tanstack/react-start":
+    skills: true
+  hardhat:
+    skills: true
 
-minimumReleaseAgeExclude:
-  - typebox@1.4.2
-
-# The AG-UI adapter's generative-ui dependency needs Zod 4; its AG-UI client uses Zod 3.
-# Keep the two versions scoped instead of overriding AG-UI's validator globally.
-packageExtensions:
-  "@assistant-ui/react-ag-ui@0.0.70":
-    dependencies:
-      zod: ^4.6.7
+  prisma:
+    build: true
+skills:
+  dirs:
+    - .agents/skills
+    - .claude/skills

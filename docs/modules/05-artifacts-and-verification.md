@@ -1,51 +1,13 @@
-# M05 — Artifacts and Verification
+# M05 · Kết quả và giao hàng
 
-**Status: planned specification.** Owns output contracts, artifact revisions, technical checks, delivery evidence and acceptance records. It does not decide subjective disputes or move money.
+Provider báo xong chưa đủ để giao hàng. Payvoke phải lưu đầu ra, kiểm tra điều kiện đã công bố và bảo đảm buyer xem hoặc tải được. Kiểm tra kỹ thuật không chứng minh nội dung đúng chuyên môn.
 
-## Features
+Một yêu cầu có thể trả văn bản, dữ liệu có cấu trúc, ảnh hoặc file. Tiến độ tạm thời tách khỏi bản cuối. Mỗi lần sửa tạo phiên bản mới; bản cũ vẫn có trong lịch sử và hồ sơ tranh chấp.
 
-- Retain text, structured data and files as immutable revisions bound to order/run/attempt.
-- Issue narrowly scoped uploads; require completion, byte size and content digest before accepting an artifact.
-- Apply a versioned check profile promised in the quote.
-- Render safe previews and authorize private downloads.
-- Present delivery for buyer review, accept explicit decisions and record included-repair requests.
-- Retain evidence for refunds/disputes; export before scheduled deletion and honor documented holds.
+File phải gắn với đúng ứng dụng và yêu cầu. Payvoke kiểm tra loại, kích thước, dữ liệu nhận đủ, khả năng mở và an toàn theo chính sách. URL bất kỳ do provider gửi không tự được coi là file đã giao. Bản thiếu hoặc nguy hiểm bị từ chối/cách ly.
 
-## Initial output profiles
+Điều khoản sản phẩm quy định đầu ra và phép kiểm tra. Văn bản cần hiển thị an toàn; dữ liệu có cấu trúc phải đúng dạng; file phải đọc được. Nếu đầu ra thiếu hoặc kho file lỗi, yêu cầu chưa được đánh dấu đã giao và hạn buyer xem xét không được trôi trong lúc họ không truy cập được.
 
-| Profile    | Required checks                                                               | What is not established                  |
-| ---------- | ----------------------------------------------------------------------------- | ---------------------------------------- |
-| `text-v1`  | Non-empty bounded UTF-8, safe rendering, declared sections if applicable      | Truth, originality or domain correctness |
-| `json-v1`  | Pinned JSON Schema, size/depth bounds, required fields                        | Semantic correctness of values           |
-| `file-v1`  | Complete bytes, digest, allowlisted media type, scan result and safe download | Fitness for buyer purpose                |
-| `image-v1` | File checks plus decode, dimensions and safe raster preview                   | Trademark rights or aesthetic quality    |
+Khi giao, M05 ghi phiên bản và thời điểm; buyer có thể chấp nhận, yêu cầu sửa trong phạm vi đã trả tiền hoặc mở tranh chấp. Hết hạn xem xét chỉ được coi là hoàn tất theo điều khoản đã công bố, khác với việc buyer chủ động chấp nhận. Sửa vượt phạm vi cần lần gọi mới.
 
-Domain-specific profiles such as web builds, SVG validation or research citations require separate specifications and fixtures before admission. No arbitrary code runs in the main application to verify an output. PDF/HTML/SVG need isolated handling; never trust extensions or provider MIME declarations.
-
-## Pipeline and state
-
-`uploading → stored → checking → verified | rejected | quarantined → delivered → accepted | review_expired | disputed`.
-
-These are artifact/delivery states, not payment states. A provider terminal frame starts checks. Streaming text remains provisional and may differ from the retained final revision; clearly identify the final deliverable. A failed check never produces a verified badge or starts the review clock.
-
-Delivery requires complete retained output, passed mandatory checks and an authorized buyer access path. Persist `deliveredAt`, the immutable revision, check report and notification outbox together. Notification failure retries delivery notification, not agent execution. The review deadline is derived from `deliveredAt`; material access outages pause the application review deadline and hold payouts under an audited policy.
-
-Owned records: `Artifact`, `ArtifactRevision`, `UploadGrant`, `VerificationProfile`, `CheckResult`, `DeliveryRecord`, `AcceptanceRecord`, `RetentionHold`. Input attachments remain M02-owned.
-
-## Interfaces and rights
-
-Proposed commands: `createUploadGrant`, `finalizeUpload`, `verifyResult`, `deliverResult`, `acceptDelivery`, `requestRepair`, `getDownloadGrant`, `exportOrder`. Buyer routes include `/v1/orders/:id/artifacts`, `/v1/orders/:id/acceptance` and `/v1/artifacts/:id/download`.
-
-Upload grants bind application/attempt, storage key, permitted size/type and expiry; provider-supplied remote URLs are not automatically fetched. Downloads require current ownership/entitlement; short-lived links are bearer capabilities and must not enter public logs.
-
-Payment creates the right to inspect delivered work. Refunding may stop future service but cannot retract a downloaded file. Artifact/license terms state post-refund rights explicitly; do not imply technical revocation can undo possession.
-
-## Repairs and retention
-
-A repair creates a new immutable revision and a bounded M04 run; preserve the earlier result and buyer feedback. New-scope work belongs to a revision order. Repeated repair requests cannot reset policy clocks without explicit recorded agreement.
-
-Proposed baseline: at least 90 days downloadable after closure, longer for active disputes, with retention costs included in pricing. Define deletion jobs, orphan upload cleanup, backup retention and legal/privacy exceptions before production. A deletion request must disclose any active evidence hold.
-
-## Acceptance conditions
-
-Cross-order artifact grants fail; partial/mutated uploads never verify. Unsafe previews cannot execute active content. A provider success frame cannot create delivery. Access outage and failed notification do not silently forfeit review rights. Revisions, check evidence and refund cases remain traceable after repair or rollback.
+Quyền tải kiểm tra người xem ở mỗi lần truy cập. Link tạm thời không đưa lên trang công khai hoặc nhật ký phân tích. File được giữ theo thời hạn đã hứa; tranh chấp có thể tạm ngăn xóa.

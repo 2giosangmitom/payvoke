@@ -1,42 +1,9 @@
-# M07 — Provider Publishing
+# M07 · Đăng bán
 
-**Status: planned specification.** Owns the discoverable product, manifest versions, admission evidence and rollout. M04 owns executable application credentials and runtime assignments.
+Provider đăng nhập bằng ví, tạo hồ sơ và ứng dụng nhận event, rồi khai báo chức năng trên web. Không có manifest. Mỗi sản phẩm nêu công việc, dạng input/output, giới hạn, thời gian giao, dữ liệu xử lý, tác động bên ngoài và cách buyer nhận kết quả.
 
-## Features
+Provider đặt giá gộp cố định bằng USDC cho từng chức năng hoặc biến thể trên Avalanche Fuji C-Chain. Phí nền tảng được trừ từ doanh thu provider sau hoàn tiền; màn hình đăng bán cho provider thấy tỷ lệ phí và số thực nhận dự kiến. Trang sản phẩm hiện giá buyer trả mỗi lần gọi, điều khoản giao/sửa/hoàn, ví dụ kết quả và trạng thái online/offline. Provider không chọn token/chain khác hoặc đổi giá sau khi buyer gửi yêu cầu. Công cụ không dùng LLM vẫn có thể hiển thị trong chat hoặc form riêng.
 
-| Feature          | Planned behavior                                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| Provider profile | Public name, bio, avatar, website and verified operational contact                                          |
-| Listing editor   | Name, summary, category, cover, examples, capability presentation and disclosures                           |
-| Catalog          | Search/filter by task, supported input/output, fixed price, availability and evidence level                 |
-| Saved agents     | Buyer stars visible listings; unavailable versions remain labelled rather than secretly substituted         |
-| Manifest builder | Bind registered capability revisions, variants, price and policy profiles                                   |
-| Admission        | Review declarations, prove integration control, test runtime and assess commercial readiness                |
-| Publication      | Publish one approved immutable version; pause, deprecate or redirect new orders to another approved version |
-| Diagnostics      | Explain failed checks and distinguish schema, runtime, quality and operational evidence                     |
+Provider được thử tin nhắn, file, input có cấu trúc, mất kết nối và event phát lại trước khi xin đăng bán. Màn hình thử báo nếu việc đó có thể tốn phí vận hành của provider. Operator xem khai báo, điều khoản, quyền dữ liệu và kết quả thử; quyết định duyệt ghi rõ phiên bản, lý do và phạm vi đã kiểm tra. Kết nối thành công không chứng minh chất lượng kết quả.
 
-## Manifest and evidence
-
-The [capability specification](../protocols/agent-capabilities.md) defines machine-readable declarations. Public marketing copy is edited through the console, not inferred from code or command help. A changed schema, handler revision, price or policy creates a new manifest version and digest.
-
-Owns `ProviderProfile`, `Listing`, `ManifestVersion`, `AdmissionCheck`, `ReviewDecision`, `PublicationPointer`, `SavedListing`. A reviewer approves the exact digest; publishing after any material change requires a new decision.
-
-Evidence levels are separate facts: `declaration-reviewed`, `runtime-tested`, `output-profile-tested`, `commercially-enabled`. Show tested version/date/sample count and limitations. “Verified agent” without scope is not a supported label.
-
-## Onboarding and rollout
-
-1. Create profile/application; issue a scoped server-side key.
-2. Register capability schemas and handler revisions; connect SDK Gateway listener.
-3. Run owner-only contract fixtures and realistic sample tasks, with explicit provider model-cost consent.
-4. Edit listing, select registered revisions, declare constraints/pricing/privacy and generate manifest candidate.
-5. Operator verifies application control, schemas, recovery, capacity, cancellation, output checks and required policy disclosures.
-6. Publish only after the release gates applicable to that offering pass. Catalog visibility can precede purchase enablement but must label that difference.
-7. Rollout pins new purchases to the newly approved version. Existing work keeps its original version; retain compatible provider handlers until all such work closes.
-
-Pause stops new quotes/payment-ticket issuance and new dispatch as policy requires. Already issued on-chain tickets remain valid until expiry unless explicitly invalidated through the router's supported mechanism. A paid order discovered after pause needs recovery/refund, not deletion. Emergency credential revocation and safety incidents can stop existing work with a visible resolution obligation.
-
-## Interfaces and acceptance
-
-Proposed routes: public `/v1/agents`, `/v1/agents/:id`; provider `/v1/provider/listings`, `/versions`, `/submit`, `/publish`, `/pause`; operator `/v1/operator/manifest-reviews`.
-
-Accept only schemas within platform complexity bounds; reject undeclared actions and hidden pricing changes. Re-running admission cannot overwrite previous evidence. Rollback affects future selection without rewriting orders. Marketing examples disclose whether synthetic, provider-uploaded or buyer-authorized. Public media cannot expose private conversation files.
+Chỉ phiên bản được duyệt và còn hiệu lực mới được tạo thanh toán mới. Đổi giá hoặc lời hứa đầu ra tạo phiên bản mới; lần gọi đã trả giữ bản cũ. Tạm dừng bán không xóa nghĩa vụ giao hoặc hoàn cho các yêu cầu đang mở.

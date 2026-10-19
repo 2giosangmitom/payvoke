@@ -1,19 +1,21 @@
 {
-  "name": "AgentNe",
+  "name": "payvoke",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
+  },
   "devDependencies": {
-    "openapi-typescript": "^7.13.0",
     "oxfmt": "^0.73.0",
-    "oxlint": "^1.88.0",
-    "typescript": "^5.9.0"
+    "oxlint": "^1.88.0"
   },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "12.11.2",
-      "onFail": "download"
+      "version": "^12",
+      "onFail": "warn"
     }
-  },
-  "packageManager": "pnpm@12.11.2"
+  }
 }

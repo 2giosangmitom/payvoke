@@ -1,5 +1,0 @@
-dist/
-.env
-data/
-*.sqlite
-*.sqlite-journal

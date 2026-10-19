@@ -1,40 +1,19 @@
-# M01 — Identity and Access
+# M01 · Danh tính và quyền truy cập
 
-**Status: planned specification.** Owns application users, authorization and wallet ownership bindings. Authentication never grants permission to pay.
+Một ví đã xác minh tương ứng một tài khoản. Tài khoản có thể vừa mua vừa bán; quyền operator được cấp riêng.
 
-## Features
+## Đăng nhập
 
-| Feature              | Behavior                                                                                                                          |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Sign-in and sessions | Supabase-managed email and supported wallet sign-in; session refresh, logout and reauthentication                                 |
-| Profile              | Display name/avatar, preferences and account status                                                                               |
-| Roles                | Buyer/provider are normal user capabilities; catalog reviewer, support, dispute approver and finance roles are separately granted |
-| Wallet binding       | Challenge binds user, address, chain, nonce, audience and expiry; verify current ownership before recording                       |
-| Access enforcement   | Check owner and account status on every command, read, file grant and subscription                                                |
-| Account recovery     | Recover application login through supported identity flows; no implicit wallet transfer or duplicate-account merge                |
-| Security history     | Record sensitive role, wallet and session-management actions with restricted audit access                                         |
+Người dùng kết nối ví trên Avalanche Fuji C-Chain và ký yêu cầu đăng nhập có thời hạn, dùng một lần, gắn với Payvoke và Fuji. Chữ ký này chỉ tạo phiên đăng nhập; quyền chi từ PayvokeVault là bước riêng. Buyer dùng ví đăng ký khóa phiên với hạn mức, thời hạn và quyền thu hồi; khóa phiên tạo chứng từ x402 khi buyer gửi yêu cầu mà không bật ví lần nữa. Ví ở mạng khác phải chuyển sang Fuji trước khi đăng nhập hoặc nạp tiền.
 
-One user owns a workspace. A provider application has one provider owner initially; organization roles are deferred. A public profile is separate from legal/commercial seller verification.
+Không có email, mật khẩu hay đăng nhập mạng xã hội. Đổi ví là đổi tài khoản: lịch sử, sản phẩm và quyền operator không tự chuyển. Phiên hết hạn thì ký lại bằng ví cũ.
 
-## Owned records and interfaces
+Số dư và quyền chi gắn với ví đăng nhập. Đổi ví hoặc thiết bị trước khi gửi yêu cầu thì buyer phải dùng đúng khóa phiên đã cấp hoặc tạo khóa mới bằng ví của mình. Lần gọi đã trả, quyền xem kết quả và tranh chấp vẫn thuộc ví cũ; tiền hoàn về số dư của ví đó trong PayvokeVault.
 
-Owns `UserProfile`, `RoleGrant`, `WalletBinding`, `WalletChallenge` and sensitive-access audit references. Supabase owns authentication sessions; M01 does not invent a second session issuer.
+## Phân quyền
 
-Proposed commands: `getMe`, `updateProfile`, `createWalletChallenge`, `verifyWalletChallenge`, `removeWalletBinding`, `suspendAccount`, `grantRole`, `revokeRole`. HTTP adapters use `/v1/me`, `/v1/me/wallet-challenges`, `/v1/me/wallets` and protected operator routes. Signature formats and supported wallet types must be pinned and tested before release.
+Buyer chỉ xem workspace, tin nhắn và file của mình. Provider chỉ nhận dữ liệu buyer chọn gửi. API key của provider cho phép kết nối, không thay phiên đăng nhập ví.
 
-A quote names one payer wallet. Changing the connected wallet invalidates checkout preparation and requires re-binding the quote. Existing payment/refund history retains the original payer. Removing a wallet binding does not redirect refunds; losing wallet keys cannot be repaired by changing an application profile.
+Operator cũng đăng nhập bằng ví. Quyền xét duyệt, hỗ trợ, tranh chấp và tài chính được cấp, thu hồi và ghi lịch sử riêng. Tài khoản bị khóa không tạo giao dịch mới nhưng vẫn cần lối hỗ trợ cho khoản đã trả.
 
-## Authorization and failure behavior
-
-Expired sessions stop protected commands and live streams, while re-login restores the same operation. Suspension blocks new work; provide a separately authorized support/export/refund route rather than confiscating already owed funds. Browser logout does not revoke provider API keys or external client grants; each has explicit management.
-
-Wallet challenges are single-use, bounded and replay-protected. Signing an ownership challenge is not signing a payment ticket. Address case, chain mismatch, expired challenges and contract-wallet verification require deterministic handling. Never merge two application IDs because a model or email field suggests they belong together.
-
-## Acceptance conditions
-
-- Cross-owner reads, writes, streams and file grants fail; operator permissions are least-privilege and audited.
-- Stolen/expired challenges cannot bind another user or another chain; exact retries recover a completed binding safely.
-- Switching wallet during checkout cannot pay a quote bound to another payer.
-- Profile or role edits cannot modify paid order ownership, refund destination or provider payout history.
-
-Dependencies: M02/M07 resource ownership; M06 payment bindings; M08 external grants. Authentication provider details belong in deployment documentation, not business policy.
+Mất ví không đủ căn cứ để chuyển tài khoản sang ví mới. Phải chốt chính sách xử lý trước khi bật thanh toán.
