@@ -19,11 +19,15 @@ Ba đặc tả này cụ thể hóa M01–M10, chưa phải bằng chứng đã 
 
 ## Bắt đầu implementation theo thứ tự
 
-1. Common schemas/digest fixtures, data model và policy validation; [fixture máy đọc](fixtures/x402-v1.json).
-2. Vault local tests và x402 adapters; buyer/provider auth và command registration có thể làm song song sau khi chốt schemas.
-3. Một vertical slice: product/command → agent chat hoặc tool form → quote → hold → SSE → result.
-4. Reconciliation/fault injection và Fuji smoke test.
-5. MCP local nối vào cùng vertical slice; protocol tests với host/SDK đúng revision.
+Chi tiết task/dependency/acceptance: [Roadmap 130 task](../roadmap.md). Ưu tiên backend và tiền trước UI:
+
+1. Môi trường, common schemas/digest fixtures và policy validation; [fixture máy đọc](fixtures/x402-v1.json).
+2. Vault local, invariant/negative tests và ABI/deployment artifacts.
+3. Backend identity/catalog/command/session, quote, x402 adapters, settlement worker và recovery.
+4. Provider SSE/ACK/report, result/continuation/file, finance; headless E2E và Fuji gate **trước frontend**.
+5. Frontend nối API thật: agent chat/slash commands, tool form không composer, quyền chi và thao tác tài chính.
+6. MCP local nối cùng buyer API và x402, pairing/approval/recovery và protocol tests với host đúng revision.
+7. Security/CI/load/restore/runbooks, staging và phát hành Fuji; không tự triển khai mainnet.
 
 ## Những gì vẫn phải duyệt trước khi bật giao dịch
 

@@ -6,6 +6,8 @@ Payvoke kết nối buyer với provider tự vận hành agent hoặc công c�
 
 Trang này là tổng quan chức năng, không phải bằng chứng đã triển khai. [Đặc tả triển khai](specs/README.md) chốt API/provider event, scheme x402/vault và MCP; [GLOSSARY](../GLOSSARY.md) thống nhất thuật ngữ.
 
+[Roadmap từ đầu đến cuối](roadmap.md) chia thành 130 task trong 10 giai đoạn. Gate backend-ready yêu cầu luồng headless, recovery và tài chính trên Fuji được kiểm chứng trước khi làm frontend.
+
 ## Luồng chính
 
 1. Provider kết nối SSE bằng API key, đăng ký slash commands và schema parameters qua web/API; chỉ bản được duyệt được bán với giá USDC cố định mỗi lần gọi.

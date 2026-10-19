@@ -6,3 +6,2053 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// S01: API/provider; S02: x402/vault; S03: local MCP buyer client.
+// Opaque IDs remain case-sensitive text. EVM addresses must be normalized to
+// lowercase at the application boundary; hashes are full-width lowercase hex.
+// Decimal(78, 0) stores atomic uint256 amounts, never floating-point USDC.
+// Nonnegative/uint256 bounds, immutable published snapshots, state transitions,
+// actor XOR rules and signature checks require transactional application logic
+// and, when migrations are introduced, appropriate SQL CHECKs/triggers.
+// Chain projections are not an independent source of spendable credit.
+// No buyer private keys, plaintext bearer/API tokens, or local MCP approvals
+// are stored here. Encrypted authorization payloads require external key management.
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum OperatorRole {
+  ADMIN
+  PRODUCT_REVIEWER
+  SUPPORT
+  DISPUTE_RESOLVER
+  REFUND_APPROVER
+  RELEASE_APPROVER
+  FINANCE_EXECUTOR
+  PAUSER
+}
+
+enum ActorKind {
+  ACCOUNT
+  PROVIDER_API_KEY
+  CLIENT_AUTHORIZATION
+  SYSTEM
+}
+
+enum ClientScope {
+  CATALOG_READ        @map("catalog:read")
+  WORKSPACE_READ      @map("workspace:read")
+  INVOCATION_PREPARE  @map("invocation:prepare")
+  INVOCATION_SUBMIT   @map("invocation:submit")
+  INVOCATION_READ     @map("invocation:read")
+  INVOCATION_CONTINUE @map("invocation:continue")
+}
+
+enum ProviderKeyScope {
+  PRODUCTS_WRITE @map("products:write")
+  EVENTS_READ    @map("events:read")
+  EVENTS_ACK     @map("events:ack")
+  REPORTS_WRITE  @map("reports:write")
+  FILES_WRITE    @map("files:write")
+}
+
+enum PairingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CONSUMED
+  EXPIRED
+}
+
+enum ClientAuthorizationStatus {
+  APPROVED
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum ProviderAppStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum ProductKind {
+  AGENT
+  TOOL
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum ProductVersionStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  RETIRED
+}
+
+enum ReviewDecision {
+  APPROVE
+  REJECT
+}
+
+enum MessageRole {
+  BUYER
+  PROVIDER
+  SYSTEM
+}
+
+enum PaymentStatus {
+  UNPAID
+  AUTHORIZED
+  SUBMITTING
+  PENDING
+  UNKNOWN
+  HELD
+  PARTIALLY_REFUNDED
+  REFUNDED
+  RELEASED
+  RECLAIMED
+  FAILED
+}
+
+enum ExecutionStatus {
+  DRAFT
+  PAYMENT_PENDING
+  QUEUED
+  SENT
+  ACKED
+  RUNNING
+  WAITING_BUYER
+  VERIFYING
+  DELIVERED
+  FAILED
+  UNKNOWN
+  CANCELLED
+}
+
+enum PaymentAttemptStatus {
+  QUEUED
+  VERIFYING
+  SUBMITTING
+  PENDING
+  UNKNOWN
+  CONFIRMED
+  FAILED
+}
+
+enum ChainOperationKind {
+  RESERVE_HOLD
+  APPLY_DECISION
+}
+
+enum ChainOperationStatus {
+  QUEUED
+  LEASED
+  SIGNED
+  SUBMITTED
+  PENDING
+  UNKNOWN
+  CONFIRMED
+  FAILED
+}
+
+enum ChainTransactionStatus {
+  SIGNED
+  SUBMITTED
+  INCLUDED
+  CONFIRMED
+  REVERTED
+  REPLACED
+  DROPPED
+  UNKNOWN
+}
+
+enum VaultHoldStatus {
+  HELD
+  DISPUTED
+  PARTIALLY_REFUNDED
+  REFUNDED
+  RELEASED
+  RECLAIMED
+}
+
+enum ChainSyncStream {
+  VAULT_EVENTS
+  BALANCE_RECONCILIATION
+}
+
+enum OutboxEventKind {
+  INVOCATION_READY              @map("invocation.ready")
+  INVOCATION_ANSWER             @map("invocation.answer")
+  INVOCATION_REVISION_REQUESTED @map("invocation.revision_requested")
+  INVOCATION_CANCEL_REQUESTED   @map("invocation.cancel_requested")
+}
+
+enum OutboxEventStatus {
+  PENDING
+  LEASED
+  SENT
+  ACKNOWLEDGED
+  QUARANTINED
+}
+
+enum DeliveryAttemptStatus {
+  STARTED
+  SENT
+  FAILED
+  UNKNOWN
+}
+
+enum ProviderReportKind {
+  STARTED
+  PROGRESS
+  QUESTION
+  RESULT
+  FAILED
+  UNKNOWN
+  CANCELLED
+}
+
+enum ProviderReportStatus {
+  RECEIVED
+  APPLIED
+  REJECTED
+}
+
+enum SideEffectStatus {
+  NONE
+  COMPLETED
+  UNKNOWN
+}
+
+enum QuestionStatus {
+  OPEN
+  ANSWERED
+  EXPIRED
+  CANCELLED
+}
+
+enum RevisionStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+}
+
+enum CancellationStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  UNKNOWN
+}
+
+enum ArtifactStatus {
+  RECEIVED
+  VERIFYING
+  DELIVERED
+  REJECTED
+  UNAVAILABLE
+}
+
+enum ArtifactCheckKind {
+  OUTPUT_SCHEMA
+  FILE_INTEGRITY
+  FILE_SAFETY
+  ACCESSIBILITY
+  MANUAL
+}
+
+enum CheckStatus {
+  PENDING
+  RUNNING
+  PASSED
+  FAILED
+  UNKNOWN
+}
+
+enum FilePurpose {
+  BUYER_INPUT
+  PROVIDER_ARTIFACT
+  DISPUTE_EVIDENCE
+}
+
+enum FileStatus {
+  AWAITING_UPLOAD
+  UPLOADED
+  PROCESSING
+  READY
+  QUARANTINED
+  REJECTED
+  DELETION_PENDING
+  DELETED
+  EXPIRED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum DisputeChainStatus {
+  NOT_SUBMITTED
+  PENDING
+  CONFIRMED
+  FAILED
+  UNKNOWN
+}
+
+enum DisputeEntryVisibility {
+  PARTICIPANTS
+  OPERATORS_ONLY
+}
+
+enum FinancialDecisionStatus {
+  DRAFT
+  APPROVED
+  EXECUTING
+  PENDING
+  EXECUTED
+  REJECTED
+  FAILED
+  UNKNOWN
+  EXPIRED
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// Identity, web sessions, operator access and external client authorization.
+
+model Account {
+  id            String        @id @default(uuid())
+  walletAddress String        @unique @db.Char(42)
+  status        AccountStatus @default(ACTIVE)
+  displayName   String?       @db.VarChar(120)
+  bio           String?       @db.Text
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  suspendedAt   DateTime?     @db.Timestamptz(3)
+
+  webSessions           WebSession[]
+  operatorRoles         OperatorRoleAssignment[]   @relation("AssignedOperator")
+  rolesGranted          OperatorRoleAssignment[]   @relation("OperatorGrantedBy")
+  rolesRevoked          OperatorRoleAssignment[]   @relation("OperatorRevokedBy")
+  approvedPairings      ClientPairing[]
+  clientAuthorizations  ClientAuthorization[]      @relation("ClientOwner")
+  revokedAuthorizations ClientAuthorization[]      @relation("ClientRevokedBy")
+  providerApps          ProviderApp[]
+  providerKeysCreated   ProviderApiKey[]           @relation("ProviderKeyCreatedBy")
+  providerKeysRevoked   ProviderApiKey[]           @relation("ProviderKeyRevokedBy")
+  productSubmissions    ProductVersionSubmission[]
+  productReviews        ProductVersionReview[]
+  workspaces            Workspace[]
+  briefVersions         WorkspaceBriefVersion[]
+  usageSessions         UsageSession[]
+  messages              Message[]
+  invocations           Invocation[]
+  quotes                Quote[]
+  answers               InvocationAnswer[]
+  revisions             InvocationRevision[]
+  cancellations         InvocationCancellation[]
+  acceptances           InvocationAcceptance[]
+  files                 FileAsset[]
+  disputesOpened        Dispute[]                  @relation("DisputeOpenedBy")
+  disputesAssigned      Dispute[]                  @relation("DisputeAssignedTo")
+  disputeEntries        DisputeEntry[]
+  decisionsCreated      FinancialDecision[]        @relation("DecisionCreatedBy")
+  decisionsApproved     FinancialDecision[]        @relation("DecisionApprovedBy")
+  policiesApproved      DeploymentPolicy[]
+  reviewInterruptions   ReviewInterruption[]
+  artifactChecks        ArtifactCheck[]
+  ratings               ProductRating[]
+  auditEntries          AuditLog[]
+
+  @@unique([id, walletAddress])
+  @@map("accounts")
+}
+
+model OperatorRoleAssignment {
+  id          String       @id @default(uuid())
+  accountId   String
+  role        OperatorRole
+  grantedById String?
+  revokedById String?
+  grantedAt   DateTime     @default(now()) @db.Timestamptz(3)
+  revokedAt   DateTime?    @db.Timestamptz(3)
+  reason      String       @db.Text
+
+  account   Account  @relation("AssignedOperator", fields: [accountId], references: [id], onDelete: Restrict)
+  grantedBy Account? @relation("OperatorGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  revokedBy Account? @relation("OperatorRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, role])
+  @@index([role, revokedAt])
+  @@index([grantedById])
+  @@index([revokedById])
+  @@map("operator_role_assignments")
+}
+
+model LoginChallenge {
+  id             String    @id @default(uuid())
+  walletAddress  String    @db.Char(42)
+  chainId        Int       @default(43113)
+  nonceHash      String    @unique @db.Char(64)
+  domain         String    @db.VarChar(253)
+  uri            String    @db.Text
+  message        String    @db.Text
+  issuedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime  @db.Timestamptz(3)
+  consumedAt     DateTime? @db.Timestamptz(3)
+  failedAttempts Int       @default(0)
+
+  @@index([walletAddress, issuedAt])
+  @@index([expiresAt])
+  @@map("login_challenges")
+}
+
+model WebSession {
+  id            String    @id @default(uuid())
+  accountId     String
+  tokenHash     String    @unique @db.Char(64)
+  csrfTokenHash String?   @db.Char(64)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime  @db.Timestamptz(3)
+  lastUsedAt    DateTime? @db.Timestamptz(3)
+  revokedAt     DateTime? @db.Timestamptz(3)
+  userAgent     String?   @db.VarChar(512)
+  ipHash        String?   @db.Char(64)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("web_sessions")
+}
+
+model ClientPairing {
+  id                    String        @id @default(uuid())
+  clientName            String        @db.VarChar(120)
+  verifierChallenge     String        @db.VarChar(43)
+  challengeMethod       String        @default("S256") @db.VarChar(8)
+  // Clear the lookup hash after consumption/expiry; do not retain a raw code.
+  userCodeHash          String?       @unique @db.Char(64)
+  requestedScopes       ClientScope[]
+  requestedWorkspaceIds String[]
+  spendSigner           String?       @db.Char(42)
+  status                PairingStatus @default(PENDING)
+  ownerId               String?
+  failedAttempts        Int           @default(0)
+  pollIntervalMs        Int
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  expiresAt             DateTime      @db.Timestamptz(3)
+  approvedAt            DateTime?     @db.Timestamptz(3)
+  rejectedAt            DateTime?     @db.Timestamptz(3)
+  exchangedAt           DateTime?     @db.Timestamptz(3)
+
+  owner         Account?             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  authorization ClientAuthorization?
+
+  @@index([status, expiresAt])
+  @@index([ownerId, createdAt])
+  @@map("client_pairings")
+}
+
+model ClientAuthorization {
+  id               String                    @id @default(uuid())
+  pairingId        String                    @unique
+  ownerId          String
+  clientName       String                    @db.VarChar(120)
+  audience         String                    @db.VarChar(253)
+  scopes           ClientScope[]
+  spendSigner      String?                   @db.Char(42)
+  status           ClientAuthorizationStatus @default(APPROVED)
+  accessTokenHash  String?                   @unique @db.Char(64)
+  revokedById      String?
+  revocationReason String?                   @db.Text
+  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
+  expiresAt        DateTime                  @db.Timestamptz(3)
+  tokenIssuedAt    DateTime?                 @db.Timestamptz(3)
+  lastUsedAt       DateTime?                 @db.Timestamptz(3)
+  revokedAt        DateTime?                 @db.Timestamptz(3)
+
+  pairing      ClientPairing           @relation(fields: [pairingId], references: [id], onDelete: Restrict)
+  owner        Account                 @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  revokedBy    Account?                @relation("ClientRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  workspaces   ClientWorkspaceAccess[]
+  invocations  Invocation[]
+  auditEntries AuditLog[]
+
+  @@unique([id, ownerId])
+  @@index([ownerId, status, createdAt])
+  @@index([expiresAt])
+  @@index([revokedById])
+  @@map("client_authorizations")
+}
+
+model ClientWorkspaceAccess {
+  clientAuthorizationId String
+  workspaceId           String
+  ownerId               String
+  grantedAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  authorization ClientAuthorization @relation(fields: [clientAuthorizationId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  workspace     Workspace           @relation(fields: [workspaceId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([clientAuthorizationId, workspaceId])
+  @@index([workspaceId, ownerId])
+  @@map("client_workspace_access")
+}
+
+// Provider identity, immutable catalog versions and registered slash commands.
+
+model ProviderApp {
+  id               String            @id @default(uuid())
+  ownerId          String
+  name             String            @db.VarChar(120)
+  description      String?           @db.Text
+  payoutAddress    String            @db.Char(42)
+  status           ProviderAppStatus @default(ACTIVE)
+  clientRequestId  String            @db.VarChar(128)
+  lastHeartbeatAt  DateTime?         @db.Timestamptz(3)
+  suspendedAt      DateTime?         @db.Timestamptz(3)
+  suspensionReason String?           @db.Text
+  archivedAt       DateTime?         @db.Timestamptz(3)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+
+  owner          Account              @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  keys           ProviderApiKey[]
+  products       Product[]
+  usageSessions  UsageSession[]
+  connections    ProviderConnection[]
+  streamLease    ProviderStreamLease?
+  messages       Message[]
+  invocations    Invocation[]
+  reports        ProviderReport[]
+  outboxEvents   OutboxEvent[]
+  files          FileAsset[]
+  disputeEntries DisputeEntry[]
+
+  @@unique([id, ownerId])
+  @@unique([ownerId, clientRequestId])
+  @@index([status, lastHeartbeatAt])
+  @@map("provider_apps")
+}
+
+model ProviderApiKey {
+  id          String             @id @default(uuid())
+  appId       String
+  prefix      String             @db.VarChar(32)
+  secretHash  String             @unique @db.Char(64)
+  scopes      ProviderKeyScope[]
+  createdById String
+  revokedById String?
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime           @db.Timestamptz(3)
+  lastUsedAt  DateTime?          @db.Timestamptz(3)
+  revokedAt   DateTime?          @db.Timestamptz(3)
+
+  app            ProviderApp            @relation(fields: [appId], references: [id], onDelete: Restrict)
+  createdBy      Account                @relation("ProviderKeyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy      Account?               @relation("ProviderKeyRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  connections    ProviderConnection[]
+  reports        ProviderReport[]
+  receipts       ProviderEventReceipt[]
+  disputeEntries DisputeEntry[]
+  auditEntries   AuditLog[]
+
+  @@unique([id, appId])
+  @@index([appId, revokedAt, expiresAt])
+  @@index([createdById])
+  @@index([revokedById])
+  @@map("provider_api_keys")
+}
+
+model Product {
+  id               String        @id @default(uuid())
+  providerAppId    String
+  kind             ProductKind
+  name             String        @db.VarChar(160)
+  description      String        @db.Text
+  status           ProductStatus @default(DRAFT)
+  activeVersionId  String?
+  suspendedAt      DateTime?     @db.Timestamptz(3)
+  suspensionReason String?       @db.Text
+  archivedAt       DateTime?     @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+
+  providerApp   ProviderApp      @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  versions      ProductVersion[] @relation("ProductVersions")
+  // The composite FK prevents activating another product's version.
+  activeVersion ProductVersion?  @relation("ActiveProductVersion", fields: [activeVersionId, id], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
+  commands      Command[]
+  usageSessions UsageSession[]
+
+  @@unique([id, providerAppId, kind])
+  @@index([providerAppId, status])
+  @@index([status, kind, createdAt])
+  @@index([activeVersionId, id])
+  @@map("products")
+}
+
+model ProductVersion {
+  id                String               @id @default(uuid())
+  productId         String
+  number            Int
+  revision          Int                  @default(1)
+  status            ProductVersionStatus @default(DRAFT)
+  name              String               @db.VarChar(160)
+  description       String               @db.Text
+  payoutAddress     String               @db.Char(42)
+  defaultCommandId  String?
+  chatTextParameter String?              @db.VarChar(64)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @db.Timestamptz(3)
+  approvedAt        DateTime?            @db.Timestamptz(3)
+  retiredAt         DateTime?            @db.Timestamptz(3)
+
+  product           Product                    @relation("ProductVersions", fields: [productId], references: [id], onDelete: Restrict)
+  activeForProducts Product[]                  @relation("ActiveProductVersion")
+  defaultCommand    Command?                   @relation("DefaultProductCommand", fields: [defaultCommandId, productId], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
+  commands          CommandVersion[]
+  submissions       ProductVersionSubmission[]
+
+  @@unique([productId, number])
+  @@unique([id, productId])
+  @@index([productId, status])
+  @@index([status, createdAt])
+  @@index([defaultCommandId, productId])
+  @@map("product_versions")
+}
+
+// Command identity is stable; names, schemas, prices and terms are versioned.
+model Command {
+  id        String   @id @default(uuid())
+  productId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  versions           CommandVersion[]
+  defaultForVersions ProductVersion[] @relation("DefaultProductCommand")
+
+  @@unique([id, productId])
+  @@index([productId, createdAt])
+  @@map("commands")
+}
+
+model CommandVersion {
+  id                   String   @id @default(uuid())
+  commandId            String
+  productId            String
+  productVersionId     String
+  name                 String   @db.VarChar(32)
+  title                String   @db.VarChar(160)
+  description          String   @db.Text
+  inputSchema          Json     @db.JsonB
+  outputSchema         Json     @db.JsonB
+  inputSchemaHash      String   @db.Char(66)
+  outputSchemaHash     String   @db.Char(66)
+  positionalParameter  String?  @db.VarChar(64)
+  grossAmount          Decimal  @db.Decimal(78, 0)
+  terms                Json     @db.JsonB
+  termsDefinitionHash  String   @db.Char(66)
+  deliverySeconds      Int
+  reviewSeconds        Int
+  maxIncludedRevisions Int
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  command        Command        @relation(fields: [commandId, productId], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
+  productVersion ProductVersion @relation(fields: [productVersionId, productId], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
+  invocations    Invocation[]
+
+  @@unique([productVersionId, commandId])
+  @@unique([productVersionId, name])
+  @@unique([id, productId])
+  @@index([commandId, productId])
+  @@map("command_versions")
+}
+
+model ProductVersionSubmission {
+  id               String   @id @default(uuid())
+  productVersionId String
+  revision         Int
+  submittedById    String
+  definitionHash   String   @db.Char(66)
+  snapshot         Json     @db.JsonB
+  submittedAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  productVersion ProductVersion        @relation(fields: [productVersionId], references: [id], onDelete: Restrict)
+  submittedBy    Account               @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  review         ProductVersionReview?
+
+  @@unique([productVersionId, revision])
+  @@index([submittedById])
+  @@map("product_version_submissions")
+}
+
+model ProductVersionReview {
+  id           String         @id @default(uuid())
+  submissionId String         @unique
+  reviewerId   String
+  decision     ReviewDecision
+  reason       String         @db.Text
+  reviewedAt   DateTime       @default(now()) @db.Timestamptz(3)
+
+  submission ProductVersionSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  reviewer   Account                  @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([reviewerId, reviewedAt])
+  @@map("product_version_reviews")
+}
+
+// Buyer workspaces, single-product sessions and immutable context versions.
+
+model Workspace {
+  id              String    @id @default(uuid())
+  ownerId         String
+  name            String    @db.VarChar(160)
+  clientRequestId String    @db.VarChar(128)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+  archivedAt      DateTime? @db.Timestamptz(3)
+
+  owner         Account                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  sessions      UsageSession[]
+  briefVersions WorkspaceBriefVersion[]
+  clientAccess  ClientWorkspaceAccess[]
+  files         FileAsset[]
+
+  @@unique([id, ownerId])
+  @@unique([ownerId, clientRequestId])
+  @@index([ownerId, archivedAt, createdAt])
+  @@map("workspaces")
+}
+
+model WorkspaceBriefVersion {
+  id          String   @id @default(uuid())
+  workspaceId String
+  version     Int
+  createdById String
+  content     Json     @db.JsonB
+  contentHash String   @db.Char(66)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy   Account      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  invocations Invocation[]
+
+  @@unique([workspaceId, version])
+  @@unique([id, workspaceId])
+  @@index([createdById])
+  @@map("workspace_brief_versions")
+}
+
+model UsageSession {
+  id                  String      @id @default(uuid())
+  buyerId             String
+  workspaceId         String
+  productId           String
+  providerAppId       String
+  kind                ProductKind
+  title               String?     @db.VarChar(160)
+  clientRequestId     String      @db.VarChar(128)
+  nextMessageSequence BigInt      @default(1)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+  archivedAt          DateTime?   @db.Timestamptz(3)
+
+  buyer         Account               @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  workspace     Workspace             @relation(fields: [workspaceId, buyerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  product       Product               @relation(fields: [productId, providerAppId, kind], references: [id, providerAppId, kind], onDelete: Restrict, onUpdate: Restrict)
+  providerApp   ProviderApp           @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  messages      Message[]
+  invocations   Invocation[]
+  executionSlot SessionExecutionSlot?
+
+  @@unique([buyerId, clientRequestId])
+  @@unique([id, buyerId, workspaceId, productId, providerAppId])
+  @@index([workspaceId, buyerId, createdAt])
+  @@index([productId, providerAppId, kind])
+  @@index([providerAppId])
+  @@map("usage_sessions")
+}
+
+// Chat messages are only created for AGENT sessions; tool input/questions use
+// structured invocation/answer records instead of a synthetic chat transcript.
+model Message {
+  id                  String      @id @default(uuid())
+  sessionId           String
+  invocationId        String?
+  role                MessageRole
+  senderAccountId     String?
+  senderProviderAppId String?
+  sequence            BigInt
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+
+  session     UsageSession     @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  invocation  Invocation?      @relation(fields: [invocationId, sessionId], references: [id, sessionId], onDelete: Restrict, onUpdate: Restrict)
+  sender      Account?         @relation(fields: [senderAccountId], references: [id], onDelete: Restrict)
+  providerApp ProviderApp?     @relation(fields: [senderProviderAppId], references: [id], onDelete: Restrict)
+  versions    MessageVersion[]
+
+  @@unique([sessionId, sequence])
+  @@index([invocationId, sessionId])
+  @@index([senderAccountId])
+  @@index([senderProviderAppId])
+  @@map("messages")
+}
+
+model MessageVersion {
+  id          String   @id @default(uuid())
+  messageId   String
+  version     Int
+  content     Json     @db.JsonB
+  contentHash String   @db.Char(66)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  message     Message                  @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  selectedFor InvocationInputMessage[]
+
+  @@unique([messageId, version])
+  @@map("message_versions")
+}
+
+model Invocation {
+  id                      String           @id @default(uuid())
+  invocationKey           String           @unique @db.Char(66)
+  buyerId                 String
+  workspaceId             String
+  sessionId               String
+  productId               String
+  providerAppId           String
+  commandVersionId        String
+  briefVersionId          String?
+  createdByClientId       String?
+  clientRequestId         String           @db.VarChar(128)
+  preparationHash         String           @db.Char(66)
+  paymentStatus           PaymentStatus    @default(UNPAID)
+  executionStatus         ExecutionStatus  @default(DRAFT)
+  stateVersion            Int              @default(1)
+  lastReportSequence      BigInt           @default(0)
+  nextEventVersion        Int              @default(1)
+  includedRevisionsUsed   Int              @default(0)
+  sideEffectStatus        SideEffectStatus @default(NONE)
+  progressPercent         Int?
+  progressMessage         String?          @db.Text
+  failureCode             String?          @db.VarChar(80)
+  failureMessage          String?          @db.Text
+  queuedAt                DateTime?        @db.Timestamptz(3)
+  acknowledgedAt          DateTime?        @db.Timestamptz(3)
+  startedAt               DateTime?        @db.Timestamptz(3)
+  deliveredAt             DateTime?        @db.Timestamptz(3)
+  executionClosedAt       DateTime?        @db.Timestamptz(3)
+  effectiveReviewDeadline DateTime?        @db.Timestamptz(3)
+  createdAt               DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime         @updatedAt @db.Timestamptz(3)
+
+  buyer                Account                  @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  session              UsageSession             @relation(fields: [sessionId, buyerId, workspaceId, productId, providerAppId], references: [id, buyerId, workspaceId, productId, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+  providerApp          ProviderApp              @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  commandVersion       CommandVersion           @relation(fields: [commandVersionId, productId], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
+  briefVersion         WorkspaceBriefVersion?   @relation(fields: [briefVersionId, workspaceId], references: [id, workspaceId], onDelete: Restrict, onUpdate: Restrict)
+  createdByClient      ClientAuthorization?     @relation(fields: [createdByClientId, buyerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  quote                Quote?
+  executionSlot        SessionExecutionSlot?
+  inputMessages        InvocationInputMessage[]
+  inputFiles           InvocationInputFile[]
+  messages             Message[]
+  authorizations       PaymentAuthorization[]
+  paymentAttempts      PaymentAttempt[]
+  activePaymentAttempt ActivePaymentAttempt?
+  hold                 VaultHold?
+  chainOperations      ChainOperation[]
+  outboxEvents         OutboxEvent[]
+  reports              ProviderReport[]
+  questions            InvocationQuestion[]
+  openQuestion         OpenInvocationQuestion?
+  answers              InvocationAnswer[]
+  revisions            InvocationRevision[]
+  cancellations        InvocationCancellation[]
+  acceptances          InvocationAcceptance[]
+  artifacts            ArtifactVersion[]
+  files                FileAsset[]
+  reviewInterruptions  ReviewInterruption[]
+  dispute              Dispute?
+  decisions            FinancialDecision[]
+  rating               ProductRating?
+
+  @@unique([buyerId, clientRequestId])
+  @@unique([id, sessionId])
+  @@unique([id, buyerId])
+  @@unique([id, providerAppId])
+  @@unique([id, invocationKey])
+  @@index([sessionId, buyerId, workspaceId, productId, providerAppId])
+  @@index([buyerId, createdAt])
+  @@index([providerAppId, executionStatus, createdAt])
+  @@index([paymentStatus, updatedAt])
+  @@index([executionStatus, updatedAt])
+  @@index([commandVersionId, productId])
+  @@index([briefVersionId, workspaceId])
+  @@index([createdByClientId, buyerId])
+  @@map("invocations")
+}
+
+// Explicit slot rows enforce one active execution/question/payment attempt
+// without relying on status-dependent partial indexes Prisma cannot express.
+// Acquire/release slots and their related state changes in one transaction.
+model SessionExecutionSlot {
+  sessionId      String    @id
+  invocationId   String
+  acquiredAt     DateTime  @default(now()) @db.Timestamptz(3)
+  draftExpiresAt DateTime? @db.Timestamptz(3)
+
+  session    UsageSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  invocation Invocation   @relation(fields: [invocationId, sessionId], references: [id, sessionId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([invocationId, sessionId])
+  @@index([draftExpiresAt])
+  @@map("session_execution_slots")
+}
+
+model InvocationInputMessage {
+  invocationId     String
+  messageVersionId String
+  position         Int
+
+  invocation     Invocation     @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  messageVersion MessageVersion @relation(fields: [messageVersionId], references: [id], onDelete: Restrict)
+
+  @@id([invocationId, messageVersionId])
+  @@unique([invocationId, position])
+  @@index([messageVersionId])
+  @@map("invocation_input_messages")
+}
+
+model InvocationInputFile {
+  invocationId String
+  fileId       String
+  position     Int
+  fileVersion  Int
+  contentHash  String @db.Char(66)
+
+  invocation Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  file       FileAsset  @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@id([invocationId, fileId])
+  @@unique([invocationId, position])
+  @@index([fileId])
+  @@map("invocation_input_files")
+}
+
+// Provider transport is at-least-once; ACKs and processing reports are separate.
+
+model ProviderConnection {
+  id               String    @id @default(uuid())
+  providerAppId    String
+  apiKeyId         String
+  fencingToken     BigInt
+  connectedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  lastHeartbeatAt  DateTime  @default(now()) @db.Timestamptz(3)
+  disconnectedAt   DateTime? @db.Timestamptz(3)
+  disconnectReason String?   @db.VarChar(160)
+
+  app         ProviderApp               @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  apiKey      ProviderApiKey            @relation(fields: [apiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
+  activeLease ProviderStreamLease?
+  deliveries  ProviderDeliveryAttempt[]
+
+  @@unique([id, providerAppId])
+  @@index([providerAppId, disconnectedAt, lastHeartbeatAt])
+  @@index([apiKeyId, providerAppId])
+  @@map("provider_connections")
+}
+
+model ProviderStreamLease {
+  providerAppId String   @id
+  connectionId  String
+  holderId      String   @db.VarChar(128)
+  fencingToken  BigInt
+  acquiredAt    DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime @db.Timestamptz(3)
+
+  app        ProviderApp        @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  connection ProviderConnection @relation(fields: [connectionId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([connectionId, providerAppId])
+  @@index([expiresAt])
+  @@map("provider_stream_leases")
+}
+
+model OutboxEvent {
+  id             String            @id @default(uuid())
+  invocationId   String
+  providerAppId  String
+  kind           OutboxEventKind
+  // READY always uses version 1. Continuations keep their own unique source IDs.
+  eventVersion   Int               @default(1)
+  sequence       BigInt            @default(autoincrement())
+  answerId       String?
+  revisionId     String?
+  cancellationId String?
+  payload        Json              @db.JsonB
+  payloadHash    String            @db.Char(66)
+  status         OutboxEventStatus @default(PENDING)
+  attemptCount   Int               @default(0)
+  nextAttemptAt  DateTime          @default(now()) @db.Timestamptz(3)
+  leaseOwner     String?           @db.VarChar(128)
+  leaseExpiresAt DateTime?         @db.Timestamptz(3)
+  fencingToken   BigInt            @default(0)
+  firstSentAt    DateTime?         @db.Timestamptz(3)
+  lastSentAt     DateTime?         @db.Timestamptz(3)
+  acknowledgedAt DateTime?         @db.Timestamptz(3)
+  lastErrorCode  String?           @db.VarChar(80)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  invocation   Invocation                @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+  app          ProviderApp               @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  answer       InvocationAnswer?         @relation(fields: [answerId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  revision     InvocationRevision?       @relation(fields: [revisionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  cancellation InvocationCancellation?   @relation(fields: [cancellationId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  deliveries   ProviderDeliveryAttempt[]
+  receipt      ProviderEventReceipt?
+
+  @@unique([invocationId, kind, eventVersion])
+  @@unique([answerId, invocationId])
+  @@unique([revisionId, invocationId])
+  @@unique([cancellationId, invocationId])
+  @@unique([providerAppId, sequence])
+  @@unique([id, providerAppId])
+  @@index([status, nextAttemptAt])
+  @@index([providerAppId, status, sequence])
+  @@index([leaseExpiresAt])
+  @@map("outbox_events")
+}
+
+model ProviderDeliveryAttempt {
+  id            String                @id @default(uuid())
+  eventId       String
+  connectionId  String?
+  attemptNumber Int
+  status        DeliveryAttemptStatus @default(STARTED)
+  fencingToken  BigInt
+  errorCode     String?               @db.VarChar(80)
+  startedAt     DateTime              @default(now()) @db.Timestamptz(3)
+  completedAt   DateTime?             @db.Timestamptz(3)
+
+  event      OutboxEvent         @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  connection ProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+
+  @@unique([eventId, attemptNumber])
+  @@index([connectionId])
+  @@map("provider_delivery_attempts")
+}
+
+model ProviderEventReceipt {
+  eventId        String
+  providerAppId  String
+  apiKeyId       String
+  acknowledgedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  event  OutboxEvent    @relation(fields: [eventId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+  apiKey ProviderApiKey @relation(fields: [apiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([eventId, providerAppId])
+  @@index([apiKeyId, providerAppId])
+  @@map("provider_event_receipts")
+}
+
+model ProviderReport {
+  id            String               @id @default(uuid())
+  providerAppId String
+  invocationId  String
+  apiKeyId      String
+  reportId      String               @db.VarChar(128)
+  sequence      BigInt
+  kind          ProviderReportKind
+  status        ProviderReportStatus @default(RECEIVED)
+  payload       Json                 @db.JsonB
+  payloadHash   String               @db.Char(66)
+  rejectionCode String?              @db.VarChar(80)
+  receivedAt    DateTime             @default(now()) @db.Timestamptz(3)
+  appliedAt     DateTime?            @db.Timestamptz(3)
+
+  app        ProviderApp         @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  invocation Invocation          @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+  apiKey     ProviderApiKey      @relation(fields: [apiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
+  question   InvocationQuestion?
+  artifact   ArtifactVersion?
+
+  @@unique([providerAppId, reportId])
+  @@unique([invocationId, sequence])
+  @@unique([id, invocationId])
+  @@index([apiKeyId, providerAppId])
+  @@index([status, receivedAt])
+  @@map("provider_reports")
+}
+
+model InvocationQuestion {
+  id                 String         @id @default(uuid())
+  invocationId       String
+  providerQuestionId String         @db.VarChar(128)
+  sourceReportId     String
+  prompt             String         @db.Text
+  inputSchema        Json           @db.JsonB
+  chatTextParameter  String?        @db.VarChar(64)
+  status             QuestionStatus @default(OPEN)
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  expiresAt          DateTime       @db.Timestamptz(3)
+  answeredAt         DateTime?      @db.Timestamptz(3)
+
+  invocation   Invocation              @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  sourceReport ProviderReport          @relation(fields: [sourceReportId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  openSlot     OpenInvocationQuestion?
+  answer       InvocationAnswer?
+
+  @@unique([invocationId, providerQuestionId])
+  @@unique([sourceReportId, invocationId])
+  @@unique([id, invocationId])
+  @@index([status, expiresAt])
+  @@map("invocation_questions")
+}
+
+model OpenInvocationQuestion {
+  invocationId String   @id
+  questionId   String
+  openedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  invocation Invocation         @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  question   InvocationQuestion @relation(fields: [questionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([questionId, invocationId])
+  @@map("open_invocation_questions")
+}
+
+model InvocationAnswer {
+  id              String   @id @default(uuid())
+  invocationId    String
+  questionId      String
+  buyerId         String
+  clientRequestId String   @db.VarChar(128)
+  arguments       Json     @db.JsonB
+  argumentsHash   String   @db.Char(66)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  invocation Invocation         @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  question   InvocationQuestion @relation(fields: [questionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  buyer      Account            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  event      OutboxEvent?
+
+  @@unique([invocationId, clientRequestId])
+  @@unique([questionId, invocationId])
+  @@unique([id, invocationId])
+  @@index([buyerId])
+  @@map("invocation_answers")
+}
+
+model InvocationRevision {
+  id               String         @id @default(uuid())
+  invocationId     String
+  buyerId          String
+  targetArtifactId String
+  clientRequestId  String         @db.VarChar(128)
+  reason           String         @db.Text
+  status           RevisionStatus @default(REQUESTED)
+  rejectionCode    String?        @db.VarChar(80)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  resolvedAt       DateTime?      @db.Timestamptz(3)
+
+  invocation     Invocation        @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  buyer          Account           @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  targetArtifact ArtifactVersion   @relation("RevisionTarget", fields: [targetArtifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  artifacts      ArtifactVersion[] @relation("RevisionArtifacts")
+  event          OutboxEvent?
+
+  @@unique([invocationId, clientRequestId])
+  @@unique([id, invocationId])
+  @@index([targetArtifactId, invocationId])
+  @@index([buyerId])
+  @@map("invocation_revisions")
+}
+
+model InvocationCancellation {
+  id               String             @id @default(uuid())
+  invocationId     String
+  buyerId          String
+  clientRequestId  String             @db.VarChar(128)
+  reason           String             @db.Text
+  status           CancellationStatus @default(REQUESTED)
+  responseReason   String?            @db.Text
+  sideEffectStatus SideEffectStatus?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  resolvedAt       DateTime?          @db.Timestamptz(3)
+
+  invocation Invocation   @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  buyer      Account      @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  event      OutboxEvent?
+
+  @@unique([invocationId, clientRequestId])
+  @@unique([id, invocationId])
+  @@index([buyerId])
+  @@index([status, createdAt])
+  @@map("invocation_cancellations")
+}
+
+model InvocationAcceptance {
+  id              String   @id @default(uuid())
+  invocationId    String
+  artifactId      String
+  buyerId         String
+  clientRequestId String   @db.VarChar(128)
+  acceptedAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  invocation Invocation      @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  artifact   ArtifactVersion @relation(fields: [artifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  buyer      Account         @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+
+  @@unique([invocationId, clientRequestId])
+  @@unique([artifactId, invocationId])
+  @@index([buyerId])
+  @@map("invocation_acceptances")
+}
+
+// Results remain versioned, independently verified and accessible after delivery.
+
+model ArtifactVersion {
+  id             String         @id @default(uuid())
+  invocationId   String
+  version        Int
+  sourceReportId String
+  revisionId     String?
+  status         ArtifactStatus @default(RECEIVED)
+  output         Json           @db.JsonB
+  outputHash     String         @db.Char(66)
+  receivedAt     DateTime       @default(now()) @db.Timestamptz(3)
+  verifiedAt     DateTime?      @db.Timestamptz(3)
+  deliveredAt    DateTime?      @db.Timestamptz(3)
+  unavailableAt  DateTime?      @db.Timestamptz(3)
+  rejectionCode  String?        @db.VarChar(80)
+
+  invocation          Invocation            @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  sourceReport        ProviderReport        @relation(fields: [sourceReportId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  revision            InvocationRevision?   @relation("RevisionArtifacts", fields: [revisionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  requestedRevisions  InvocationRevision[]  @relation("RevisionTarget")
+  checks              ArtifactCheck[]
+  files               ArtifactFile[]
+  acceptance          InvocationAcceptance?
+  reviewInterruptions ReviewInterruption[]
+
+  @@unique([invocationId, version])
+  @@unique([sourceReportId, invocationId])
+  @@unique([id, invocationId])
+  @@index([revisionId, invocationId])
+  @@index([status, receivedAt])
+  @@map("artifact_versions")
+}
+
+model ArtifactCheck {
+  id          String            @id @default(uuid())
+  artifactId  String
+  kind        ArtifactCheckKind
+  status      CheckStatus       @default(PENDING)
+  checkedById String?
+  details     Json?             @db.JsonB
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  startedAt   DateTime?         @db.Timestamptz(3)
+  completedAt DateTime?         @db.Timestamptz(3)
+
+  artifact  ArtifactVersion @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  checkedBy Account?        @relation(fields: [checkedById], references: [id], onDelete: Restrict)
+
+  @@index([artifactId, kind, createdAt])
+  @@index([status, createdAt])
+  @@index([checkedById])
+  @@map("artifact_checks")
+}
+
+model ArtifactFile {
+  artifactId String
+  fileId     String
+  position   Int
+
+  artifact ArtifactVersion @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  file     FileAsset       @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@id([artifactId, fileId])
+  @@unique([artifactId, position])
+  @@index([fileId])
+  @@map("artifact_files")
+}
+
+model ReviewInterruption {
+  id           String    @id @default(uuid())
+  invocationId String
+  artifactId   String
+  recordedById String?
+  reason       String    @db.Text
+  startedAt    DateTime  @db.Timestamptz(3)
+  endedAt      DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  invocation Invocation      @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  artifact   ArtifactVersion @relation(fields: [artifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  recordedBy Account?        @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([invocationId, startedAt])
+  @@index([artifactId, invocationId])
+  @@index([recordedById])
+  @@map("review_interruptions")
+}
+
+// File bytes live in object storage. Never persist presigned download URLs.
+// PROVIDER_ARTIFACT requires providerAppId + invocationId; buyer uploads do not.
+model FileAsset {
+  id                  String      @id @default(uuid())
+  ownerId             String
+  workspaceId         String?
+  providerAppId       String?
+  invocationId        String?
+  clientRequestId     String      @db.VarChar(128)
+  // Server-derived account:<id> or provider-app:<id>; never a bearer secret.
+  uploadScope         String      @db.VarChar(160)
+  purpose             FilePurpose
+  status              FileStatus  @default(AWAITING_UPLOAD)
+  version             Int         @default(1)
+  originalName        String      @db.VarChar(255)
+  declaredContentType String      @db.VarChar(160)
+  detectedContentType String?     @db.VarChar(160)
+  declaredSize        BigInt
+  actualSize          BigInt?
+  expectedChecksum    String?     @db.Char(64)
+  observedChecksum    String?     @db.Char(64)
+  contentHash         String?     @db.Char(66)
+  bucket              String      @db.VarChar(128)
+  objectKey           String      @db.VarChar(512)
+  storageVersionId    String?     @db.VarChar(256)
+  uploadExpiresAt     DateTime    @db.Timestamptz(3)
+  uploadedAt          DateTime?   @db.Timestamptz(3)
+  scanStatus          CheckStatus @default(PENDING)
+  scanDetails         Json?       @db.JsonB
+  readyAt             DateTime?   @db.Timestamptz(3)
+  retainUntil         DateTime?   @db.Timestamptz(3)
+  legalHold           Boolean     @default(false)
+  deletedAt           DateTime?   @db.Timestamptz(3)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+
+  owner       Account               @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  workspace   Workspace?            @relation(fields: [workspaceId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  providerApp ProviderApp?          @relation(fields: [providerAppId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  invocation  Invocation?           @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
+  selectedFor InvocationInputFile[]
+  artifacts   ArtifactFile[]
+  evidence    DisputeEvidence[]
+
+  @@unique([uploadScope, clientRequestId])
+  @@unique([bucket, objectKey])
+  @@index([ownerId, createdAt])
+  @@index([workspaceId, ownerId])
+  @@index([providerAppId, ownerId])
+  @@index([invocationId, providerAppId])
+  @@index([status, uploadExpiresAt])
+  @@index([legalHold, retainUntil, deletedAt])
+  @@map("file_assets")
+}
+
+// Immutable economic snapshots and durable x402 admission operations.
+
+model DeploymentPolicy {
+  id                     String    @id @default(uuid())
+  version                String    @unique @db.VarChar(64)
+  policyHash             String    @unique @db.Char(66)
+  configuration          Json      @db.JsonB
+  feeBps                 Int
+  feeCapBps              Int
+  feeRecipient           String    @db.Char(42)
+  quoteLifetimeSeconds   Int
+  maxHoldSeconds         Int
+  maxDeliverySeconds     Int
+  maxReviewSeconds       Int
+  resolutionGraceSeconds Int
+  approvedById           String?
+  approvedAt             DateTime? @db.Timestamptz(3)
+  retiredAt              DateTime? @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+
+  approvedBy Account? @relation(fields: [approvedById], references: [id], onDelete: Restrict)
+  quotes     Quote[]
+
+  @@index([approvedAt, retiredAt])
+  @@index([approvedById])
+  @@map("deployment_policies")
+}
+
+model VaultDeployment {
+  id                        String    @id @default(uuid())
+  chainId                   Int       @default(43113)
+  vaultAddress              String    @db.Char(42)
+  assetAddress              String    @db.Char(42)
+  assetDecimals             Int       @default(6)
+  scheme                    String    @default("payvoke-vault") @db.VarChar(64)
+  schemeVersion             String    @default("1") @db.VarChar(16)
+  domainName                String    @default("PayvokeVault") @db.VarChar(64)
+  domainVersion             String    @default("1") @db.VarChar(16)
+  runtimeCodeHash           String    @db.Char(66)
+  deploymentTransactionHash String    @db.Char(66)
+  deploymentBlock           BigInt
+  admissionsEnabled         Boolean   @default(false)
+  createdAt                 DateTime  @default(now()) @db.Timestamptz(3)
+  retiredAt                 DateTime? @db.Timestamptz(3)
+
+  quotes         Quote[]
+  authorizations PaymentAuthorization[]
+  grants         SpendGrant[]
+  balances       VaultBalance[]
+  holds          VaultHold[]
+  operations     ChainOperation[]
+  events         ChainEvent[]
+  syncCursors    ChainSyncCursor[]
+  decisions      FinancialDecision[]
+
+  @@unique([chainId, vaultAddress])
+  @@unique([id, chainId])
+  @@index([admissionsEnabled, retiredAt])
+  @@map("vault_deployments")
+}
+
+model Quote {
+  id                  String    @id @default(uuid())
+  quoteKey            String    @unique @db.Char(66)
+  invocationId        String
+  buyerId             String
+  buyerAddress        String    @db.Char(42)
+  deploymentId        String
+  policyId            String
+  grossAmount         Decimal   @db.Decimal(78, 0)
+  providerAddress     String    @db.Char(42)
+  feeBps              Int
+  feeRecipient        String    @db.Char(42)
+  inputHash           String    @db.Char(66)
+  termsHash           String    @db.Char(66)
+  policyHash          String    @db.Char(66)
+  quoteDigest         String    @unique @db.Char(66)
+  inputSnapshot       Json      @db.JsonB
+  termsSnapshot       Json      @db.JsonB
+  policySnapshot      Json      @db.JsonB
+  protocolQuote       Json      @db.JsonB
+  paymentRequirements Json      @db.JsonB
+  issuedAt            DateTime  @default(now()) @db.Timestamptz(3)
+  validUntil          DateTime  @db.Timestamptz(3)
+  deliveryDeadline    DateTime  @db.Timestamptz(3)
+  releaseNotBefore    DateTime  @db.Timestamptz(3)
+  resolveBy           DateTime  @db.Timestamptz(3)
+  invalidatedAt       DateTime? @db.Timestamptz(3)
+  invalidationReason  String?   @db.Text
+
+  invocation     Invocation             @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  buyer          Account                @relation(fields: [buyerId, buyerAddress], references: [id, walletAddress], onDelete: Restrict, onUpdate: Restrict)
+  deployment     VaultDeployment        @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  policy         DeploymentPolicy       @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  authorizations PaymentAuthorization[]
+
+  @@unique([invocationId, buyerId])
+  @@unique([id, invocationId, deploymentId, buyerAddress])
+  @@index([buyerId, issuedAt])
+  @@index([deploymentId, validUntil])
+  @@index([policyId])
+  @@map("quotes")
+}
+
+model PaymentAuthorization {
+  id                     String    @id @default(uuid())
+  invocationId           String
+  quoteId                String
+  deploymentId           String
+  buyerAddress           String    @db.Char(42)
+  spendGrantId           String?
+  onchainGrantId         String    @db.Char(66)
+  grantEpoch             Decimal   @db.Decimal(20, 0)
+  authorizationDigest    String    @unique @db.Char(66)
+  // AEAD ciphertext of the validated x402 payload, not a signer private key.
+  sealedPayload          Bytes
+  payloadEncryptionKeyId String    @db.VarChar(128)
+  receivedAt             DateTime  @default(now()) @db.Timestamptz(3)
+  verifiedAt             DateTime? @db.Timestamptz(3)
+
+  invocation Invocation       @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  quote      Quote            @relation(fields: [quoteId, invocationId, deploymentId, buyerAddress], references: [id, invocationId, deploymentId, buyerAddress], onDelete: Restrict, onUpdate: Restrict)
+  deployment VaultDeployment  @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  spendGrant SpendGrant?      @relation(fields: [spendGrantId, deploymentId, buyerAddress, onchainGrantId], references: [id, deploymentId, buyerAddress, onchainGrantId], onDelete: Restrict, onUpdate: Restrict)
+  attempts   PaymentAttempt[]
+
+  @@unique([id, invocationId])
+  @@index([quoteId, invocationId, deploymentId, buyerAddress])
+  @@index([spendGrantId, deploymentId, buyerAddress, onchainGrantId])
+  @@index([invocationId, receivedAt])
+  @@map("payment_authorizations")
+}
+
+model PaymentAttempt {
+  id                 String               @id @default(uuid())
+  invocationId       String
+  authorizationId    String
+  operationId        String?
+  status             PaymentAttemptStatus @default(QUEUED)
+  attemptNumber      Int
+  errorCode          String?              @db.VarChar(80)
+  errorMessage       String?              @db.Text
+  settlementResponse Json?                @db.JsonB
+  nextReconcileAt    DateTime?            @db.Timestamptz(3)
+  leaseOwner         String?              @db.VarChar(128)
+  leaseExpiresAt     DateTime?            @db.Timestamptz(3)
+  fencingToken       BigInt               @default(0)
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
+  completedAt        DateTime?            @db.Timestamptz(3)
+
+  invocation    Invocation            @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  authorization PaymentAuthorization  @relation(fields: [authorizationId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  operation     ChainOperation?       @relation(fields: [operationId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  activeSlot    ActivePaymentAttempt?
+
+  @@unique([invocationId, attemptNumber])
+  @@unique([operationId, invocationId])
+  @@unique([id, invocationId])
+  @@index([authorizationId, invocationId])
+  @@index([status, nextReconcileAt])
+  @@index([leaseExpiresAt])
+  @@map("payment_attempts")
+}
+
+model ActivePaymentAttempt {
+  invocationId String   @id
+  attemptId    String
+  acquiredAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  invocation Invocation     @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  attempt    PaymentAttempt @relation(fields: [attemptId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([attemptId, invocationId])
+  @@map("active_payment_attempts")
+}
+
+// Durable chain operations, nonce allocation and replacement transaction history.
+
+model ChainOperation {
+  id               String               @id @default(uuid())
+  operationKey     String               @unique @db.VarChar(192)
+  invocationId     String
+  deploymentId     String
+  chainId          Int                  @default(43113)
+  decisionId       String?
+  kind             ChainOperationKind
+  status           ChainOperationStatus @default(QUEUED)
+  calldata         Bytes
+  calldataHash     String               @db.Char(66)
+  attemptCount     Int                  @default(0)
+  nextAttemptAt    DateTime             @default(now()) @db.Timestamptz(3)
+  leaseOwner       String?              @db.VarChar(128)
+  leaseExpiresAt   DateTime?            @db.Timestamptz(3)
+  fencingToken     BigInt               @default(0)
+  lastErrorCode    String?              @db.VarChar(80)
+  lastErrorMessage String?              @db.Text
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+  completedAt      DateTime?            @db.Timestamptz(3)
+
+  invocation     Invocation         @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  deployment     VaultDeployment    @relation(fields: [deploymentId, chainId], references: [id, chainId], onDelete: Restrict, onUpdate: Restrict)
+  decision       FinancialDecision? @relation(fields: [decisionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  paymentAttempt PaymentAttempt?
+  nonceSlots     RelayerNonceSlot[]
+
+  @@unique([id, invocationId])
+  @@unique([id, chainId])
+  @@unique([decisionId, invocationId])
+  @@index([invocationId, createdAt])
+  @@index([deploymentId, chainId])
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+  @@map("chain_operations")
+}
+
+model RelayerNonceSlot {
+  id          String    @id @default(uuid())
+  operationId String
+  chainId     Int       @default(43113)
+  sender      String    @db.Char(42)
+  nonce       Decimal   @db.Decimal(20, 0)
+  allocatedAt DateTime  @default(now()) @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+
+  operation    ChainOperation     @relation(fields: [operationId, chainId], references: [id, chainId], onDelete: Restrict, onUpdate: Restrict)
+  relayer      RelayerState       @relation(fields: [chainId, sender], references: [chainId, sender], onDelete: Restrict, onUpdate: Restrict)
+  transactions ChainTransaction[]
+
+  // Nonces belong to a sender on a chain, not to a vault deployment.
+  @@unique([chainId, sender, nonce])
+  @@unique([id, chainId, sender, nonce])
+  @@index([operationId, chainId])
+  @@map("relayer_nonce_slots")
+}
+
+model ChainTransaction {
+  id                   String                 @id @default(uuid())
+  chainId              Int                    @default(43113)
+  hash                 String                 @db.Char(66)
+  nonceSlotId          String?
+  replacesId           String?
+  sender               String                 @db.Char(42)
+  recipient            String                 @db.Char(42)
+  nonce                Decimal                @db.Decimal(20, 0)
+  status               ChainTransactionStatus
+  // Restricted-access signed bytes permit rebroadcast after a worker crash.
+  // External observed transactions may have no raw bytes or nonce-slot row.
+  rawTransaction       Bytes?
+  gasLimit             Decimal?               @db.Decimal(78, 0)
+  maxFeePerGas         Decimal?               @db.Decimal(78, 0)
+  maxPriorityFeePerGas Decimal?               @db.Decimal(78, 0)
+  gasUsed              Decimal?               @db.Decimal(78, 0)
+  effectiveGasPrice    Decimal?               @db.Decimal(78, 0)
+  blockNumber          BigInt?
+  blockHash            String?                @db.Char(66)
+  receipt              Json?                  @db.JsonB
+  revertCode           String?                @db.VarChar(80)
+  firstSeenAt          DateTime               @default(now()) @db.Timestamptz(3)
+  signedAt             DateTime?              @db.Timestamptz(3)
+  submittedAt          DateTime?              @db.Timestamptz(3)
+  includedAt           DateTime?              @db.Timestamptz(3)
+  finalizedAt          DateTime?              @db.Timestamptz(3)
+  lastCheckedAt        DateTime?              @db.Timestamptz(3)
+
+  nonceSlot    RelayerNonceSlot?  @relation(fields: [nonceSlotId, chainId, sender, nonce], references: [id, chainId, sender, nonce], onDelete: Restrict, onUpdate: Restrict)
+  replaces     ChainTransaction?  @relation("TransactionReplacement", fields: [replacesId], references: [id], onDelete: Restrict)
+  replacements ChainTransaction[] @relation("TransactionReplacement")
+  events       ChainEvent[]
+  disputes     Dispute[]
+
+  @@unique([chainId, hash])
+  @@index([nonceSlotId, chainId])
+  @@index([chainId, sender, nonce])
+  @@index([status, lastCheckedAt])
+  @@index([replacesId])
+  @@map("chain_transactions")
+}
+
+model ChainEvent {
+  id              String    @id @default(uuid())
+  deploymentId    String
+  chainId         Int       @default(43113)
+  transactionHash String    @db.Char(66)
+  blockNumber     BigInt
+  blockHash       String    @db.Char(66)
+  logIndex        Int
+  emitter         String    @db.Char(42)
+  eventName       String    @db.VarChar(80)
+  topics          String[]
+  rawData         String    @db.Text
+  decodedData     Json      @db.JsonB
+  schemaVersion   Int       @default(1)
+  observedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  finalizedAt     DateTime? @db.Timestamptz(3)
+  projectedAt     DateTime? @db.Timestamptz(3)
+  removedAt       DateTime? @db.Timestamptz(3)
+
+  deployment        VaultDeployment     @relation(fields: [deploymentId, chainId], references: [id, chainId], onDelete: Restrict, onUpdate: Restrict)
+  transaction       ChainTransaction    @relation(fields: [chainId, transactionHash], references: [chainId, hash], onDelete: Restrict, onUpdate: Restrict)
+  grants            SpendGrant[]
+  balances          VaultBalance[]
+  holds             VaultHold[]
+  executedDecisions FinancialDecision[]
+
+  @@unique([chainId, blockHash, transactionHash, logIndex])
+  @@index([deploymentId, blockNumber, logIndex])
+  @@index([chainId, transactionHash])
+  @@index([projectedAt, finalizedAt])
+  @@map("chain_events")
+}
+
+model ChainSyncCursor {
+  deploymentId       String
+  stream             ChainSyncStream
+  startBlock         BigInt
+  lastProcessedBlock BigInt?
+  lastProcessedHash  String?         @db.Char(66)
+  leaseOwner         String?         @db.VarChar(128)
+  leaseExpiresAt     DateTime?       @db.Timestamptz(3)
+  fencingToken       BigInt          @default(0)
+  lastSuccessAt      DateTime?       @db.Timestamptz(3)
+  lastErrorCode      String?         @db.VarChar(80)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+
+  deployment VaultDeployment @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+
+  @@id([deploymentId, stream])
+  @@index([leaseExpiresAt])
+  @@map("chain_sync_cursors")
+}
+
+// These rows can be backfilled before any matching local account/invocation
+// exists. Address-based chain facts must not disappear on application restore.
+model SpendGrant {
+  id                  String   @id @default(uuid())
+  deploymentId        String
+  buyerAddress        String   @db.Char(42)
+  onchainGrantId      String   @db.Char(66)
+  signerAddress       String   @db.Char(42)
+  epoch               Decimal  @db.Decimal(20, 0)
+  maxPerCall          Decimal  @db.Decimal(78, 0)
+  periodSeconds       BigInt
+  maxPerPeriod        Decimal  @db.Decimal(78, 0)
+  maxTotal            Decimal  @db.Decimal(78, 0)
+  spentTotal          Decimal  @default(0) @db.Decimal(78, 0)
+  currentPeriod       Decimal  @db.Decimal(20, 0)
+  spentInPeriod       Decimal  @default(0) @db.Decimal(78, 0)
+  revoked             Boolean  @default(false)
+  expiresAt           DateTime @db.Timestamptz(3)
+  observedBlockNumber BigInt
+  observedBlockHash   String   @db.Char(66)
+  lastEventId         String?
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  deployment     VaultDeployment        @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  lastEvent      ChainEvent?            @relation(fields: [lastEventId], references: [id], onDelete: Restrict)
+  authorizations PaymentAuthorization[]
+
+  @@unique([deploymentId, buyerAddress, onchainGrantId])
+  @@unique([id, deploymentId, buyerAddress, onchainGrantId])
+  @@index([deploymentId, signerAddress])
+  @@index([lastEventId])
+  @@map("spend_grants")
+}
+
+model VaultBalance {
+  deploymentId        String
+  address             String   @db.Char(42)
+  buyerAvailable      Decimal  @default(0) @db.Decimal(78, 0)
+  heldRemaining       Decimal  @default(0) @db.Decimal(78, 0)
+  providerClaimable   Decimal  @default(0) @db.Decimal(78, 0)
+  platformClaimable   Decimal  @default(0) @db.Decimal(78, 0)
+  observedBlockNumber BigInt
+  observedBlockHash   String   @db.Char(66)
+  lastEventId         String?
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  deployment VaultDeployment @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  lastEvent  ChainEvent?     @relation(fields: [lastEventId], references: [id], onDelete: Restrict)
+
+  @@id([deploymentId, address])
+  @@index([address])
+  @@index([lastEventId])
+  @@map("vault_balances")
+}
+
+model VaultHold {
+  id                  String          @id @default(uuid())
+  deploymentId        String
+  invocationKey       String          @db.Char(66)
+  invocationId        String?         @unique
+  buyerAddress        String          @db.Char(42)
+  providerAddress     String          @db.Char(42)
+  feeRecipient        String          @db.Char(42)
+  onchainGrantId      String          @db.Char(66)
+  quoteDigest         String          @db.Char(66)
+  authorizationDigest String          @db.Char(66)
+  grossAmount         Decimal         @db.Decimal(78, 0)
+  refundedAmount      Decimal         @default(0) @db.Decimal(78, 0)
+  remainingAmount     Decimal         @db.Decimal(78, 0)
+  providerReleased    Decimal         @default(0) @db.Decimal(78, 0)
+  feeReleased         Decimal         @default(0) @db.Decimal(78, 0)
+  feeBps              Int
+  stateVersion        Decimal         @db.Decimal(20, 0)
+  status              VaultHoldStatus @default(HELD)
+  disputed            Boolean         @default(false)
+  closed              Boolean         @default(false)
+  deliveryDeadline    DateTime        @db.Timestamptz(3)
+  releaseNotBefore    DateTime        @db.Timestamptz(3)
+  resolveBy           DateTime        @db.Timestamptz(3)
+  reservedAt          DateTime        @db.Timestamptz(3)
+  closedAt            DateTime?       @db.Timestamptz(3)
+  observedBlockNumber BigInt
+  observedBlockHash   String          @db.Char(66)
+  lastEventId         String?
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+
+  deployment VaultDeployment     @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  invocation Invocation?         @relation(fields: [invocationId, invocationKey], references: [id, invocationKey], onDelete: Restrict, onUpdate: Restrict)
+  lastEvent  ChainEvent?         @relation(fields: [lastEventId], references: [id], onDelete: Restrict)
+  decisions  FinancialDecision[]
+  dispute    Dispute?
+
+  @@unique([deploymentId, invocationKey])
+  @@unique([invocationId, invocationKey])
+  @@unique([id, deploymentId])
+  @@unique([id, invocationId, deploymentId])
+  @@index([deploymentId, buyerAddress, status])
+  @@index([deploymentId, providerAddress, status])
+  @@index([closed, releaseNotBefore])
+  @@index([closed, resolveBy])
+  @@index([lastEventId])
+  @@map("vault_holds")
+}
+
+// One fenced nonce allocator per relayer address on a chain, shared by vaults.
+// This row stores a public address and queue state, never a signing key.
+model RelayerState {
+  chainId              Int       @default(43113)
+  sender               String    @db.Char(42)
+  nextNonce            Decimal   @db.Decimal(20, 0)
+  observedPendingNonce Decimal?  @db.Decimal(20, 0)
+  leaseOwner           String?   @db.VarChar(128)
+  leaseExpiresAt       DateTime? @db.Timestamptz(3)
+  fencingToken         BigInt    @default(0)
+  lastReconciledAt     DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  nonceSlots RelayerNonceSlot[]
+
+  @@id([chainId, sender])
+  @@index([leaseExpiresAt])
+  @@map("relayer_states")
+}
+
+// Disputes and approved financial decisions retain evidence and audit trails.
+
+model Dispute {
+  id                 String             @id @default(uuid())
+  invocationId       String
+  holdId             String?            @unique
+  openedById         String
+  assignedToId       String?
+  chainTransactionId String?
+  clientRequestId    String             @db.VarChar(128)
+  reason             String             @db.Text
+  status             DisputeStatus      @default(OPEN)
+  chainStatus        DisputeChainStatus @default(NOT_SUBMITTED)
+  evidenceHash       String?            @db.Char(66)
+  resolutionReason   String?            @db.Text
+  openedAt           DateTime           @default(now()) @db.Timestamptz(3)
+  chainConfirmedAt   DateTime?          @db.Timestamptz(3)
+  resolvedAt         DateTime?          @db.Timestamptz(3)
+  closedAt           DateTime?          @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  invocation       Invocation          @relation(fields: [invocationId, openedById], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  hold             VaultHold?          @relation(fields: [holdId], references: [id], onDelete: Restrict)
+  openedBy         Account             @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  assignedTo       Account?            @relation("DisputeAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
+  chainTransaction ChainTransaction?   @relation(fields: [chainTransactionId], references: [id], onDelete: Restrict)
+  entries          DisputeEntry[]
+  evidence         DisputeEvidence[]
+  decisions        FinancialDecision[]
+
+  @@unique([id, invocationId])
+  @@unique([invocationId, openedById])
+  @@unique([openedById, clientRequestId])
+  @@index([status, openedAt])
+  @@index([chainStatus, openedAt])
+  @@index([assignedToId, status])
+  @@index([chainTransactionId])
+  @@map("disputes")
+}
+
+model DisputeEntry {
+  id               String                 @id @default(uuid())
+  disputeId        String
+  actorKind        ActorKind
+  authorAccountId  String?
+  providerAppId    String?
+  providerApiKeyId String?
+  visibility       DisputeEntryVisibility @default(PARTICIPANTS)
+  body             Json                   @db.JsonB
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+
+  dispute     Dispute           @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  author      Account?          @relation(fields: [authorAccountId], references: [id], onDelete: Restrict)
+  providerApp ProviderApp?      @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  providerKey ProviderApiKey?   @relation(fields: [providerApiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
+  evidence    DisputeEvidence[]
+
+  @@unique([id, disputeId])
+  @@index([disputeId, createdAt])
+  @@index([authorAccountId])
+  @@index([providerAppId])
+  @@index([providerApiKeyId, providerAppId])
+  @@map("dispute_entries")
+}
+
+model DisputeEvidence {
+  disputeId String
+  fileId    String
+  entryId   String?
+  addedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  dispute Dispute       @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  file    FileAsset     @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  entry   DisputeEntry? @relation(fields: [entryId, disputeId], references: [id, disputeId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([disputeId, fileId])
+  @@index([fileId])
+  @@index([entryId, disputeId])
+  @@map("dispute_evidence")
+}
+
+model FinancialDecision {
+  id                      String                  @id @default(uuid())
+  invocationId            String
+  deploymentId            String
+  holdId                  String
+  disputeId               String?
+  onchainDecisionId       String                  @db.Char(66)
+  expectedVersion         Decimal                 @db.Decimal(20, 0)
+  refundAmount            Decimal                 @default(0) @db.Decimal(78, 0)
+  releaseRemainder        Boolean                 @default(false)
+  resolveDispute          Boolean                 @default(false)
+  status                  FinancialDecisionStatus @default(DRAFT)
+  reason                  String                  @db.Text
+  evidenceHash            String                  @db.Char(66)
+  eligibilitySnapshot     Json                    @db.JsonB
+  createdById             String
+  approvedById            String?
+  approverAddress         String?                 @db.Char(42)
+  decisionDigest          String?                 @unique @db.Char(66)
+  sealedApproval          Bytes?
+  approvalEncryptionKeyId String?                 @db.VarChar(128)
+  executionEventId        String?                 @unique
+  errorCode               String?                 @db.VarChar(80)
+  validUntil              DateTime                @db.Timestamptz(3)
+  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
+  approvedAt              DateTime?               @db.Timestamptz(3)
+  executedAt              DateTime?               @db.Timestamptz(3)
+
+  invocation     Invocation      @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  deployment     VaultDeployment @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  hold           VaultHold       @relation(fields: [holdId, invocationId, deploymentId], references: [id, invocationId, deploymentId], onDelete: Restrict, onUpdate: Restrict)
+  dispute        Dispute?        @relation(fields: [disputeId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
+  createdBy      Account         @relation("DecisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy     Account?        @relation("DecisionApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  executionEvent ChainEvent?     @relation(fields: [executionEventId], references: [id], onDelete: Restrict)
+  operation      ChainOperation?
+
+  @@unique([deploymentId, onchainDecisionId])
+  @@unique([id, invocationId])
+  @@index([invocationId, createdAt])
+  @@index([holdId, invocationId, deploymentId])
+  @@index([disputeId, invocationId])
+  @@index([status, validUntil])
+  @@index([createdById])
+  @@index([approvedById])
+  @@map("financial_decisions")
+}
+
+// One buyer rating per delivered invocation; edits append immutable revisions.
+model ProductRating {
+  id               String    @id @default(uuid())
+  invocationId     String
+  buyerId          String
+  rating           Int
+  comment          String?   @db.Text
+  currentRevision  Int       @default(1)
+  hiddenAt         DateTime? @db.Timestamptz(3)
+  moderationReason String?   @db.Text
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  invocation Invocation              @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
+  buyer      Account                 @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  revisions  ProductRatingRevision[]
+
+  @@unique([invocationId, buyerId])
+  @@index([buyerId, createdAt])
+  @@map("product_ratings")
+}
+
+model ProductRatingRevision {
+  id        String   @id @default(uuid())
+  ratingId  String
+  version   Int
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  productRating ProductRating @relation(fields: [ratingId], references: [id], onDelete: Restrict)
+
+  @@unique([ratingId, version])
+  @@map("product_rating_revisions")
+}
+
+// Append-only audit metadata must be redacted by the writer. Do not use this
+// table for prompts, signing payloads, access tokens, or file download URLs.
+model AuditLog {
+  id                    String    @id @default(uuid())
+  actorKind             ActorKind
+  actorAccountId        String?
+  actorProviderApiKeyId String?
+  actorClientId         String?
+  action                String    @db.VarChar(120)
+  targetType            String    @db.VarChar(80)
+  targetId              String    @db.VarChar(192)
+  correlationId         String?   @db.VarChar(128)
+  reason                String?   @db.Text
+  metadata              Json?     @db.JsonB
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+
+  account     Account?             @relation(fields: [actorAccountId], references: [id], onDelete: Restrict)
+  providerKey ProviderApiKey?      @relation(fields: [actorProviderApiKeyId], references: [id], onDelete: Restrict)
+  client      ClientAuthorization? @relation(fields: [actorClientId], references: [id], onDelete: Restrict)
+
+  @@index([targetType, targetId, createdAt])
+  @@index([actorAccountId, createdAt])
+  @@index([actorProviderApiKeyId, createdAt])
+  @@index([actorClientId, createdAt])
+  @@index([correlationId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// HTTP replay cache. Durable invocation/payment/event keys remain in their
+// domain tables after this cache expires. Secret-issuing auth/key endpoints
+// must not cache a plaintext successful response here.
+model IdempotencyRecord {
+  id             String            @id @default(uuid())
+  principalKind  ActorKind
+  principalId    String            @db.VarChar(128)
+  operation      String            @db.VarChar(128)
+  key            String            @db.VarChar(128)
+  requestHash    String            @db.Char(66)
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  resourceType   String?           @db.VarChar(80)
+  resourceId     String?           @db.VarChar(192)
+  responseStatus Int?
+  responseBody   Json?             @db.JsonB
+  errorCode      String?           @db.VarChar(80)
+  leaseOwner     String?           @db.VarChar(128)
+  leaseExpiresAt DateTime?         @db.Timestamptz(3)
+  fencingToken   BigInt            @default(0)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  completedAt    DateTime?         @db.Timestamptz(3)
+  expiresAt      DateTime          @db.Timestamptz(3)
+
+  @@unique([principalKind, principalId, operation, key])
+  @@index([expiresAt])
+  @@index([status, leaseExpiresAt])
+  @@map("idempotency_records")
+}
