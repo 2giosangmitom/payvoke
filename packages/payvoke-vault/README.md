@@ -1,55 +1,36 @@
-# Sample Hardhat 3 Project (`node:test` and `viem`)
+# PayvokeVault
 
-This package contains the Hardhat 3 sample, using Node.js tests (`node:test`) and `viem` for Ethereum interactions. It does not yet implement PayvokeVault.
+Hardhat 3, Solidity unit/fuzz tests and viem integration tests.
 
-Hardhat setup instructions: [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3).
-
-## Project Overview
-
-This example project includes:
-
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](https://nodejs.org/api/test.html) and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
-
-## Usage
-
-### Running Tests
-
-Run all tests:
+Run from this directory:
 
 ```shell
-npx hardhat test
+pnpm compile
+pnpm test
+pnpm typecheck
 ```
 
-Run Solidity or `node:test` tests separately:
+The vault supports deposits, grants, holds, partial/full refunds, release, dispute,
+reclaim and buyer/provider/platform withdrawals. Finance execution requires a
+separate EIP-712 approver with the relevant refund/release/resolver roles; the
+executor cannot approve its own decision. Partial dispute refunds keep the dispute
+lock until terminal resolution or reclaim. Refunds never replenish grant allowance.
+
+Local tests are not a security audit or Fuji E2E proof. Deployment policy, multisig
+admin and role/key ownership must be approved before deployment. Backend approvers
+must also enforce actual delivery/review eligibility; the vault only knows signed deadlines.
+
+## Ignition
+
+Module: `ignition/modules/PayvokeVault.ts`. Asset defaults to Fuji USDC.
+Supply a parameters JSON with a `PayvokeVault` object containing `admin`,
+`adminDelay`, `feeCapBps`, `maxQuoteLifetimeSeconds` and `maxHoldSeconds`.
+Times are in seconds. Override `asset` with MockUSDC for local deployments.
+Only the admin role is assigned; operational roles require explicit admin transactions.
+
+Once the vault is ready for Fuji deployment, configure `FUJI_RPC_URL` and
+`FUJI_PRIVATE_KEY` using environment variables or the Hardhat keystore, then run:
 
 ```shell
-npx hardhat test solidity
-npx hardhat test nodejs
-```
-
-### Deploy the sample Counter
-
-The sample Ignition module deploys Counter to a local chain or Sepolia. These are sample commands, not deployment instructions for PayvokeVault on Fuji.
-
-Deploy locally:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
-
-For Sepolia, use a test account funded for gas. The Hardhat configuration reads its private key from `SEPOLIA_PRIVATE_KEY`.
-
-Set `SEPOLIA_PRIVATE_KEY` through `hardhat-keystore` or an environment variable. To use the keystore:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-Then deploy to Sepolia:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
+pnpm exec hardhat ignition deploy ignition/modules/PayvokeVault.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
