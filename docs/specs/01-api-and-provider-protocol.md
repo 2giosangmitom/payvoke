@@ -1,6 +1,6 @@
 # S01 · API, slash commands và giao job cho provider
 
-Trạng thái: **đặc tả MVP để triển khai**, 19/10/2026. Chưa có implementation/OpenAPI sinh từ code. Các từ MUST/không được là điều kiện nghiệm thu; không suy ra endpoint đã tồn tại. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md).
+Trạng thái: đặc tả MVP để triển khai, 19/10/2026. Chưa có implementation hoặc OpenAPI sinh từ code. MUST/không được chỉ yêu cầu bắt buộc khi nghiệm thu, chưa xác nhận endpoint đã tồn tại. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md).
 
 ## 1. Mô hình nghiệp vụ đã chốt
 
@@ -10,7 +10,7 @@ Trạng thái: **đặc tả MVP để triển khai**, 19/10/2026. Chưa có imp
 - Phiên tool **không có composer chat**. Hiển thị form tham số, báo giá, tiến độ, câu hỏi dạng form nếu có và kết quả/lịch sử chạy. Chọn tool trong command palette phải mở phiên tool, không chèn nó thành người tham gia hội thoại agent.
 - Một phiên chỉ có **một invocation đang thực thi/chờ xử lý** ở MVP; `WAITING_BUYER`/`VERIFYING`/`UNKNOWN` vẫn chiếm slot. `DELIVERED`/`FAILED`/`CANCELLED` giải phóng execution slot dù tiền có thể còn HELD chờ review/refund. Gửi thêm lời nhắn không có question/revision context không tự được xem là trả lời miễn phí.
 - Mỗi invocation mới có một command, quote, bộ input bất biến và khoản giữ tiền riêng. Provider hỏi lại, buyer trả lời đúng question hoặc sửa trong phạm vi không tạo quote/charge mới.
-- Chat là cách trình bày, không phải meter tính tiền theo tin nhắn hoặc token. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng.
+- Payvoke tính tiền theo invocation, không theo tin nhắn hoặc token. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng.
 
 `sessionId` trong tài liệu này là **phiên sử dụng**, không phải cookie đăng nhập hay grant của khóa chi; phần thanh toán dùng `grantId`.
 
@@ -53,7 +53,7 @@ External client authorization/pairing dùng endpoints được định nghĩa đ
 
 ## 4. Đăng ký sản phẩm và slash command
 
-Provider có thể dùng web hoặc API; cả hai đi qua cùng validation, version và approval. **Không bắt buộc manifest file**, nhưng API nhận structured definition.
+Provider có thể dùng web hoặc API; cả hai đi qua cùng validation, version và approval. API nhận definition có cấu trúc, không bắt buộc manifest file.
 
 ### 4.1 Version và publishing
 
@@ -176,7 +176,7 @@ validUntil, deliveryDeadline, releaseNotBefore, resolveBy, quoteDigest, policyVe
 inputSnapshot, termsSnapshot, policySnapshot, protocolQuote
 ```
 
-Quote không giữ tiền, không giao provider. Buyer thấy bản effective input và giá trước khi ký. Hết hạn trả 410 khi chưa bắt đầu thanh toán; khi outcome cũ UNKNOWN thì phải reconcile, không tự tạo quote mới. Để chuẩn bị lượt khác sau quote hết hạn, trước hết phải xác lập lượt cũ không có hold và không còn khả năng hold hợp lệ theo S02.
+Tạo quote chưa giữ tiền hoặc giao việc cho provider. Buyer xem input sau khi áp defaults và giá trước khi ký. Quote hết hạn trả 410 nếu chưa bắt đầu thanh toán. Nếu lần thanh toán trước còn UNKNOWN, hệ thống phải đối soát, không tự tạo quote mới. Chỉ chuẩn bị lượt khác khi đã xác nhận lượt cũ không có hold và không còn khả năng tạo hold hợp lệ theo S02.
 
 `inputSnapshot`, `termsSnapshot`, `policySnapshot` và `protocolQuote` đúng shape/hash ở S02. Root fields là phần trình bày được suy ra từ snapshot; bất đồng root và snapshot trả `QUOTE_INCONSISTENT`, không tự chọn một bên để ký. `/v1/products/{id}/commands` hỗ trợ `version`, `cursor`, `limit`; command DTO có `commandId,name,title,description,inputSchema,outputSchema,grossAmount,terms,productVersion,positionalParameter?` và collection trả `items,nextCursor` như quy ước chung.
 
@@ -251,7 +251,7 @@ Transition report bắt buộc: started từ ACKED sang RUNNING; progress chỉ 
 
 Provider không gửi tùy ý `paymentStatus`, không có report `refund`/`payout`. Buyer question/answer miễn phí không cho provider thay command, tăng giá hoặc rút thêm dữ liệu. Context bổ sung cần buyer chọn rõ và audit; thay input tài chính/phạm vi phải chuẩn bị invocation mới.
 
-### 6.3 Exactly-once giới hạn ở đâu?
+### 6.3 Chống thực thi trùng
 
 Payvoke bảo đảm không tạo hai logical ready event cho một invocation và vault không debit hai lần. SSE là at-least-once; provider MUST persist dedupe **trước ACK**, truyền invocation ID làm idempotency key cho side effect nếu nơi nhận hỗ trợ. Crash sau side effect nhưng trước ghi nhận không được diễn giải là chưa chạy. Không tự chuyển job đã ACK sang provider/product khác.
 
@@ -287,4 +287,4 @@ Deployment phải có versioned policy: trần/fee bps, quote lifetime, max deli
 - R1: SIWE/EIP-4361: https://eips.ethereum.org/EIPS/eip-4361
 - R2: SSE event format/reconnect: https://html.spec.whatwg.org/multipage/server-sent-events.html
 - JSON Schema: https://json-schema.org/draft/2020-12/json-schema-core.html
-- Các endpoint, scopes, command syntax và lease policy là **thiết kế Payvoke**, không phải tính năng sẵn có của x402/MCP. OpenAPI cần được sinh/kiểm tra từ implementation theo contract này; file này không thay một OpenAPI artifact đã chạy validation.
+- Các endpoint, scopes, command syntax và lease policy do Payvoke thiết kế; x402/MCP không cung cấp sẵn. Cần sinh và kiểm tra OpenAPI từ implementation theo đặc tả này.

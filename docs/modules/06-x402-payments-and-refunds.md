@@ -1,6 +1,6 @@
 # M06 · Thanh toán theo lần gọi
 
-Buyer nạp USDC vào [PayvokeVault](10-payvoke-vault.md) trên Avalanche Fuji C-Chain (chain ID 43113, `eip155:43113`). **Mỗi lần gọi phải thanh toán qua x402** từ số dư đó. Buyer không phải mở ví để ký lại: khóa phiên đã được buyer cấp quyền ký chứng từ cho từng yêu cầu. Số dư là USDC có thể rút, không phải lượt sử dụng.
+Buyer nạp USDC vào [PayvokeVault](10-payvoke-vault.md) trên Avalanche Fuji C-Chain (chain ID 43113, `eip155:43113`). Mỗi lần gọi phải thanh toán qua x402 từ số dư đó. Client dùng khóa phiên đã được buyer cấp quyền để ký chứng từ cho từng yêu cầu; buyer không phải mở ví chính để ký lại. Số dư là USDC có thể rút, không phải lượt sử dụng.
 
 [S02](../specs/02-x402-and-vault.md) chốt scheme/payload/EIP-712/ABI và recovery; [S01](../specs/01-api-and-provider-protocol.md) chốt quote/invocation endpoints. Invocation mới từ chat, form hay MCP đều cùng luồng này. Polling, trả lời questionId và revision đúng phạm vi không tạo khoản thu mới. Với `upfront`, facilitator `settle` phải kiểm tra đầy đủ vì core không gọi `/verify` trong luồng chuẩn.
 
@@ -12,7 +12,7 @@ Client gửi lại yêu cầu cùng `PAYMENT-SIGNATURE`. Facilitator do Payvoke 
 
 ## x402
 
-Scheme x402 riêng của Payvoke dùng luồng `upfront`: facilitator gọi `settle` để khóa tiền trong vault **trước** khi gateway nhận xử lý. Xác nhận thanh toán là khoản giữ đã ghi onchain; trả provider hoặc hoàn tiền là bước nghiệp vụ sau đó. Scheme này phải có mô tả công khai, client và facilitator triển khai đúng cùng một cách, và khai báo hỗ trợ trên `eip155:43113`. Nó không phải x402 `exact` và client x402 thông thường không tự hỗ trợ. [Đặc tả x402 v2](https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md).
+Scheme x402 riêng của Payvoke dùng luồng `upfront`: facilitator gọi `settle` để khóa tiền trong vault trước khi gateway nhận xử lý. Xác nhận thanh toán là khoản giữ đã ghi onchain; trả provider hoặc hoàn tiền là bước nghiệp vụ sau đó. Scheme này phải có mô tả công khai, client và facilitator triển khai cùng đặc tả, và khai báo hỗ trợ trên `eip155:43113`. Nó không phải x402 `exact` và client x402 thông thường không tự hỗ trợ. [Đặc tả x402 v2](https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md).
 
 Một mã yêu cầu chỉ được trừ một lần. Gửi lại chứng từ trả về trạng thái cũ, không tạo lần chạy mới. Nếu tiền đã được giữ mà Payvoke mất phản hồi, hệ thống đối chiếu trên Fuji rồi phát một event logic. Trạng thái chưa rõ không được tự thu thêm. Buyer thấy lịch sử nạp, trừ, hoàn, rút và số dư khả dụng.
 

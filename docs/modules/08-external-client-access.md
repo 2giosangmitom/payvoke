@@ -6,7 +6,7 @@ MCP cung cấp tools tĩnh để tìm sản phẩm, xem commands/parameters, t�
 
 Buyer đăng nhập bằng ví để cấp cho client quyền có thời hạn theo workspace và hành động: tìm sản phẩm, đọc dữ liệu, chuẩn bị lần gọi, gửi yêu cầu trả phí hoặc xem kết quả. Client không nhận khóa ví chính. Muốn trả phí, client cần khóa phiên riêng được buyer đăng ký trong PayvokeVault và quyền gửi yêu cầu trong Payvoke; cả hai đều có thể thu hồi.
 
-MVP bridge giữ spend key local, pairing qua web đăng nhập ví để nhận scoped API token; token không phải grant onchain. S03 yêu cầu local quote approval ngoài model trước khi chi, không nhận `confirmed:true` từ tool argument làm consent. Remote MCP giữ khóa buyer/remote paid submit chưa thuộc MVP; không tự chuyển khóa lên server để tiện triển khai.
+Trong MVP, bridge giữ khóa chi trên máy buyer và pairing qua web đăng nhập ví để nhận API token có scope giới hạn. Token không thay thế grant onchain. S03 yêu cầu buyer duyệt quote qua CLI local ngoài model trước khi chi; `confirmed:true` trong tool argument không được coi là sự đồng ý. Remote MCP giữ khóa buyer và remote paid submit nằm ngoài MVP; không chuyển khóa lên server.
 
 Buyer cấp hoặc thay đổi giới hạn chi onchain qua ví trên web. Sau đó client có quyền phù hợp ký chứng từ x402 bằng khóa phiên khi buyer gửi yêu cầu, không bật ví chính mỗi lần. Client phải hiện giá, input và số dư còn lại; nếu chưa có quyền chi hoặc không đủ tiền, nó đưa buyer về web để nạp tiền hoặc cập nhật giới hạn. Client x402 bên ngoài phải triển khai scheme riêng của Payvoke.
 

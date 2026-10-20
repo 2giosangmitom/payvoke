@@ -4,7 +4,7 @@ Một ví đã xác minh tương ứng một tài khoản. Tài khoản có th�
 
 ## Đăng nhập
 
-Người dùng kết nối ví trên Avalanche Fuji C-Chain và ký yêu cầu đăng nhập có thời hạn, dùng một lần, gắn với Payvoke và Fuji. Chữ ký này chỉ tạo phiên đăng nhập; quyền chi từ PayvokeVault là bước riêng. Buyer dùng ví đăng ký khóa phiên với hạn mức, thời hạn và quyền thu hồi; khóa phiên tạo chứng từ x402 khi buyer gửi yêu cầu mà không bật ví lần nữa. Ví ở mạng khác phải chuyển sang Fuji trước khi đăng nhập hoặc nạp tiền.
+Người dùng kết nối ví trên Avalanche Fuji C-Chain và ký yêu cầu đăng nhập có thời hạn, dùng một lần, gắn với Payvoke và Fuji. Chữ ký này chỉ tạo phiên đăng nhập; quyền chi từ PayvokeVault là bước riêng. Buyer dùng ví đăng ký khóa phiên với hạn mức, thời hạn và quyền thu hồi. Khi buyer gửi yêu cầu, client dùng khóa phiên tạo chứng từ x402 mà không mở ví chính lần nữa. Ví ở mạng khác phải chuyển sang Fuji trước khi đăng nhập hoặc nạp tiền.
 
 Không có email, mật khẩu hay đăng nhập mạng xã hội. Đổi ví là đổi tài khoản: lịch sử, sản phẩm và quyền operator không tự chuyển. Phiên hết hạn thì ký lại bằng ví cũ.
 

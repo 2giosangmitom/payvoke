@@ -1,6 +1,6 @@
 # M05 · Kết quả và giao hàng
 
-Provider báo xong chưa đủ để giao hàng. Payvoke phải lưu đầu ra, kiểm tra điều kiện đã công bố và bảo đảm buyer xem hoặc tải được. Kiểm tra kỹ thuật không chứng minh nội dung đúng chuyên môn.
+Khi provider báo xong, Payvoke lưu đầu ra, kiểm tra điều kiện đã công bố và xác nhận buyer xem hoặc tải được trước khi đánh dấu đã giao. Kiểm tra kỹ thuật không chứng minh nội dung đúng chuyên môn.
 
 Một yêu cầu có thể trả văn bản, dữ liệu có cấu trúc, ảnh hoặc file. Tiến độ tạm thời tách khỏi bản cuối. Mỗi lần sửa tạo phiên bản mới; bản cũ vẫn có trong lịch sử và hồ sơ tranh chấp.
 

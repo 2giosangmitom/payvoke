@@ -4,7 +4,7 @@ Provider đặt giá gộp cố định bằng USDC cho mỗi slash command/ch�
 
 Trang sản phẩm cho thấy giá USDC trên Avalanche Fuji C-Chain, đầu vào/đầu ra, hạn giao, phạm vi sửa và điều kiện hoàn. Trước khi gửi, buyer thấy giá của yêu cầu, số dư còn lại sau khi trừ và dữ liệu sẽ chia sẻ. Không chọn số lượng lượt, token hoặc blockchain.
 
-M03 lưu phiên bản giá và điều khoản khi buyer bắt đầu lần gọi. Đổi giá chỉ áp dụng cho lần gọi mới. Báo giá hết hạn thì buyer phải xem giá lại; khoản đã trừ hợp lệ vẫn gắn với giá ban đầu.
+M03 lưu phiên bản giá và điều khoản khi buyer bắt đầu lần gọi. Giá mới chỉ áp dụng cho lần gọi mới. Báo giá hết hạn thì buyer phải xem giá lại; khoản đã trừ hợp lệ vẫn gắn với giá ban đầu.
 
 Một lần gọi có một định danh, một chức năng/provider và một khoản trừ tiền. M06 xác nhận tiền trước khi M04 phát event. Buyer trả lời câu hỏi của provider hoặc yêu cầu sửa trong phạm vi đã hứa mà không trả thêm. Đổi mục tiêu hoặc tự gửi lệnh mới tạo khoản trừ mới nếu đủ số dư và còn trong giới hạn chi.
 

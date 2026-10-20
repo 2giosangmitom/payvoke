@@ -1,14 +1,14 @@
 # Kiến trúc tích hợp x402 cho Payvoke
 
-Ngày nghiên cứu: 19/10/2026. Trạng thái: **đề xuất để triển khai**, chưa phải phần mềm đã chạy hoặc thay đổi quyết định sản phẩm. Phạm vi: M03, M04, M06, M09, M10; không mở rộng sang nhiều chain hay thiết kế marketplace mới.
+Ngày nghiên cứu: 19/10/2026. Trạng thái: đề xuất chưa triển khai; các quyết định sản phẩm hiện có vẫn giữ nguyên. Phạm vi: M03, M04, M06, M09, M10; không mở rộng sang nhiều chain hay thiết kế marketplace mới.
 
-**Đã cụ thể hóa sau nghiên cứu:** [S01 API/provider](../specs/01-api-and-provider-protocol.md), [S02 x402/vault](../specs/02-x402-and-vault.md), [S03 MCP](../specs/03-mcp-client.md). Khi tên route/struct hoặc lựa chọn còn để mở ở bản nghiên cứu này khác đặc tả, dùng đặc tả làm contract triển khai; nghiên cứu giữ vai trò giải thích bối cảnh/nguồn.
+Sau nghiên cứu, [S01 API/provider](../specs/01-api-and-provider-protocol.md), [S02 x402/vault](../specs/02-x402-and-vault.md) và [S03 MCP](../specs/03-mcp-client.md) đã chốt chi tiết triển khai. Khi route, struct hoặc lựa chọn ở đây khác đặc tả, triển khai theo đặc tả. Bản nghiên cứu lưu bối cảnh, đánh đổi và nguồn tham khảo.
 
 ## 1. Kết luận kiến trúc
 
-**Chọn x402 v2 + scheme PayvokeVault riêng, thanh toán `upfront` để giữ tiền onchain, giao việc bất đồng bộ qua transactional outbox.** Dùng một codebase backend có module rõ ràng; chạy tiến trình API và tiến trình settlement worker riêng để cách ly khóa và khả năng phục hồi. PostgreSQL là kho trạng thái workflow; vault là nguồn sự thật về tiền.
+Chọn x402 v2 với scheme PayvokeVault riêng, thanh toán `upfront` để giữ tiền onchain và giao việc bất đồng bộ qua transactional outbox. Dùng một codebase backend; tách tiến trình API và settlement worker để API không giữ khóa settlement và worker có thể phục hồi độc lập. PostgreSQL lưu trạng thái workflow; vault là nguồn sự thật về tiền.
 
-Không chọn microservices, smart account/ERC-4337, payment channel hoặc batch settlement làm điều kiện để có bản đầu tiên. “Tốt nhất” ở đây là đáp ứng đúng sản phẩm, ít giả định tin cậy ngầm, phục hồi được sau sự cố và có bằng chứng kiểm thử; không phải dùng nhiều công nghệ nhất.
+Bản đầu chưa cần microservices, smart account/ERC-4337, payment channel hoặc batch settlement.
 
 Ba bảo đảm phải tách biệt:
 
@@ -25,7 +25,7 @@ Các quy tắc sản phẩm đã có nằm trong [M06](../modules/06-x402-paymen
 - Đã đối chiếu SDK TypeScript tại commit **`faa1c694c66a3732aaabbce93bdae140e521a67d`** ngày 15/10/2026; manifest source core/Fastify ghi **2.28.0**. Đây là kiểm tra source, chưa xác nhận npm artifact hay chạy integration tests. [K0–K7]
 - Đã thực hiện RPC **chỉ đọc** tới `https://api.avax-test.network/ext/bc/C/rpc`: `eth_chainId` trả `0xa869` = 43113; `eth_getBlockByNumber("finalized", false)` trả block; gọi `decimals()` ở USDC `0x5425890298aed601595a70AB815c96711a31Bc65` trả 6. Chưa gửi giao dịch, chưa kiểm tra EIP-3009/Permit2, chưa chứng minh end-to-end của vault hoặc facilitator.
 
-## 3. Vì sao không dùng ngay một scheme chuẩn khác?
+## 3. So sánh các scheme
 
 | Hướng                      | Phù hợp                                                | Đánh đổi với Payvoke hiện tại                                                                                                                                                                            | Kết luận                                               |
 | -------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -34,7 +34,7 @@ Các quy tắc sản phẩm đã có nằm trong [M06](../modules/06-x402-paymen
 | `batch-settlement`/channel | Rất nhiều micropayment, giảm gas từng request          | Voucher, claim và rủi ro chưa quyết toán; xung đột yêu cầu giữ tiền onchain trước mỗi lần giao việc. Hoàn số dư kênh không thay thế tranh chấp từng job.                                                 | Để sau khi đo chi phí chứng minh cần.                  |
 | Vault + scheme riêng       | Deposit USDC, khóa phiên, job hold, phí và arbitration | Phải tự triển khai mechanism client/server/facilitator, đặc tả và security tests; giảm khả năng tương thích bên ngoài.                                                                                   | **Khuyến nghị theo yêu cầu hiện tại.**                 |
 
-Không nói “x402 không có escrow”: `auth-capture` đã định nghĩa lifecycle này. Nhưng không quảng cáo PayvokeVault là `auth-capture` hoặc `exact` chuẩn khi payload, contract và funding path khác. Có đặc tả không đồng nghĩa Fuji đã có deployment/facilitator tương thích. [S1, S2]
+`auth-capture` đã định nghĩa lifecycle escrow. PayvokeVault dùng payload, contract và funding path khác nên không tương thích scheme `auth-capture` hoặc `exact` chuẩn. Vẫn cần kiểm tra deployment/facilitator hỗ trợ trên Fuji. [S1, S2]
 
 ## 4. Sơ đồ triển khai
 
@@ -64,11 +64,11 @@ Settlement worker         Outbox delivery worker
 Avalanche Fuji → PayvokeVault → USDC
 ```
 
-Đây là các **module** logic, không phải yêu cầu tách mỗi module thành một dịch vụ. Có thể dùng chung artifact backend, hai entrypoint/config; tiến trình API không có khóa relay/refund/payout. Mỗi module sở hữu một phần trạng thái, tránh mọi route tự gọi RPC và sửa balance.
+Các module có thể dùng chung artifact backend với hai entrypoint/config; không cần tách thành từng dịch vụ. Tiến trình API không có khóa relay/refund/payout. Mỗi module quản lý phần trạng thái của mình; route gọi qua module thay vì tự gọi RPC và sửa balance.
 
-**Interface bên ngoài của payment module** chỉ cần: yêu cầu giữ tiền cho một invocation đã chốt, đọc trạng thái, áp dụng quyết định đã được duyệt. Chi tiết x402, tx replacement, indexer và SQL locks nằm trong implementation. Tái sử dụng code digest/codec, không sao chép business rules sang ba vai trò SDK.
+Payment module cung cấp ba thao tác: yêu cầu giữ tiền cho invocation đã chốt, đọc trạng thái và áp dụng quyết định đã duyệt. Chi tiết x402, tx replacement, indexer và SQL locks nằm trong implementation. Dùng chung code digest/codec, không sao chép business rules sang ba vai trò SDK.
 
-**Seam thực sự cần:** x402 adapter, vault/RPC adapter, lưu trữ workflow, giao event provider. Không xây abstraction đa blockchain cho một network.
+Tách interface tại x402 adapter, vault/RPC adapter, kho lưu trữ workflow và bộ phận giao event provider. Chưa cần abstraction đa blockchain khi chỉ dùng một network.
 
 ## 5. Một invocation xuyên suốt mọi lớp
 
@@ -107,7 +107,7 @@ Contract phải nhận và ràng buộc những trường thực sự điều kh
 - Không đưa prompt/file thô, URL tải có token hay PII vào onchain metadata/header. Hash không phải mã hóa; dữ liệu ít entropy vẫn có thể bị đoán.
 - Platform quote không tự trở thành đúng chỉ vì có chữ ký buyer. Gateway phải kiểm tra quote do mình phát. Contract bảo vệ consent/budget của buyer; nếu cần contract bảo đảm cả giá niêm yết/điều khoản do platform chốt, bổ sung chữ ký quote của platform với vai trò riêng, không mặc định đây là bảo đảm đã có.
 
-### 5.3 Không dùng một timeout cho mọi thứ
+### 5.3 Các thời hạn riêng biệt
 
 | Mốc                            | Ý nghĩa                                                                                                       |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
@@ -134,9 +134,9 @@ Kiểm tra ordering, duration caps và khoảng an toàn từ quote tới inclus
 
 Provider không nhận session key, payment signature hay bearer tải file ngoài phạm vi. Bản thân việc tạo job/giữ tiền là resource được chấp nhận; việc thực hiện dài hạn nằm ngoài HTTP paid retry. Đây là kiến trúc ứng dụng, không phải x402 tự cho tính atomic giữa chain và DB.
 
-### 6.1 Cách ghép SDK thật, không fork core
+### 6.1 Tích hợp SDK
 
-Dùng `@x402/core` cho protocol engine/codec, tự viết ba implementation theo **interface có thật** `SchemeNetworkClient`, `SchemeNetworkServer`, `SchemeNetworkFacilitator`. Chúng không phải SDK Payvoke có sẵn. [K1]
+Dùng protocol engine/codec của `@x402/core` và viết ba adapter theo interface `SchemeNetworkClient`, `SchemeNetworkServer`, `SchemeNetworkFacilitator`. Chưa có SDK Payvoke cung cấp sẵn các adapter này. [K1]
 
 | Interface đã xác minh                                                                                      | Phần Payvoke implement                                                                                                                     |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -164,7 +164,7 @@ Private facilitator expose `/supported`, `/verify`, `/settle` cho gateway qua au
 
 Phương án ít adapter hơn là validate/lưu immutable intent trước, chỉ bảo vệ một endpoint confirm không nhận body mới; auth/intent gate phải đi trước middleware ở lifecycle thật. Không chọn cách này chỉ để bỏ qua body binding.
 
-**Hooks không là chốt fail-closed:** nhiều exception của hook bị SDK log rồi tiếp tục. Không dùng `throw` trong `onAfterVerify` để chặn tiền, hoặc `onAfterSettle` để giả lập durable outbox. Check bắt buộc ở application gate/mechanism/contract; hook abort phải trả đúng kiểu SDK. Giữ receipt cả khi handler lỗi sau hold; HTTP 500 không tự refund và cũng không chứng minh tiền chưa giữ. [K2–K4]
+SDK có thể ghi log exception của hook rồi tiếp tục xử lý. Vì vậy, không dùng `throw` trong `onAfterVerify` để chặn thanh toán hoặc dùng `onAfterSettle` thay durable outbox. Đặt kiểm tra bắt buộc ở application gate/mechanism/contract; hook abort phải trả đúng kiểu SDK. Giữ receipt cả khi handler lỗi sau hold; HTTP 500 không tự refund và cũng không chứng minh tiền chưa giữ. [K2–K4]
 
 **Wire:** ba header `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE` đều là base64 JSON envelope, không phải raw signature. Tái dùng codec trong `@x402/core/http`; decoder không thay schema/crypto validation. `amount` là chuỗi atomic units; `PAYMENT-RESPONSE.transaction` trỏ hold tx, `payer` là buyer chứ không phải session signer. Với CORS, server allow payment/idempotency headers và expose receipt/Location/Retry-After; không dựa vào fetch wrapper để tự cấu hình CORS. [K3, K7]
 
@@ -207,7 +207,7 @@ SQL transaction và unique constraints quyết định winner khi request đồn
 
 ## 8. Gửi giao dịch và phục hồi
 
-### 8.1 Broadcast không được tạo khoảng trống không truy dấu
+### 8.1 Ghi journal trước broadcast
 
 Đề xuất cho EOA relayer bản đầu:
 
@@ -240,7 +240,7 @@ Trước triển khai cần pin node/RPC behavior và test gate này trên Fuji.
 - DB HELD nhưng chain không xác nhận: cách ly và điều tra RPC/cấu hình; không chạy theo DB cũ. RPC bất đồng thì fail closed.
 - Thu hồi session không hủy hold đã xác nhận; expiry không xóa lịch sử. Quote hết hạn cũng không phải bằng chứng transaction cũ thất bại.
 
-Đây là eventual consistency có cơ chế sửa, không phải distributed transaction atomically bao trùm Postgres và blockchain.
+Reconciler đưa trạng thái Postgres về khớp blockchain sau sự cố. Hai hệ thống không có transaction atomic chung.
 
 ## 9. Vault: những bất biến cần đưa vào contract
 
@@ -287,7 +287,7 @@ Nếu không có chuyển token thừa trực tiếp, balance và liabilities ph
 - Provider và platform tự rút claimable; buyer rút available về ví mình. Pause admissions không chặn withdraw/reclaim hoặc session revoke. Token-level restrictions vẫn có thể cản transfer.
 - Không payout trước cửa sổ hoàn/tranh chấp. Hoàn sau payout là nghĩa vụ cần nguồn dự phòng riêng; không tự lấy tiền buyer khác để bù.
 
-### 9.4 Tách quyền thật, không chỉ tách tên role
+### 9.4 Tách khóa duyệt và thực thi
 
 Relay chỉ được gọi hold có chữ ký hợp lệ; không có quyền sửa giá, tạo chữ ký buyer hay rút available. Cần tách khóa/actor duyệt quyết định và worker gửi tx. Với operation có thể ảnh hưởng tiền, contract nên kiểm tra quyết định được ký bởi authority đúng, amount/hold version/decision ID; worker không tự thay quyết định.
 
@@ -314,7 +314,7 @@ Ghi `HELD` và `InvocationReady` trong một SQL transaction xử lý lỗi DB-w
 | Facilitator gas abuse [P3]                            | Facilitator private/authenticated; chain/vault/function allowlist; schema/header limits; rate limit; simulate; trần gas/fee/budget. Không arbitrary calldata, arbitrary token hay ERC-6492 deployment từ client. |
 | Lộ authorization/identity [P1]                        | Redact payment signature, cookie, signed URL, prompt; provider không nhận payment artifact; DB payload nhạy cảm có retention/access policy.                                                                      |
 
-Paper phân tích phiên bản cụ thể và có disclosure/patch; không kết luận mọi SDK hiện tại đều còn các lỗi ấy. Không cần triển khai TEE/adaptor signatures của A402 để có một bản vault an toàn trong mô hình arbitration tin cậy; cũng không được gọi mô hình này là fair exchange trustless.
+Các paper phân tích phiên bản cụ thể và có disclosure/patch; không thể suy ra mọi SDK hiện tại đều còn các lỗi ấy. Payvoke dùng mô hình phân xử có bên được tin cậy, chưa cần TEE/adaptor signatures của A402. Mô hình này không bảo đảm fair exchange trustless.
 
 ### Khóa phiên trong browser
 
@@ -340,7 +340,7 @@ Nếu cần reload không mất key, phải thiết kế encrypted persistence v
 
 **Đạt:** không có đường chuyển tiền thiếu consent hoặc vượt liability; full/partial refund không sai fee.
 
-### Gate C — Một đường dọc HTTP → tiền → một job
+### Gate C — Luồng HTTP → thanh toán → giao việc
 
 - Một buyer, một provider, một giá cố định; 402 → ký → hold → 202 → outbox → ACK/result.
 - Payment status/get result không thu thêm. HTTP retries/2 tabs không tạo hold hoặc job thứ hai.
@@ -367,7 +367,7 @@ Multi-chain, public facilitator, hosted facilitator failover, smart account/bund
 - Correlation: invocation → quoteHash → authorizationDigest → operation → txHashes → hold → outbox → provider report → resolution.
 - Metrics: thời gian hold-finalized, pending/unknown age, số hold chưa dispatch, queue lag, duplicate suppressed, refund/reclaim latency, relayer AVAX, gas cost/invocation, liability mismatch.
 - Fail closed admission khi RPC sai chain, reconciliation drift hoặc relayer budget cạn; giữ đường status/read/withdraw/reclaim khả dụng nếu hạ tầng/token cho phép.
-- Một lượt thường có tx hold và tx giải quyết, ngoài deposit/session/withdraw. “Thanh toán nhỏ” không có nghĩa gas miễn phí; đo cả hai tx và failed attempts trước khi chốt phí nền tảng.
+- Một lượt thường có tx hold và tx giải quyết, ngoài deposit/session/withdraw. Đo gas của cả hai tx và các lần gửi thất bại trước khi chốt phí nền tảng.
 - DB production phải persistent + backup/restore test. `compose.yml` hiện dùng `test-db` với tmpfs, **không** dùng làm database giữ workflow thật.
 - Thanh toán và hold onchain minh bạch; platform vẫn tin cậy ở quote issuance, delivery verification và arbitration. Vault giảm quyền lấy tiền tùy ý, không loại bỏ mọi niềm tin vào Payvoke.
 

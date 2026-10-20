@@ -1,6 +1,6 @@
 # Đặc tả triển khai Payvoke
 
-Ba đặc tả này cụ thể hóa M01–M10, chưa phải bằng chứng đã có implementation. Đọc [GLOSSARY](../../GLOSSARY.md) trước để phân biệt phiên sử dụng, invocation và grant chi.
+Ba đặc tả này quy định cách triển khai M01–M10; các tính năng chưa được xác nhận đã chạy. [GLOSSARY](../../GLOSSARY.md) định nghĩa phiên sử dụng, invocation và quyền chi.
 
 | Tài liệu                                                          | Chốt gì                                                                                                                                                           |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -11,20 +11,20 @@ Ba đặc tả này cụ thể hóa M01–M10, chưa phải bằng chứng đã 
 ## Quy tắc xuyên suốt
 
 1. Một phiên sử dụng thuộc đúng một sản phẩm; không đổi product/provider/kind giữa phiên.
-2. Agent có chat/composer và slash commands; tool có form parameters và kết quả, **không composer chat**.
+2. Agent có chat/composer và slash commands; tool có form parameters và kết quả, không có composer chat.
 3. Provider đăng ký command theo product; input/output schema và giá nằm trong approved version. Không có raw slash eval hoặc routing qua LLM để quyết định giá.
 4. Web và MCP cùng API và scheme x402; mỗi invocation mới một khoản giữ. Đọc trạng thái/kết quả, answer và revision đúng phạm vi không thu thêm.
 5. Hold xác nhận trước giao job; replay cùng invocation không debit hoặc tạo logical job mới. Provider phải dedupe side effect.
 6. Khóa chi nằm client; không đặt khóa buyer trên remote MCP/facilitator. API token không thay onchain grant.
 
-## Bắt đầu implementation theo thứ tự
+## Thứ tự triển khai
 
 Chi tiết task/dependency/acceptance: [Roadmap 130 task](../roadmap.md). Ưu tiên backend và tiền trước UI:
 
 1. Môi trường, common schemas/digest fixtures và policy validation; [fixture máy đọc](fixtures/x402-v1.json).
 2. Vault local, invariant/negative tests và ABI/deployment artifacts.
 3. Backend identity/catalog/command/session, quote, x402 adapters, settlement worker và recovery.
-4. Provider SSE/ACK/report, result/continuation/file, finance; headless E2E và Fuji gate **trước frontend**.
+4. Provider SSE/ACK/report, result/continuation/file, finance; headless E2E và Fuji gate trước frontend.
 5. Frontend nối API thật: agent chat/slash commands, tool form không composer, quyền chi và thao tác tài chính.
 6. MCP local nối cùng buyer API và x402, pairing/approval/recovery và protocol tests với host đúng revision.
 7. Security/CI/load/restore/runbooks, staging và phát hành Fuji; không tự triển khai mainnet.
@@ -35,4 +35,4 @@ Chi tiết task/dependency/acceptance: [Roadmap 130 task](../roadmap.md). Ưu ti
 - Token/pairing/key/session lifetimes, input/file/retention limits; phương án backup và địa chỉ/roles triển khai.
 - Các con số trong example/fixture chỉ để kiểm thử, không tự trở thành policy vận hành.
 
-Có thể bắt đầu code và test local theo đặc tả; **không bật paid deployment khi policy chưa được duyệt**. Khi implement cần xuất OpenAPI từ schemas và kiểm tra compatibility theo S01; tài liệu Markdown chưa thay thế artifact OpenAPI chạy validation. Không cần thêm Redis/Kafka cho MVP; file lớn cần object storage nếu bật hỗ trợ file.
+Có thể bắt đầu code và test local theo đặc tả. Chỉ bật thanh toán trên deployment sau khi policy được duyệt. Khi triển khai, cần xuất OpenAPI từ schemas và kiểm tra tính tương thích theo S01; Markdown không thay thế OpenAPI artifact đã qua validation. MVP chưa cần Redis/Kafka; nếu hỗ trợ file lớn thì cần object storage.

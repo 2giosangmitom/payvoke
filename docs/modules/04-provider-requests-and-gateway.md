@@ -2,7 +2,7 @@
 
 Provider tự chạy agent hoặc tool. Payvoke lưu yêu cầu, phát event qua kết nối do provider mở và nhận báo cáo qua API; Payvoke không gọi vào máy chủ provider. Payvoke xử lý x402 ở phía buyer; provider không cần tích hợp x402. Provider tích hợp theo tài liệu OpenAPI, không cần SDK.
 
-[S01](../specs/01-api-and-provider-protocol.md) chốt protocol MVP: provider mở SSE với API key theo app, event có invocation/command/version/effective arguments; ACK và report qua HTTP. Cursor không phải ACK; reconnect phát lại cùng event ID. OpenAPI artifact phải được tạo/kiểm tra khi implement, chưa tồn tại chỉ vì có thiết kế.
+[S01](../specs/01-api-and-provider-protocol.md) quy định protocol MVP. Provider mở SSE với API key theo app; event có invocation, command, version và effective arguments. Provider gửi ACK và report qua HTTP. Cursor không thay thế ACK; khi reconnect, Payvoke phát lại cùng event ID. Khi triển khai cần sinh và kiểm tra OpenAPI artifact; hiện mới có đặc tả.
 
 ## Kết nối
 

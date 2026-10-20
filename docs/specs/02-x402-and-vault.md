@@ -1,6 +1,6 @@
 # S02 · Scheme x402 và interface PayvokeVault
 
-Trạng thái: **đặc tả Payvoke v1 để triển khai**, 19/10/2026. Không phải scheme Foundation chuẩn hóa; chưa có deployment vault. [S01](01-api-and-provider-protocol.md) định nghĩa HTTP nghiệp vụ; [nghiên cứu kiến trúc](../research/x402-integration-architecture.md) giải thích đánh đổi và SDK revision. Nếu nghiên cứu cũ khác tài liệu này, S02 là contract triển khai MVP.
+Trạng thái: đặc tả Payvoke v1 để triển khai, 19/10/2026. Scheme do Payvoke thiết kế, chưa được Foundation chuẩn hóa; chưa có deployment vault. [S01](01-api-and-provider-protocol.md) định nghĩa HTTP nghiệp vụ; [nghiên cứu kiến trúc](../research/x402-integration-architecture.md) giải thích đánh đổi và SDK revision. Khi nghiên cứu cũ khác S02, triển khai MVP theo S02.
 
 ## 1. Phạm vi và cấu hình cố định
 
@@ -87,7 +87,7 @@ resolveBy        = releaseNotBefore + resolutionGraceSeconds
 
 Chốt trước ký, không tính lại dựa trên thời điểm retry. Contract yêu cầu `now < validUntil < deliveryDeadline <= releaseNotBefore < resolveBy`, duration không vượt deployment cap. Nếu reviewSeconds=0 thì bằng nhau được ở mốc release; policy nền tảng quyết định có cho phép 0 không.
 
-Đây là **earliest release**, không tự chứng minh đã giao. Approval nghiệp vụ chỉ release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Nếu không thể đủ thời gian trước resolveBy, chuyển resolver/refund; không kéo dài hold bằng cách sửa chữ ký cũ. Contract tự biết deadline/counter, không biết file đã đọc được.
+`releaseNotBefore` là thời điểm sớm nhất được giải ngân. Quyết định nghiệp vụ chỉ được cho phép release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Nếu không đủ thời gian trước resolveBy, chuyển resolver/refund; không kéo dài hold bằng cách sửa chữ ký cũ. Contract kiểm tra deadline/counter; platform phải xác nhận việc giao và khả năng truy cập file.
 
 ## 4. EIP-712 chính thức của Payvoke v1
 
@@ -234,7 +234,7 @@ Sau xác nhận, **một SQL transaction** cập nhật HELD và tạo `Invocati
 
 At-most-once debit là bất biến contract; một logical job là uniqueness DB; SSE/provider side effect là at-least-once có dedupe theo S01. Không tuyên bố chain+Postgres atomic hoặc exactly-once toàn hệ thống.
 
-## 8. Interface contract đề xuất để implement
+## 8. Interface contract đề xuất
 
 Tên dưới đây là ABI mục tiêu, chưa có contract. Solidity struct types ở §4 phải dùng chung, không đổi field order để tiết kiệm gas mà không tăng scheme/domain version.
 
@@ -367,4 +367,4 @@ Deployment policy chưa chọn con số kinh tế: fee bps/cap, quote lifetime, 
 - R2: Avalanche C-Chain RPC, acceptance/execution/finalized: https://build.avax.network/docs/api-reference/c-chain/api
 - R3: https://docs.openzeppelin.com/contracts/5.x/api/utils/cryptography ; https://docs.openzeppelin.com/contracts/5.x/access-control ; https://docs.openzeppelin.com/contracts/5.x/api/token/erc20
 - SDK source pin `faa1c694c66a3732aaabbce93bdae140e521a67d`: [mechanism interfaces](https://github.com/x402-foundation/x402/blob/faa1c694c66a3732aaabbce93bdae140e521a67d/typescript/packages/core/src/types/mechanisms.ts), [resource server/pending retry](https://github.com/x402-foundation/x402/blob/faa1c694c66a3732aaabbce93bdae140e521a67d/typescript/packages/core/src/server/x402ResourceServer.ts), [HTTP engine](https://github.com/x402-foundation/x402/blob/faa1c694c66a3732aaabbce93bdae140e521a67d/typescript/packages/core/src/http/x402HTTPResourceServer.ts), [Fastify adapter](https://github.com/x402-foundation/x402/blob/faa1c694c66a3732aaabbce93bdae140e521a67d/typescript/packages/http/fastify/src/index.ts).
-- Các struct/ABI/roles Payvoke trong tài liệu là thiết kế ứng dụng mới, không phải ABI có sẵn trong x402 hoặc OpenZeppelin.
+- Payvoke cần triển khai các struct/ABI/roles trong tài liệu; x402 và OpenZeppelin không cung cấp sẵn ABI này.

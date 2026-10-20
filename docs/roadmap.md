@@ -1,16 +1,16 @@
 # Roadmap triển khai Payvoke
 
-Trạng thái: **kế hoạch công việc, chưa phải tiến độ đã hoàn thành**. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
+Trạng thái: kế hoạch công việc, chưa ghi nhận tiến độ hoàn thành. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
 
 ## 1. Thứ tự và cách sử dụng
 
-**Nền tảng → contract → backend/API → x402 và recovery → provider/job → tài chính và Fuji → frontend → MCP → kiểm thử/phát hành.** Không xây giao diện trên API giả rồi coi phần thanh toán đã hoàn thành.
+Nền tảng → contract → backend/API → x402 và recovery → provider/job → tài chính và Fuji → frontend → MCP → kiểm thử/phát hành. Phần thanh toán phải được kiểm chứng trên backend trước khi làm giao diện.
 
 - Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md), [GLOSSARY](../GLOSSARY.md).
-- Roadmap có **130 task nhỏ trong 10 giai đoạn**. Tất cả ban đầu là TODO; tài liệu hoặc sample code có sẵn không có nghĩa tính năng đã xong.
+- Roadmap có 130 task trong 10 giai đoạn. Tất cả ban đầu là TODO; tài liệu hoặc sample code có sẵn chưa đủ để đánh dấu hoàn thành.
 - Làm một task hoặc một nhóm rất nhỏ có cùng mục tiêu trên mỗi PR. Task tài chính cần cả negative tests, không chỉ happy path. Nếu task còn lớn hơn một PR dễ review, tách thành subtask `Txxx.a`, `Txxx.b`, giữ dependency gốc.
 - Chỉ đánh dấu DONE khi có code, tests và bằng chứng nghiệm thu. Ghi commit/PR, lệnh kiểm tra và kết quả ngay dưới task hoặc trong PR liên kết; không tạo một bảng tiến độ mâu thuẫn khác.
-- Cột phụ thuộc là điều kiện kỹ thuật trực tiếp; **gate của giai đoạn trước vẫn bắt buộc** trừ các nhánh song song nêu ở §14. Không bắt đầu task chỉ vì dependency có code nhưng chưa pass tests.
+- Cột phụ thuộc ghi điều kiện kỹ thuật trực tiếp; task vẫn phải qua gate của giai đoạn trước, trừ các nhánh song song nêu ở §14. Dependency phải có code và pass tests trước khi bắt đầu task.
 - Không gán lịch ngày/tuần khi chưa biết số người và tốc độ. Ưu tiên thứ tự và gate; sau hai milestone đầu mới ước lượng lịch bằng dữ liệu thực tế.
 
 ### Definition of Done áp dụng cho mọi task
@@ -33,7 +33,7 @@ Giữ các vùng hiện có:
 - Đề xuất `packages/payvoke-protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; tạo ở T009, không xây framework đa chain.
 - Đề xuất `packages/payvoke-client`: phần client ký/gửi x402 dùng lại cho headless/browser/MCP; bắt đầu hẹp ở T016, không chứa UI hay khóa hardcode.
 - Đề xuất `apps/mcp`: local stdio bridge, chỉ bắt đầu sau core buyer API; không là server custody từ xa.
-- Provider fixture chạy **ngoài tiến trình Payvoke**, nói chuyện qua HTTP/SSE như provider thật. Không dùng fixture làm cớ chạy code provider trong backend.
+- Provider fixture chạy ngoài tiến trình Payvoke, giao tiếp qua HTTP/SSE như provider thật; không chạy code provider trong backend.
 
 Tên package mới là layout triển khai đề xuất; chốt exports khi làm task, không cần tạo cả cây thư mục rỗng trước.
 
@@ -56,7 +56,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 
 ## 4. M1 — Shared contracts, schemas và signing client hẹp
 
-**Mục tiêu:** backend, contract, browser và MCP không tự định nghĩa bốn cách tính quote hoặc bốn bộ enum khác nhau.
+**Mục tiêu:** backend, contract, browser và MCP dùng chung schema quote và enum.
 
 | Task     | Phụ thuộc        | Việc làm / đầu ra                                                                                                | Nghiệm thu                                                                                                      |
 | -------- | ---------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -69,7 +69,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T015 | T010–T013        | Fixture nghiệp vụ hợp lệ: một agent `/ask`, một tool `/summarize`, quote/terms/grants và các actor riêng.        | Fixture hash-only `{}` không bị dùng làm input quote thật; mọi sample nghiệp vụ pass schema.                    |
 | [ ] T016 | T005, T012, T015 | Client adapter hẹp cho chuẩn bị/kiểm tra payload và signer interface; có signer local cho test, chưa cần UI.     | Sign đúng quote; từ chối origin/chain/asset/vault/digest sai; không nhúng test private key vào package runtime. |
 
-**Gate M1:** golden fixtures xanh; có một định nghĩa authoritative của schema và chữ ký. Không cần tạo generic repository hoặc multi-chain plugin framework.
+**Gate M1:** golden fixtures pass; schema và chữ ký có một định nghĩa chung. Không tạo generic repository hoặc multi-chain plugin framework.
 
 ## 5. M2 — Smart contract PayvokeVault hoàn chỉnh ở local
 
@@ -100,7 +100,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 
 ## 6. M3 — Backend nền tảng, identity và command catalog
 
-**Mục tiêu:** API thật, quyền thật, dữ liệu bền vững; mọi thứ kiểm tra được qua HTTP mà không cần frontend.
+**Mục tiêu:** API kiểm tra quyền và lưu dữ liệu bền vững; kiểm thử được qua HTTP mà không cần frontend.
 
 | Task     | Phụ thuộc        | Việc làm / đầu ra                                                                                             | Nghiệm thu                                                                                                    |
 | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -124,7 +124,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 
 ## 7. M4 — Quote, x402, settlement worker và recovery
 
-**Mục tiêu:** client không giao diện tạo quote và trả tiền qua x402 thật; backend không giao việc dựa trên cờ settled giả.
+**Mục tiêu:** client headless tạo quote và trả tiền qua x402; backend chỉ giao việc sau khi xác nhận hold onchain.
 
 | Task     | Phụ thuộc              | Việc làm / đầu ra                                                                                  | Nghiệm thu                                                                                                         |
 | -------- | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -144,7 +144,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T063 | T060–T062              | Reconciler cho pending/unknown, replacement tx, chain-held/DB-missing và orphan operations.        | Kill sau broadcast/receipt/commit rồi restart phục hồi; mất input snapshot thì cách ly, không dựng job từ hash.    |
 | [ ] T064 | T016, T049, T052–T063  | Headless buyer test: wallet login → quote → 402 → session sign → hold → 202/read.                  | Chạy bằng client HTTP thật trên local chain; 2 submit đồng thời chỉ một debit và một logical ready event.          |
 
-**Gate M4:** payment admission và recovery hoạt động không cần web. Đây là mốc đầu tiên “trả tiền được”, chưa phải “provider giao hàng được”.
+**Gate M4:** payment admission và recovery hoạt động không cần web. Việc nhận và giao kết quả của provider sẽ được kiểm chứng ở M5.
 
 ## 8. M5 — Provider gateway, execution, continuation và file
 
@@ -168,11 +168,11 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T078 | T066–T077              | Fault tests SSE/ACK/report/results/files: crash, replay, out-of-order, expired cursor và storage lỗi. | Mọi path có trạng thái xác định/UNKNOWN; không thu thêm tiền hoặc lộ dữ liệu để chữa retry.         |
 | [ ] T079 | T064, T075, T076, T078 | Headless full execution gate cho cả hai product kinds, gồm question và revision.                      | Login → command → quote → hold → SSE → ACK → result/answer/revision hoạt động thật, không frontend. |
 
-**Gate M5:** backend làm được công việc, không chỉ chuyển tiền. Nếu chọn demo text-only sớm thì có thể xem T069 là demo nội bộ; không đánh dấu cả M5 xong khi file support đã cam kết vẫn chưa làm.
+**Gate M5:** backend xử lý được luồng từ thanh toán đến giao kết quả. T069 có thể dùng làm demo text-only nội bộ; chỉ hoàn thành M5 khi có cả hỗ trợ file đã cam kết.
 
 ## 9. M6 — Tài chính, vận hành, fault injection và Fuji
 
-**Mục tiêu:** không mắc kẹt ở happy path. Đây là gate bắt buộc trước khi bắt đầu frontend sản phẩm.
+**Mục tiêu:** kiểm chứng tài chính, vận hành và phục hồi sự cố trên Fuji trước khi bắt đầu frontend sản phẩm.
 
 | Task     | Phụ thuộc                    | Việc làm / đầu ra                                                                                            | Nghiệm thu                                                                                                             |
 | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -190,11 +190,11 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T091 | T079, T090                   | Headless Fuji E2E với provider thật theo protocol, receipt/finalized state và controlled RPC failures.       | Lưu tx hashes/balance delta; lost response/pending không charge lại; không dùng mempool/accepted thay execution.       |
 | [ ] T092 | T049, T079, T082–T091        | **Backend-ready gate:** API/OpenAPI đầy đủ, authorization, tiền/execution/recovery/ops được kiểm chứng.      | Có bộ lệnh chạy lại full flow agent/tool và finance, không frontend, không fake settled flag hoặc admin bypass.        |
 
-**Gate M6 / backend-ready:** chỉ sau T092 mới triển khai frontend ở M7. Không cần UI để có “bằng chứng backend chạy”; dùng headless client và test actors đúng quyền.
+**Gate M6 / backend-ready:** chỉ sau T092 mới triển khai frontend ở M7. Kiểm chứng backend bằng client headless và các tài khoản test đúng quyền.
 
 ## 10. M7 — Frontend trên backend đã chạy thật
 
-**Mục tiêu:** giao diện không thay thế logic tiền, quyền hoặc state machine. API là nguồn sự thật; browser chỉ giữ spend key của mình.
+**Mục tiêu:** frontend dùng API cho logic tiền, quyền và chuyển trạng thái; browser chỉ giữ spend key của mình.
 
 | Task     | Phụ thuộc                          | Việc làm / đầu ra                                                                                 | Nghiệm thu                                                                                                      |
 | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -216,11 +216,11 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T108 | T046–T048, T094, T096              | Web pairing approval/client authorization list, scope/workspace/expiry và revoke API/grant riêng. | User đối chiếu code/signer, CSRF/clickjacking protections; approve token không tự tạo grant.                    |
 | [ ] T109 | T093–T108                          | Browser E2E cho buyer/provider/operator, accessibility, responsive và pending/offline paths.      | Agent chat/tool no-chat đúng yêu cầu; full Fuji flow dùng backend thật, không fixture-only UI.                  |
 
-**Gate M7:** sản phẩm dùng được trên web; không cần animation/design polish phức tạp để qua gate. Không giữ hai phiên bản business logic ở frontend/backend.
+**Gate M7:** người dùng hoàn thành được các luồng sản phẩm trên web. Không cần animation phức tạp; business logic vẫn nằm ở backend.
 
 ## 11. M8 — MCP local cho ứng dụng AI
 
-**Mục tiêu:** AI host gọi cùng sản phẩm/API/tiền với web; không có remote custody hoặc luồng charge tắt.
+**Mục tiêu:** AI host dùng cùng sản phẩm, API và số dư với web; giữ khóa chi local và thanh toán qua cùng luồng x402.
 
 | Task     | Phụ thuộc                    | Việc làm / đầu ra                                                                                       | Nghiệm thu                                                                                                 |
 | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -237,11 +237,11 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T120 | T110–T119                    | Integration với Inspector/host hỗ trợ revision đã pin, cả agent và tool.                                | Host không có slash UI vẫn prepare/submit/poll/answer được; không hứa Tasks/notifications chưa hỗ trợ.     |
 | [ ] T121 | T120, T091, T109             | MCP acceptance gate: web chuẩn bị quyền → CLI pairing/approval → AI host mua và nhận kết quả trên Fuji. | Web/MCP thấy cùng session/invocation/balance; revoke, pending, timeout và replay không bypass payment.     |
 
-**Gate M8:** complete local MCP scope S03. Remote Streamable HTTP paid submit, OAuth server mới và giao khóa buyer lên cloud đều ngoài roadmap này.
+**Gate M8:** hoàn thành phạm vi MCP local trong S03. Remote Streamable HTTP paid submit, OAuth server mới và lưu khóa buyer trên cloud đều ngoài roadmap này.
 
 ## 12. M9 — Hardening, staging và phát hành Fuji
 
-**Mục tiêu:** không chỉ có demo chạy một lần mà có bản phát hành tái hiện và vận hành được.
+**Mục tiêu:** có bản phát hành triển khai lại được, kèm kiểm thử và quy trình vận hành.
 
 | Task     | Phụ thuộc              | Việc làm / đầu ra                                                                                                    | Nghiệm thu                                                                                                                          |
 | -------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -272,7 +272,7 @@ M0 → M1 → M2 contract local
    → M9 release
 ```
 
-### Các demo nên chạy ngay khi đủ, không đợi giao diện
+### Demo theo từng mốc
 
 1. **Sau T034:** contract local nhận deposit/grant/hold rồi refund/release/reclaim; không cần HTTP.
 2. **Sau T049:** provider đăng ký command có parameters qua API; buyer mở phiên đúng product.
@@ -282,7 +282,7 @@ M0 → M1 → M2 contract local
 6. **Sau T109:** người dùng thực hiện bằng web; agent và tool có hai kiểu giao diện đúng yêu cầu.
 7. **Sau T121:** AI host dùng MCP mua cùng sản phẩm và xem cùng kết quả trên web.
 
-Không gọi demo sớm là đã hoàn thành các giai đoạn sau; không mở payment admission công khai chỉ vì một script happy path thành công.
+Demo chỉ chứng minh phạm vi đã kiểm thử ở mốc đó. Cần qua đủ gate trước khi mở payment admission công khai.
 
 ## 14. Công việc có thể làm song song
 
@@ -294,7 +294,7 @@ Khi có nhiều người, không đổi thứ tự gate nhưng có thể giảm 
 - Sau T092: frontend M7 và MCP protocol/read-only scaffold T110/T113 có thể làm song song nếu có người; MCP paid pairing/approval vẫn đợi web/auth/grant paths tương ứng. Kế hoạch mặc định một luồng vẫn hoàn thành frontend rồi MCP.
 - Test vectors, negative tests, CI và security review làm liên tục, không dồn toàn bộ tới M9.
 
-Không song song bằng cách mỗi người tự thay schema/typed data; thay shared contracts phải qua cùng review và cập nhật tests/version.
+Mọi thay đổi schema/typed data dùng chung phải qua cùng quy trình review và cập nhật tests/version, kể cả khi các nhóm làm song song.
 
 ## 15. Những quyết định phải duyệt và những việc không làm
 
@@ -317,6 +317,6 @@ Số trong fixture chỉ là dữ liệu test. T089 phải có cấu hình cụ 
 
 ## 16. Năm task đầu tiên để bắt tay vào làm
 
-Thực hiện **T001 → T003 → T004 → T005 → T006**, đồng thời hoàn thành mapping T002 trước gate M0. Sau đó T007/T008 và các schemas T009–T012. Đây là khởi động môi trường + shared contracts, không phải yêu cầu viết thêm một bộ tài liệu tổng quan nữa.
+Thực hiện T001 → T003 → T004 → T005 → T006, đồng thời hoàn thành mapping T002 trước gate M0. Sau đó làm T007/T008 và các schemas T009–T012.
 
 Task triển khai đầu tiên nên giao theo dạng: “Làm T001/T003 trong phạm vi hiện có; báo các commands/config còn thiếu; không thêm tính năng frontend và không tự thay đổi policy kinh tế.” Mỗi lần tiếp theo chọn task có dependency đã DONE, kèm acceptance test trong bảng.

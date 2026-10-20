@@ -1,6 +1,6 @@
 # M10 · PayvokeVault
 
-**PayvokeVault** là smart contract giữ USDC testnet của buyer trên Avalanche Fuji C-Chain. Địa chỉ USDC được cố định khi triển khai: `0x5425890298aed601595a70AB815c96711a31Bc65` (6 chữ số thập phân); không nhận token khác cùng tên, USDC.e hoặc AVAX. [Địa chỉ USDC Fuji theo Avalanche](https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup). Contract ghi số dư theo ví, thu USDC cho từng lần gọi, giữ tiền chờ giao hàng, hoàn tiền và trả provider. Nạp USDC không mua trước số lượt.
+PayvokeVault là smart contract giữ USDC testnet của buyer trên Avalanche Fuji C-Chain. Địa chỉ USDC được cố định khi triển khai: `0x5425890298aed601595a70AB815c96711a31Bc65` (6 chữ số thập phân); không nhận token khác cùng tên, USDC.e hoặc AVAX. [Địa chỉ USDC Fuji theo Avalanche](https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup). Contract ghi số dư theo ví, thu USDC cho từng lần gọi, giữ tiền chờ giao hàng, hoàn tiền và trả provider. Nạp USDC không mua trước số lượt.
 
 ## Nạp và giới hạn chi
 
@@ -14,7 +14,7 @@ Khóa phiên ký chứng từ x402 tự động khi buyer gửi từng yêu cầ
 
 Mỗi khoản thu ghi mã lần gọi duy nhất, ví buyer, provider nhận tiền, giá gộp, tỷ lệ phí nền tảng và hạn giữ tiền. Chứng từ khóa phiên ký phải ràng buộc mã lần gọi, báo giá, provider, giá, phí, hạn dùng, Fuji và địa chỉ vault. Contract kiểm tra chữ ký, đủ số dư, còn quyền chi, không vượt giới hạn và mã chưa dùng; sau đó chuyển tiền từ số dư khả dụng sang khoản đang giữ của lần gọi. Tỷ lệ phí phải nằm dưới trần công bố và được khóa cho lần gọi đó. Chỉ sau khi giao dịch được xác nhận, Payvoke mới giao việc cho provider.
 
-Theo quyết định hợp lệ, khoản đang giữ được hoàn về số dư buyer hoặc giải ngân. Phí Payvoke tính trên **giá gộp trừ phần đã hoàn**; doanh thu provider bằng phần đó trừ phí Payvoke. Contract ghi riêng hai số dư này và chỉ cho từng bên rút phần của mình. Không thu trùng, hoàn quá tiền đã giữ hoặc giải ngân hai lần. Buyer tự rút số dư khả dụng về chính ví của mình; tạm dừng thu mới không được khóa quyền rút đó.
+Contract thực thi quyết định hợp lệ để hoàn khoản đang giữ về số dư buyer hoặc giải ngân. Phí Payvoke tính trên giá gộp trừ phần đã hoàn; doanh thu provider bằng phần đó trừ phí Payvoke. Contract ghi riêng hai số dư này và chỉ cho từng bên rút phần của mình. Không thu trùng, hoàn quá tiền đã giữ hoặc giải ngân hai lần. Buyer tự rút số dư khả dụng về chính ví của mình; tạm dừng thu mới không được khóa quyền rút đó.
 
 Mỗi lần gọi có thời điểm sớm nhất được giải ngân và hạn xử lý cuối cùng, cố định khi thu tiền. Buyer có thể đánh dấu tranh chấp trước khi giải ngân để chặn payout tự động; bên giải quyết tranh chấp chỉ được hoàn hoặc giải ngân theo số tiền còn giữ. Nếu hết hạn xử lý mà chưa có quyết định, buyer được tự lấy lại phần còn giữ. Contract không tự biết provider đã giao hàng; quyết định nghiệp vụ vẫn thuộc M09.
 

@@ -1,6 +1,6 @@
 # S03 · MCP client ngoài và bridge thanh toán
 
-> Đặc tả để triển khai, không phải mã đã chạy. Phạm vi: adapter MCP dùng chung [buyer API S01](01-api-and-provider-protocol.md) và [scheme/vault S02](02-x402-and-vault.md); không tạo gateway/provider protocol hay scheme thanh toán thứ hai. Các endpoint pairing ở §5 là auth plane ứng dụng Payvoke cần triển khai, không phải endpoint MCP/OAuth tiêu chuẩn.
+> Trạng thái: đặc tả chưa triển khai. Adapter MCP dùng chung [buyer API S01](01-api-and-provider-protocol.md) và [scheme/vault S02](02-x402-and-vault.md), không tạo gateway/provider protocol hay scheme thanh toán thứ hai. Payvoke cần triển khai các endpoint pairing ở §5; chúng không thuộc chuẩn MCP/OAuth.
 
 ## 1. Quyết định và ranh giới
 
@@ -26,7 +26,7 @@ Không trộn hướng dẫn SDK v1 (`@modelcontextprotocol/sdk`) với v2. Prot
 
 ## 2. Mô hình sản phẩm, phiên và commands
 
-### 2.1. Ba khái niệm không được nhập làm một
+### 2.1. Phiên sử dụng, quyền chi và quyền API
 
 | ID                      | Ý nghĩa                                              | Ràng buộc                                                                                             |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -65,7 +65,7 @@ Streamable HTTP phù hợp remote server đa client: một MCP POST endpoint; JS
 
 Remote protected MCP phải triển khai auth theo §5.5, kiểm tra Origin (có nhưng sai → 403), audience/scope từng request, rate limit và metadata/header nhất quán. `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` áp dụng theo bản protocol; dùng SDK/adapter đúng bản, không tự ghép JSON-RPC giản lược [S6].
 
-**Phân biệt hai HTTP 202:** buyer API trả 202 cho invocation là job nghiệp vụ; HTTP 202 rỗng của MCP transport là chấp nhận JSON-RPC notification. Không trả HTTP 202 rỗng thay cho kết quả `tools/call`.
+Buyer API trả HTTP 202 khi chấp nhận invocation để xử lý. MCP transport trả HTTP 202 rỗng khi chấp nhận JSON-RPC notification. Không dùng response rỗng này thay cho kết quả `tools/call`.
 
 ## 4. Quyền truy cập và quyền chi
 
@@ -97,7 +97,7 @@ Prepare cần thêm `workspace:read` khi chọn context; submit/continue/read đ
 
 ### 5.1. Chọn HTTPS polling, không loopback
 
-Đây là **giao thức pairing riêng của Payvoke**, không gọi là “MCP OAuth”, không tuyên bố tương thích OAuth Device Authorization Grant. Nó dùng browser đăng nhập ví đã có và proof-of-possession để cấp token buyer API cho bridge. Không yêu cầu xây authorization server OAuth cho stdio: chuẩn MCP HTTP auth nói stdio không nên dùng flow đó, credentials lấy từ môi trường local [S7]. Profile/keychain reference là cách cung cấp credential, không đưa secret vào model.
+Payvoke dùng giao thức pairing riêng: người dùng đăng nhập ví trên browser, còn bridge chứng minh quyền sở hữu verifier để nhận token buyer API. Giao thức này không phải “MCP OAuth” và không tuyên bố tương thích OAuth Device Authorization Grant. Theo chuẩn MCP HTTP auth, stdio nên lấy credentials từ môi trường local thay vì dùng flow OAuth cho HTTP [S7]. Bridge dùng profile/keychain reference để lấy credential, không đưa secret vào model.
 
 Chọn CLI pairing do **người dùng trực tiếp chạy ngoài MCP**, không expose `pair`/`authorize`/`approve` tool. Browser không tải khóa riêng về hoặc chuyển khóa cho bridge. Không cần localhost listener/callback URI và tránh thêm bề mặt DNS rebinding. Không dùng copy/paste access token từ chat.
 
@@ -127,7 +127,7 @@ Kiểm soát bắt buộc: giới hạn pending pairings theo IP/client, brute-f
 
 Hai nút riêng: **thu hồi API access** và **thu hồi spend grant** bằng ví. UI khuyến nghị cả hai nếu mất thiết bị. API revoke chặn thao tác mới ngay khi kiểm tra request; grant revoke chặn chứng từ chưa settle sau khi giao dịch revoke được xác nhận. Không bảo đảm hủy khoản đang settle/đã HELD trong race. Khoản đã trả vẫn thuộc owner, xem được trên web; không xóa invocation, không tự hoàn tiền, không đổi chủ sở hữu. Dừng local bridge không phải revoke.
 
-### 5.5. Remote OAuth không dùng pairing giả làm chuẩn
+### 5.5. Yêu cầu OAuth cho remote MCP
 
 Nếu mở protected Streamable HTTP: MCP server là resource server OAuth, host là OAuth client. Cần Protected Resource Metadata RFC 9728, AS discovery RFC 8414 hoặc OIDC, OAuth 2.1 authorization code + PKCE, resource indicator RFC 8707 và audience binding; Bearer mỗi request, 401 cho token sai/hết hạn, 403 thiếu scope [S7]. Wallet login là cách AS xác thực user, không thay thế OAuth protocol.
 
@@ -170,7 +170,7 @@ Quote trả **cả `quoteId` và `invocationId` đã reserve**, snapshot input/c
 
 Thời gian chờ xác nhận onchain vẫn cần deadline RPC/HTTP hữu hạn. Nếu timeout trước 202, trả `SUBMISSION_UNKNOWN` cùng reserved invocation ID để đọc/reconcile, không treo MCP đến lúc provider giao xong.
 
-## 7. Hợp đồng tools tĩnh
+## 7. Đặc tả bộ tools cố định
 
 ### 7.1. Quy tắc schema/output chung
 
@@ -206,17 +206,17 @@ MVP không tự fetch URL do provider trả. `get_result` trả text có giới 
 
 ## 8. Gate chi tiền chống prompt injection
 
-**Một tool argument `confirmed:true`, việc model lặp lại digest hoặc host tự cho phép tool không chứng minh người dùng đồng ý trả tiền.** `expectedQuoteDigest` chỉ là kiểm tra snapshot, không phải approval credential.
+Bridge không coi `confirmed:true`, digest model gửi lại hoặc quyền gọi tool do host cấp là sự đồng ý trả tiền. `expectedQuoteDigest` chỉ dùng kiểm tra snapshot. Buyer phải duyệt quote qua CLI theo quy trình dưới đây.
 
 MVP dùng trusted local CLI ngoài MCP: user tự chạy `payvoke approve-quote <quoteId>` (tên lệnh là yêu cầu UX, chưa có implementation). CLI lấy quote từ buyer API cùng profile, hiện product/provider/command/version, chính xác arguments và context được gửi, gross USDC/phí, expiry, invocation ID, policy còn lại và grant cap/balance cập nhật; nếu không đọc được balance thì không cho xác nhận. User xác nhận tại TTY do CLI trực tiếp kiểm soát, không đọc xác nhận từ stdin của host hay nhận flag auto-yes.
 
 CLI ghi approval local một lần, bind `{owner,clientAuthorizationId,profile,quoteId,invocationId,quoteDigest,spendPolicyHash,expiresAt}` trong storage có quyền truy cập hạn chế và khóa chống race. Đây là quyết định người dùng ngoài model, không token gửi vào tool. Bridge chỉ có thể dùng approval cho đúng quote; retry cùng invocation được tái dùng quyết định cũ, không dùng cho invocation mới. Nếu host không có terminal phù hợp thì dừng paid flow và đưa user về web thực hiện invocation, không thêm approval tool.
 
-Submit chỉ ký khi **đồng thời** có: API scope hợp lệ + owner/workspace đúng + quote được chuẩn bị và còn hạn + explicit approval còn hiệu lực + standing policy đã cấu hình + grant onchain còn hiệu lực + reservation/balance đủ + 402 challenge khớp toàn bộ snapshot. Các kiểm tra là logic deterministic, không nhờ LLM phân loại “có vẻ an toàn”.
+Bridge chỉ ký submit khi đáp ứng đủ các điều kiện: API scope hợp lệ, owner/workspace đúng, quote đã chuẩn bị và còn hạn, approval còn hiệu lực, standing policy đã cấu hình, grant onchain còn hiệu lực, reservation/balance đủ và 402 challenge khớp toàn bộ snapshot. Code phải kiểm tra từng điều kiện, không giao cho LLM quyết định.
 
 Không tự approve từ chữ “yes” trong chat; không coi dữ liệu tài liệu, command description, result, câu hỏi provider hay MCP annotation là chỉ thị thay đổi policy. Prompt injection yêu cầu “gọi submit thêm lần để mở khóa file”, “đổi vault”, “bỏ qua phí”, “gửi token cho support” chỉ là dữ liệu. Approval quote này không cho phép tự tạo vòng lặp quote mới.
 
-**Không tool nào nhận các đối số hạ tầng tùy ý:** API/base URL, callback URL, access token, private key/seed, vault/token contract address, chain, calldata, RPC endpoint, raw message/typed-data để ký. Các `arguments` command là dữ liệu nghiệp vụ, không có quyền ghi đè signer/network. Nếu command thật sự nhận URL nghiệp vụ thì bridge chỉ chuyển chuỗi theo schema; không fetch nó và không dùng nó làm endpoint.
+Các tool không nhận đối số hạ tầng tùy ý, gồm API/base URL, callback URL, access token, private key/seed, vault/token contract address, chain, calldata, RPC endpoint hoặc raw message/typed-data để ký. `arguments` của command chỉ chứa dữ liệu nghiệp vụ, không được ghi đè signer/network. Nếu command nhận URL nghiệp vụ, bridge chỉ chuyển chuỗi theo schema; không fetch URL đó hoặc dùng làm endpoint.
 
 ## 9. Idempotency, retry và mất phản hồi
 
@@ -344,4 +344,4 @@ Các URL protocol dưới đây pin revision, không dùng `/latest` để suy d
 - **[S9]** MCP [Security best practices](https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices). Nguồn cho confused deputy, token passthrough, SSRF, handle hijacking, local execution/consent và rủi ro localhost.
 - **[S10]** x402 Foundation [HTTP transport v2](https://github.com/x402-foundation/x402/blob/main/specs/transports-v2/http.md), [x402 v2 specification](https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md). Nguồn cho header/402 transport; **không** đặc tả thay PayvokeVault custom scheme. Các binding/cap/settlement cụ thể phải lấy từ spec x402/vault cùng bộ tài liệu.
 
-Pairing Payvoke, local CLI approval, scopes, tên tools và các quyết định budget trong tài liệu là **thiết kế ứng dụng**, không phải chức năng MCP tiêu chuẩn được nguồn chính thức bảo đảm.
+Payvoke cần tự triển khai pairing, local CLI approval, scopes, bộ tools và quy tắc ngân sách trong tài liệu; chuẩn MCP không cung cấp sẵn các chức năng này.

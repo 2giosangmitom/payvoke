@@ -1,10 +1,10 @@
 # Thiết kế Payvoke
 
-Payvoke kết nối buyer với provider tự vận hành agent hoặc công cụ. Buyer nạp USDC vào PayvokeVault rồi trả theo từng lần gọi mà không ký lại. Payvoke không chạy phần mềm của provider: hệ thống phát event qua kết nối do provider mở và nhận kết quả qua API.
+Payvoke kết nối buyer với provider tự vận hành agent hoặc công cụ. Buyer nạp USDC vào PayvokeVault rồi trả theo từng lần gọi bằng khóa chi, không cần mở ví chính để ký lại. Provider tự chạy phần mềm; Payvoke phát event qua kết nối do provider mở và nhận kết quả qua API.
 
-Đăng nhập bằng ví; blockchain duy nhất là Avalanche Fuji C-Chain. Mỗi phiên sử dụng gắn cố định một sản phẩm: **agent có chat/composer và slash commands; tool có form parameters, trạng thái và kết quả, không có composer chat**. Không bắt buộc tool dùng LLM. Provider có API đăng ký commands có schema tham số; không trộn agent/tool khác vào cùng phiên.
+Người dùng đăng nhập bằng ví trên Avalanche Fuji C-Chain, blockchain duy nhất được hỗ trợ. Mỗi phiên sử dụng gắn cố định một sản phẩm. Agent có chat/composer và slash commands; tool có form parameters, trạng thái và kết quả, không có composer chat. Tool không bắt buộc dùng LLM. Provider đăng ký commands có schema tham số qua API; mỗi agent/tool dùng một phiên riêng.
 
-Trang này là tổng quan chức năng, không phải bằng chứng đã triển khai. [Đặc tả triển khai](specs/README.md) chốt API/provider event, scheme x402/vault và MCP; [GLOSSARY](../GLOSSARY.md) thống nhất thuật ngữ.
+Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đã triển khai. [Đặc tả triển khai](specs/README.md) quy định API/provider event, scheme x402/vault và MCP; [GLOSSARY](../GLOSSARY.md) định nghĩa thuật ngữ.
 
 [Roadmap từ đầu đến cuối](roadmap.md) chia thành 130 task trong 10 giai đoạn. Gate backend-ready yêu cầu luồng headless, recovery và tài chính trên Fuji được kiểm chứng trước khi làm frontend.
 

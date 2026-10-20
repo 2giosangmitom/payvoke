@@ -6,7 +6,7 @@ Buyer đánh giá một lần gọi đã trả tiền và được giao kết qu
 
 Buyer có thể khiếu nại khi không nhận kết quả, đầu ra sai điều khoản, file không truy cập được hoặc phạm vi sửa bị tranh cãi. Hồ sơ giữ điều khoản, phiên bản kết quả, bằng chứng thanh toán và phản hồi provider. Operator ghi quyết định, lý do, số tiền hoàn và ảnh hưởng tới khoản phải trả provider; tranh cãi về chất lượng cần người có quyền quyết định.
 
-M09 quyết định, M06 và PayvokeVault chuyển tiền. Khoản đang giữ có thể hoàn về số dư buyer hoặc giải ngân sau thời hạn tranh chấp. Nếu provider đã rút tiền, việc hoàn buyer cần nguồn dự phòng và việc thu hồi từ provider là việc riêng. Vụ việc chưa xong về tài chính cho đến khi số dư hoàn được xác nhận hoặc có quyết định rõ rằng không cần hoàn.
+Operator ra quyết định qua M09; M06 và PayvokeVault chuyển tiền. Khoản đang giữ có thể hoàn về số dư buyer hoặc giải ngân sau thời hạn tranh chấp. Nếu provider đã rút tiền, Payvoke cần nguồn dự phòng để hoàn buyer và xử lý việc thu hồi từ provider riêng. Vụ việc chỉ kết thúc về tài chính khi đã xác nhận số dư hoàn hoặc có quyết định không cần hoàn.
 
 ## Sự cố
 
