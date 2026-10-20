@@ -1,6 +1,6 @@
 # Roadmap triển khai Payvoke
 
-Trạng thái: kế hoạch công việc, chưa ghi nhận tiến độ hoàn thành. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
+Trạng thái: T001 đã hoàn tất kiểm kê baseline ngày 20/10/2026; các task khác chưa ghi nhận hoàn thành. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
 
 ## 1. Thứ tự và cách sử dụng
 
@@ -23,7 +23,7 @@ Nền tảng → contract → backend/API → x402 và recovery → provider/job
 
 ## 2. Mốc hiện tại và layout mục tiêu
 
-Hiện backend là Fastify skeleton, Prisma chưa có domain models; vault là Hardhat sample; frontend là skeleton React/TanStack. Đặc tả và một fixture EIP-712 đã có, nhưng chưa thay thế implementation tests.
+Hiện backend là Fastify skeleton; Prisma đã có 64 models và 40 enums, validate thành công nhưng chưa có migrations hoặc DB integration. Vault là Hardhat Counter sample; frontend là skeleton React/TanStack. Đặc tả và một fixture EIP-712 đã có, nhưng chưa thay thế implementation tests. Xem [baseline T001](baseline.md) để biết các checks pass/fail và giới hạn bằng chứng.
 
 Giữ các vùng hiện có:
 
@@ -43,7 +43,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 
 | Task     | Phụ thuộc  | Việc làm / đầu ra                                                                                                            | Nghiệm thu                                                                                           |
 | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [ ] T001 | Không      | Ghi baseline code hiện có, scripts chạy được, phiên bản runtime và những sample chưa phải sản phẩm.                          | Có checklist tái hiện baseline; không xóa sample/chỉnh code lạ khi chưa xác định nguồn.              |
+| [x] T001 | Không      | Ghi baseline code hiện có, scripts chạy được, phiên bản runtime và những sample chưa phải sản phẩm.                          | Có checklist tái hiện baseline; không xóa sample/chỉnh code lạ khi chưa xác định nguồn.              |
 | [ ] T002 | T001       | Ánh xạ requirement S01–S03 vào test suites; ghi các bất biến: một product/session, một hold/invocation, tool không composer. | Mỗi bất biến có test surface và milestone chịu trách nhiệm, không chỉ một danh sách tính năng.       |
 | [ ] T003 | T001       | Thiết kế config có schema: API/DB/RPC/origin, chain/token/vault, worker roles và redaction.                                  | Thiếu config bắt buộc hoặc sai chain/origin thì fail startup; không default sang public facilitator. |
 | [ ] T004 | T003       | Tách profile `test-local` và `fuji`; fixture policy thời gian/ngân sách ngắn cho test, policy vận hành phải được duyệt sau.  | Test profile không dùng được ở deployment Fuji chỉ bằng đổi RPC; không có cap vô hạn ngầm.           |
@@ -51,6 +51,8 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T006 | T005       | Thêm scripts theo workspace: format/lint/typecheck, backend unit/integration, contract compile/test.                         | Có lệnh rõ cho mỗi suite; test không chạy và lỗi compile không bị exit code thành công.              |
 | [ ] T007 | T003, T006 | Chuẩn hóa PostgreSQL test cô lập, migration/reset/seed fixture; phân biệt tmpfs test với volume bền vững deployment.         | Chạy integration suite hai lần độc lập; không reset DB ngoài test bằng nhầm biến môi trường.         |
 | [ ] T008 | T006, T007 | CI nền tảng chạy format/lint/typecheck và tests hiện có; cung cấp env mẫu không secret.                                      | PR làm hỏng check bị chặn; log không lộ credential; CI không đòi browser/frontend đã xong.           |
+
+**Bằng chứng T001 — 20/10/2026:** [baseline và checklist tái hiện](baseline.md), khảo sát trên commit `d14bd98c6854284f195d3b6be9be7007f9ae51ac`. Prisma validate, frontend typecheck/build, vault compile/typecheck và 5 Counter tests pass; HTTP skeleton phản hồi 404. Format root và backend typecheck fail đã ghi nguyên trạng; lint có 1 warning. Không sửa implementation. DB integration chờ URL Neon cloud từ chủ dự án; Docker local giữ nguyên làm tùy chọn dev API, chưa chạy. Đây không phải bằng chứng Gate M0 đã đạt.
 
 **Gate M0:** môi trường và checks tái hiện được; thiếu policy thật không chặn viết code local nhưng phải chặn bật giao dịch deployment.
 
