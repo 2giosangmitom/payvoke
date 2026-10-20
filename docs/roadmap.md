@@ -1,6 +1,6 @@
 # Roadmap triển khai Payvoke
 
-Trạng thái: T001 đã hoàn tất kiểm kê baseline ngày 20/10/2026; các task khác chưa ghi nhận hoàn thành. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
+Trạng thái: T001/T002 đã hoàn tất baseline và mapping kiểm thử ngày 20/10/2026; các task khác chưa ghi nhận hoàn thành. Mốc lập: 19/10/2026. Phạm vi phát hành: Avalanche Fuji với USDC testnet; không bao gồm triển khai mainnet hoặc nhận tài sản thật.
 
 ## 1. Thứ tự và cách sử dụng
 
@@ -44,7 +44,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | Task     | Phụ thuộc  | Việc làm / đầu ra                                                                                                            | Nghiệm thu                                                                                           |
 | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [x] T001 | Không      | Ghi baseline code hiện có, scripts chạy được, phiên bản runtime và những sample chưa phải sản phẩm.                          | Có checklist tái hiện baseline; không xóa sample/chỉnh code lạ khi chưa xác định nguồn.              |
-| [ ] T002 | T001       | Ánh xạ requirement S01–S03 vào test suites; ghi các bất biến: một product/session, một hold/invocation, tool không composer. | Mỗi bất biến có test surface và milestone chịu trách nhiệm, không chỉ một danh sách tính năng.       |
+| [x] T002 | T001       | Ánh xạ requirement S01–S03 vào test suites; ghi các bất biến: một product/session, một hold/invocation, tool không composer. | Mỗi bất biến có test surface và milestone chịu trách nhiệm, không chỉ một danh sách tính năng.       |
 | [ ] T003 | T001       | Thiết kế config có schema: API/DB/RPC/origin, chain/token/vault, worker roles và redaction.                                  | Thiếu config bắt buộc hoặc sai chain/origin thì fail startup; không default sang public facilitator. |
 | [ ] T004 | T003       | Tách profile `test-local` và `fuji`; fixture policy thời gian/ngân sách ngắn cho test, policy vận hành phải được duyệt sau.  | Test profile không dùng được ở deployment Fuji chỉ bằng đổi RPC; không có cap vô hạn ngầm.           |
 | [ ] T005 | T001       | Kiểm tra package artifact thực tế của x402, viem, OpenZeppelin, Hardhat và runtime; pin version/lockfile tương thích.        | Import/export được kiểm tra với artifact cài thật, không chỉ chép API từ source nghiên cứu.          |
@@ -55,6 +55,8 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 **Bằng chứng T001 — 20/10/2026:** [baseline và checklist tái hiện](baseline.md), khảo sát trên commit `d14bd98c6854284f195d3b6be9be7007f9ae51ac`. Prisma validate, frontend typecheck/build, vault compile/typecheck và 5 Counter tests pass; HTTP skeleton phản hồi 404. Format root và backend typecheck fail đã ghi nguyên trạng; lint có 1 warning. Không sửa implementation. DB integration chờ URL Neon cloud từ chủ dự án; Docker local giữ nguyên làm tùy chọn dev API, chưa chạy. Đây không phải bằng chứng Gate M0 đã đạt.
 
 **Gate M0:** môi trường và checks tái hiện được; thiếu policy thật không chặn viết code local nhưng phải chặn bật giao dịch deployment.
+
+**Bằng chứng T002 — 20/10/2026:** [mapping S01–S03](test-mapping.md) có test surfaces, ca hợp lệ/negative, task/milestone và đối chiếu toàn bộ acceptance lists S01 §9, S02 §10, S03 §14. Ba bất biến tối thiểu nằm tại API-01/PAY-06/API-02; crash/recovery và release gates có mục xuyên lớp. Chỉ bổ sung tài liệu, chưa có suites mới hoặc bằng chứng pass implementation; không cần URL Neon để hoàn tất mapping.
 
 ## 4. M1 — Shared contracts, schemas và signing client hẹp
 

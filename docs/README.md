@@ -10,6 +10,8 @@ Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đ�
 
 [Baseline T001](baseline.md) ghi hiện trạng code, runtime, lệnh kiểm tra và kết quả thực tế; database cloud Neon đang chờ URL, Docker local là tùy chọn.
 
+[Mapping kiểm thử T002](test-mapping.md) nối yêu cầu S01–S03 với ca kiểm thử, test surface và task/milestone nghiệm thu; chưa phải các suites đã triển khai.
+
 ## Luồng chính
 
 1. Provider kết nối SSE bằng API key, đăng ký slash commands và schema parameters qua web/API; chỉ bản được duyệt được bán với giá USDC cố định mỗi lần gọi.
