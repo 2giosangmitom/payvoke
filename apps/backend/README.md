@@ -15,6 +15,9 @@ src/
     index.ts            # Fastify bridge, session guard and /v1/me
   modules/quotes/
     index.ts            # immutable tool quotes and SDK payment challenge
+  modules/payments/
+    journal.ts          # intent, fenced leases and signed transaction journal
+    index.ts            # authenticated read-only invocation status
 ```
 
 Add features under `modules/<feature>` and register them after auth in `app.ts`.
@@ -120,15 +123,28 @@ and must never be used for tests. Tests create/remove
 only their own random schema; they never read `DATABASE_URL`. PGlite serializes DB
 work and does not prove cross-process PostgreSQL concurrency.
 
-The quote/x402 suite always uses isolated PGlite; its concurrent-request tests
-are not evidence of cross-process PostgreSQL locking. It does not connect to RPC.
+The quote/x402/journal suite defaults to isolated PGlite. For actual PostgreSQL
+locking and a two-process claim race, use the existing Docker test DB:
+
+```sh
+docker compose up -d --wait test-db      # from repository root
+pnpm --dir apps/backend test:payments:postgres
+```
+
+That script only connects to `127.0.0.1:55433/test` with the compose test user,
+creates/drops its own random schema and ignores `DATABASE_URL`/`TEST_DATABASE_URL`.
+It does not call an RPC or send blockchain transactions. PGlite serializes DB
+work; only the Docker run exercises concurrent connections/processes.
 
 ## Quote/x402 milestone (not live payments)
 
 - `POST /v1/quotes` authenticates the buyer, validates persisted TOOL command
   arguments/defaults and freezes input/terms/policy snapshots plus EIP-712 quote.
-  `Idempotency-Key` must equal `clientRequestId`. One unexpired quote occupies the
-  session; replays return the same stored document without extending deadlines.
+  `Idempotency-Key` must equal `clientRequestId`. One active quote/operation
+  occupies the session; replays return the same stored document without
+  extending deadlines. Pending/UNKNOWN/HELD operations retain that slot even
+  after quote expiry. Only explicitly rejected, never-attempted operations may
+  release their slot after expiry in this milestone.
 - Only empty context selections are supported. Nonempty selections and AGENT
   products fail explicitly; there is no silent context omission.
 - `POST /v1/invocations {quoteId}` requires the invocation ID as idempotency key.
@@ -145,8 +161,37 @@ session and active policy records in a development DB, and configure a matching
 or production fixtures in this milestone. Quotes do not prove onchain admission.
 
 **Real settlement is blocked:** requests with `PAYMENT-SIGNATURE` return 503
-`SETTLEMENT_NOT_AVAILABLE`; `PAYMENTS_ENABLED=true` fails startup. No relayer key,
-transaction, HELD transition, outbox job or provider dispatch exists yet. Before
-enabling payments, implement the private facilitator, durable journal/worker,
-finality and HELD+outbox transaction, including recovery and Docker PostgreSQL
-concurrency tests. This milestone is not the full S02 implementation.
+`SETTLEMENT_NOT_AVAILABLE`; `PAYMENTS_ENABLED=true` fails startup. There is no
+runtime relayer key, broadcast loop, HELD transition, outbox job or provider
+dispatch. The internal journal below is not wired to the paid POST endpoint.
+Before enabling payments, implement the private facilitator, chain validation,
+nonce discovery/gas-budget controls, worker/finality/reconciliation and HELD+outbox
+transaction. This milestone is not the full S02 implementation.
+
+## Settlement journal foundation
+
+`prisma/payments.prisma` and its additive Prisma-generated migration introduce
+invocations, settlement operations, attempts and relayer lanes. `SettlementJournal`
+owns their transactional mutations:
+
+- Store one immutable payment intent per invocation, with quote/authorization
+  digests and recovered EOA. This proves local envelope/signature integrity only;
+  **it does not prove that the signer owns an active onchain grant**.
+- Serialize intent admission with the same session lock used by quote creation.
+  Matching replay reads the prior operation before expiry checks; a different
+  authorization digest conflicts rather than replacing the operation.
+- Claim/renew worker leases with database time and incrementing fencing epochs.
+  Stale workers cannot reserve or persist new signed transaction bytes.
+- Reserve at most one attempt per operation and one outstanding operation per
+  relayer lane. Lane reservations do not expire with worker leases. Nonces are
+  supplied by the future worker; journal uniqueness is not RPC nonce discovery.
+- Validate signed EIP-1559 bytes against chain, relayer, nonce, destination,
+  zero value, exact `reserveHold` calldata and reserved gas/fees; persist bytes
+  and hash before any future sender can broadcast them. No replacement/fee bump.
+- Preserve bytes/hash through BROADCAST/UNKNOWN. An attempt, even RESERVED, cannot
+  be discarded through `rejectUnattempted`. Reconciliation is required instead.
+
+`GET /v1/invocations/{id}` is authenticated, no-store and free. It exposes payment
+and execution status plus a known tx hash, never authorization/signed bytes. No
+journal method can mark a payment HELD or queue execution; the future finality
+gate must own that transition with its outbox transaction.

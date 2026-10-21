@@ -52,6 +52,22 @@ export type InvocationQuote = Messages["InvocationQuote"];
 export type DebitAuthorization = Messages["DebitAuthorization"];
 export type ResolutionDecision = Messages["ResolutionDecision"];
 
+// Minimal write ABI derived from the same canonical structs as EIP-712. Keep
+// transaction-journal calldata checks independent of generated build artifacts.
+export const reserveHoldAbi = [
+  {
+    type: "function",
+    name: "reserveHold",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "quote", type: "tuple", components: paymentTypes.InvocationQuote },
+      { name: "authorization", type: "tuple", components: paymentTypes.DebitAuthorization },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "holdId", type: "bytes32" }],
+  },
+] as const;
+
 // Local tests may supply their isolated chain ID; deployed Payvoke v1 uses Fuji.
 export function vaultDomain(vault: Address, chainId = 43113) {
   return { name: "PayvokeVault", version: "1", chainId, verifyingContract: vault } as const;

@@ -13,6 +13,9 @@ Implemented:
   violations and untrusted resource URLs/methods through the core client hook.
 - Authorization persistence callback must complete before a payload is returned.
   The caller must persist idempotently and reuse that record on network retries.
+- `readPaymentIntent` checks persisted quote consistency, strict envelope fields,
+  resource/method, canonical authorization integers and EOA signature integrity.
+  A recovered signer is not proof of active onchain grant ownership.
 
 Register `VaultClientScheme` with `x402Client` from `@x402/core/client`. Supply an
 already approved quote, the authenticated buyer, configured vault/resource URL,

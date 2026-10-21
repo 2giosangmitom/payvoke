@@ -3,6 +3,7 @@
 // Product/ProductVersion/CommandVersion/UsageSession/Quote/DeploymentPolicy
 // definitions live in commerce.prisma; merge these drafts as features ship,
 // do not uncomment duplicate definitions wholesale.
+// Invocation/settlement journal definitions are active in payments.prisma.
 // S01: API/provider; S02: x402/vault; S03: local MCP buyer client.
 // Opaque IDs remain case-sensitive text. EVM addresses must be normalized to
 // lowercase at the application boundary; hashes are full-width lowercase hex.

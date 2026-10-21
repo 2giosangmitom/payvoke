@@ -80,6 +80,7 @@ model Quote {
   document        Json
   createdAt       DateTime @default(now())
   session         UsageSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  invocation      Invocation?
 
   @@unique([buyerId, clientRequestId])
   @@index([sessionId, validUntil])

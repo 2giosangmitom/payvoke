@@ -167,7 +167,18 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
           if (session.activeQuoteId) {
             const active = await tx.quote.findUniqueOrThrow({
               where: { id: session.activeQuoteId },
+              include: { invocation: { include: { settlement: { include: { attempt: true } } } } },
             });
+            // A signed/unknown/held operation outlives quote expiry. Only an
+            // explicitly rejected, never-attempted operation can release this
+            // slot after expiry; a worker lease timing out is not evidence.
+            if (
+              active.invocation?.settlement &&
+              (active.invocation.settlement.state !== "REJECTED" ||
+                active.invocation.settlement.attempt)
+            ) {
+              throw app.httpErrors.conflict("SESSION_BUSY");
+            }
             if (active.validUntil.getTime() > now * 1000)
               throw app.httpErrors.conflict("SESSION_BUSY");
           }

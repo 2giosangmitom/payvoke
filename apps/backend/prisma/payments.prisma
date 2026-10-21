@@ -1,0 +1,94 @@
+enum SettlementState {
+  PENDING
+  HELD
+  REJECTED
+  QUARANTINED
+}
+
+enum SettlementAttemptState {
+  RESERVED
+  SIGNED
+  BROADCAST
+  UNKNOWN
+  CONFIRMED
+  FINALIZED
+  REVERTED
+}
+
+enum InvocationExecutionStatus {
+  NOT_STARTED
+  QUEUED
+}
+
+model Invocation {
+  id              String @id
+  quoteId         String @unique
+  buyerId         String
+  executionStatus InvocationExecutionStatus @default(NOT_STARTED)
+  createdAt       DateTime @default(now())
+  quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  settlement      SettlementOperation?
+
+  @@index([buyerId, createdAt])
+  @@map("invocations")
+}
+
+model SettlementOperation {
+  invocationId        String @id
+  invocationKey       String @unique
+  quoteDigest         String
+  authorizationDigest String
+  recoveredSigner     String
+  // Untrusted admission intent, not evidence of an onchain grant/hold.
+  paymentPayload      Json
+  state               SettlementState @default(PENDING)
+  errorReason         String?
+  leaseOwner          String?
+  leaseEpoch          BigInt @default(0)
+  leaseExpiresAt      DateTime?
+  revision            BigInt @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  invocation          Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  attempt             SettlementAttempt?
+
+  @@index([state, leaseExpiresAt, createdAt])
+  @@map("settlement_operations")
+}
+
+model SettlementAttempt {
+  id                   String @id @default(uuid())
+  // MVP: no automatic replacement, fee bump or second attempt.
+  invocationId         String @unique
+  network              String
+  relayer              String
+  nonce                BigInt
+  gasLimit             BigInt
+  maxFeePerGas         Decimal @db.Decimal(78, 0)
+  maxPriorityFeePerGas  Decimal @db.Decimal(78, 0)
+  state                SettlementAttemptState @default(RESERVED)
+  signedTransaction    String? @db.Text
+  transactionHash      String? @unique
+  broadcastAt          DateTime?
+  lastErrorReason      String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  operation            SettlementOperation @relation(fields: [invocationId], references: [invocationId], onDelete: Restrict)
+  lane                 RelayerLane @relation(fields: [network, relayer], references: [network, relayer], onDelete: Restrict)
+
+  @@unique([network, relayer, nonce])
+  @@map("settlement_attempts")
+}
+
+model RelayerLane {
+  network            String
+  relayer            String
+  // This reservation NEVER expires with a worker lease. An ambiguous tx keeps
+  // its lane until a future finality/recovery gate safely resolves it.
+  activeInvocationId String? @unique
+  revision           BigInt @default(0)
+  attempts           SettlementAttempt[]
+
+  @@id([network, relayer])
+  @@map("relayer_lanes")
+}

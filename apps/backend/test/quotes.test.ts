@@ -2,6 +2,10 @@
 /// <reference types="bun" />
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { readFile, readdir } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -10,8 +14,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { recoverTypedDataAddress } from "viem";
-import { paymentTypes, vaultDomain } from "@payvoke/protocol";
+import { encodeFunctionData, keccak256, recoverTypedDataAddress } from "viem";
+import { paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/protocol";
 import { x402Client } from "@x402/core/client";
 import { resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
 import {
@@ -26,12 +30,14 @@ import {
   VaultServerScheme,
   paymentRequirements,
   readQuote,
+  readPaymentIntent,
   type AuthorizationRecord,
   type QuoteDocument,
 } from "@payvoke/x402";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { SettlementJournal } from "../src/modules/payments/journal";
 
 describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   const origin = "https://app.payvoke.test";
@@ -41,8 +47,10 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   const feeRecipient = "0x3333333333333333333333333333333333333333";
   const wallet = privateKeyToAccount(generatePrivateKey());
   const grantSigner = privateKeyToAccount(generatePrivateKey());
-  let embedded: PGlite;
-  let socket: PGLiteSocketServer;
+  const relayer = privateKeyToAccount(generatePrivateKey());
+  const schema = `payment_test_${randomUUID().replaceAll("-", "")}`;
+  let embedded: PGlite | undefined;
+  let socket: PGLiteSocketServer | undefined;
   let pool: Pool;
   let db: PrismaClient;
   let app: ReturnType<typeof createApp>;
@@ -52,19 +60,57 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   let sessionId: string;
   let productId: string;
   let commandId: string;
+  let journal: SettlementJournal;
+  let preservedMigrationQuote = false;
 
   before(async () => {
-    embedded = await PGlite.create();
-    socket = new PGLiteSocketServer({ db: embedded, port: 0, host: "127.0.0.1" });
-    await socket.start();
-    const connectionString = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres`;
-    pool = new Pool({ connectionString, max: 1 });
+    let connectionString = "postgresql://test:test@127.0.0.1:55433/test";
+    if (process.env.PAYMENTS_TEST_POSTGRES !== "1") {
+      embedded = await PGlite.create();
+      socket = new PGLiteSocketServer({ db: embedded, port: 0, host: "127.0.0.1" });
+      await socket.start();
+      connectionString = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres`;
+    }
+    // Explicit Docker mode uses only the repo's local test-db endpoint, never a
+    // DATABASE_URL/Neon connection. Each run owns a fresh random schema.
+    pool = new Pool({
+      connectionString,
+      max: embedded ? 1 : 8,
+      options: `-c search_path=${schema}`,
+      // PGlite's socket bridge does not apply startup search_path options.
+      verify(client, done) {
+        client.query(`SET search_path TO "${schema}"`).then(() => done(), done);
+      },
+    });
     pool.setMaxListeners(50);
+    await pool.query(`CREATE SCHEMA "${schema}"`);
     const directory = new URL("../prisma/migrations/", import.meta.url);
     for (const entry of (await readdir(directory, { withFileTypes: true }))
       .filter((v) => v.isDirectory())
       .sort((a, b) => a.name.localeCompare(b.name))) {
-      await pool.query(await readFile(new URL(`${entry.name}/migration.sql`, directory), "utf8"));
+      if (entry.name === "20261021010000_settlement_journal") {
+        await pool.query(`
+          INSERT INTO products (id, kind) VALUES ('migration-product', 'TOOL');
+          INSERT INTO usage_sessions (id, "buyerId", "productId") VALUES ('migration-session', 'migration-buyer', 'migration-product');
+          INSERT INTO quotes (id, "invocationId", "buyerId", "sessionId", "clientRequestId", "requestHash", "validUntil", document)
+          VALUES ('migration-quote', 'migration-invocation', 'migration-buyer', 'migration-session', 'migration-request', 'original-hash', NOW(), '{"original":"preserved"}');
+        `);
+      }
+      await pool.query(
+        (await readFile(new URL(`${entry.name}/migration.sql`, directory), "utf8")).replace(
+          'CREATE SCHEMA IF NOT EXISTS "public";',
+          "",
+        ),
+      );
+      if (entry.name === "20261021010000_settlement_journal") {
+        const preserved = await pool.query(
+          'SELECT "requestHash", document FROM quotes WHERE id = $1',
+          ["migration-quote"],
+        );
+        assert.equal(preserved.rows[0].requestHash, "original-hash");
+        assert.deepEqual(preserved.rows[0].document, { original: "preserved" });
+        preservedMigrationQuote = true;
+      }
     }
     config = loadConfig({
       DATABASE_URL: connectionString,
@@ -76,7 +122,12 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     });
   });
   beforeEach(async () => {
-    db = new PrismaClient({ adapter: new PrismaPg(pool) });
+    db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
+    journal = new SettlementJournal(db, { vault, resourceUrl: `${api}/v1/invocations` });
+    await db.settlementAttempt.deleteMany();
+    await db.settlementOperation.deleteMany();
+    await db.invocation.deleteMany();
+    await db.relayerLane.deleteMany();
     await db.quote.deleteMany();
     await db.usageSession.deleteMany();
     await db.commandVersion.deleteMany();
@@ -172,7 +223,13 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     await app?.close();
   });
   after(async () => {
-    await pool?.end();
+    if (pool) {
+      try {
+        await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+      } finally {
+        await pool.end();
+      }
+    }
     await socket?.stop();
     await embedded?.close();
   });
@@ -233,7 +290,58 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     });
   }
 
+  async function payment(q: QuoteDocument) {
+    const required = decodePaymentRequiredHeader(
+      (await submit(q)).headers["payment-required"] as string,
+    );
+    // Real HTTP envelopes omit the SDK's undefined optional extension property.
+    return JSON.parse(
+      JSON.stringify(
+        await new x402Client().register(NETWORK, client(q)).createPaymentPayload(required),
+      ),
+    );
+  }
+  async function pending(q: QuoteDocument) {
+    const payload = await payment(q);
+    return {
+      payload,
+      operation: await journal.recordIntent({
+        quoteId: q.quoteId,
+        buyerId,
+        buyerAddress: wallet.address,
+        paymentPayload: payload,
+      }),
+    };
+  }
+  const reservation = {
+    relayer: relayer.address,
+    nonce: 0n,
+    gasLimit: 500000n,
+    maxFeePerGas: 2000000000n,
+    maxPriorityFeePerGas: 1000000000n,
+  };
+  async function signed(q: QuoteDocument, payload: unknown, overrides: object = {}) {
+    const intent = await readPaymentIntent(q, payload, `${api}/v1/invocations`);
+    return relayer.signTransaction({
+      type: "eip1559",
+      chainId: 43113,
+      to: vault,
+      nonce: 0,
+      value: 0n,
+      gas: reservation.gasLimit,
+      maxFeePerGas: reservation.maxFeePerGas,
+      maxPriorityFeePerGas: reservation.maxPriorityFeePerGas,
+      data: encodeFunctionData({
+        abi: reserveHoldAbi,
+        functionName: "reserveHold",
+        args: [readQuote(q.protocolQuote), intent.authorization, intent.signature],
+      }),
+      ...overrides,
+    });
+  }
+
   it("freezes effective defaults, all snapshots and canonical EIP-712 fields", async () => {
+    assert.ok(preservedMigrationQuote, "additive journal migration preserved existing quotes");
     const q = await quote();
     assert.deepEqual(q.effectiveArguments, { text: "hello", language: "vi" });
     assert.deepEqual(q.contextManifest, { messages: [], brief: null, files: [] });
@@ -444,12 +552,13 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     assert.throws(() => readQuote({ ...q.protocolQuote, feeBps: "65536" }));
   });
 
-  it("expires unpaid quotes without extending deadlines on replay", async (t) => {
+  it("expires unpaid quotes without extending deadlines on replay", async () => {
+    await db.deploymentPolicy.updateMany({ data: { quoteLifetimeSeconds: 2 } });
     const payload = body();
     const response = await prepare(payload);
     assert.equal(response.statusCode, 201, response.body);
     const q = response.json<QuoteDocument>();
-    t.mock.method(Date, "now", () => (q.validUntil + 1) * 1000);
+    await delay(Math.max(0, q.validUntil * 1000 - Date.now() + 20));
     assert.equal((await prepare(payload)).statusCode, 410);
     assert.equal((await submit(q)).statusCode, 410);
     const next = await prepare();
@@ -511,5 +620,361 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     }).register(NETWORK, new VaultServerScheme(q));
     await assert.rejects(bad.initialize(), /capability/i);
     await assert.rejects(new VaultServerScheme(q).parsePrice("$0.10", NETWORK));
+  });
+
+  it("journals one immutable intent and invocation under duplicate admission", async () => {
+    const q = await quote();
+    const payload = await payment(q);
+    const input = {
+      quoteId: q.quoteId,
+      buyerId,
+      buyerAddress: wallet.address,
+      paymentPayload: payload,
+    };
+    const operations = await Promise.all([
+      journal.recordIntent(input),
+      journal.recordIntent(input),
+    ]);
+    assert.equal(operations[0].authorizationDigest, operations[1].authorizationDigest);
+    assert.equal(operations[0].state, "PENDING");
+    assert.equal(operations[0].recoveredSigner, grantSigner.address.toLowerCase());
+    assert.equal(await db.invocation.count(), 1);
+    assert.equal(await db.settlementOperation.count(), 1);
+    assert.equal(await db.settlementAttempt.count(), 0);
+    assert.equal((await db.invocation.findFirstOrThrow()).executionStatus, "NOT_STARTED");
+  });
+
+  it("rejects altered envelopes and cross-buyer intents without persisting", async () => {
+    const q = await quote();
+    const payload = await payment(q);
+    const input = {
+      quoteId: q.quoteId,
+      buyerId,
+      buyerAddress: wallet.address,
+      paymentPayload: payload,
+    };
+    await assert.rejects(
+      journal.recordIntent({ ...input, buyerId: "someone-else" }),
+      /QUOTE_NOT_FOUND/,
+    );
+    const mutations = [
+      (p: typeof payload) => {
+        p.accepted.amount = "1";
+      },
+      (p: typeof payload) => {
+        p.resource.method = "GET";
+      },
+      (p: typeof payload) => {
+        p.payload.authorization.grantEpoch = "01";
+      },
+      (p: typeof payload) => {
+        p.payload.signature = "0x";
+      },
+      (p: typeof payload) => {
+        p.payload.authorization.quoteDigest = `0x${"0".repeat(64)}`;
+      },
+      (p: typeof payload) => {
+        p.payload.extra = "unbound";
+      },
+    ];
+    for (const mutate of mutations) {
+      const altered = structuredClone(payload);
+      mutate(altered);
+      await assert.rejects(
+        journal.recordIntent({ ...input, paymentPayload: altered }),
+        /INVALID_PAYMENT/,
+      );
+    }
+    assert.equal(await db.invocation.count(), 0);
+    assert.equal(await db.settlementOperation.count(), 0);
+  });
+
+  it("conflicts on a different authorization for the same invocation", async () => {
+    const q = await quote();
+    await pending(q);
+    const challenge = decodePaymentRequiredHeader(
+      (await submit(q)).headers["payment-required"] as string,
+    );
+    const changed = await new x402Client()
+      .register(NETWORK, client(q, { grantId: `0x${"b".repeat(64)}` }))
+      .createPaymentPayload(challenge);
+    await assert.rejects(
+      journal.recordIntent({
+        quoteId: q.quoteId,
+        buyerId,
+        buyerAddress: wallet.address,
+        paymentPayload: JSON.parse(JSON.stringify(changed)),
+      }),
+      /INVOCATION_CONFLICT/,
+    );
+    assert.equal(await db.settlementOperation.count(), 1);
+  });
+
+  it("claims once, renews with database time and fences a replaced worker", async () => {
+    const q = await quote();
+    await pending(q);
+    const leases = await Promise.all([
+      journal.claim(q.invocationId, "a"),
+      journal.claim(q.invocationId, "b"),
+    ]);
+    assert.equal(leases.filter(Boolean).length, 1);
+    const old = leases.find((l) => l !== null)!;
+    await journal.renew(old);
+    assert.equal(await journal.claim(q.invocationId, "c"), null);
+    await db.settlementOperation.update({
+      where: { invocationId: q.invocationId },
+      data: { leaseExpiresAt: new Date(0) },
+    });
+    const replacement = await journal.claim(q.invocationId, "c");
+    assert.ok(replacement);
+    assert.ok(replacement.epoch > old.epoch);
+    await assert.rejects(journal.renew(old), /LEASE_LOST/);
+    await assert.rejects(journal.reserveAttempt(old, reservation), /LEASE_LOST/);
+    assert.equal(await db.relayerLane.count(), 0, "failed reservation rolled back the lane");
+    await assert.rejects(journal.rejectUnattempted(old, "invalid_grant"), /LEASE_LOST/);
+    await journal.renew(replacement);
+  });
+
+  it("persists exact signed bytes before broadcast and restores them after client restart", async () => {
+    const q = await quote();
+    const { payload } = await pending(q);
+    const lease = (await journal.claim(q.invocationId, "worker"))!;
+    const first = await journal.reserveAttempt(lease, reservation);
+    const second = await journal.reserveAttempt(lease, reservation);
+    assert.equal(first.id, second.id);
+    await assert.rejects(
+      journal.recordBroadcast(lease, `0x${"a".repeat(64)}`),
+      /TRANSACTION_MISMATCH/,
+    );
+    const raw = await signed(q, payload);
+    const stored = await journal.persistSigned(lease, raw);
+    assert.equal(stored.state, "SIGNED");
+    assert.equal(stored.signedTransaction, raw);
+    assert.equal(stored.transactionHash, keccak256(raw));
+    const restarted = new SettlementJournal(db, { vault, resourceUrl: `${api}/v1/invocations` });
+    assert.equal((await restarted.persistSigned(lease, raw)).id, stored.id);
+    await restarted.recordBroadcast(lease, keccak256(raw));
+    await restarted.markUnknown(lease, keccak256(raw), "rpc_timeout");
+    const recovered = await db.settlementAttempt.findFirstOrThrow();
+    assert.equal(recovered.state, "UNKNOWN");
+    assert.equal(recovered.signedTransaction, raw);
+    assert.equal(await db.settlementAttempt.count(), 1);
+    await assert.rejects(
+      restarted.rejectUnattempted(lease, "quote_expired"),
+      /ATTEMPT_REQUIRES_RECONCILIATION/,
+    );
+  });
+
+  it("rejects signed transactions for a different chain, calldata, destination, nonce, value or fees", async () => {
+    const q = await quote();
+    const { payload } = await pending(q);
+    const lease = (await journal.claim(q.invocationId, "worker"))!;
+    await journal.reserveAttempt(lease, reservation);
+    for (const override of [
+      { chainId: 1 },
+      { to: provider },
+      { data: "0x" },
+      { nonce: 1 },
+      { value: 1n },
+      { gas: 499999n },
+      { maxFeePerGas: 3000000000n },
+    ])
+      await assert.rejects(
+        journal.persistSigned(lease, await signed(q, payload, override)),
+        /TRANSACTION_MISMATCH/,
+      );
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "RESERVED");
+    await journal.persistSigned(lease, await signed(q, payload));
+    await assert.rejects(
+      journal.reserveAttempt(lease, { ...reservation, nonce: 1n }),
+      /ATTEMPT_CONFLICT/,
+    );
+  });
+
+  it("does not free an ambiguous transaction lane when its worker lease expires", async () => {
+    const q = await quote();
+    const { payload } = await pending(q);
+    const lease = (await journal.claim(q.invocationId, "old"))!;
+    await journal.reserveAttempt(lease, reservation);
+    const raw = await signed(q, payload);
+    await journal.persistSigned(lease, raw);
+    await journal.markUnknown(lease, keccak256(raw), "rpc_timeout");
+    await db.settlementOperation.update({
+      where: { invocationId: q.invocationId },
+      data: { leaseExpiresAt: new Date(0) },
+    });
+    const otherSession = await db.usageSession.create({ data: { buyerId, productId } });
+    const response = await prepare({ ...body(), sessionId: otherSession.id });
+    assert.equal(response.statusCode, 201, response.body);
+    const otherQuote = response.json<QuoteDocument>();
+    await pending(otherQuote);
+    const otherLease = (await journal.claim(otherQuote.invocationId, "other"))!;
+    await assert.rejects(
+      journal.reserveAttempt(otherLease, { ...reservation, nonce: 1n }),
+      /RELAYER_BUSY/,
+    );
+    const next = (await journal.claim(q.invocationId, "recovery"))!;
+    assert.equal((await journal.reserveAttempt(next, reservation)).signedTransaction, raw);
+    await assert.rejects(journal.persistSigned(lease, raw), /LEASE_LOST/);
+    assert.equal(await db.settlementAttempt.count(), 1);
+  });
+
+  it("serializes concurrent reservations on a relayer and enforces nonce uniqueness in SQL", async () => {
+    const first = await quote();
+    await pending(first);
+    const otherSession = await db.usageSession.create({ data: { buyerId, productId } });
+    const response = await prepare({ ...body(), sessionId: otherSession.id });
+    assert.equal(response.statusCode, 201, response.body);
+    const second = response.json<QuoteDocument>();
+    await pending(second);
+    const leases = [
+      (await journal.claim(first.invocationId, "worker-one"))!,
+      (await journal.claim(second.invocationId, "worker-two"))!,
+    ];
+    const results = await Promise.allSettled(
+      leases.map((lease) => journal.reserveAttempt(lease, reservation)),
+    );
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+    const failure = results.find((r) => r.status === "rejected");
+    assert.ok(
+      failure && failure.status === "rejected" && /RELAYER_BUSY/.test(failure.reason.message),
+    );
+    const winner = await db.settlementAttempt.findFirstOrThrow();
+    const loser = winner.invocationId === first.invocationId ? second : first;
+    if (embedded) {
+      // The PGlite socket bridge can leave its extended-query connection broken
+      // after a constraint error. Exercise the same SQL constraint directly in
+      // its engine; the Docker branch also proves Prisma's P2002 mapping.
+      await assert.rejects(
+        embedded.query(
+          `INSERT INTO "${schema}".settlement_attempts
+          (id, "invocationId", network, relayer, nonce, "gasLimit", "maxFeePerGas", "maxPriorityFeePerGas", "updatedAt")
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+          [
+            randomUUID(),
+            loser.invocationId,
+            NETWORK,
+            winner.relayer,
+            winner.nonce.toString(),
+            winner.gasLimit.toString(),
+            winner.maxFeePerGas.toFixed(0),
+            winner.maxPriorityFeePerGas.toFixed(0),
+          ],
+        ),
+        (error: unknown) => error instanceof Error && "code" in error && error.code === "23505",
+      );
+    } else
+      await assert.rejects(
+        db.settlementAttempt.create({
+          data: {
+            invocationId: loser.invocationId,
+            network: NETWORK,
+            relayer: winner.relayer,
+            nonce: winner.nonce,
+            gasLimit: winner.gasLimit,
+            maxFeePerGas: winner.maxFeePerGas,
+            maxPriorityFeePerGas: winner.maxPriorityFeePerGas,
+          },
+        }),
+        (error: unknown) => error instanceof Error && "code" in error && error.code === "P2002",
+      );
+    assert.equal(await db.settlementAttempt.count(), 1);
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, winner.invocationId);
+  });
+
+  it("keeps an expired quote's UNKNOWN operation in the session slot; polling is free and private", async () => {
+    await db.deploymentPolicy.updateMany({ data: { quoteLifetimeSeconds: 2 } });
+    const q = await quote();
+    const { payload } = await pending(q);
+    const lease = (await journal.claim(q.invocationId, "worker"))!;
+    await journal.reserveAttempt(lease, reservation);
+    const raw = await signed(q, payload);
+    await journal.persistSigned(lease, raw);
+    await journal.markUnknown(lease, keccak256(raw), "rpc_timeout");
+    await delay(Math.max(0, q.validUntil * 1000 - Date.now() + 20));
+    const blocked = await prepare();
+    assert.equal(blocked.statusCode, 409, blocked.body);
+    assert.equal(
+      (
+        await journal.recordIntent({
+          quoteId: q.quoteId,
+          buyerId,
+          buyerAddress: wallet.address,
+          paymentPayload: payload,
+        })
+      ).state,
+      "PENDING",
+    );
+    const status = await app.inject({
+      url: `/v1/invocations/${q.invocationId}`,
+      headers: { cookie },
+    });
+    assert.equal(status.statusCode, 200, status.body);
+    assert.equal(status.json().paymentStatus, "UNKNOWN");
+    assert.equal(status.json().executionStatus, "NOT_STARTED");
+    assert.equal(status.json().transaction, keccak256(raw));
+    assert.ok(!status.body.includes(raw));
+    assert.ok(!status.body.includes(payload.payload.signature));
+    assert.equal((await app.inject({ url: `/v1/invocations/${q.invocationId}` })).statusCode, 401);
+    await db.invocation.updateMany({ data: { buyerId: "different-user" } });
+    assert.equal(
+      (await app.inject({ url: `/v1/invocations/${q.invocationId}`, headers: { cookie } }))
+        .statusCode,
+      404,
+    );
+    assert.equal(await db.settlementAttempt.count(), 1);
+  });
+
+  it("rejects an unattempted intent permanently, without creating a retry attempt", async () => {
+    await db.deploymentPolicy.updateMany({ data: { quoteLifetimeSeconds: 2 } });
+    const q = await quote();
+    const { payload } = await pending(q);
+    const lease = (await journal.claim(q.invocationId, "worker"))!;
+    await journal.rejectUnattempted(lease, "invalid_grant");
+    const replayed = await journal.recordIntent({
+      quoteId: q.quoteId,
+      buyerId,
+      buyerAddress: wallet.address,
+      paymentPayload: payload,
+    });
+    assert.equal(replayed.state, "REJECTED");
+    assert.equal(await journal.claim(q.invocationId, "retry"), null);
+    assert.equal((await prepare()).statusCode, 409, "the old authorization has not expired yet");
+    await delay(Math.max(0, q.validUntil * 1000 - Date.now() + 20));
+    assert.equal(
+      (
+        await journal.recordIntent({
+          quoteId: q.quoteId,
+          buyerId,
+          buyerAddress: wallet.address,
+          paymentPayload: payload,
+        })
+      ).state,
+      "REJECTED",
+    );
+    const next = await prepare();
+    assert.equal(next.statusCode, 201, next.body);
+    assert.notEqual(next.json().invocationId, q.invocationId);
+    assert.equal(await db.settlementAttempt.count(), 0);
+  });
+
+  it("allows at most one claim across independent Docker PostgreSQL worker processes", async (t) => {
+    if (embedded) return t.skip("Run test:payments:postgres for real cross-process concurrency");
+    const q = await quote();
+    await pending(q);
+    const run = promisify(execFile);
+    const cwd = fileURLToPath(new URL("..", import.meta.url));
+    const outputs = await Promise.all(
+      ["one", "two"].map((owner) =>
+        run(
+          process.execPath,
+          ["--import", "tsx", "test/fixtures/claim.ts", schema, q.invocationId, owner],
+          { cwd },
+        ),
+      ),
+    );
+    const claims = outputs.map((o) => JSON.parse(o.stdout));
+    assert.equal(claims.filter(Boolean).length, 1);
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).leaseEpoch, 1n);
   });
 });

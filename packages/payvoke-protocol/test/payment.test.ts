@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { getAddress, recoverTypedDataAddress, type Address, type Hex } from "viem";
+import {
+  decodeFunctionData,
+  encodeFunctionData,
+  getAddress,
+  recoverTypedDataAddress,
+  toFunctionSelector,
+  type Address,
+  type Hex,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   businessKey,
@@ -11,6 +19,7 @@ import {
   hashQuote,
   hashSnapshot,
   paymentTypes,
+  reserveHoldAbi,
   vaultDomain,
   type InvocationQuote,
 } from "../src/index.ts";
@@ -33,6 +42,24 @@ const authorization = {
   grantEpoch: BigInt(fixture.authorization.grantEpoch),
 };
 const domain = vaultDomain(fixture.domain.verifyingContract);
+
+test("reserveHold write ABI matches the compiled vault selector and round-trips its structs", () => {
+  // Checked against PayvokeVault's compiled Solidity ABI, not derived from a
+  // second hand-written tuple encoder in this test.
+  assert.equal(toFunctionSelector(reserveHoldAbi[0]), "0x73e30cc1");
+  const data = encodeFunctionData({
+    abi: reserveHoldAbi,
+    functionName: "reserveHold",
+    args: [quote, authorization, fixture.signature],
+  });
+  const decoded = decodeFunctionData({ abi: reserveHoldAbi, data });
+  assert.equal(decoded.functionName, "reserveHold");
+  assert.equal(decoded.args[0].grossAmount, quote.grossAmount);
+  assert.equal(decoded.args[0].quoteKey, quote.quoteKey);
+  assert.equal(decoded.args[1].quoteDigest, authorization.quoteDigest);
+  assert.equal(decoded.args[1].grantEpoch, authorization.grantEpoch);
+  assert.equal(decoded.args[2], fixture.signature);
+});
 
 test("matches published EIP-712 hashes, signature and recovered session signer", async () => {
   assert.equal(hashQuote(domain, quote), fixture.quoteDigest);

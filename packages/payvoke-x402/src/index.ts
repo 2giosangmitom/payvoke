@@ -2,6 +2,7 @@ import {
   businessKey,
   canonicalSnapshot,
   hashQuote,
+  hashAuthorization,
   hashSnapshot,
   paymentTypes,
   vaultDomain,
@@ -9,11 +10,20 @@ import {
   type InvocationQuote,
   type Json,
 } from "@payvoke/protocol";
-import { getAddress, isHex, zeroAddress, type Address, type Hex, type LocalAccount } from "viem";
+import {
+  getAddress,
+  isHex,
+  recoverTypedDataAddress,
+  zeroAddress,
+  type Address,
+  type Hex,
+  type LocalAccount,
+} from "viem";
 import type {
   AssetAmount,
   Network,
   PaymentPayloadContext,
+  PaymentPayload,
   PaymentRequirements,
   Price,
   SchemeNetworkClient,
@@ -275,6 +285,73 @@ export function paymentRequirements(document: QuoteDocument): PaymentRequirement
       quoteDigest: document.quoteDigest,
       quote: document.protocolQuote,
     },
+  };
+}
+
+// Local envelope/signature integrity only. The recovered EOA is NOT trusted as
+// the grant signer until the worker reads the grant and simulates reserveHold.
+export async function readPaymentIntent(
+  document: QuoteDocument,
+  value: unknown,
+  resourceUrl: string,
+) {
+  validateQuoteDocument(
+    document,
+    getAddress(document.vault),
+    getAddress(document.protocolQuote.buyer),
+  );
+  canonicalSnapshot(value as Json);
+  const envelope = object(value as Json);
+  keys(envelope, ["x402Version", "accepted", "resource", "payload"]);
+  if (envelope.x402Version !== 2 || !sameJson(envelope.accepted, paymentRequirements(document))) {
+    throw new Error("Invalid payment requirements");
+  }
+  const resource = object(envelope.resource);
+  if (resource.url !== resourceUrl || resource.method !== "POST")
+    throw new Error("Invalid payment resource");
+  const payload = object(envelope.payload);
+  keys(payload, ["authorization", "signature"]);
+  const wire = object(payload.authorization);
+  keys(wire, ["quoteDigest", "grantId", "grantEpoch"]);
+  if (
+    wire.quoteDigest !== document.quoteDigest ||
+    typeof wire.grantId !== "string" ||
+    !/^0x[0-9a-fA-F]{64}$/.test(wire.grantId)
+  )
+    throw new Error("Invalid authorization");
+  const epoch = integer(wire.grantEpoch, 64);
+  if (epoch === 0n) throw new Error("Invalid grant epoch");
+  const signature = payload.signature;
+  if (typeof signature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
+    throw new Error("Invalid ECDSA signature");
+  }
+  const s = BigInt(`0x${signature.slice(66, 130)}`);
+  const v = signature.slice(130).toLowerCase();
+  if (
+    s === 0n ||
+    s > 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n ||
+    !["1b", "1c"].includes(v)
+  )
+    throw new Error("Invalid ECDSA signature");
+  const authorization: DebitAuthorization = {
+    quoteDigest: document.quoteDigest,
+    grantId: wire.grantId.toLowerCase() as Hex,
+    grantEpoch: epoch,
+  };
+  const domain = vaultDomain(getAddress(document.vault));
+  const recoveredSigner = await recoverTypedDataAddress({
+    domain,
+    types: paymentTypes,
+    primaryType: "DebitAuthorization",
+    message: authorization,
+    signature: signature.toLowerCase() as Hex,
+  });
+  return {
+    authorization,
+    signature: signature.toLowerCase() as Hex,
+    recoveredSigner,
+    authorizationDigest: hashAuthorization(domain, authorization),
+    paymentPayload: structuredClone(value) as PaymentPayload,
   };
 }
 
