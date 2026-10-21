@@ -13,6 +13,8 @@ src/
   modules/auth/
     auth.ts             # Better Auth + Prisma + SIWE, Payvoke policy hooks
     index.ts            # Fastify bridge, session guard and /v1/me
+  modules/quotes/
+    index.ts            # immutable tool quotes and SDK payment challenge
 ```
 
 Add features under `modules/<feature>` and register them after auth in `app.ts`.
@@ -24,6 +26,12 @@ or DI layers are needed. `generated/prisma` is CLI output.
 Fastify or querying the database. `prisma/auth.prisma` is owned by Better Auth
 CLI; do not hand-edit its models. `prisma/schema.prisma` keeps the commented
 domain drafts separately. Prisma reads the whole `prisma` directory.
+
+`prisma/commerce.prisma` contains the minimal active product/version/command,
+usage-session, deployment-policy and quote models. Buyer IDs are Better Auth
+`User.id` scalars; admission checks the authenticated user/session owner. No
+inverse relations were hand-added to CLI-owned auth models. Existing full-domain
+definitions in the commented drafts are not additional active models.
 
 ## Setup
 
@@ -105,9 +113,40 @@ and plan its transition separately; do not run reset/db push or drop real data.
 ## Tests
 
 `pnpm test` uses ephemeral PGlite through Prisma/pg, without Docker. Tests apply
-the single CLI-generated initial migration and exercise native auth
-endpoints. For real multi-connection PostgreSQL proof, explicitly supply a
+the CLI-generated migrations and exercise native auth plus quote/x402 endpoints.
+For real multi-connection PostgreSQL auth proof, explicitly supply a
 `TEST_DATABASE_URL` pointing to local Docker PostgreSQL only. Neon is production
 and must never be used for tests. Tests create/remove
 only their own random schema; they never read `DATABASE_URL`. PGlite serializes DB
 work and does not prove cross-process PostgreSQL concurrency.
+
+The quote/x402 suite always uses isolated PGlite; its concurrent-request tests
+are not evidence of cross-process PostgreSQL locking. It does not connect to RPC.
+
+## Quote/x402 milestone (not live payments)
+
+- `POST /v1/quotes` authenticates the buyer, validates persisted TOOL command
+  arguments/defaults and freezes input/terms/policy snapshots plus EIP-712 quote.
+  `Idempotency-Key` must equal `clientRequestId`. One unexpired quote occupies the
+  session; replays return the same stored document without extending deadlines.
+- Only empty context selections are supported. Nonempty selections and AGENT
+  products fail explicitly; there is no silent context omission.
+- `POST /v1/invocations {quoteId}` requires the invocation ID as idempotency key.
+  After ownership/availability/schema gates it returns an SDK-encoded v2
+  `PAYMENT-REQUIRED` header for `payvoke-vault` on Fuji, with `payTo` set to vault.
+- Core/client/server adapters live in `@payvoke/x402`, pinned to core 2.28.0.
+  No stock `@x402/fastify` middleware is mounted: the studied version settles at
+  `onRequest`, before body validation. Final orchestration must run only after
+  auth/body/ownership gates, using core's upfront flow.
+
+To exercise quotes locally, provision approved product/command, owned usage
+session and active policy records in a development DB, and configure a matching
+`VAULT_ADDRESS`. There are intentionally no catalog/session-management endpoints
+or production fixtures in this milestone. Quotes do not prove onchain admission.
+
+**Real settlement is blocked:** requests with `PAYMENT-SIGNATURE` return 503
+`SETTLEMENT_NOT_AVAILABLE`; `PAYMENTS_ENABLED=true` fails startup. No relayer key,
+transaction, HELD transition, outbox job or provider dispatch exists yet. Before
+enabling payments, implement the private facilitator, durable journal/worker,
+finality and HELD+outbox transaction, including recovery and Docker PostgreSQL
+concurrency tests. This milestone is not the full S02 implementation.

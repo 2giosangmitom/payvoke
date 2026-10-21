@@ -1,5 +1,8 @@
 // Auth models are generated in auth.prisma by `pnpm auth:schema`.
-// This file retains deferred Payvoke domain models only.
+// This file retains deferred Payvoke domain drafts only. The minimal active
+// Product/ProductVersion/CommandVersion/UsageSession/Quote/DeploymentPolicy
+// definitions live in commerce.prisma; merge these drafts as features ship,
+// do not uncomment duplicate definitions wholesale.
 // S01: API/provider; S02: x402/vault; S03: local MCP buyer client.
 // Opaque IDs remain case-sensitive text. EVM addresses must be normalized to
 // lowercase at the application boundary; hashes are full-width lowercase hex.

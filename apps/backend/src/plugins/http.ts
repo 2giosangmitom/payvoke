@@ -11,7 +11,11 @@ export async function registerHttp(app: FastifyInstance, config: Config) {
   registerErrorHandler(app);
   await app.register(sensible);
   await app.register(helmet);
-  await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
+  await app.register(cors, {
+    origin: config.WEB_ORIGIN,
+    credentials: true,
+    exposedHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE", "Location"],
+  });
   await app.register(cookie);
   // MVP limits are process-local. No proxy headers are trusted by the app.
   await app.register(rateLimit, { global: false });

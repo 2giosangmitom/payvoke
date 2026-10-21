@@ -61,7 +61,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
         .sort();
-      assert.equal(migrations.length, 1, "one clean Better Auth initial migration");
+      assert.equal(migrations[0], "20261020000000_init_better_auth");
       for (const migration of migrations) {
         const sql = await readFile(new URL(`${migration}/migration.sql`, directory), "utf8");
         await client.query(sql.replace('CREATE SCHEMA IF NOT EXISTS "public";', ""));
@@ -366,18 +366,18 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     assert.equal((await app.inject({ url: "/v1/me", headers: { cookie } })).statusCode, 401);
   });
 
-  it("initializes only Better Auth tables and does not accept legacy cookies/endpoints", async () => {
+  it("initializes native auth tables without legacy tables/cookies/endpoints", async () => {
     const tables = await pool.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = $1`,
       [schema],
     );
-    assert.deepEqual(tables.rows.map((row) => row.table_name).sort(), [
-      "account",
-      "session",
-      "user",
-      "verification",
-      "walletAddress",
-    ]);
+    const names = tables.rows.map((row) => row.table_name);
+    for (const name of ["account", "session", "user", "verification", "walletAddress"]) {
+      assert.ok(names.includes(name));
+    }
+    for (const name of ["accounts", "web_sessions", "login_challenges"]) {
+      assert.ok(!names.includes(name));
+    }
     assert.equal(
       (await app.inject({ url: "/v1/me", headers: { cookie: "__Host-payvoke_session=old-token" } }))
         .statusCode,
