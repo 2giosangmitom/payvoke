@@ -5,6 +5,7 @@
 ```text
 src/
   server.ts             # process startup and graceful shutdown
+  facilitator-server.ts # separate private, validation-only x402 process
   app.ts                # app composition and DB lifecycle
   config.ts             # typed environment config and log redaction
   database/client.ts    # Prisma/pg client creation
@@ -18,6 +19,10 @@ src/
   modules/payments/
     journal.ts          # intent, fenced leases and signed transaction journal
     index.ts            # authenticated read-only invocation status
+  facilitator/
+    app.ts              # service-authenticated SDK facilitator HTTP boundary
+    validation.ts       # persisted quote/ownership/journal admission rules
+    config.ts           # separate env and production deployment policy
 ```
 
 Add features under `modules/<feature>` and register them after auth in `app.ts`.
@@ -164,9 +169,10 @@ or production fixtures in this milestone. Quotes do not prove onchain admission.
 `SETTLEMENT_NOT_AVAILABLE`; `PAYMENTS_ENABLED=true` fails startup. There is no
 runtime relayer key, broadcast loop, HELD transition, outbox job or provider
 dispatch. The internal journal below is not wired to the paid POST endpoint.
-Before enabling payments, implement the private facilitator, chain validation,
-nonce discovery/gas-budget controls, worker/finality/reconciliation and HELD+outbox
-transaction. This milestone is not the full S02 implementation.
+Private facilitator/onchain preview validation is implemented below. Before
+enabling payments, implement nonce discovery/gas-budget controls, the broadcast
+worker/finality/reconciliation and HELD+outbox transaction. This is not the full
+S02 implementation.
 
 ## Settlement journal foundation
 
@@ -195,3 +201,60 @@ owns their transactional mutations:
 and execution status plus a known tx hash, never authorization/signed bytes. No
 journal method can mark a payment HELD or queue execution; the future finality
 gate must own that transition with its outbox transaction.
+
+## Private facilitator (validation only)
+
+`pnpm dev:facilitator` runs a separate Fastify process. It does not register
+Better Auth, browser CORS or paid gateway routes. All of `GET /supported`,
+`POST /verify` and `POST /settle` require `Authorization: Bearer <service token>`
+using `@fastify/bearer-auth`. Keep it on loopback/private networking; use TLS for
+remote transport. Rate limits are process-local and bodies are limited to 8 KiB.
+
+From `apps/backend`:
+
+```sh
+cp facilitator.env.example .env.facilitator
+# Fill in a separate random service token, local runtime DB and approved deployment values.
+DOTENV_CONFIG_PATH=.env.facilitator pnpm dev:facilitator
+```
+
+Do not point a test at Neon. The implementation tests use mock RPC plus isolated
+PGlite/Docker PostgreSQL; local vault integration uses Hardhat's simulated EVM.
+No Fuji deployment, funding or external-chain transaction is performed by tests.
+
+The facilitator needs only the public `RELAYER_ADDRESS`, not its private key.
+It does not need `WEB_ORIGIN`/`BETTER_AUTH_SECRET`. Use a random service token of
+at least 32 bytes (e.g. `openssl rand -base64 32`), independently of the browser
+auth secret. The server checks Fuji chain ID, fixed USDC/6 decimals, relayer role,
+active DB policy, deployment caps and `EXPECTED_VAULT_CODE_HASH` before listening.
+The codehash must describe the approved **deployed runtime**, including constructor
+immutables, not an unpatched compiler artifact template.
+
+`@payvoke/x402/chain` owns the reusable viem reader and `@payvoke/x402/facilitator`
+implements `SchemeNetworkFacilitator`. New admission reads grant/signer/epoch,
+balance, pause/role, fees/deadlines and spending caps at one numbered block,
+simulates exact `reserveHold` calldata from the configured relayer with no value,
+then checks that block's hash again. Fixed-period counters use chain timestamp;
+cap comparisons avoid unsigned subtraction underflow. RPC failures/reorgs are
+retryable infrastructure errors, not "insufficient funds".
+
+Before new admission, persisted requirements must exactly match the frozen
+quote. The recovered EOA must match the onchain grant signer. Buyer suspension,
+session ownership and product availability are checked again. Existing matching
+holds bypass new-admission expiry/revocation/pause gates, but are only classified
+as observations: **this does not establish finality or a successful receipt**.
+An unresolved attempt requires reconciliation; an orphan hold or inconsistent
+journal requires recovery. Neither path creates a replacement operation.
+
+`/verify` is read-only. A valid result contains `extra.admission="preview"`, a
+classification and observed block metadata; no nonce/intent/lane is reserved.
+`/settle` runs the same validator again even without `/verify`, then returns
+HTTP 503 `settlement_unavailable` when validation succeeds. It does not create an
+intent, broadcast, or invent a transaction hash. Invalid payments get a public
+machine-readable rejection; RPC/DB secrets never appear in errors.
+
+The pinned `HTTPFacilitatorClient` accepts the `/supported` and `/verify` results.
+A 503 JSON error without `success` is a transport exception in core 2.28.0, not a
+`SettleResponse` or payment receipt. This behavior is covered through SDK HTTP
+calls routed into `Fastify.inject()`. The gateway is intentionally not connected
+to this execution path yet, and `PAYMENTS_ENABLED=true` still fails startup.

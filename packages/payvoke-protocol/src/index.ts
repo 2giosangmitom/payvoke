@@ -4,6 +4,7 @@ import {
   hashTypedData,
   keccak256,
   toBytes,
+  parseAbi,
   type Address,
   type Hex,
   type TypedDataDomain,
@@ -66,6 +67,42 @@ export const reserveHoldAbi = [
     ],
     outputs: [{ name: "holdId", type: "bytes32" }],
   },
+] as const;
+
+// Read/simulation ABI for the non-upgradeable v1 vault. The write structs still
+// come from paymentTypes above, not a second copy of the quote field order.
+export const vaultAdmissionAbi = [
+  ...reserveHoldAbi,
+  ...parseAbi([
+    "function getGrant(address buyer, bytes32 grantId) view returns (((address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config,uint64 epoch,uint256 spentTotal,uint256 spentInPeriod,uint64 currentPeriod,bool revoked) grant)",
+    "function getHold(bytes32 holdId) view returns ((bytes32 quoteDigest,bytes32 authorizationDigest,address buyer,address provider,address feeRecipient,uint256 gross,uint256 refunded,uint256 remaining,uint256 providerReleased,uint256 feeReleased,uint16 feeBps,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy,bool disputed,bool closed,uint64 version,bytes32 grantId) hold)",
+    "function asset() view returns (address)",
+    "function decimals() view returns (uint8)",
+    "function feeCapBps() view returns (uint16)",
+    "function maxQuoteLifetimeSeconds() view returns (uint48)",
+    "function maxHoldSeconds() view returns (uint48)",
+    "function availableBalance(address buyer) view returns (uint256)",
+    "function paused() view returns (bool)",
+    "function hasRole(bytes32 role,address account) view returns (bool)",
+    "error Unauthorized()",
+    "error EnforcedPause()",
+    "error InvalidAsset()",
+    "error InvalidConfiguration()",
+    "error InvalidAmount()",
+    "error InvalidSignature()",
+    "error GrantNotFound()",
+    "error GrantRevoked()",
+    "error GrantExpired()",
+    "error GrantEpochMismatch()",
+    "error InsufficientAvailable()",
+    "error PerCallLimitExceeded()",
+    "error PeriodLimitExceeded()",
+    "error TotalLimitExceeded()",
+    "error FeeCapExceeded()",
+    "error QuoteExpired()",
+    "error DeadlineInvalid()",
+    "error InvocationConflict()",
+  ]),
 ] as const;
 
 // Local tests may supply their isolated chain ID; deployed Payvoke v1 uses Fuji.

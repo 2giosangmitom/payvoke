@@ -17,7 +17,7 @@ import { createSiweMessage } from "viem/siwe";
 import { encodeFunctionData, keccak256, recoverTypedDataAddress } from "viem";
 import { paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/protocol";
 import { x402Client } from "@x402/core/client";
-import { resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
+import { HTTPFacilitatorClient, resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
 import {
   decodePaymentRequiredHeader,
   decodePaymentSignatureHeader,
@@ -38,6 +38,9 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { SettlementJournal } from "../src/modules/payments/journal";
+import { createFacilitatorApp } from "../src/facilitator/app";
+import { loadFacilitatorConfig } from "../src/facilitator/config";
+import { code, matchingHold, mockVault } from "./fixtures/vault-reader";
 
 describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   const origin = "https://app.payvoke.test";
@@ -62,6 +65,8 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   let commandId: string;
   let journal: SettlementJournal;
   let preservedMigrationQuote = false;
+  let privateApps: ReturnType<typeof createFacilitatorApp>[];
+  const serviceToken = randomBytes(32).toString("hex");
 
   before(async () => {
     let connectionString = "postgresql://test:test@127.0.0.1:55433/test";
@@ -122,6 +127,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     });
   });
   beforeEach(async () => {
+    privateApps = [];
     db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
     journal = new SettlementJournal(db, { vault, resourceUrl: `${api}/v1/invocations` });
     await db.settlementAttempt.deleteMany();
@@ -146,6 +152,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
       payload: {},
     });
     const binding = nonce.cookies.find((c) => c.name.endsWith("payvoke_siwe"))!;
+    const issuedAt = new Date();
     const message = createSiweMessage({
       address: wallet.address,
       chainId: 43113,
@@ -153,8 +160,8 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
       uri: origin,
       version: "1",
       nonce: nonce.json().nonce,
-      issuedAt: new Date(),
-      expirationTime: new Date(Date.now() + 300000),
+      issuedAt,
+      expirationTime: new Date(issuedAt.getTime() + 300000),
     });
     const login = await app.inject({
       method: "POST",
@@ -220,6 +227,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     });
   });
   afterEach(async () => {
+    for (const privateApp of privateApps) await privateApp.close();
     await app?.close();
   });
   after(async () => {
@@ -338,6 +346,42 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
       }),
       ...overrides,
     });
+  }
+
+  async function facilitator(q: QuoteDocument) {
+    const mock = mockVault(readQuote(q.protocolQuote), vault, grantSigner.address, relayer.address);
+    const f = createFacilitatorApp(
+      loadFacilitatorConfig({
+        DATABASE_URL: config.DATABASE_URL,
+        API_ORIGIN: api,
+        RPC_URL: "https://rpc.payvoke.test",
+        FACILITATOR_TOKEN: serviceToken,
+        VAULT_ADDRESS: vault,
+        RELAYER_ADDRESS: relayer.address,
+        EXPECTED_VAULT_CODE_HASH: keccak256(code),
+        VAULT_FEE_CAP_BPS: "500",
+        VAULT_MAX_QUOTE_LIFETIME_SECONDS: "3600",
+        VAULT_MAX_HOLD_SECONDS: String(30 * 86400),
+        LOG_LEVEL: "silent",
+      }),
+      db,
+      mock.chain,
+    );
+    privateApps.push(f);
+    await f.ready();
+    mock.calls.length = 0;
+    const call = (
+      operation: "verify" | "settle",
+      payload: unknown,
+      requirements = paymentRequirements(q),
+    ) =>
+      f.inject({
+        method: "POST",
+        url: `/${operation}`,
+        headers: { authorization: `Bearer ${serviceToken}` },
+        payload: { x402Version: 2, paymentPayload: payload, paymentRequirements: requirements },
+      });
+    return { f, call, ...mock };
   }
 
   it("freezes effective defaults, all snapshots and canonical EIP-712 fields", async () => {
@@ -976,5 +1020,223 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     const claims = outputs.map((o) => JSON.parse(o.stdout));
     assert.equal(claims.filter(Boolean).length, 1);
     assert.equal((await db.settlementOperation.findFirstOrThrow()).leaseEpoch, 1n);
+  });
+
+  it("protects every facilitator endpoint with service auth, not a browser cookie", async () => {
+    const q = await quote();
+    const { f, calls } = await facilitator(q);
+    for (const url of ["/supported", "/verify", "/settle"]) {
+      for (const headers of [{ cookie }, { authorization: "Bearer wrong" }, {}]) {
+        const response = await f.inject({
+          method: url === "/supported" ? "GET" : "POST",
+          url,
+          headers,
+          payload: url === "/supported" ? undefined : {},
+        });
+        assert.equal(response.statusCode, 401, response.body);
+        assert.match(response.headers["cache-control"] as string, /no-store/);
+      }
+    }
+    assert.equal(calls.length, 0);
+    const supported = await f.inject({
+      url: "/supported",
+      headers: { authorization: `Bearer ${serviceToken}` },
+    });
+    assert.equal(supported.statusCode, 200, supported.body);
+    assert.deepEqual(supported.json().kinds, [
+      {
+        x402Version: 2,
+        scheme: "payvoke-vault",
+        network: NETWORK,
+        extra: { vault, schemeVersion: "1" },
+      },
+    ]);
+    assert.deepEqual(supported.json().signers, { "eip155:*": [relayer.address] });
+    assert.ok(!supported.headers["access-control-allow-origin"]);
+  });
+
+  it("verifies through the SDK facilitator without any journal side effects; settle revalidates", async () => {
+    const q = await quote();
+    const p = await payment(q);
+    const f = await facilitator(q);
+    const verified = await f.call("verify", p);
+    assert.equal(verified.statusCode, 200, verified.body);
+    assert.equal(verified.json().isValid, true);
+    assert.equal(verified.json().extra.admission, "preview");
+    assert.equal(verified.json().extra.classification, "new-admission");
+    assert.equal(await db.settlementOperation.count(), 0);
+    assert.equal(await db.relayerLane.count(), 0);
+    f.state.grant.revoked = true;
+    const rejected = await f.call("settle", p);
+    assert.equal(rejected.statusCode, 422, rejected.body);
+    assert.equal(rejected.json().error, "grant_revoked");
+    f.state.grant.revoked = false;
+    f.calls.length = 0;
+    const unavailable = await f.call("settle", p);
+    assert.equal(unavailable.statusCode, 503, unavailable.body);
+    assert.deepEqual(unavailable.json(), { error: "settlement_unavailable" });
+    assert.ok(f.calls.some((c) => c.method === "simulate"));
+    assert.equal(await db.settlementOperation.count(), 0);
+    assert.equal(await db.settlementAttempt.count(), 0);
+    assert.ok(!unavailable.headers["payment-response"]);
+  });
+
+  it("rejects malformed, duplicate-key and oversized private requests before RPC", async () => {
+    const q = await quote();
+    const p = await payment(q);
+    const { f, calls, call } = await facilitator(q);
+    const altered = structuredClone(p);
+    altered.accepted.amount = "1";
+    const invalid = await call("verify", altered);
+    assert.equal(invalid.statusCode, 200, invalid.body);
+    assert.equal(invalid.json().invalidReason, "invalid_payment");
+    assert.equal(
+      (await call("verify", p, { ...paymentRequirements(q), network: "eip155:1" })).statusCode,
+      400,
+    );
+    for (const raw of [
+      '{"x402Version":2,"x402Version":1}',
+      JSON.stringify({ padding: "x".repeat(9000) }),
+    ]) {
+      const response = await f.inject({
+        method: "POST",
+        url: "/verify",
+        headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" },
+        payload: raw,
+      });
+      assert.ok([400, 413].includes(response.statusCode), response.body);
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  it("treats unresolved attempts and missing-journal holds as recovery, not new admission", async () => {
+    const q = await quote();
+    const p = await payment(q);
+    const f = await facilitator(q);
+    const intent = await readPaymentIntent(q, p, `${api}/v1/invocations`);
+    f.state.hold = matchingHold(
+      readQuote(q.protocolQuote),
+      intent.authorizationDigest,
+      q.quoteDigest,
+      intent.authorization.grantId,
+    );
+    const orphan = await f.call("verify", p);
+    assert.equal(orphan.statusCode, 503, orphan.body);
+    assert.equal(orphan.json().error, "recovery_required");
+    await journal.recordIntent({
+      quoteId: q.quoteId,
+      buyerId,
+      buyerAddress: wallet.address,
+      paymentPayload: p,
+    });
+    f.state.paused = true;
+    f.state.grant.revoked = true;
+    f.state.role = false;
+    f.state.now = BigInt(q.resolveBy + 1);
+    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    const replay = await f.call("verify", p);
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(replay.json().extra.classification, "existing-hold");
+    assert.ok(!replay.body.includes('"success":true'));
+    assert.ok(!f.calls.some((c) => c.method === "simulate"));
+  });
+
+  it("does not reject or re-admit an existing attempt by checking a freshly revoked grant", async () => {
+    const q = await quote();
+    const { payload } = await pending(q);
+    const f = await facilitator(q);
+    await journal.reserveAttempt((await journal.claim(q.invocationId, "worker"))!, reservation);
+    f.state.grant.revoked = true;
+    const result = await f.call("verify", payload);
+    assert.equal(result.statusCode, 503, result.body);
+    assert.equal(result.json().error, "reconciliation_required");
+    assert.ok(!f.calls.some((c) => c.method === "getGrant" || c.method === "simulate"));
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
+  });
+
+  it("rejects a different authorization digest before any chain reads", async () => {
+    const q = await quote();
+    const { payload } = await pending(q);
+    const f = await facilitator(q);
+    const changed = structuredClone(payload);
+    changed.payload.authorization.grantEpoch = "2";
+    const result = await f.call("verify", changed);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json().invalidReason, "invocation_conflict");
+    assert.equal(f.calls.length, 0);
+    assert.equal(await db.settlementOperation.count(), 1);
+  });
+
+  it("refuses facilitator readiness when the active deployment policy exceeds vault caps", async () => {
+    const q = await quote();
+    await db.deploymentPolicy.updateMany({ data: { feeBps: 501 } });
+    await assert.rejects(facilitator(q), /deployment_policy_mismatch/);
+  });
+
+  it("checks buyer suspension and product availability only for new onchain admission", async () => {
+    const q = await quote();
+    const p = await payment(q);
+    const f = await facilitator(q);
+    await db.user.updateMany({ data: { status: "SUSPENDED" } });
+    const suspended = await f.call("verify", p);
+    assert.equal(suspended.json().invalidReason, "account_suspended");
+    await db.user.updateMany({ data: { status: "ACTIVE" } });
+    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    const disabled = await f.call("verify", p);
+    assert.equal(disabled.json().invalidReason, "admission_unavailable");
+    assert.ok(!f.calls.some((c) => c.method === "simulate"));
+  });
+
+  it("works with HTTPFacilitatorClient auth and error parsing without manufacturing a transaction hash", async (t) => {
+    const q = await quote();
+    const p = await payment(q);
+    const { f, state } = await facilitator(q);
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((v, k) => {
+          headers[k] = v;
+        });
+        const response = await f.inject({
+          method: init?.method === "POST" ? "POST" : "GET",
+          url: new URL(String(input)).pathname,
+          headers,
+          payload: init?.body as string | undefined,
+        });
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    const client = new HTTPFacilitatorClient({
+      url: "https://private-facilitator.test",
+      timeoutMs: 1000,
+      createAuthHeaders: async () => {
+        const auth = { Authorization: `Bearer ${serviceToken}` };
+        return { verify: auth, settle: auth, supported: auth };
+      },
+    });
+    assert.equal((await client.getSupported()).kinds[0].scheme, "payvoke-vault");
+    const resourceServer = new x402ResourceServer(client).register(
+      NETWORK,
+      new VaultServerScheme(q),
+    );
+    await resourceServer.initialize();
+    assert.equal((await client.verify(p, paymentRequirements(q))).isValid, true);
+    await assert.rejects(client.settle(p, paymentRequirements(q)), /503.*settlement_unavailable/);
+    state.rpcError = true;
+    const error = await f.inject({
+      method: "POST",
+      url: "/verify",
+      headers: { authorization: `Bearer ${serviceToken}` },
+      payload: { x402Version: 2, paymentPayload: p, paymentRequirements: paymentRequirements(q) },
+    });
+    assert.equal(error.statusCode, 503);
+    assert.deepEqual(error.json(), { error: "rpc_unavailable" });
+    assert.ok(!error.body.includes("secret-rpc"));
+    assert.ok(!error.body.includes(serviceToken));
   });
 });

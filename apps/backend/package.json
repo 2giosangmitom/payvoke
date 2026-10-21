@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --watch ./src/server.ts",
+    "dev:facilitator": "tsx --watch ./src/facilitator-server.ts",
     "auth:schema": "pnpm dlx auth@1.7.11 generate --config auth.cli.ts --output prisma/auth.prisma --yes",
     "db:generate": "prisma generate --config prisma7.config.ts",
     "db:migrate:create": "prisma migrate dev --create-only --config prisma7.config.ts",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "1.7.11",
+    "@fastify/bearer-auth": "10.1.4",
     "@fastify/cookie": "^11.1.3",
     "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.2.0",

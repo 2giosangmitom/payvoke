@@ -24,9 +24,23 @@ Do not derive trusted configuration from a 402 response. Verify the command's
 approved input schema hash and the user's intended session/command/arguments
 before approving the quote. No HTTP auto-retry/redirect wrapper is provided.
 
-This is not a complete payment integration. The private facilitator, durable
-settlement worker, grant/balance preview and finality/recovery gate are not
-implemented here. There is no public facilitator or `exact` fallback.
+`@payvoke/x402/facilitator` provides the SDK scheme adapter; the backend hosts it
+behind service authentication. Both verify and settle call the supplied
+authoritative validator directly, not security hooks. Verify returns only a
+preview. Settle validates then throws `settlement_unavailable` (HTTP 503); there
+is no fake hash or successful settlement result.
+
+`@payvoke/x402/chain` provides `VaultChain`: startup deployment checks, pinned-block
+grant/balance/cap validation, exact reserveHold simulation and canonical block-hash
+recheck. `VaultChain.fromRpc` adapts a raw EIP-1193 request function, allowing local
+Hardhat tests to reuse the production reader across different viem peer trees.
+The backend production factory fixes Fuji/USDC; alternate deployments are supplied
+explicitly only by the isolated local-contract test harness.
+
+This is not a complete payment integration. No broadcast worker, gas-budget
+enforcement, finality/receipt gate or HELD/outbox transition exists yet. There is
+no public facilitator or `exact` fallback. No preview reserves funds or guarantees
+future execution.
 
 SDK interoperability and signing tests currently run in the backend integration
 suite: `pnpm --dir apps/backend test`. Typecheck: `pnpm --dir packages/payvoke-x402 typecheck`.

@@ -114,6 +114,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     web = origin,
   ) {
     const issued = await nonce(web);
+    const issuedAt = new Date();
     const message = createSiweMessage({
       address: wallet.address,
       chainId: 43113,
@@ -121,8 +122,8 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
       uri: web,
       version: "1",
       nonce: issued.nonce,
-      issuedAt: new Date(),
-      expirationTime: new Date(Date.now() + 300000),
+      issuedAt,
+      expirationTime: new Date(issuedAt.getTime() + 300000),
       ...overrides,
     });
     return { ...issued, message, signature: await wallet.signMessage({ message }) };

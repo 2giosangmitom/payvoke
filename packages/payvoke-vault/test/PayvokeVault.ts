@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { network } from "hardhat";
 import { privateKeyToAccount } from "viem/accounts";
+import { keccak256 } from "viem";
+import { VaultChain } from "@payvoke/x402/chain";
 import {
   businessKey,
   hashAuthorization,
@@ -84,6 +86,95 @@ describe("PayvokeVault / viem session authorization", async () => {
     });
     return { token, vault, quote, domain, authorization, signature };
   }
+
+  async function admissionReader(f: Awaited<ReturnType<typeof fixture>>) {
+    const code = await client.getCode({ address: f.vault.address });
+    assert.ok(code);
+    const reader = VaultChain.fromRpc(client.transport.request, {
+      chainId: await client.getChainId(),
+      asset: f.token.address,
+      vault: f.vault.address,
+      relayer: admin.account.address,
+      expectedCodeHash: keccak256(code),
+      feeCapBps: 500,
+      maxQuoteLifetimeSeconds: 3600,
+      maxHoldSeconds: 30 * 86400,
+    });
+    await reader.initialize();
+    return reader;
+  }
+
+  it("previews reserveHold against real local contracts without spending or consuming the grant", async () => {
+    const f = await networkHelpers.loadFixture(fixture);
+    const reader = await admissionReader(f);
+    const observation = await reader.validate(
+      f.quote,
+      f.authorization,
+      f.signature,
+      async () => {},
+    );
+    assert.equal(observation.kind, "new-admission");
+    assert.equal(await f.vault.read.availableBalance([buyer.account.address]), 1000000n);
+    assert.equal(
+      (await f.vault.read.getGrant([buyer.account.address, f.authorization.grantId])).spentTotal,
+      0n,
+    );
+    assert.equal(await f.vault.read.totalHeld(), 0n);
+    await f.vault.write.reserveHold([f.quote, f.authorization, f.signature]);
+    assert.equal(await f.vault.read.totalHeld(), f.quote.grossAmount);
+  });
+
+  it("rechecks revocation on the real chain rather than trusting an earlier valid preview", async () => {
+    const f = await networkHelpers.loadFixture(fixture);
+    const reader = await admissionReader(f);
+    await reader.validate(f.quote, f.authorization, f.signature, async () => {});
+    await f.vault.write.revokeGrant([f.authorization.grantId], { account: buyer.account });
+    await assert.rejects(
+      reader.validate(f.quote, f.authorization, f.signature, async () => {}),
+      /grant_revoked/,
+    );
+    await viem.assertions.revertWithCustomError(
+      f.vault.write.reserveHold([f.quote, f.authorization, f.signature]),
+      f.vault,
+      "GrantRevoked",
+    );
+  });
+
+  it("matches real vault balance and relayer-role admission failures", async () => {
+    const f = await networkHelpers.loadFixture(fixture);
+    const reader = await admissionReader(f);
+    await f.vault.write.withdrawAvailable([1000000n - f.quote.grossAmount + 1n], {
+      account: buyer.account,
+    });
+    await assert.rejects(
+      reader.validate(f.quote, f.authorization, f.signature, async () => {}),
+      /insufficient_available/,
+    );
+    await viem.assertions.revertWithCustomError(
+      f.vault.write.reserveHold([f.quote, f.authorization, f.signature]),
+      f.vault,
+      "InsufficientAvailable",
+    );
+    await f.vault.write.revokeRole([await f.vault.read.RELAYER_ROLE(), admin.account.address]);
+    await assert.rejects(
+      reader.validate(f.quote, f.authorization, f.signature, async () => {}),
+      /unauthorized_relayer/,
+    );
+  });
+
+  it("recognizes an existing local hold after grant revocation, expiry and relayer role removal", async () => {
+    const f = await networkHelpers.loadFixture(fixture);
+    const reader = await admissionReader(f);
+    await f.vault.write.reserveHold([f.quote, f.authorization, f.signature]);
+    await f.vault.write.revokeGrant([f.authorization.grantId], { account: buyer.account });
+    await f.vault.write.revokeRole([await f.vault.read.RELAYER_ROLE(), admin.account.address]);
+    await networkHelpers.time.increaseTo(f.quote.resolveBy + 1);
+    const observation = await reader.validate(f.quote, f.authorization, f.signature, async () => {
+      throw new Error("Must not admit again");
+    });
+    assert.equal(observation.kind, "existing-hold");
+    assert.equal(await f.vault.read.totalHeld(), f.quote.grossAmount);
+  });
 
   it("hashes and verifies the same quote/authorization as viem, then holds once", async () => {
     const { vault, token, quote, domain, authorization, signature } =

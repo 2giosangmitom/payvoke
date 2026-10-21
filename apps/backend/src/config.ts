@@ -36,6 +36,7 @@ export const logRedaction = {
     "DATABASE_URL",
     "RPC_URL",
     "BETTER_AUTH_SECRET",
+    "FACILITATOR_TOKEN",
     "config",
     "token",
     "signature",

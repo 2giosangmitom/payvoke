@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import Ajv from "ajv";
-import { parseTree, type Node, type ParseError } from "jsonc-parser";
 import type { FastifyInstance } from "fastify";
 import { x402ResourceServer } from "@x402/core/server";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
@@ -24,6 +23,7 @@ import {
 import { getAddress, type Address } from "viem";
 import type { Config } from "../../config";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
+import { parseFinancialJson } from "../../http/json";
 
 type PrepareBody = {
   sessionId: string;
@@ -35,36 +35,12 @@ type PrepareBody = {
 
 const id = { type: "string", minLength: 1, maxLength: 128 };
 
-// Scoped to these financial endpoints: reject duplicate keys before object
-// parsing/hash normalization, rather than accepting whichever value came last.
-function parseJson(text: string) {
-  const errors: ParseError[] = [];
-  const tree = parseTree(text, errors, { disallowComments: true, allowTrailingComma: false });
-  if (!tree || errors.length) throw new Error("Invalid JSON");
-  function visit(node: Node, depth: number) {
-    if (depth > 64) throw new Error("JSON nesting limit");
-    if (node.type === "object") {
-      const names = new Set<string>();
-      for (const property of node.children ?? []) {
-        const name = property.children![0].value as string;
-        if (names.has(name)) throw new Error("Duplicate JSON key");
-        names.add(name);
-      }
-    }
-    for (const child of node.children ?? []) visit(child, depth + 1);
-  }
-  visit(tree, 0);
-  const value = JSON.parse(text);
-  hashSnapshot(value); // also reject invalid Unicode and non-finite JSON numbers
-  return value;
-}
-
 // Register in a child Fastify scope; do not change Better Auth's JSON parser.
 export async function registerQuotes(app: FastifyInstance, config: Config, db: PrismaClient) {
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => {
     try {
-      done(null, parseJson(body as string));
+      done(null, parseFinancialJson(body as string));
     } catch {
       done(app.httpErrors.badRequest("INVALID_JSON"));
     }
