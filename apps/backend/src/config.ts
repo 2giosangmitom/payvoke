@@ -15,6 +15,8 @@ const schema = Type.Object({
   RPC_URL: Type.Optional(Type.String()),
   VAULT_ADDRESS: Type.Optional(Type.String()),
   PAYMENTS_ENABLED: Type.Boolean({ default: false }),
+  FACILITATOR_URL: Type.Optional(Type.String()),
+  FACILITATOR_TOKEN: Type.Optional(Type.String()),
 });
 
 export type Config = Readonly<Static<typeof schema>>;
@@ -37,6 +39,7 @@ export const logRedaction = {
     "RPC_URL",
     "BETTER_AUTH_SECRET",
     "FACILITATOR_TOKEN",
+    "RELAYER_PRIVATE_KEY",
     "config",
     "token",
     "signature",

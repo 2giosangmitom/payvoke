@@ -6,6 +6,7 @@ import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { VaultDeployment } from "@payvoke/x402/chain";
 
 const schema = Type.Object({
+  SETTLEMENT_ENABLED: Type.Boolean({ default: false }),
   HOST: Type.String({ default: "127.0.0.1" }),
   PORT: Type.Integer({ default: 3002 }),
   LOG_LEVEL: Type.String({ default: "info" }),
@@ -26,9 +27,20 @@ export function loadFacilitatorConfig(source: NodeJS.ProcessEnv = process.env): 
 }
 // Semantic policy is intentionally outside env-schema: no alternate runtime
 // chain/asset switch or local-dev deployment fallback is exposed here.
-export function facilitatorDeployment(config: FacilitatorConfig): VaultDeployment {
+export function facilitatorDeployment(
+  config: Pick<
+    FacilitatorConfig,
+    | "RPC_URL"
+    | "API_ORIGIN"
+    | "VAULT_ADDRESS"
+    | "RELAYER_ADDRESS"
+    | "EXPECTED_VAULT_CODE_HASH"
+    | "VAULT_FEE_CAP_BPS"
+    | "VAULT_MAX_QUOTE_LIFETIME_SECONDS"
+    | "VAULT_MAX_HOLD_SECONDS"
+  >,
+): VaultDeployment {
   if (
-    Buffer.byteLength(config.FACILITATOR_TOKEN) < 32 ||
     !/^0x[0-9a-fA-F]{64}$/.test(config.EXPECTED_VAULT_CODE_HASH) ||
     config.VAULT_FEE_CAP_BPS < 0 ||
     config.VAULT_FEE_CAP_BPS > 10000 ||

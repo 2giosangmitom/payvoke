@@ -9,9 +9,11 @@ import { registerHttp } from "./plugins/http";
 import type { PrismaClient } from "./generated/prisma/client";
 
 export function createApp(config: Config, database?: PrismaClient) {
-  // No path may enable real spending before durable settlement/finality ships.
-  if (config.PAYMENTS_ENABLED)
-    throw new Error("Settlement worker is not implemented; payments must remain disabled");
+  if (
+    config.PAYMENTS_ENABLED &&
+    (!config.FACILITATOR_URL || !config.FACILITATOR_TOKEN || !config.VAULT_ADDRESS)
+  )
+    throw new Error("Payments require explicit private facilitator configuration");
   const app = fastify({
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false } },
     logger: { level: config.LOG_LEVEL, redact: logRedaction },

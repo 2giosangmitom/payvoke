@@ -99,7 +99,7 @@ export class VaultChain {
     );
   }
 
-  async initialize() {
+  async initialize(options: { requireRelayerRole?: boolean } = {}) {
     this.initialized = false;
     const d = this.deployment;
     assert(
@@ -140,7 +140,7 @@ export class VaultChain {
       "deployment_caps_mismatch",
       503,
     );
-    assert(role, "unauthorized_relayer", 503);
+    if (options.requireRelayerRole !== false) assert(role, "unauthorized_relayer", 503);
     await this.canonical(block.number, block.hash);
     this.initialized = true;
   }

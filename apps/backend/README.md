@@ -5,7 +5,8 @@
 ```text
 src/
   server.ts             # process startup and graceful shutdown
-  facilitator-server.ts # separate private, validation-only x402 process
+  facilitator-server.ts # separate private x402 process, no signing key
+  settlement-worker.ts  # explicit opt-in signing/reconciliation process
   app.ts                # app composition and DB lifecycle
   config.ts             # typed environment config and log redaction
   database/client.ts    # Prisma/pg client creation
@@ -148,8 +149,8 @@ work; only the Docker run exercises concurrent connections/processes.
   `Idempotency-Key` must equal `clientRequestId`. One active quote/operation
   occupies the session; replays return the same stored document without
   extending deadlines. Pending/UNKNOWN/HELD operations retain that slot even
-  after quote expiry. Only explicitly rejected, never-attempted operations may
-  release their slot after expiry in this milestone.
+  after quote expiry. Rejected, never-attempted operations can release after
+  expiry; finalized reverted attempts allow a fresh quote immediately.
 - Only empty context selections are supported. Nonempty selections and AGENT
   products fail explicitly; there is no silent context omission.
 - `POST /v1/invocations {quoteId}` requires the invocation ID as idempotency key.
@@ -165,14 +166,12 @@ session and active policy records in a development DB, and configure a matching
 `VAULT_ADDRESS`. There are intentionally no catalog/session-management endpoints
 or production fixtures in this milestone. Quotes do not prove onchain admission.
 
-**Real settlement is blocked:** requests with `PAYMENT-SIGNATURE` return 503
-`SETTLEMENT_NOT_AVAILABLE`; `PAYMENTS_ENABLED=true` fails startup. There is no
-runtime relayer key, broadcast loop, HELD transition, outbox job or provider
-dispatch. The internal journal below is not wired to the paid POST endpoint.
-Private facilitator/onchain preview validation is implemented below. Before
-enabling payments, implement nonce discovery/gas-budget controls, the broadcast
-worker/finality/reconciliation and HELD+outbox transaction. This is not the full
-S02 implementation.
+**Spending remains disabled by default.** With `PAYMENTS_ENABLED=false`, signed
+submissions still return `SETTLEMENT_NOT_AVAILABLE`. Opt-in requires the private
+facilitator URL/token and matching capabilities at API startup, a separately
+enabled facilitator submission service, and the signing worker below. The full
+path is exercised on an isolated local EVM; no Fuji deployment/E2E or production
+enablement has been performed. Provider dispatch is not implemented.
 
 ## Settlement journal foundation
 
@@ -190,19 +189,19 @@ owns their transactional mutations:
   Stale workers cannot reserve or persist new signed transaction bytes.
 - Reserve at most one attempt per operation and one outstanding operation per
   relayer lane. Lane reservations do not expire with worker leases. Nonces are
-  supplied by the future worker; journal uniqueness is not RPC nonce discovery.
+  discovered by the worker; journal uniqueness alone is not RPC nonce discovery.
 - Validate signed EIP-1559 bytes against chain, relayer, nonce, destination,
   zero value, exact `reserveHold` calldata and reserved gas/fees; persist bytes
-  and hash before any future sender can broadcast them. No replacement/fee bump.
+  and hash before a sender can broadcast them. No replacement/fee bump.
 - Preserve bytes/hash through BROADCAST/UNKNOWN. An attempt, even RESERVED, cannot
   be discarded through `rejectUnattempted`. Reconciliation is required instead.
 
 `GET /v1/invocations/{id}` is authenticated, no-store and free. It exposes payment
-and execution status plus a known tx hash, never authorization/signed bytes. No
-journal method can mark a payment HELD or queue execution; the future finality
-gate must own that transition with its outbox transaction.
+and execution status plus known tx hash/finalized receipt, never authorization or
+signed bytes. The finality reader supplies evidence to the journal's atomic
+HELD/ready transition. Only one `InvocationReady` row can exist per invocation.
 
-## Private facilitator (validation only)
+## Private facilitator
 
 `pnpm dev:facilitator` runs a separate Fastify process. It does not register
 Better Auth, browser CORS or paid gateway routes. All of `GET /supported`,
@@ -248,13 +247,91 @@ journal requires recovery. Neither path creates a replacement operation.
 
 `/verify` is read-only. A valid result contains `extra.admission="preview"`, a
 classification and observed block metadata; no nonce/intent/lane is reserved.
-`/settle` runs the same validator again even without `/verify`, then returns
-HTTP 503 `settlement_unavailable` when validation succeeds. It does not create an
-intent, broadcast, or invent a transaction hash. Invalid payments get a public
-machine-readable rejection; RPC/DB secrets never appear in errors.
+`/settle` defaults to validation-only: valid previews return HTTP 503
+`settlement_unavailable`. With explicit `SETTLEMENT_ENABLED=true`, new submissions
+are independently validated and durably journaled. Existing intents are bound to
+the same quote/authorization before reading their prior state, without applying
+new-admission expiry/grant checks again. Neither HTTP process signs or broadcasts.
+When execution mode is enabled, startup tolerates missing relayer role for receipt
+recovery; the role is still mandatory on every new-admission validation.
 
 The pinned `HTTPFacilitatorClient` accepts the `/supported` and `/verify` results.
 A 503 JSON error without `success` is a transport exception in core 2.28.0, not a
 `SettleResponse` or payment receipt. This behavior is covered through SDK HTTP
-calls routed into `Fastify.inject()`. The gateway is intentionally not connected
-to this execution path yet, and `PAYMENTS_ENABLED=true` still fails startup.
+calls routed into `Fastify.inject()`. Core's HTTP orchestration may synthesize an
+empty-transaction failure receipt from a transport error; the gateway explicitly
+discards it, never forwards exception text, and returns a retryable status with
+`Location` instead. Known broadcast/UNKNOWN transactions use the SDK's pending
+receipt and 402 response, not another charge. Core's automatic settle retry reads
+the same operation. A finalized success returns 202 with `PAYMENT-RESPONSE`;
+`beforeHandlerSettlement` is echoed without settling a second time.
+
+## Settlement worker and recovery
+
+The separate signing process is off by default:
+
+```sh
+cp worker.env.example .env.worker
+# Supply an explicitly approved deployment, dedicated relayer key and gas budget.
+DOTENV_CONFIG_PATH=.env.worker pnpm worker:settlement
+```
+
+`EXECUTION_ENABLED=true` is required to start it. This is not authorization to
+enable a real deployment: obtain deployment/funding/budget approval separately.
+The worker has no browser auth secret or service bearer token. Use the relayer
+key exclusively here, not from another wallet/script; unaccounted pending nonce
+activity fails closed. Never use a public Hardhat fixture key on Fuji.
+
+The worker uses the existing PostgreSQL journal as its durable queue, fenced
+leases and one relayer lane. It validates again before signing, discovers nonce,
+estimates gas with a 20% ceiling-rounded margin, enforces per-transaction and
+outstanding limits, and accounts actual finalized cost against a rolling window.
+All prices/costs are integer wei. No economic defaults are inferred from tests.
+Worker RPC is timeout-bounded; signing and RPC never happen in a SQL transaction.
+
+Exact signed EIP-1559 bytes/hash are persisted before send. A restart first looks
+up that hash; retries use only those bytes. Up to three durable send authorizations
+are allowed per attempt (a crash before send can consume one). Exhaustion retains
+the lane/budget and keeps polling, requiring operator investigation rather than
+a replacement transaction. Lease expiry does not release any financial reservation.
+
+`@payvoke/x402/settlement` checks chain/transaction/receipt identity, exact calldata,
+the vault's `HoldReserved` event, immutable hold fields at the finalized checkpoint,
+and canonical block hashes. `latest`, receipt presence and accepted-transaction
+notifications are not substitutes for `finalized`. Unsupported finality fails
+worker startup; no confirmation-count fallback exists.
+
+On finalized success the journal atomically records proof/cost, marks HELD, queues
+one `InvocationReady`, and releases the lane. A finalized revert records REJECTED
+and gas cost without a ready event or new attempt. Late, closed, disputed or
+partially consumed holds retain their paid receipt but get `hold_not_executable`
+and **no ready event**; financial recovery/refund execution is a later milestone.
+Contradictory receipts/holds/nonces are quarantined without releasing the lane.
+
+Finalized log backfill starts at `DEPLOYMENT_START_BLOCK`, scans at most 500 blocks
+per iteration and advances a CAS-protected durable cursor in the same transaction
+as recovery wakeups/incidents. Logs alone never mark HELD. Orphan/mismatched holds
+are recorded in `settlement_incidents`, not fabricated into invocations or jobs.
+No cursor/lane/attempt TTL cleanup or operator force-release endpoint is provided.
+Unsigned reservations that can no longer pass admission remain blocked for manual
+recovery; their nonce is not silently reassigned.
+
+`InvocationReady` is a durable handoff, not a provider-delivery implementation.
+There is no provider HTTP call, ACK loop or automatic refund/release in this task.
+
+### Local execution proof
+
+```sh
+pnpm --dir apps/backend test:payments:evm
+# Optional: same E2E with real PostgreSQL and two independent worker processes.
+PAYMENTS_TEST_POSTGRES=1 pnpm --dir apps/backend test:payments:evm
+```
+
+These commands build contracts and spawn/stop their own loopback Hardhat node
+with chain ID 43113, mock USDC runtime at the fixed asset address, generated local
+buyer/relayer keys, and test-only balances. They do not connect to Fuji. They prove
+HTTP/SDK submission, real vault balance changes/event/receipt, finalized handoff,
+replay after revoke, and an actual revoke-after-preview transaction revert.
+Docker mode also proves workers in separate processes cannot double-send/debit.
+Mock-RPC tests cover timeout, crash, reorg, fee budget, malformed evidence and
+bounded retry paths; Docker additionally proves rollback of HELD/outbox/lane.

@@ -29,13 +29,21 @@ export type ValidatePayment = (
   requirements: PaymentRequirements,
 ) => Promise<AdmissionObservation>;
 
-// No SDK hooks hold security gates. Both entry points call the authoritative
-// validator directly, and settle deliberately has no broadcast implementation.
+// No SDK hooks hold security gates. The execution service independently binds
+// intents and separates admission from reconciliation. The adapter has no keys.
 export class VaultFacilitatorScheme implements SchemeNetworkFacilitator {
   readonly scheme = SCHEME;
   readonly caipFamily = "eip155:*";
   constructor(
-    private readonly options: { vault: Address; relayer: Address; validate: ValidatePayment },
+    private readonly options: {
+      vault: Address;
+      relayer: Address;
+      validate: ValidatePayment;
+      settle?: (
+        payload: PaymentPayload,
+        requirements: PaymentRequirements,
+      ) => Promise<SettleResponse>;
+    },
   ) {}
   getExtra(network: Network) {
     if (network !== NETWORK) throw new VaultValidationError("unsupported_network", 400);
@@ -68,6 +76,7 @@ export class VaultFacilitatorScheme implements SchemeNetworkFacilitator {
     payload: PaymentPayload,
     requirements: PaymentRequirements,
   ): Promise<SettleResponse> {
+    if (this.options.settle) return this.options.settle(payload, requirements);
     await this.options.validate(payload, requirements);
     // No dummy transaction hash, SettleResponse or abandoned queue entry.
     throw new VaultValidationError("settlement_unavailable", 503);

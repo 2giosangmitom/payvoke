@@ -29,6 +29,24 @@ export class SettlementError extends Error {
 export type SettlementLease = { invocationId: string; owner: string; epoch: bigint };
 type Tx = Prisma.TransactionClient;
 type JournalPolicy = { vault: Address; resourceUrl: string };
+export type GasPolicy = {
+  maxGasLimit: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+  maxTransactionCost: bigint;
+  maxOutstandingCost: bigint;
+  windowSeconds: number;
+  maxWindowCost: bigint;
+};
+export type FinalityEvidence = {
+  transactionHash: Hex;
+  receiptBlockNumber: bigint;
+  receiptBlockHash: Hex;
+  finalizedBlockNumber: bigint;
+  finalizedBlockHash: Hex;
+  actualGasCost: bigint;
+  outcome: "held" | "reverted" | "not_executable";
+};
 
 async function databaseTime(tx: Tx) {
   // Epoch avoids raw timestamptz serialization depending on the PostgreSQL
@@ -65,8 +83,8 @@ function reason(code: string) {
   return code;
 }
 
-/** Durable intent/transaction journal only. No RPC, private keys or successful
- * hold transitions live here. Only a future finality gate may write HELD. */
+/** Owns durable mutations. No RPC or keys; finalize accepts only evidence from
+ * the settlement chain reader and commits the logical ready handoff atomically. */
 export class SettlementJournal {
   constructor(
     private readonly db: PrismaClient,
@@ -194,6 +212,7 @@ export class SettlementJournal {
       maxFeePerGas: bigint;
       maxPriorityFeePerGas: bigint;
     },
+    budget?: GasPolicy,
   ) {
     if (
       input.nonce < 0n ||
@@ -234,8 +253,41 @@ export class SettlementJournal {
         ) {
           throw new SettlementError("ATTEMPT_CONFLICT");
         }
-        return previous;
       }
+      if (budget) {
+        const cost = input.gasLimit * input.maxFeePerGas;
+        if (
+          input.gasLimit > budget.maxGasLimit ||
+          input.maxFeePerGas > budget.maxFeePerGas ||
+          input.maxPriorityFeePerGas > budget.maxPriorityFeePerGas ||
+          cost > budget.maxTransactionCost ||
+          cost > budget.maxOutstandingCost
+        )
+          throw new SettlementError("GAS_POLICY_EXCEEDED", 503);
+        const now = await databaseTime(tx);
+        const since = new Date(now.getTime() - budget.windowSeconds * 1000);
+        const attempts = await tx.settlementAttempt.findMany({
+          where: {
+            network: NETWORK,
+            relayer,
+            invocationId: { not: lease.invocationId },
+            OR: [{ finalizedAt: null }, { finalizedAt: { gte: since } }],
+          },
+        });
+        let outstanding = cost;
+        let window = cost;
+        for (const attempt of attempts) {
+          const liability = attempt.gasLimit * BigInt(attempt.maxFeePerGas.toFixed(0));
+          if (!attempt.finalizedAt) {
+            outstanding += liability;
+            window += liability;
+          } else if (attempt.finalizedAt >= since)
+            window += BigInt(attempt.actualGasCost!.toFixed(0));
+        }
+        if (outstanding > budget.maxOutstandingCost || window > budget.maxWindowCost)
+          throw new SettlementError("GAS_BUDGET_EXCEEDED", 503);
+      }
+      if (previous) return previous;
       await tx.relayerLane.update({
         where: { network_relayer: { network: NETWORK, relayer } },
         data: { activeInvocationId: lease.invocationId },
@@ -325,6 +377,23 @@ export class SettlementJournal {
     return this.updateSentAttempt(lease, transactionHash, "BROADCAST");
   }
 
+  async authorizeBroadcast(lease: SettlementLease, transactionHash: Hex) {
+    await this.db.$transaction(async (tx) => {
+      await lockLease(tx, lease);
+      const authorized = await tx.settlementAttempt.updateMany({
+        where: {
+          invocationId: lease.invocationId,
+          transactionHash,
+          signedTransaction: { not: null },
+          state: { in: ["SIGNED", "BROADCAST", "UNKNOWN"] },
+          broadcastCount: { lt: 3 },
+        },
+        data: { broadcastCount: { increment: 1 } },
+      });
+      if (!authorized.count) throw new SettlementError("BROADCAST_LIMIT_REACHED", 503);
+    });
+  }
+
   async markUnknown(lease: SettlementLease, transactionHash: Hex, errorReason: string) {
     return this.updateSentAttempt(lease, transactionHash, "UNKNOWN", reason(errorReason));
   }
@@ -373,6 +442,126 @@ export class SettlementJournal {
           leaseExpiresAt: null,
         },
       });
+    });
+  }
+
+  async defer(lease: SettlementLease, errorReason: string, seconds = 5) {
+    reason(errorReason);
+    checkedSeconds(seconds);
+    await this.db.$transaction(async (tx) => {
+      await lockLease(tx, lease);
+      const now = await databaseTime(tx);
+      await tx.settlementOperation.update({
+        where: { invocationId: lease.invocationId },
+        data: {
+          errorReason,
+          nextCheckAt: new Date(now.getTime() + seconds * 1000),
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        },
+      });
+    });
+  }
+
+  async quarantine(lease: SettlementLease, errorReason: string) {
+    reason(errorReason);
+    await this.db.$transaction(async (tx) => {
+      await lockLease(tx, lease);
+      await tx.settlementOperation.update({
+        where: { invocationId: lease.invocationId },
+        data: {
+          state: "QUARANTINED",
+          errorReason,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        },
+      });
+      // No proof of nonce consumption: keep the lane and its budget reservation.
+    });
+  }
+
+  async observeReceipt(lease: SettlementLease, block: { number: bigint; hash: Hex } | null) {
+    await this.db.$transaction(async (tx) => {
+      await lockLease(tx, lease);
+      await tx.settlementAttempt.update({
+        where: { invocationId: lease.invocationId },
+        data: {
+          state: block ? "CONFIRMED" : "UNKNOWN",
+          receiptBlockNumber: block?.number ?? null,
+          receiptBlockHash: block?.hash ?? null,
+        },
+      });
+    });
+  }
+
+  async finalize(lease: SettlementLease, evidence: FinalityEvidence) {
+    if (evidence.finalizedBlockNumber < evidence.receiptBlockNumber || evidence.actualGasCost < 0n)
+      throw new SettlementError("INVALID_FINALITY_EVIDENCE", 500);
+    await this.db.$transaction(async (tx) => {
+      const attempt = await tx.settlementAttempt.findUniqueOrThrow({
+        where: { invocationId: lease.invocationId },
+      });
+      // Same lock order as reservation: lane -> operation.
+      await tx.relayerLane.update({
+        where: { network_relayer: { network: attempt.network, relayer: attempt.relayer } },
+        data: { revision: { increment: 1 } },
+      });
+      await lockLease(tx, lease);
+      if (
+        !attempt.signedTransaction ||
+        attempt.transactionHash !== evidence.transactionHash ||
+        evidence.actualGasCost > attempt.gasLimit * BigInt(attempt.maxFeePerGas.toFixed(0))
+      )
+        throw new SettlementError("INVALID_FINALITY_EVIDENCE", 500);
+      const invocation = await tx.invocation.findUniqueOrThrow({
+        where: { id: lease.invocationId },
+      });
+      const now = await databaseTime(tx);
+      await tx.settlementAttempt.update({
+        where: { invocationId: lease.invocationId },
+        data: {
+          state: evidence.outcome === "reverted" ? "REVERTED" : "FINALIZED",
+          receiptBlockNumber: evidence.receiptBlockNumber,
+          receiptBlockHash: evidence.receiptBlockHash,
+          finalizedBlockNumber: evidence.finalizedBlockNumber,
+          finalizedBlockHash: evidence.finalizedBlockHash,
+          actualGasCost: evidence.actualGasCost.toString(),
+          finalizedAt: now,
+          lastErrorReason: null,
+        },
+      });
+      await tx.settlementOperation.update({
+        where: { invocationId: lease.invocationId },
+        data: {
+          state: evidence.outcome === "reverted" ? "REJECTED" : "HELD",
+          errorReason:
+            evidence.outcome === "held"
+              ? null
+              : evidence.outcome === "reverted"
+                ? "transaction_reverted"
+                : "hold_not_executable",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        },
+      });
+      if (evidence.outcome === "held") {
+        await tx.invocationReady.create({
+          data: { invocationId: invocation.id, quoteId: invocation.quoteId },
+        });
+        await tx.invocation.update({
+          where: { id: invocation.id },
+          data: { executionStatus: "QUEUED" },
+        });
+      }
+      const released = await tx.relayerLane.updateMany({
+        where: {
+          network: attempt.network,
+          relayer: attempt.relayer,
+          activeInvocationId: lease.invocationId,
+        },
+        data: { activeInvocationId: null },
+      });
+      if (!released.count) throw new SettlementError("LANE_INCONSISTENT", 500);
     });
   }
 }

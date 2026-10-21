@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client";
 
 // Read-only status is available independently of quote expiry or worker leases.
-// No admission/broadcast route is enabled until the facilitator/finality ships.
+// Polling does not trigger admission or broadcast.
 export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClient) {
   app.get<{ Params: { id: string } }>(
     "/v1/invocations/:id",
@@ -38,7 +38,29 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
         executionStatus: invocation.executionStatus,
         transaction: attempt?.transactionHash ?? null,
         failure: operation.errorReason ? { code: operation.errorReason } : null,
-        nextActions: operation.state === "PENDING" ? ["poll"] : [],
+        receipt:
+          operation.state === "HELD" && attempt?.state === "FINALIZED"
+            ? {
+                success: true,
+                transaction: attempt.transactionHash,
+                network: attempt.network,
+                payer: (invocation.quote.document as { protocolQuote: { buyer: string } })
+                  .protocolQuote.buyer,
+                amount: (invocation.quote.document as { grossAmount: string }).grossAmount,
+                extra: {
+                  schemeVersion: "1",
+                  invocationId: invocation.id,
+                  quoteId: invocation.quoteId,
+                  holdId: operation.invocationKey,
+                },
+              }
+            : null,
+        nextActions:
+          operation.state === "PENDING"
+            ? ["poll"]
+            : operation.errorReason === "hold_not_executable" || operation.state === "QUARANTINED"
+              ? ["contact_support"]
+              : [],
       };
     },
   );

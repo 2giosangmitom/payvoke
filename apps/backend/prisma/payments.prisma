@@ -28,6 +28,7 @@ model Invocation {
   createdAt       DateTime @default(now())
   quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Restrict)
   settlement      SettlementOperation?
+  readyEvent      InvocationReady?
 
   @@index([buyerId, createdAt])
   @@map("invocations")
@@ -47,6 +48,7 @@ model SettlementOperation {
   leaseEpoch          BigInt @default(0)
   leaseExpiresAt      DateTime?
   revision            BigInt @default(0)
+  nextCheckAt         DateTime @default(now())
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   invocation          Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
@@ -70,13 +72,21 @@ model SettlementAttempt {
   signedTransaction    String? @db.Text
   transactionHash      String? @unique
   broadcastAt          DateTime?
+  broadcastCount       Int @default(0)
   lastErrorReason      String?
+  receiptBlockNumber   BigInt?
+  receiptBlockHash     String?
+  finalizedBlockNumber BigInt?
+  finalizedBlockHash   String?
+  actualGasCost        Decimal? @db.Decimal(78, 0)
+  finalizedAt          DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   operation            SettlementOperation @relation(fields: [invocationId], references: [invocationId], onDelete: Restrict)
   lane                 RelayerLane @relation(fields: [network, relayer], references: [network, relayer], onDelete: Restrict)
 
   @@unique([network, relayer, nonce])
+  @@index([network, relayer, finalizedAt])
   @@map("settlement_attempts")
 }
 
@@ -91,4 +101,33 @@ model RelayerLane {
 
   @@id([network, relayer])
   @@map("relayer_lanes")
+}
+
+// Durable handoff only. Provider delivery/ACK belongs to a later milestone.
+model InvocationReady {
+  invocationId String @id
+  quoteId      String
+  createdAt    DateTime @default(now())
+  invocation   Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+
+  @@map("invocation_ready")
+}
+
+model SettlementScanCursor {
+  id          String @id
+  blockNumber BigInt
+  blockHash   String
+  updatedAt   DateTime @updatedAt
+
+  @@map("settlement_scan_cursors")
+}
+
+model SettlementIncident {
+  id              String @id
+  transactionHash String
+  invocationKey   String
+  reason          String
+  createdAt       DateTime @default(now())
+
+  @@map("settlement_incidents")
 }

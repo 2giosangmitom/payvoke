@@ -15,6 +15,8 @@ import { parseFinancialJson } from "../http/json";
 import { VaultChain } from "@payvoke/x402/chain";
 import { facilitatorDeployment, type FacilitatorConfig } from "./config";
 import { createPaymentValidator } from "./validation";
+import { createSettlementService } from "../modules/payments/settlement";
+import { SettlementError } from "../modules/payments/journal";
 
 type PaymentBody = {
   x402Version: 2;
@@ -55,6 +57,8 @@ export function createFacilitatorApp(
   database?: PrismaClient,
   reader?: VaultChain,
 ) {
+  if (Buffer.byteLength(config.FACILITATOR_TOKEN) < 32)
+    throw new VaultValidationError("invalid_facilitator_policy", 503);
   const deployment = facilitatorDeployment(config);
   const db = database ?? createDatabase(config.DATABASE_URL);
   const chain =
@@ -113,6 +117,8 @@ export function createFacilitatorApp(
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof VaultValidationError)
         return reply.code(error.statusCode).send({ error: error.code });
+      if (error instanceof SettlementError)
+        return reply.code(error.statusCode).send({ error: error.code.toLowerCase() });
       const status = (error as { statusCode?: number }).statusCode ?? 500;
       if (status >= 500) scope.log.error("Facilitator request failed");
       return reply
@@ -120,7 +126,9 @@ export function createFacilitatorApp(
         .send({ error: status >= 500 ? "internal_error" : "invalid_request" });
     });
     scope.addHook("onReady", async () => {
-      await chain.initialize();
+      // In execution mode, role loss blocks new admission but must not make
+      // already-paid receipts unavailable after a facilitator restart.
+      await chain.initialize({ requireRelayerRole: !config.SETTLEMENT_ENABLED });
       const policy = await db.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
       if (
         !policy ||
@@ -148,6 +156,9 @@ export function createFacilitatorApp(
         vault: deployment.vault,
         relayer: deployment.relayer,
         validate,
+        settle: config.SETTLEMENT_ENABLED
+          ? createSettlementService(db, chain, new URL("/v1/invocations", config.API_ORIGIN).href)
+          : undefined,
       }),
     );
     scope.get("/supported", async () => facilitator.getSupported());

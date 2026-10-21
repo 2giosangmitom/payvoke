@@ -14,7 +14,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { encodeFunctionData, keccak256, recoverTypedDataAddress } from "viem";
+import {
+  createWalletClient,
+  getContract,
+  http,
+  encodeFunctionData,
+  keccak256,
+  recoverTypedDataAddress,
+} from "viem";
+import { avalancheFuji } from "viem/chains";
 import { paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/protocol";
 import { x402Client } from "@x402/core/client";
 import { HTTPFacilitatorClient, resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
@@ -41,8 +49,13 @@ import { SettlementJournal } from "../src/modules/payments/journal";
 import { createFacilitatorApp } from "../src/facilitator/app";
 import { loadFacilitatorConfig } from "../src/facilitator/config";
 import { code, matchingHold, mockVault } from "./fixtures/vault-reader";
+import { mockSettlement } from "./fixtures/settlement-reader";
+import { SettlementWorker } from "../src/modules/payments/worker";
+import { createSettlementService } from "../src/modules/payments/settlement";
+import { scanFinalizedHolds } from "../src/modules/payments/scanner";
+import { localEvm } from "./fixtures/local-evm";
 
-describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
+describe("quotes, x402 and isolated settlement", () => {
   const origin = "https://app.payvoke.test";
   const api = "https://api.payvoke.test";
   const vault = "0x1111111111111111111111111111111111111111";
@@ -50,7 +63,8 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
   const feeRecipient = "0x3333333333333333333333333333333333333333";
   const wallet = privateKeyToAccount(generatePrivateKey());
   const grantSigner = privateKeyToAccount(generatePrivateKey());
-  const relayer = privateKeyToAccount(generatePrivateKey());
+  const relayerKey = generatePrivateKey();
+  const relayer = privateKeyToAccount(relayerKey);
   const schema = `payment_test_${randomUUID().replaceAll("-", "")}`;
   let embedded: PGlite | undefined;
   let socket: PGLiteSocketServer | undefined;
@@ -130,6 +144,9 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     privateApps = [];
     db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
     journal = new SettlementJournal(db, { vault, resourceUrl: `${api}/v1/invocations` });
+    await db.invocationReady.deleteMany();
+    await db.settlementScanCursor.deleteMany();
+    await db.settlementIncident.deleteMany();
     await db.settlementAttempt.deleteMany();
     await db.settlementOperation.deleteMany();
     await db.invocation.deleteMany();
@@ -287,7 +304,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     return new VaultClientScheme({
       document: q,
       buyer: wallet.address,
-      vault,
+      vault: q.vault as `0x${string}`,
       resourceUrl: `${api}/v1/invocations`,
       signer: grantSigner,
       grantId: `0x${"a".repeat(64)}`,
@@ -348,7 +365,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     });
   }
 
-  async function facilitator(q: QuoteDocument) {
+  async function facilitator(q: QuoteDocument, enabled = false) {
     const mock = mockVault(readQuote(q.protocolQuote), vault, grantSigner.address, relayer.address);
     const f = createFacilitatorApp(
       loadFacilitatorConfig({
@@ -363,6 +380,7 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
         VAULT_MAX_QUOTE_LIFETIME_SECONDS: "3600",
         VAULT_MAX_HOLD_SECONDS: String(30 * 86400),
         LOG_LEVEL: "silent",
+        SETTLEMENT_ENABLED: String(enabled),
       }),
       db,
       mock.chain,
@@ -382,6 +400,50 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
         payload: { x402Version: 2, paymentPayload: payload, paymentRequirements: requirements },
       });
     return { f, call, ...mock };
+  }
+
+  const gasPolicy = {
+    maxGasLimit: 1000000n,
+    maxFeePerGas: 10000000000n,
+    maxPriorityFeePerGas: 2000000000n,
+    maxTransactionCost: 10n ** 16n,
+    maxOutstandingCost: 10n ** 16n,
+    windowSeconds: 3600,
+    maxWindowCost: 10n ** 17n,
+  };
+  async function execution(q: QuoteDocument) {
+    const p = await payment(q);
+    const intent = await readPaymentIntent(q, p, `${api}/v1/invocations`);
+    const preview = mockVault(
+      readQuote(q.protocolQuote),
+      vault,
+      grantSigner.address,
+      relayer.address,
+    );
+    await preview.chain.initialize();
+    const settlement = mockSettlement(readQuote(q.protocolQuote), preview.chain.deployment, {
+      quoteDigest: q.quoteDigest,
+      authorizationDigest: intent.authorizationDigest,
+      grantId: intent.authorization.grantId,
+    });
+    const service = createSettlementService(db, preview.chain, `${api}/v1/invocations`);
+    const makeWorker = (budget = gasPolicy) =>
+      new SettlementWorker(
+        db,
+        preview.chain,
+        settlement.chain,
+        relayer,
+        `${api}/v1/invocations`,
+        budget,
+      );
+    const due = async () => {
+      await db.settlementOperation.updateMany({
+        where: { state: "PENDING" },
+        data: { nextCheckAt: new Date(0) },
+      });
+    };
+    await assert.rejects(service(p, paymentRequirements(q)), /settlement_queued/);
+    return { p, intent, preview, ...settlement, service, makeWorker, due };
   }
 
   it("freezes effective defaults, all snapshots and canonical EIP-712 fields", async () => {
@@ -1238,5 +1300,674 @@ describe("immutable quotes and SDK x402 handshake (no real settlement)", () => {
     assert.deepEqual(error.json(), { error: "rpc_unavailable" });
     assert.ok(!error.body.includes("secret-rpc"));
     assert.ok(!error.body.includes(serviceToken));
+  });
+
+  it("settles a durable intent once, commits HELD + ready atomically, and replays the receipt", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    const worker = f.makeWorker();
+    await worker.tick();
+    assert.equal(f.state.sent.length, 1);
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "BROADCAST");
+    const pendingReceipt = await f.service(f.p, paymentRequirements(q));
+    assert.equal(pendingReceipt.success, false);
+    assert.equal(pendingReceipt.errorReason, "settlement_pending");
+    assert.equal(await db.invocationReady.count(), 0);
+    await f.due();
+    await worker.tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
+    assert.equal((await db.invocation.findFirstOrThrow()).executionStatus, "QUEUED");
+    assert.equal(await db.invocationReady.count(), 1);
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, null);
+    assert.ok((await db.settlementAttempt.findFirstOrThrow()).actualGasCost);
+    f.preview.state.grant.revoked = true;
+    f.preview.state.now = BigInt(q.resolveBy + 1);
+    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    const replay = await f.service(f.p, paymentRequirements(q));
+    assert.equal(replay.success, true);
+    assert.equal(replay.transaction, pendingReceipt.transaction);
+    await f.makeWorker().tick();
+    assert.equal(f.state.sent.length, 1);
+    assert.equal(await db.invocationReady.count(), 1);
+    const status = await app.inject({
+      url: `/v1/invocations/${q.invocationId}`,
+      headers: { cookie },
+    });
+    assert.equal(status.json().receipt.success, true);
+  });
+
+  it("recovers a send timeout after chain execution without another broadcast", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.sendMode = "timeout-after";
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "UNKNOWN");
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
+    assert.equal(f.state.sent.length, 1);
+    assert.equal(await db.invocationReady.count(), 1);
+  });
+
+  it("retries exactly the persisted bytes after a timeout before send, even after revocation", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.sendMode = "timeout-before";
+    await f.makeWorker().tick();
+    const first = await db.settlementAttempt.findFirstOrThrow();
+    f.preview.state.grant.revoked = true;
+    f.state.sendMode = "accept";
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal(f.state.sent.length, 2);
+    assert.equal(f.state.sent[0], f.state.sent[1]);
+    assert.equal(
+      (await db.settlementAttempt.findFirstOrThrow()).transactionHash,
+      first.transactionHash,
+    );
+    assert.equal(await db.settlementAttempt.count(), 1);
+  });
+
+  it("does not queue before finality, then handles a pre-finality reorg without replacing the transaction", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.finalized = false;
+    await f.makeWorker().tick();
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "CONFIRMED");
+    assert.equal(await db.invocationReady.count(), 0);
+    f.state.receipt = null;
+    f.state.nonce = 0;
+    f.state.pendingNonce = 0;
+    f.state.sendMode = "timeout-before";
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "UNKNOWN");
+    assert.equal(f.state.sent[0], f.state.sent[1]);
+    assert.equal(await db.invocationReady.count(), 0);
+  });
+
+  it("records finalized revert and spent gas, never a ready event or second attempt", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.sendMode = "revert";
+    await f.makeWorker().tick();
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "REJECTED");
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "REVERTED");
+    assert.equal(await db.invocationReady.count(), 0);
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, null);
+    await assert.rejects(f.service(f.p, paymentRequirements(q)), /transaction_reverted/);
+    await f.makeWorker().tick();
+    assert.equal(await db.settlementAttempt.count(), 1);
+    const next = await prepare();
+    assert.equal(next.statusCode, 201, next.body);
+    assert.notEqual(next.json().invocationId, q.invocationId);
+  });
+
+  it("quarantines a successful receipt with a mismatched hold and retains the lane", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    await f.makeWorker().tick();
+    f.state.hold.gross++;
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "QUARANTINED");
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, q.invocationId);
+    assert.equal(await db.invocationReady.count(), 0);
+  });
+
+  it("records a late/closed hold as paid but never queues an expired delivery", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    await f.makeWorker().tick();
+    f.state.now = BigInt(q.deliveryDeadline);
+    await f.due();
+    await f.makeWorker().tick();
+    const op = await db.settlementOperation.findFirstOrThrow();
+    assert.equal(op.state, "HELD");
+    assert.equal(op.errorReason, "hold_not_executable");
+    assert.equal((await db.invocation.findFirstOrThrow()).executionStatus, "NOT_STARTED");
+    assert.equal(await db.invocationReady.count(), 0);
+    assert.equal((await f.service(f.p, paymentRequirements(q))).success, true);
+  });
+
+  it("rejects revoked admission before reserving and does not confuse RPC failure with rejection", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.preview.state.rpcError = true;
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
+    f.preview.state.rpcError = false;
+    f.preview.state.grant.revoked = true;
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "REJECTED");
+    assert.equal(await db.settlementAttempt.count(), 0);
+    assert.equal(f.state.sent.length, 0);
+  });
+
+  it("fails closed on fee/gas/balance/nonce limits before signing", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.pendingNonce = 1;
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "QUARANTINED");
+    assert.equal(await db.settlementAttempt.count(), 0);
+  });
+
+  it("retains an unspent operation on insufficient gas or gas budget, with no signature", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.balance = 0n;
+    await f.makeWorker().tick();
+    assert.equal(
+      (await db.settlementOperation.findFirstOrThrow()).errorReason,
+      "insufficient_relayer_gas",
+    );
+    f.state.balance = 10n ** 18n;
+    await f.due();
+    await f.makeWorker({ ...gasPolicy, maxGasLimit: 1n }).tick();
+    assert.equal(
+      (await db.settlementOperation.findFirstOrThrow()).errorReason,
+      "gas_policy_exceeded",
+    );
+    assert.equal(await db.settlementAttempt.count(), 0);
+    assert.equal(f.state.sent.length, 0);
+  });
+
+  it("backfills finalized logs idempotently and records orphan holds without fabricating jobs", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    await f.makeWorker().tick();
+    await scanFinalizedHolds(db, f.chain, 1n);
+    assert.equal((await db.settlementScanCursor.findFirstOrThrow()).blockNumber, 12n);
+    assert.equal(await db.invocationReady.count(), 0);
+    await scanFinalizedHolds(db, f.chain, 1n);
+    assert.equal(await db.settlementIncident.count(), 0);
+    await db.settlementScanCursor.deleteMany();
+    f.state.logs[0].args.holdId = `0x${"f".repeat(64)}`;
+    await scanFinalizedHolds(db, f.chain, 1n);
+    assert.equal(await db.settlementIncident.count(), 1);
+    assert.equal(await db.invocationReady.count(), 0);
+  });
+
+  it("rolls back HELD, lane release and outbox if the handoff insert fails", async (t) => {
+    const q = await quote();
+    const f = await execution(q);
+    await f.makeWorker().tick();
+    // Force a real database failure *inside* finalize, not a mock transaction.
+    await db.invocationReady.create({ data: { invocationId: q.invocationId, quoteId: q.quoteId } });
+    if (embedded) {
+      // PGlite's socket bridge cannot recover from extended-query constraint errors.
+      await db.invocationReady.deleteMany();
+      t.skip("Atomic SQL rollback is exercised on Docker PostgreSQL");
+      return;
+    }
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "BROADCAST");
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, q.invocationId);
+    await db.invocationReady.deleteMany();
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
+    assert.equal(await db.invocationReady.count(), 1);
+    assert.equal(f.state.sent.length, 1);
+  });
+
+  it("runs SDK upfront through authenticated gateway, preserving pending/finalized receipts and expired replay", async (t) => {
+    const q = await quote();
+    const p = await payment(q);
+    const f = await facilitator(q, true);
+    let settleCalls = 0;
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        assert.equal(url.origin, "https://private-facilitator.test");
+        if (url.pathname === "/settle") settleCalls++;
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((v, k) => {
+          headers[k] = v;
+        });
+        const response = await f.f.inject({
+          method: init?.method === "POST" ? "POST" : "GET",
+          url: url.pathname,
+          headers,
+          payload: init?.body as string | undefined,
+        });
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    await app.close();
+    app = createApp(
+      {
+        ...config,
+        PAYMENTS_ENABLED: true,
+        FACILITATOR_URL: "https://private-facilitator.test",
+        FACILITATOR_TOKEN: serviceToken,
+      },
+      db,
+    );
+    await app.ready();
+    const bad = await submit(q, {
+      cookie: "",
+      "payment-signature": encodePaymentSignatureHeader(p),
+    });
+    assert.equal(bad.statusCode, 401);
+    assert.equal(settleCalls, 0);
+    const queued = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.equal(queued.statusCode, 503, queued.body);
+    assert.equal(
+      queued.headers["payment-response"],
+      undefined,
+      "no synthetic empty-hash receipt from core",
+    );
+    assert.equal(await db.settlementOperation.count(), 1);
+    const intent = await readPaymentIntent(q, p, `${api}/v1/invocations`);
+    const mock = mockSettlement(readQuote(q.protocolQuote), f.chain.deployment, {
+      quoteDigest: q.quoteDigest,
+      authorizationDigest: intent.authorizationDigest,
+      grantId: intent.authorization.grantId,
+    });
+    const worker = new SettlementWorker(
+      db,
+      f.chain,
+      mock.chain,
+      relayer,
+      `${api}/v1/invocations`,
+      gasPolicy,
+    );
+    await worker.tick();
+    const pending = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.equal(pending.statusCode, 402, pending.body);
+    const pendingReceipt = JSON.parse(
+      Buffer.from(pending.headers["payment-response"] as string, "base64").toString(),
+    );
+    assert.equal(pendingReceipt.success, false);
+    assert.equal(pendingReceipt.errorReason, "settlement_pending");
+    assert.equal(mock.state.sent.length, 1);
+    assert.equal(await db.settlementAttempt.count(), 1);
+    await db.settlementOperation.updateMany({ data: { nextCheckAt: new Date(0) } });
+    await worker.tick();
+    const before = settleCalls;
+    const held = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.equal(held.statusCode, 202, held.body);
+    assert.equal(held.json().executionStatus, "QUEUED");
+    assert.equal(settleCalls - before, 1, "echo upfront receipt without settling twice");
+    const receipt = JSON.parse(
+      Buffer.from(held.headers["payment-response"] as string, "base64").toString(),
+    );
+    assert.equal(receipt.success, true);
+    assert.equal(receipt.transaction, pendingReceipt.transaction);
+    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.usageSession.updateMany({ data: { archivedAt: new Date() } });
+    const replay = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.equal(replay.statusCode, 202, replay.body);
+    assert.equal(await db.invocationReady.count(), 1);
+    assert.equal(mock.state.sent.length, 1);
+  });
+
+  it("resumes after crashing with an unsigned reservation or persisted signature", async (t) => {
+    const q = await quote();
+    const f = await execution(q);
+    const persist = SettlementJournal.prototype.persistSigned;
+    let crashed = false;
+    t.mock.method(
+      SettlementJournal.prototype,
+      "persistSigned",
+      async function (this: SettlementJournal, ...args: Parameters<typeof persist>) {
+        const stored = await persist.apply(this, args);
+        if (!crashed) {
+          crashed = true;
+          throw new Error("Worker died after signature persistence");
+        }
+        return stored;
+      },
+    );
+    await f.makeWorker().tick();
+    const attempt = await db.settlementAttempt.findFirstOrThrow();
+    assert.equal(attempt.state, "SIGNED");
+    assert.equal(f.state.sent.length, 0);
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal(f.state.sent[0], attempt.signedTransaction);
+    assert.equal(await db.settlementAttempt.count(), 1);
+  });
+
+  it("fences a stale signer when a replacement worker resumes the same reservation", async (t) => {
+    const q = await quote();
+    const f = await execution(q);
+    const sign = relayer.signTransaction.bind(relayer);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    t.mock.method(relayer, "signTransaction", async (args: Parameters<typeof sign>[0]) => {
+      if (first) {
+        first = false;
+        entered();
+        await blocked;
+      }
+      return sign(args);
+    });
+    const oldTick = f.makeWorker().tick();
+    await waiting;
+    await db.settlementOperation.updateMany({
+      data: { leaseExpiresAt: new Date(0), nextCheckAt: new Date(0) },
+    });
+    try {
+      await f.makeWorker().tick();
+    } finally {
+      release();
+    }
+    await oldTick;
+    assert.equal(f.state.sent.length, 1);
+    assert.equal(await db.settlementAttempt.count(), 1);
+    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "BROADCAST");
+  });
+
+  it("keeps the lane after bounded same-byte rebroadcasts are exhausted", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    f.state.sendMode = "timeout-before";
+    for (let i = 0; i < 5; i++) {
+      await f.due();
+      await f.makeWorker().tick();
+    }
+    const attempt = await db.settlementAttempt.findFirstOrThrow();
+    assert.equal(attempt.broadcastCount, 3);
+    assert.equal(f.state.sent.length, 3);
+    assert.equal(new Set(f.state.sent).size, 1);
+    assert.equal(
+      (await db.settlementOperation.findFirstOrThrow()).errorReason,
+      "broadcast_limit_reached",
+    );
+    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, q.invocationId);
+  });
+
+  it("accounts finalized gas against the durable rolling budget before the next signature", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    await f.makeWorker().tick();
+    await f.due();
+    await f.makeWorker().tick();
+    sessionId = randomUUID();
+    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    const second = await quote();
+    const next = await execution(second);
+    next.state.nonce = 1;
+    next.state.pendingNonce = 1;
+    // Each tx envelope fits; prior actual cost + new liability exceeds window.
+    const cost = 480000n * next.state.maxFee;
+    await next.makeWorker({ ...gasPolicy, maxTransactionCost: cost, maxWindowCost: cost }).tick();
+    assert.equal(
+      (
+        await db.settlementOperation.findUniqueOrThrow({
+          where: { invocationId: second.invocationId },
+        })
+      ).errorReason,
+      "gas_budget_exceeded",
+    );
+    assert.equal(next.state.sent.length, 0);
+    assert.equal(await db.settlementAttempt.count(), 1);
+  });
+
+  const corruptions = [
+    [
+      "wrong event vault",
+      (state: ReturnType<typeof mockSettlement>["state"]) => {
+        state.receipt.logs[0].address = provider;
+      },
+    ],
+    [
+      "wrong event digest",
+      (state: ReturnType<typeof mockSettlement>["state"]) => {
+        state.receipt.logs[0].data = `0x${"f".repeat(192)}`;
+      },
+    ],
+    [
+      "wrong sender",
+      (state: ReturnType<typeof mockSettlement>["state"]) => {
+        state.transaction.from = provider;
+      },
+    ],
+    [
+      "wrong calldata",
+      (state: ReturnType<typeof mockSettlement>["state"]) => {
+        state.transaction.input = "0x12345678";
+      },
+    ],
+    [
+      "wrong receipt block",
+      (state: ReturnType<typeof mockSettlement>["state"]) => {
+        state.receipt.blockHash = `0x${"f".repeat(64)}`;
+      },
+    ],
+  ] as const;
+  for (const [label, corrupt] of corruptions)
+    it(`does not dispatch on ${label}`, async () => {
+      const q = await quote();
+      const f = await execution(q);
+      await f.makeWorker().tick();
+      corrupt(f.state);
+      await f.due();
+      await f.makeWorker().tick();
+      assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "QUARANTINED");
+      assert.equal(await db.invocationReady.count(), 0);
+      assert.equal(f.state.sent.length, 1);
+    });
+
+  it("does not finalize a changed snapshot or sign when finalized RPC is unavailable", async (t) => {
+    const q = await quote();
+    const f = await execution(q);
+    const finalized = f.chain.finalized.bind(f.chain);
+    const fail = t.mock.method(f.chain, "finalized", async () => {
+      throw new Error("finalized tag not supported");
+    });
+    await f.makeWorker().tick();
+    assert.equal(await db.settlementAttempt.count(), 0);
+    fail.mock.restore();
+    await f.due();
+    await f.makeWorker().tick();
+    f.state.snapshotChanged = true;
+    await f.due();
+    await f.makeWorker().tick();
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
+    assert.equal(await db.invocationReady.count(), 0);
+    // Scanner must also retain its previous cursor when canonicality fails.
+    await assert.rejects(scanFinalizedHolds(db, f.chain, 1n), /snapshot_changed/);
+    assert.equal((await db.settlementScanCursor.findFirstOrThrow()).blockNumber, 0n);
+    assert.ok(await finalized());
+  });
+
+  it("holds real local USDC through HTTP/SDK + worker + finalized receipt and durable backfill", async (t) => {
+    if (process.env.PAYMENTS_TEST_EVM !== "1") {
+      t.skip("Run test:payments:evm for isolated real-EVM settlement");
+      return;
+    }
+    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+    t.after(evm.stop);
+    const buyerClient = createWalletClient({
+      account: wallet,
+      chain: avalancheFuji,
+      transport: http(evm.rpc),
+    });
+    const buyerVault = getContract({
+      address: evm.vault,
+      abi: evm.vaultArtifact.abi,
+      client: { public: evm.client, wallet: buyerClient },
+    });
+    const buyerUsdc = getContract({
+      address: ASSET,
+      abi: evm.token.abi,
+      client: { public: evm.client, wallet: buyerClient },
+    });
+    await buyerUsdc.write.approve([evm.vault, 10000000n]);
+    await buyerVault.write.deposit([10000000n]);
+    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+    await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+    const privateConfig = loadFacilitatorConfig({
+      DATABASE_URL: config.DATABASE_URL,
+      API_ORIGIN: api,
+      RPC_URL: evm.rpc,
+      FACILITATOR_TOKEN: serviceToken,
+      VAULT_ADDRESS: evm.vault,
+      RELAYER_ADDRESS: relayer.address,
+      EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
+      VAULT_FEE_CAP_BPS: "500",
+      VAULT_MAX_QUOTE_LIFETIME_SECONDS: "3600",
+      VAULT_MAX_HOLD_SECONDS: String(30 * 86400),
+      LOG_LEVEL: "silent",
+      SETTLEMENT_ENABLED: "true",
+    });
+    const privateApp = createFacilitatorApp(privateConfig, db, evm.admission);
+    privateApps.push(privateApp);
+    await privateApp.ready();
+    const originalFetch = globalThis.fetch;
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.origin !== "https://local-facilitator.test") return originalFetch(input, init);
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((v, k) => {
+          headers[k] = v;
+        });
+        const response = await privateApp.inject({
+          method: init?.method === "POST" ? "POST" : "GET",
+          url: url.pathname,
+          headers,
+          payload: init?.body as string | undefined,
+        });
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    await app.close();
+    app = createApp(
+      {
+        ...config,
+        VAULT_ADDRESS: evm.vault,
+        PAYMENTS_ENABLED: true,
+        FACILITATOR_URL: "https://local-facilitator.test",
+        FACILITATOR_TOKEN: serviceToken,
+      },
+      db,
+    );
+    await app.ready();
+    const q = await quote();
+    const p = await payment(q);
+    const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
+    const queued = await submit(q, headers);
+    assert.equal(queued.statusCode, 503, queued.body);
+    const worker = new SettlementWorker(
+      db,
+      evm.admission,
+      evm.settlement,
+      relayer,
+      `${api}/v1/invocations`,
+      gasPolicy,
+    );
+    if (!embedded) {
+      const args = [
+        fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)),
+        fileURLToPath(new URL("./fixtures/worker-tick.ts", import.meta.url)),
+        schema,
+        evm.rpc,
+        evm.vault,
+        evm.admission.deployment.expectedCodeHash,
+        relayerKey,
+      ];
+      const run = promisify(execFile);
+      await Promise.all([run(process.execPath, args), run(process.execPath, args)]);
+    } else await worker.tick();
+    const attempt = await db.settlementAttempt.findFirstOrThrow();
+    assert.equal(attempt.state, "BROADCAST");
+    assert.equal(await evm.contract.read.totalHeld(), 100000n);
+    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+    assert.equal(await db.invocationReady.count(), 0);
+    // Backfill must wake reconciliation without help from a browser request.
+    await scanFinalizedHolds(db, evm.settlement, evm.startBlock);
+    await worker.tick();
+    const operation = await db.settlementOperation.findFirstOrThrow();
+    assert.equal(operation.state, "HELD", operation.errorReason ?? "");
+    assert.equal(await db.invocationReady.count(), 1);
+    assert.ok((await db.settlementAttempt.findFirstOrThrow()).finalizedBlockHash);
+    const result = await submit(q, headers);
+    assert.equal(result.statusCode, 202, result.body);
+    const receipt = JSON.parse(
+      Buffer.from(result.headers["payment-response"] as string, "base64").toString(),
+    );
+    assert.equal(receipt.success, true);
+    assert.equal(receipt.transaction, attempt.transactionHash);
+    const status = await app.inject({
+      url: `/v1/invocations/${q.invocationId}`,
+      headers: { cookie },
+    });
+    assert.equal(status.json().receipt.transaction, attempt.transactionHash);
+    await buyerVault.write.revokeGrant([`0x${"a".repeat(64)}`]);
+    const replay = await submit(q, headers);
+    assert.equal(replay.statusCode, 202, replay.body);
+    assert.equal(await evm.contract.read.totalHeld(), 100000n);
+    assert.equal(await db.settlementAttempt.count(), 1);
+    assert.equal(await db.invocationReady.count(), 1);
+
+    // Real revoke-after-preview race: the reserved transaction is mined reverted,
+    // including when Hardhat reports send as an RPC error after executing it.
+    const grantB = `0x${"b".repeat(64)}` as const;
+    await buyerVault.write.registerGrant([grantB, evm.grant]);
+    sessionId = randomUUID();
+    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    const second = await quote();
+    const challenge = decodePaymentRequiredHeader(
+      (await submit(second)).headers["payment-required"] as string,
+    );
+    const secondPayment = await new x402Client()
+      .register(NETWORK, client(second, { grantId: grantB }))
+      .createPaymentPayload(challenge);
+    const secondHeaders = { "payment-signature": encodePaymentSignatureHeader(secondPayment) };
+    assert.equal((await submit(second, secondHeaders)).statusCode, 503);
+    const sign = relayer.signTransaction.bind(relayer);
+    const signHook = t.mock.method(
+      relayer,
+      "signTransaction",
+      async (args: Parameters<typeof sign>[0]) => {
+        const serialized = await sign(args);
+        await buyerVault.write.revokeGrant([grantB]);
+        return serialized;
+      },
+    );
+    await worker.tick();
+    signHook.mock.restore();
+    await db.settlementOperation.updateMany({
+      where: { state: "PENDING" },
+      data: { nextCheckAt: new Date(0) },
+    });
+    await worker.tick();
+    const rejected = await db.settlementOperation.findUniqueOrThrow({
+      where: { invocationId: second.invocationId },
+      include: { attempt: true },
+    });
+    assert.equal(rejected.state, "REJECTED", rejected.errorReason ?? "");
+    assert.equal(rejected.attempt?.state, "REVERTED");
+    assert.equal(await db.invocationReady.count(), 1);
+    assert.equal(await evm.contract.read.totalHeld(), 100000n);
   });
 });

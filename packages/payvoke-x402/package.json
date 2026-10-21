@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./facilitator": "./src/facilitator.ts",
-    "./chain": "./src/chain.ts"
+    "./chain": "./src/chain.ts",
+    "./settlement": "./src/settlement.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

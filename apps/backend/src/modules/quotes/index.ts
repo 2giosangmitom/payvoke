@@ -24,6 +24,7 @@ import { getAddress, type Address } from "viem";
 import type { Config } from "../../config";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { parseFinancialJson } from "../../http/json";
+import { gatewayFacilitator, settleGateway } from "../payments/gateway";
 
 type PrepareBody = {
   sessionId: string;
@@ -37,6 +38,7 @@ const id = { type: "string", minLength: 1, maxLength: 128 };
 
 // Register in a child Fastify scope; do not change Better Auth's JSON parser.
 export async function registerQuotes(app: FastifyInstance, config: Config, db: PrismaClient) {
+  const facilitator = gatewayFacilitator(app, config);
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => {
     try {
@@ -145,17 +147,20 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
               where: { id: session.activeQuoteId },
               include: { invocation: { include: { settlement: { include: { attempt: true } } } } },
             });
-            // A signed/unknown/held operation outlives quote expiry. Only an
-            // explicitly rejected, never-attempted operation can release this
-            // slot after expiry; a worker lease timing out is not evidence.
+            // Unresolved transactions outlive quote expiry. A finalized revert
+            // proves the attempt consumed its nonce without reserving a hold.
+            const finalizedRevert =
+              active.invocation?.settlement?.state === "REJECTED" &&
+              active.invocation.settlement.attempt?.state === "REVERTED" &&
+              !!active.invocation.settlement.attempt.finalizedAt;
             if (
               active.invocation?.settlement &&
               (active.invocation.settlement.state !== "REJECTED" ||
-                active.invocation.settlement.attempt)
+                (active.invocation.settlement.attempt && !finalizedRevert))
             ) {
               throw app.httpErrors.conflict("SESSION_BUSY");
             }
-            if (active.validUntil.getTime() > now * 1000)
+            if (!finalizedRevert && active.validUntil.getTime() > now * 1000)
               throw app.httpErrors.conflict("SESSION_BUSY");
           }
           const product = session.product;
@@ -353,23 +358,27 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
       const buyer = request.account!;
       const row = await db.quote.findFirst({
         where: { id: request.body.quoteId, buyerId: buyer.id },
-        include: { session: true },
+        include: { session: true, invocation: { include: { settlement: true } } },
       });
-      if (!row || row.session.buyerId !== buyer.id || row.session.archivedAt) {
+      if (!row || row.session.buyerId !== buyer.id) {
         throw app.httpErrors.notFound("QUOTE_NOT_FOUND");
       }
-      const product = await db.product.findUnique({ where: { id: row.session.productId } });
-      if (!product || product.status !== "PUBLISHED")
-        throw app.httpErrors.conflict("PRODUCT_UNAVAILABLE");
       const quote = document(row.document, buyer.walletAddress);
       if (request.headers["idempotency-key"] !== quote.invocationId) {
         throw app.httpErrors.badRequest("IDEMPOTENCY_KEY_REQUIRED");
       }
-      if (quote.validUntil <= Math.floor(Date.now() / 1000))
-        throw app.httpErrors.gone("QUOTE_EXPIRED");
-      // This milestone never relays a transaction. Do not pretend a signature,
-      // simulation or txHash is a successful hold. Worker/finality is the next gate.
+      if (!row.invocation?.settlement) {
+        if (row.session.archivedAt) throw app.httpErrors.notFound("QUOTE_NOT_FOUND");
+        const product = await db.product.findUnique({ where: { id: row.session.productId } });
+        if (!product || product.status !== "PUBLISHED")
+          throw app.httpErrors.conflict("PRODUCT_UNAVAILABLE");
+        if (quote.validUntil <= Math.floor(Date.now() / 1000))
+          throw app.httpErrors.gone("QUOTE_EXPIRED");
+      }
+      // Only explicit private-facilitator configuration enables submission.
+      // Signing and broadcasting never happen in this HTTP process.
       if (request.headers["payment-signature"] !== undefined) {
+        if (facilitator) return settleGateway(app, db, config, facilitator, quote, request, reply);
         throw app.httpErrors.serviceUnavailable("SETTLEMENT_NOT_AVAILABLE");
       }
       const core = new x402ResourceServer().register(NETWORK, new VaultServerScheme(quote));

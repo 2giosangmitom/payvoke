@@ -105,6 +105,10 @@ export const vaultAdmissionAbi = [
   ]),
 ] as const;
 
+export const holdReservedEvent = parseAbi([
+  "event HoldReserved(bytes32 indexed holdId, address indexed buyer, bytes32 quoteDigest, bytes32 authorizationDigest, uint256 gross)",
+])[0];
+
 // Local tests may supply their isolated chain ID; deployed Payvoke v1 uses Fuji.
 export function vaultDomain(vault: Address, chainId = 43113) {
   return { name: "PayvokeVault", version: "1", chainId, verifyingContract: vault } as const;
