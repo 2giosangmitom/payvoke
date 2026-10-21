@@ -30,14 +30,16 @@ Trạng thái: đặc tả MVP để triển khai, 19/10/2026. Chưa có impleme
 
 ### 3.1 Web đăng nhập bằng ví
 
-| Endpoint                   | Request                   | Response/hành vi                                                                                                                |
-| -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/auth/challenges` | `{address,chainId:43113}` | 201 `{challengeId,message,expiresAt}`; message theo SIWE, domain/URI Payvoke, chain, nonce một lần, issued/expiry.              |
-| `POST /v1/auth/sessions`   | `{challengeId,signature}` | 200 `{buyer:{address},expiresAt}` + cookie HttpOnly/Secure; consume challenge atomically, kiểm tra domain/chain/time/signature. |
-| `DELETE /v1/auth/session`  | Không body                | 204, thu hồi cookie session; không tự revoke grant onchain.                                                                     |
-| `GET /v1/me`               | Không body                | Buyer, scopes/roles; không trả khóa hoặc bearer token.                                                                          |
+| Endpoint                    | Request               | Response/hành vi                                                                                                                                                               |
+| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /v1/auth/siwe/nonce`  | `{}`                  | 200 `{nonce}` + signed browser-binding cookie; nonce lưu/consume bởi Better Auth, TTL 5 phút.                                                                                  |
+| `POST /v1/auth/siwe/verify` | `{message,signature}` | 200 `{token,success,user:{id,walletAddress,chainId}}` + session cookie HttpOnly/Secure; message do client tạo/ký, domain/URI Payvoke, Fuji 43113, issued/expiry tối đa 5 phút. |
+| `POST /v1/auth/sign-out`    | `{}`                  | 200, thu hồi session Better Auth và xóa cookie; không tự revoke grant onchain.                                                                                                 |
+| `GET /v1/me`                | Không body            | Buyer, scopes/roles; không trả khóa hoặc bearer token.                                                                                                                         |
 
 Cookie request thay đổi dữ liệu phải kiểm tra Origin/CSRF; CORS allowlist chính xác, không wildcard credentials. MVP hỗ trợ ví EOA đã deploy tài khoản thông thường; hỗ trợ contract wallet cần test ERC-1271 riêng, không giả định mọi SIWE library hỗ trợ. Đăng nhập không cấp quyền debit vault. [R1]
+
+Auth dùng Better Auth 1.7.11 + SIWE plugin + Prisma adapter; viem verify chữ ký EOA. Nonce một lần bị consume cả khi verify thất bại; retry cần nonce mới. Session native lưu token trong bảng auth riêng, cookie được ký; không bật bearer plugin, không dùng session token làm authorization chi tiền. `User.id` là buyer ID; `Account` chỉ là tài khoản provider đăng nhập của Better Auth, địa chỉ ví nằm trong `WalletAddress`. Session TTL 7 ngày, không refresh/cookie cache; `/v1/me` kiểm tra suspension của User và không trả token. API auth cũ không chạy song song; initial migration mới chỉ dành cho DB trống. `GET /v1/auth/get-session` là endpoint session native của Better Auth.
 
 ### 3.2 External buyer client
 

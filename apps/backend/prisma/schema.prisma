@@ -1,12 +1,5 @@
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-}
-
-datasource db {
-  provider = "postgresql"
-}
-
+// Auth models are generated in auth.prisma by `pnpm auth:schema`.
+// This file retains deferred Payvoke domain models only.
 // S01: API/provider; S02: x402/vault; S03: local MCP buyer client.
 // Opaque IDs remain case-sensitive text. EVM addresses must be normalized to
 // lowercase at the application boundary; hashes are full-width lowercase hex.
@@ -15,14 +8,11 @@ datasource db {
 // actor XOR rules and signature checks require transactional application logic
 // and, when migrations are introduced, appropriate SQL CHECKs/triggers.
 // Chain projections are not an independent source of spendable credit.
-// No buyer private keys, plaintext bearer/API tokens, or local MCP approvals
-// are stored here. Encrypted authorization payloads require external key management.
+// No buyer private keys, external bearer/API tokens, or local MCP approvals
+// are stored here. Better Auth owns its native session token/cookie storage.
+// Encrypted authorization payloads require external key management.
 
-enum AccountStatus {
-  ACTIVE
-  SUSPENDED
-}
-
+/* Deferred until the corresponding features are implemented.
 enum OperatorRole {
   ADMIN
   PRODUCT_REVIEWER
@@ -336,56 +326,9 @@ enum IdempotencyStatus {
   FAILED
 }
 
-// Identity, web sessions, operator access and external client authorization.
+*/
 
-model Account {
-  id            String        @id @default(uuid())
-  walletAddress String        @unique @db.Char(42)
-  status        AccountStatus @default(ACTIVE)
-  displayName   String?       @db.VarChar(120)
-  bio           String?       @db.Text
-  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
-  suspendedAt   DateTime?     @db.Timestamptz(3)
-
-  webSessions           WebSession[]
-  operatorRoles         OperatorRoleAssignment[]   @relation("AssignedOperator")
-  rolesGranted          OperatorRoleAssignment[]   @relation("OperatorGrantedBy")
-  rolesRevoked          OperatorRoleAssignment[]   @relation("OperatorRevokedBy")
-  approvedPairings      ClientPairing[]
-  clientAuthorizations  ClientAuthorization[]      @relation("ClientOwner")
-  revokedAuthorizations ClientAuthorization[]      @relation("ClientRevokedBy")
-  providerApps          ProviderApp[]
-  providerKeysCreated   ProviderApiKey[]           @relation("ProviderKeyCreatedBy")
-  providerKeysRevoked   ProviderApiKey[]           @relation("ProviderKeyRevokedBy")
-  productSubmissions    ProductVersionSubmission[]
-  productReviews        ProductVersionReview[]
-  workspaces            Workspace[]
-  briefVersions         WorkspaceBriefVersion[]
-  usageSessions         UsageSession[]
-  messages              Message[]
-  invocations           Invocation[]
-  quotes                Quote[]
-  answers               InvocationAnswer[]
-  revisions             InvocationRevision[]
-  cancellations         InvocationCancellation[]
-  acceptances           InvocationAcceptance[]
-  files                 FileAsset[]
-  disputesOpened        Dispute[]                  @relation("DisputeOpenedBy")
-  disputesAssigned      Dispute[]                  @relation("DisputeAssignedTo")
-  disputeEntries        DisputeEntry[]
-  decisionsCreated      FinancialDecision[]        @relation("DecisionCreatedBy")
-  decisionsApproved     FinancialDecision[]        @relation("DecisionApprovedBy")
-  policiesApproved      DeploymentPolicy[]
-  reviewInterruptions   ReviewInterruption[]
-  artifactChecks        ArtifactCheck[]
-  ratings               ProductRating[]
-  auditEntries          AuditLog[]
-
-  @@unique([id, walletAddress])
-  @@map("accounts")
-}
-
+/* Deferred operator access.
 model OperatorRoleAssignment {
   id          String       @id @default(uuid())
   accountId   String
@@ -396,9 +339,9 @@ model OperatorRoleAssignment {
   revokedAt   DateTime?    @db.Timestamptz(3)
   reason      String       @db.Text
 
-  account   Account  @relation("AssignedOperator", fields: [accountId], references: [id], onDelete: Restrict)
-  grantedBy Account? @relation("OperatorGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
-  revokedBy Account? @relation("OperatorRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  account   User  @relation("AssignedOperator", fields: [accountId], references: [id], onDelete: Restrict)
+  grantedBy User? @relation("OperatorGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  revokedBy User? @relation("OperatorRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
 
   @@unique([accountId, role])
   @@index([role, revokedAt])
@@ -406,44 +349,11 @@ model OperatorRoleAssignment {
   @@index([revokedById])
   @@map("operator_role_assignments")
 }
+*/
 
-model LoginChallenge {
-  id             String    @id @default(uuid())
-  walletAddress  String    @db.Char(42)
-  chainId        Int       @default(43113)
-  nonceHash      String    @unique @db.Char(64)
-  domain         String    @db.VarChar(253)
-  uri            String    @db.Text
-  message        String    @db.Text
-  issuedAt       DateTime  @default(now()) @db.Timestamptz(3)
-  expiresAt      DateTime  @db.Timestamptz(3)
-  consumedAt     DateTime? @db.Timestamptz(3)
-  failedAttempts Int       @default(0)
-
-  @@index([walletAddress, issuedAt])
-  @@index([expiresAt])
-  @@map("login_challenges")
-}
-
-model WebSession {
-  id            String    @id @default(uuid())
-  accountId     String
-  tokenHash     String    @unique @db.Char(64)
-  csrfTokenHash String?   @db.Char(64)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  expiresAt     DateTime  @db.Timestamptz(3)
-  lastUsedAt    DateTime? @db.Timestamptz(3)
-  revokedAt     DateTime? @db.Timestamptz(3)
-  userAgent     String?   @db.VarChar(512)
-  ipHash        String?   @db.Char(64)
-
-  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
-
-  @@index([accountId, revokedAt, expiresAt])
-  @@index([expiresAt])
-  @@map("web_sessions")
-}
-
+/* Deferred application models; uncomment only as each feature ships.
+Buyer/operator relations target User, never Better Auth's Account.
+Wallet-address composite relations in these drafts need WalletAddress integration.
 model ClientPairing {
   id                    String        @id @default(uuid())
   clientName            String        @db.VarChar(120)
@@ -464,7 +374,7 @@ model ClientPairing {
   rejectedAt            DateTime?     @db.Timestamptz(3)
   exchangedAt           DateTime?     @db.Timestamptz(3)
 
-  owner         Account?             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner         User?                @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   authorization ClientAuthorization?
 
   @@index([status, expiresAt])
@@ -491,8 +401,8 @@ model ClientAuthorization {
   revokedAt        DateTime?                 @db.Timestamptz(3)
 
   pairing      ClientPairing           @relation(fields: [pairingId], references: [id], onDelete: Restrict)
-  owner        Account                 @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  revokedBy    Account?                @relation("ClientRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  owner        User                    @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  revokedBy    User?                   @relation("ClientRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
   workspaces   ClientWorkspaceAccess[]
   invocations  Invocation[]
   auditEntries AuditLog[]
@@ -535,7 +445,7 @@ model ProviderApp {
   createdAt        DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
 
-  owner          Account              @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner          User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   keys           ProviderApiKey[]
   products       Product[]
   usageSessions  UsageSession[]
@@ -568,8 +478,8 @@ model ProviderApiKey {
   revokedAt   DateTime?          @db.Timestamptz(3)
 
   app            ProviderApp            @relation(fields: [appId], references: [id], onDelete: Restrict)
-  createdBy      Account                @relation("ProviderKeyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  revokedBy      Account?               @relation("ProviderKeyRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  createdBy      User                   @relation("ProviderKeyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy      User?                  @relation("ProviderKeyRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
   connections    ProviderConnection[]
   reports        ProviderReport[]
   receipts       ProviderEventReceipt[]
@@ -699,7 +609,7 @@ model ProductVersionSubmission {
   submittedAt      DateTime @default(now()) @db.Timestamptz(3)
 
   productVersion ProductVersion        @relation(fields: [productVersionId], references: [id], onDelete: Restrict)
-  submittedBy    Account               @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedBy    User                  @relation(fields: [submittedById], references: [id], onDelete: Restrict)
   review         ProductVersionReview?
 
   @@unique([productVersionId, revision])
@@ -716,7 +626,7 @@ model ProductVersionReview {
   reviewedAt   DateTime       @default(now()) @db.Timestamptz(3)
 
   submission ProductVersionSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
-  reviewer   Account                  @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewer   User                     @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
 
   @@index([reviewerId, reviewedAt])
   @@map("product_version_reviews")
@@ -733,7 +643,7 @@ model Workspace {
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
   archivedAt      DateTime? @db.Timestamptz(3)
 
-  owner         Account                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner         User                    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   sessions      UsageSession[]
   briefVersions WorkspaceBriefVersion[]
   clientAccess  ClientWorkspaceAccess[]
@@ -755,7 +665,7 @@ model WorkspaceBriefVersion {
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  createdBy   Account      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
   invocations Invocation[]
 
   @@unique([workspaceId, version])
@@ -778,7 +688,7 @@ model UsageSession {
   updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
   archivedAt          DateTime?   @db.Timestamptz(3)
 
-  buyer         Account               @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer         User                  @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   workspace     Workspace             @relation(fields: [workspaceId, buyerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   product       Product               @relation(fields: [productId, providerAppId, kind], references: [id, providerAppId, kind], onDelete: Restrict, onUpdate: Restrict)
   providerApp   ProviderApp           @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
@@ -808,7 +718,7 @@ model Message {
 
   session     UsageSession     @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   invocation  Invocation?      @relation(fields: [invocationId, sessionId], references: [id, sessionId], onDelete: Restrict, onUpdate: Restrict)
-  sender      Account?         @relation(fields: [senderAccountId], references: [id], onDelete: Restrict)
+  sender      User?            @relation(fields: [senderAccountId], references: [id], onDelete: Restrict)
   providerApp ProviderApp?     @relation(fields: [senderProviderAppId], references: [id], onDelete: Restrict)
   versions    MessageVersion[]
 
@@ -867,7 +777,7 @@ model Invocation {
   createdAt               DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime         @updatedAt @db.Timestamptz(3)
 
-  buyer                Account                  @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer                User                     @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   session              UsageSession             @relation(fields: [sessionId, buyerId, workspaceId, productId, providerAppId], references: [id, buyerId, workspaceId, productId, providerAppId], onDelete: Restrict, onUpdate: Restrict)
   providerApp          ProviderApp              @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
   commandVersion       CommandVersion           @relation(fields: [commandVersionId, productId], references: [id, productId], onDelete: Restrict, onUpdate: Restrict)
@@ -1156,7 +1066,7 @@ model InvocationAnswer {
 
   invocation Invocation         @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
   question   InvocationQuestion @relation(fields: [questionId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
-  buyer      Account            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer      User               @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   event      OutboxEvent?
 
   @@unique([invocationId, clientRequestId])
@@ -1179,7 +1089,7 @@ model InvocationRevision {
   resolvedAt       DateTime?      @db.Timestamptz(3)
 
   invocation     Invocation        @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
-  buyer          Account           @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer          User              @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   targetArtifact ArtifactVersion   @relation("RevisionTarget", fields: [targetArtifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
   artifacts      ArtifactVersion[] @relation("RevisionArtifacts")
   event          OutboxEvent?
@@ -1204,7 +1114,7 @@ model InvocationCancellation {
   resolvedAt       DateTime?          @db.Timestamptz(3)
 
   invocation Invocation   @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
-  buyer      Account      @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer      User         @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   event      OutboxEvent?
 
   @@unique([invocationId, clientRequestId])
@@ -1224,7 +1134,7 @@ model InvocationAcceptance {
 
   invocation Invocation      @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
   artifact   ArtifactVersion @relation(fields: [artifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
-  buyer      Account         @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer      User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
 
   @@unique([invocationId, clientRequestId])
   @@unique([artifactId, invocationId])
@@ -1278,7 +1188,7 @@ model ArtifactCheck {
   completedAt DateTime?         @db.Timestamptz(3)
 
   artifact  ArtifactVersion @relation(fields: [artifactId], references: [id], onDelete: Restrict)
-  checkedBy Account?        @relation(fields: [checkedById], references: [id], onDelete: Restrict)
+  checkedBy User?           @relation(fields: [checkedById], references: [id], onDelete: Restrict)
 
   @@index([artifactId, kind, createdAt])
   @@index([status, createdAt])
@@ -1312,7 +1222,7 @@ model ReviewInterruption {
 
   invocation Invocation      @relation(fields: [invocationId], references: [id], onDelete: Restrict)
   artifact   ArtifactVersion @relation(fields: [artifactId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
-  recordedBy Account?        @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  recordedBy User?           @relation(fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@index([invocationId, startedAt])
   @@index([artifactId, invocationId])
@@ -1356,7 +1266,7 @@ model FileAsset {
   createdAt           DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
 
-  owner       Account               @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner       User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   workspace   Workspace?            @relation(fields: [workspaceId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   providerApp ProviderApp?          @relation(fields: [providerAppId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   invocation  Invocation?           @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
@@ -1395,7 +1305,7 @@ model DeploymentPolicy {
   retiredAt              DateTime? @db.Timestamptz(3)
   createdAt              DateTime  @default(now()) @db.Timestamptz(3)
 
-  approvedBy Account? @relation(fields: [approvedById], references: [id], onDelete: Restrict)
+  approvedBy User? @relation(fields: [approvedById], references: [id], onDelete: Restrict)
   quotes     Quote[]
 
   @@index([approvedAt, retiredAt])
@@ -1466,7 +1376,7 @@ model Quote {
   invalidationReason  String?   @db.Text
 
   invocation     Invocation             @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
-  buyer          Account                @relation(fields: [buyerId, buyerAddress], references: [id, walletAddress], onDelete: Restrict, onUpdate: Restrict)
+  buyer          User                   @relation(fields: [buyerId, buyerAddress], references: [id, walletAddress], onDelete: Restrict, onUpdate: Restrict)
   deployment     VaultDeployment        @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
   policy         DeploymentPolicy       @relation(fields: [policyId], references: [id], onDelete: Restrict)
   authorizations PaymentAuthorization[]
@@ -1856,8 +1766,8 @@ model Dispute {
 
   invocation       Invocation          @relation(fields: [invocationId, openedById], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
   hold             VaultHold?          @relation(fields: [holdId], references: [id], onDelete: Restrict)
-  openedBy         Account             @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  assignedTo       Account?            @relation("DisputeAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
+  openedBy         User                @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  assignedTo       User?               @relation("DisputeAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
   chainTransaction ChainTransaction?   @relation(fields: [chainTransactionId], references: [id], onDelete: Restrict)
   entries          DisputeEntry[]
   evidence         DisputeEvidence[]
@@ -1885,7 +1795,7 @@ model DisputeEntry {
   createdAt        DateTime               @default(now()) @db.Timestamptz(3)
 
   dispute     Dispute           @relation(fields: [disputeId], references: [id], onDelete: Restrict)
-  author      Account?          @relation(fields: [authorAccountId], references: [id], onDelete: Restrict)
+  author      User?             @relation(fields: [authorAccountId], references: [id], onDelete: Restrict)
   providerApp ProviderApp?      @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
   providerKey ProviderApiKey?   @relation(fields: [providerApiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
   evidence    DisputeEvidence[]
@@ -1947,8 +1857,8 @@ model FinancialDecision {
   deployment     VaultDeployment @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
   hold           VaultHold       @relation(fields: [holdId, invocationId, deploymentId], references: [id, invocationId, deploymentId], onDelete: Restrict, onUpdate: Restrict)
   dispute        Dispute?        @relation(fields: [disputeId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
-  createdBy      Account         @relation("DecisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy     Account?        @relation("DecisionApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  createdBy      User            @relation("DecisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy     User?           @relation("DecisionApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
   executionEvent ChainEvent?     @relation(fields: [executionEventId], references: [id], onDelete: Restrict)
   operation      ChainOperation?
 
@@ -1977,7 +1887,7 @@ model ProductRating {
   updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
 
   invocation Invocation              @relation(fields: [invocationId, buyerId], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
-  buyer      Account                 @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer      User                    @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   revisions  ProductRatingRevision[]
 
   @@unique([invocationId, buyerId])
@@ -2015,7 +1925,7 @@ model AuditLog {
   metadata              Json?     @db.JsonB
   createdAt             DateTime  @default(now()) @db.Timestamptz(3)
 
-  account     Account?             @relation(fields: [actorAccountId], references: [id], onDelete: Restrict)
+  account     User?                @relation(fields: [actorAccountId], references: [id], onDelete: Restrict)
   providerKey ProviderApiKey?      @relation(fields: [actorProviderApiKeyId], references: [id], onDelete: Restrict)
   client      ClientAuthorization? @relation(fields: [actorClientId], references: [id], onDelete: Restrict)
 
@@ -2056,3 +1966,4 @@ model IdempotencyRecord {
   @@index([status, leaseExpiresAt])
   @@map("idempotency_records")
 }
+*/
