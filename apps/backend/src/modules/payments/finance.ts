@@ -645,6 +645,7 @@ export class FinanceService {
             BigInt(tx.nonce) === row.nonce &&
             tx.input === decisionData(a) &&
             tx.blockHash === receipt.blockHash &&
+            tx.blockNumber === receipt.blockNumber &&
             receipt.transactionHash === hash &&
             receipt.from.toLowerCase() === row.executor &&
             receipt.to?.toLowerCase() === row.vault &&

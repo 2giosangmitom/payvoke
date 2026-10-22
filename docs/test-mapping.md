@@ -2,6 +2,9 @@
 
 ## Phạm vi và cách đọc
 
+Bằng chứng implementation/test payment hiện tại: [Payment acceptance — S01/S02](payment-acceptance.md)
+(22/10/2026). Tài liệu bên dưới là thiết kế ban đầu, không phải trạng thái nghiệm thu hiện tại.
+
 Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md). Mốc lập: 20/10/2026, sau [baseline T001](baseline.md).
 
 Đây là thiết kế kiểm thử, **chưa có các suites bên dưới và chưa có bằng chứng pass**. T002 không tạo framework, fixtures nghiệp vụ hoặc tests thực thi. Các ID `API-*`, `PAY-*`, `MCP-*`, `SYS-*` là ID truy vết của tài liệu này, không phải mã lỗi hoặc ID do đặc tả cấp. Khi triển khai, tham chiếu ID trong test/PR và ghi bằng chứng nghiệm thu dưới task tương ứng ở roadmap; không coi mapping này là bảng tiến độ tests.
