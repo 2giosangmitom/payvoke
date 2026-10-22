@@ -268,6 +268,11 @@ the same operation. A finalized success returns 202 with `PAYMENT-RESPONSE`;
 
 ## Settlement worker and recovery
 
+Operator tooling for the next controlled Fuji run is documented in
+[`operations/README.md`](operations/README.md). It separates read-only checks,
+no-broadcast signing, explicitly approved single-use sends and finalized evidence;
+building this tooling does not authorize a Fuji deployment or funding.
+
 The separate signing process is off by default:
 
 ```sh

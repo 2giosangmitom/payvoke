@@ -1,0 +1,14 @@
+{
+  "admin": "0x0000000000000000000000000000000000000000",
+  "relayer": "0x0000000000000000000000000000000000000000",
+  "buyer": "0x0000000000000000000000000000000000000000",
+  "grantSigner": "0x0000000000000000000000000000000000000000",
+  "adminDelay": 0,
+  "feeCapBps": 0,
+  "maxQuoteLifetimeSeconds": 0,
+  "maxHoldSeconds": 0,
+  "maxGas": "0",
+  "maxFeePerGas": "0",
+  "maxPriorityFeePerGas": "0",
+  "maxTransactionCost": "0"
+}

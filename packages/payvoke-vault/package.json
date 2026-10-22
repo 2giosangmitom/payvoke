@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "compile": "hardhat build",
+    "compile:production": "hardhat build --build-profile production",
     "test": "hardhat test",
     "typecheck": "hardhat build && tsc --noEmit"
   },

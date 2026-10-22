@@ -5,6 +5,7 @@
     "dev": "tsx --watch ./src/server.ts",
     "dev:facilitator": "tsx --watch ./src/facilitator-server.ts",
     "worker:settlement": "tsx ./src/settlement-worker.ts",
+    "ops:fuji": "tsx ./src/operations/cli.ts",
     "auth:schema": "pnpm dlx auth@1.7.11 generate --config auth.cli.ts --output prisma/auth.prisma --yes",
     "db:generate": "prisma generate --config prisma7.config.ts",
     "db:migrate:create": "prisma migrate dev --create-only --config prisma7.config.ts",
@@ -13,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "prisma generate --config prisma7.config.ts && tsx --test test/*.test.ts",
     "test:payments:postgres": "prisma generate --config prisma7.config.ts && PAYMENTS_TEST_POSTGRES=1 tsx --test test/quotes.test.ts",
-    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && prisma generate --config prisma7.config.ts && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC' test/quotes.test.ts"
+    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && prisma generate --config prisma7.config.ts && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC|Fuji ceremony tooling' test/quotes.test.ts test/fuji-operations.test.ts"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "1.7.11",

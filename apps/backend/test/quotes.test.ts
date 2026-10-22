@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
@@ -54,6 +54,23 @@ import { SettlementWorker } from "../src/modules/payments/worker";
 import { createSettlementService } from "../src/modules/payments/settlement";
 import { scanFinalizedHolds } from "../src/modules/payments/scanner";
 import { localEvm } from "./fixtures/local-evm";
+import {
+  paymentSession,
+  preparePayment,
+  submitPayment,
+  pollPayment,
+  verifyPayment,
+  type PreparedPayment,
+} from "../src/operations/payment";
+import {
+  loadJson,
+  prepareOperation,
+  broadcastOperation,
+  operationReceipt,
+  type Ceremony,
+  type SignedOperation,
+} from "../src/operations/fuji";
+import { journalEvidence, seedCeremony } from "../src/operations/seed";
 
 describe("quotes, x402 and isolated settlement", () => {
   const origin = "https://app.payvoke.test";
@@ -1969,5 +1986,198 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(rejected.attempt?.state, "REVERTED");
     assert.equal(await db.invocationReady.count(), 1);
     assert.equal(await evm.contract.read.totalHeld(), 100000n);
+
+    // Exercise the exact operator recovery tooling against the real held funds.
+    const directory = await mkdtemp("/tmp/opencode/fuji-reclaim-");
+    t.after(() => rm(directory, { recursive: true }));
+    const ceremony: Ceremony = {
+      admin: evm.adminWallet.account.address,
+      relayer: relayer.address,
+      buyer: wallet.address,
+      grantSigner: grantSigner.address,
+      adminDelay: 100,
+      feeCapBps: 500,
+      maxQuoteLifetimeSeconds: 3600,
+      maxHoldSeconds: 30 * 86400,
+      vault: evm.vault,
+      expectedCodeHash: evm.admission.deployment.expectedCodeHash,
+      deploymentBlock: evm.startBlock.toString(),
+      maxGas: "1000000",
+      maxFeePerGas: "10000000000",
+      maxPriorityFeePerGas: "1000000000",
+      maxTransactionCost: "10000000000000000",
+    };
+    const prepared: PreparedPayment = {
+      quote: q,
+      paymentPayload: p,
+      run: {
+        apiOrigin: api,
+        webOrigin: origin,
+        vault: evm.vault,
+        buyer: wallet.address,
+        sessionId: q.sessionId,
+        commandId,
+        clientRequestId: randomUUID(),
+        arguments: { text: "hello" },
+        grantId: `0x${"a".repeat(64)}`,
+        grantEpoch: "1",
+        maxAmount: "100000",
+      },
+    };
+    const proof = await verifyPayment(
+      evm.client,
+      ceremony,
+      prepared,
+      attempt.transactionHash as `0x${string}`,
+    );
+    assert.equal(proof.outcome, "held");
+    assert.equal(
+      (await journalEvidence(db, prepared, attempt.transactionHash!)).readyEventCount,
+      1,
+    );
+    await assert.rejects(
+      prepareOperation(
+        evm.client,
+        ceremony,
+        { kind: "reclaim", holdId: q.protocolQuote.invocationKey as `0x${string}` },
+        wallet,
+        `${directory}/early.json`,
+      ),
+    );
+    await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
+    await evm.test.mine({ blocks: 1 });
+    for (const action of [
+      { kind: "reclaim" as const, holdId: q.protocolQuote.invocationKey as `0x${string}` },
+      { kind: "withdraw" as const, amount: "10000000" },
+    ]) {
+      const path = `${directory}/${action.kind}.json`;
+      const signed = await prepareOperation(evm.client, ceremony, action, wallet, path);
+      const op = await loadJson<SignedOperation>(path);
+      await broadcastOperation(evm.client, op, path, signed.transactionHash);
+      assert.equal((await operationReceipt(evm.client, op)).status, "success");
+    }
+    assert.equal(await evm.contract.read.totalHeld(), 0n);
+    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
+    assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
+  });
+
+  it("operator runner authenticates, persists authorization, submits and polls through real HTTP handlers", async (t) => {
+    const directory = await mkdtemp("/tmp/opencode/fuji-runner-");
+    t.after(() => rm(directory, { recursive: true }));
+    let privateApp: ReturnType<typeof createFacilitatorApp> | undefined;
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const target =
+          url.origin === api
+            ? app
+            : url.origin === "https://runner-facilitator.test"
+              ? privateApp
+              : undefined;
+        assert.ok(target, "runner may only call explicitly configured origins");
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((v, k) => {
+          headers[k] = v;
+        });
+        const response = await target.inject({
+          method: init?.method === "POST" ? "POST" : "GET",
+          url: url.pathname,
+          headers,
+          payload: init?.body as string | undefined,
+        });
+        const result = new Headers();
+        for (const [k, v] of Object.entries(response.headers)) {
+          if (v !== undefined)
+            for (const value of Array.isArray(v) ? v : [String(v)]) result.append(k, value);
+        }
+        return new Response(response.body, { status: response.statusCode, headers: result });
+      },
+    );
+    const run = {
+      apiOrigin: api,
+      webOrigin: origin,
+      vault: vault as `0x${string}`,
+      buyer: wallet.address,
+      sessionId,
+      commandId,
+      clientRequestId: randomUUID(),
+      arguments: { text: "hello" },
+      grantId: `0x${"a".repeat(64)}` as `0x${string}`,
+      grantEpoch: "1",
+      maxAmount: "100000",
+    };
+    const session = await paymentSession(run, wallet);
+    try {
+      const summary = await preparePayment(session, run, grantSigner, `${directory}/payment.json`);
+      assert.equal(await db.settlementOperation.count(), 0, "preparation never submits payment");
+      const prepared = await loadJson<PreparedPayment>(`${directory}/payment.json`);
+      const f = await facilitator(prepared.quote, true);
+      privateApp = f.f;
+      await app.close();
+      app = createApp(
+        {
+          ...config,
+          PAYMENTS_ENABLED: true,
+          FACILITATOR_URL: "https://runner-facilitator.test",
+          FACILITATOR_TOKEN: serviceToken,
+        },
+        db,
+      );
+      await app.ready();
+      await assert.rejects(submitPayment(session, prepared, `0x${"0".repeat(64)}`), /Approve/);
+      const submission = await submitPayment(session, prepared, summary.authorizationDigest);
+      assert.equal(submission.status, 503);
+      assert.equal(submission.paymentResponse, null);
+      const state = await pollPayment(session, prepared);
+      assert.equal(state.paymentStatus, "PENDING");
+      assert.equal(state.invocationId, summary.invocationId);
+      const replay = await submitPayment(session, prepared, summary.authorizationDigest);
+      assert.equal(replay.status, 503);
+      assert.equal(await db.settlementOperation.count(), 1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("seeds a fresh ceremony catalog without overwriting an existing deployment policy", async () => {
+    await db.usageSession.deleteMany();
+    await db.commandVersion.deleteMany();
+    await db.productVersion.deleteMany();
+    await db.product.deleteMany();
+    await db.deploymentPolicy.deleteMany();
+    const seed = {
+      buyerId,
+      productId,
+      policyVersion: "fuji-test",
+      provider,
+      feeRecipient,
+      feeBps: 100,
+      quoteLifetimeSeconds: 120,
+      maxHoldSeconds: 600,
+      resolutionGraceSeconds: 60,
+      deliverySeconds: 60,
+      reviewSeconds: 30,
+      grossAmount: "100000",
+      run: {
+        apiOrigin: api,
+        webOrigin: origin,
+        vault: vault as `0x${string}`,
+        buyer: wallet.address,
+        sessionId,
+        commandId,
+        clientRequestId: randomUUID(),
+        arguments: { text: "hello" },
+        grantId: `0x${"a".repeat(64)}` as `0x${string}`,
+        grantEpoch: "1",
+        maxAmount: "100000",
+      },
+    };
+    await seedCeremony(db, seed);
+    const q = await quote();
+    assert.equal(q.grossAmount, "100000");
+    await assert.rejects(seedCeremony(db, seed), /Fresh ceremony/);
+    assert.equal(await db.deploymentPolicy.count(), 1);
   });
 });
