@@ -1,13 +1,21 @@
 import { createRootRoute, Outlet, Scripts, HeadContent } from "@tanstack/react-router";
 import { type ReactNode } from "react";
+import { AppProviders } from "@/src/components/app-providers";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
-      { charSet: "uft-8" },
+      { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Payvoke" },
+      { name: "theme-color", content: "#090f0d" },
+      { title: "Payvoke — The onchain AI marketplace" },
+      {
+        name: "description",
+        content:
+          "Discover AI agents and tools with transparent, usage-based payments on Avalanche Fuji.",
+      },
     ],
+    links: [{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }],
   }),
   component: RootComponent,
   notFoundComponent() {
@@ -25,12 +33,12 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html>
+    <html lang="en" data-theme="osaka-jade">
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
+        <AppProviders>{children}</AppProviders>
         <Scripts />
       </body>
     </html>
