@@ -18,11 +18,17 @@ import {
 } from "viem";
 import { ASSET } from "@payvoke/x402";
 import { VaultChain, type VaultDeployment } from "@payvoke/x402/chain";
+import { parseFinancialJson } from "../http/json";
 
 export const operationsAbi = parseAbi([
   "function grantRole(bytes32 role,address account)",
   "function deposit(uint256 amount)",
   "function registerGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
+  "function updateGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
+  "function revokeGrant(bytes32 grantId)",
+  "function openDispute(bytes32 holdId,bytes32 evidenceHash)",
+  "function withdrawProvider(uint256 amount)",
+  "function withdrawPlatform(uint256 amount)",
   "function reclaim(bytes32 holdId)",
   "function withdrawAvailable(uint256 amount)",
   "function availableBalance(address buyer) view returns(uint256)",
@@ -49,9 +55,22 @@ export type Ceremony = {
 export type Action =
   | { kind: "deploy" }
   | { kind: "relayer-role" }
+  | {
+      kind: "finance-role";
+      role:
+        | "FINANCE_EXECUTOR_ROLE"
+        | "REFUND_APPROVER_ROLE"
+        | "RELEASE_APPROVER_ROLE"
+        | "DISPUTE_RESOLVER_ROLE"
+        | "PAUSER_ROLE";
+      account: Address;
+    }
+  | { kind: "withdraw-provider" | "withdraw-platform"; amount: string; account: Address }
+  | { kind: "dispute"; holdId: Hex; evidenceHash: Hex }
+  | { kind: "grant-revoke"; grantId: Hex }
   | { kind: "approve" | "deposit" | "withdraw"; amount: string }
   | {
-      kind: "grant";
+      kind: "grant" | "grant-update";
       grantId: Hex;
       expiresAt: number;
       maxPerCall: string;
@@ -92,7 +111,7 @@ export async function saveExclusive(path: string, value: unknown) {
   }
 }
 export async function loadJson<T>(path: string): Promise<T> {
-  return JSON.parse(await readFile(path, "utf8"));
+  return parseFinancialJson(await readFile(path, "utf8"));
 }
 export function deployment(c: Ceremony): VaultDeployment {
   if (!c.vault || !c.expectedCodeHash || !/^0x[\da-fA-F]{64}$/.test(c.expectedCodeHash))
@@ -184,9 +203,21 @@ export async function vaultArtifact() {
 }
 async function call(c: Ceremony, action: Action) {
   if (
-    !["deploy", "relayer-role", "approve", "deposit", "withdraw", "grant", "reclaim"].includes(
-      action.kind,
-    )
+    ![
+      "deploy",
+      "relayer-role",
+      "approve",
+      "deposit",
+      "withdraw",
+      "grant",
+      "grant-update",
+      "grant-revoke",
+      "reclaim",
+      "dispute",
+      "withdraw-provider",
+      "withdraw-platform",
+      "finance-role",
+    ].includes(action.kind)
   )
     throw new Error("Unknown operation");
   if (action.kind === "deploy") {
@@ -221,6 +252,60 @@ async function call(c: Ceremony, action: Action) {
     };
   }
   if (!c.vault) throw new Error("Deployment required");
+  if (action.kind === "finance-role") {
+    if (
+      ![
+        "FINANCE_EXECUTOR_ROLE",
+        "REFUND_APPROVER_ROLE",
+        "RELEASE_APPROVER_ROLE",
+        "DISPUTE_RESOLVER_ROLE",
+        "PAUSER_ROLE",
+      ].includes(action.role) ||
+      getAddress(action.account) === "0x0000000000000000000000000000000000000000"
+    )
+      throw new Error("Invalid role assignment");
+    return {
+      sender: c.admin,
+      to: c.vault,
+      data: encodeFunctionData({
+        abi: operationsAbi,
+        functionName: "grantRole",
+        args: [keccak256(stringToHex(action.role)), getAddress(action.account)],
+      }),
+    };
+  }
+  if (action.kind === "grant-revoke")
+    return {
+      sender: c.buyer,
+      to: c.vault,
+      data: encodeFunctionData({
+        abi: operationsAbi,
+        functionName: "revokeGrant",
+        args: [action.grantId],
+      }),
+    };
+  if (action.kind === "dispute")
+    return {
+      sender: c.buyer,
+      to: c.vault,
+      data: encodeFunctionData({
+        abi: operationsAbi,
+        functionName: "openDispute",
+        args: [action.holdId, action.evidenceHash],
+      }),
+    };
+  if (action.kind === "withdraw-provider" || action.kind === "withdraw-platform") {
+    if (integer(action.amount) === 0n) throw new Error("Amount must be positive");
+    return {
+      sender: getAddress(action.account),
+      to: c.vault,
+      data: encodeFunctionData({
+        abi: operationsAbi,
+        functionName: action.kind === "withdraw-provider" ? "withdrawProvider" : "withdrawPlatform",
+        args: [integer(action.amount)],
+      }),
+    };
+  }
   if (action.kind === "relayer-role")
     return {
       sender: c.admin,
@@ -231,13 +316,13 @@ async function call(c: Ceremony, action: Action) {
         args: [keccak256(stringToHex("RELAYER_ROLE")), c.relayer],
       }),
     };
-  if (action.kind === "grant")
+  if (action.kind === "grant" || action.kind === "grant-update")
     return {
       sender: c.buyer,
       to: c.vault,
       data: encodeFunctionData({
         abi: operationsAbi,
-        functionName: "registerGrant",
+        functionName: action.kind === "grant" ? "registerGrant" : "updateGrant",
         args: [
           action.grantId,
           {
@@ -261,6 +346,7 @@ async function call(c: Ceremony, action: Action) {
         args: [action.holdId],
       }),
     };
+  if (!("amount" in action)) throw new Error("Unknown amount operation");
   const amount = integer(action.amount);
   if (amount === 0n) throw new Error("Amount must be positive");
   if (action.kind === "approve")

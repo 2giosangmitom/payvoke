@@ -4,6 +4,9 @@ This tooling is ready for **operator-approved execution**, not evidence that a
 Fuji deployment has happened. Build/test permission is not permission to fund
 wallets, deploy or submit a payment. No provider is executed by this ceremony.
 
+For separately approved refund/release and finalized financial projections, see
+[`financial-lifecycle.md`](financial-lifecycle.md).
+
 ## Approval gate
 
 Before any external transaction, record approval for:

@@ -48,7 +48,7 @@ export type FinalityEvidence = {
   outcome: "held" | "reverted" | "not_executable";
 };
 
-async function databaseTime(tx: Tx) {
+export async function databaseTime(tx: Tx) {
   // Epoch avoids raw timestamptz serialization depending on the PostgreSQL
   // session timezone (notably through the PGlite socket/Prisma adapter).
   const [clock] = await tx.$queryRaw<

@@ -131,3 +131,109 @@ model SettlementIncident {
 
   @@map("settlement_incidents")
 }
+
+// Chain projections are evidence, never an independent spendable balance.
+model VaultFinancialHealth {
+  id String @id
+  blocked Boolean @default(false)
+  reason String?
+  updatedAt DateTime @updatedAt
+  @@map("vault_financial_health")
+}
+
+model VaultHoldProjection {
+  holdId String @id
+  vault String
+  invocationId String? @unique
+  status String
+  snapshot Json
+  version BigInt
+  blockNumber BigInt
+  blockHash String
+  updatedAt DateTime @updatedAt
+  @@index([vault, blockNumber])
+  @@map("vault_hold_projections")
+}
+
+model VaultFinancialEvent {
+  id String @id
+  vault String
+  name String
+  holdId String?
+  transactionHash String
+  blockNumber BigInt
+  blockHash String
+  logIndex Int
+  data Json
+  @@index([holdId, blockNumber])
+  @@map("vault_financial_events")
+}
+
+// Created only by the trusted output verifier/operator, never a provider report.
+model PaymentDeliveryEvidence {
+  id String @id
+  invocationId String
+  artifactVersion Int
+  outputHash String
+  verifier String
+  observedAt DateTime
+  accessInterruptionSeconds Int
+  createdAt DateTime @default(now())
+  @@index([invocationId, observedAt])
+  @@map("payment_delivery_evidence")
+}
+
+enum FinanceDecisionState {
+  APPROVED
+  REJECTED
+  RESERVED
+  SIGNED
+  BROADCAST
+  UNKNOWN
+  FINALIZED
+  REVERTED
+  QUARANTINED
+}
+
+model FinanceDecision {
+  id String @id
+  holdId String
+  vault String
+  digest String @unique
+  decision Json
+  beforeHold Json?
+  approver String
+  signature String
+  evidenceId String?
+  reason String
+  state FinanceDecisionState @default(APPROVED)
+  executor String?
+  nonce BigInt?
+  gasLimit BigInt?
+  maxFeePerGas Decimal? @db.Decimal(78, 0)
+  maxPriorityFeePerGas Decimal? @db.Decimal(78, 0)
+  signedTransaction String? @db.Text
+  transactionHash String? @unique
+  broadcastCount Int @default(0)
+  actualGasCost Decimal? @db.Decimal(78, 0)
+  receipt Json?
+  finalizedAt DateTime?
+  errorReason String?
+  leaseOwner String?
+  leaseEpoch BigInt @default(0)
+  leaseExpiresAt DateTime?
+  nextCheckAt DateTime @default(now())
+  revision BigInt @default(0)
+  createdAt DateTime @default(now())
+  @@unique([executor, nonce])
+  @@index([state, nextCheckAt])
+  @@index([executor, finalizedAt])
+  @@map("finance_decisions")
+}
+
+model FinanceLane {
+  id String @id
+  activeDecisionId String? @unique
+  revision BigInt @default(0)
+  @@map("finance_lanes")
+}

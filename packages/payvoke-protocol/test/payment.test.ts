@@ -7,6 +7,7 @@ import {
   getAddress,
   recoverTypedDataAddress,
   toFunctionSelector,
+  toEventSelector,
   type Address,
   type Hex,
 } from "viem";
@@ -20,6 +21,8 @@ import {
   hashSnapshot,
   paymentTypes,
   reserveHoldAbi,
+  applyDecisionAbi,
+  vaultFinancialEvents,
   vaultDomain,
   type InvocationQuote,
 } from "../src/index.ts";
@@ -42,6 +45,35 @@ const authorization = {
   grantEpoch: BigInt(fixture.authorization.grantEpoch),
 };
 const domain = vaultDomain(fixture.domain.verifyingContract);
+
+test("finance write ABI and events match the compiled vault", () => {
+  const compiled = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../payvoke-vault/artifacts/contracts/PayvokeVault.sol/PayvokeVault.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const write = compiled.abi.find(
+    (item: { type: string; name: string }) =>
+      item.type === "function" && item.name === "applyDecision",
+  );
+  assert.equal(toFunctionSelector(applyDecisionAbi[0]), toFunctionSelector(write));
+  for (const expected of vaultFinancialEvents) {
+    const event = compiled.abi.find(
+      (item: { type: string; name: string }) =>
+        item.type === "event" && item.name === expected.name,
+    );
+    assert.ok(event, expected.name);
+    assert.equal(toEventSelector(expected), toEventSelector(event));
+    assert.deepEqual(
+      expected.inputs.map((i) => "indexed" in i && !!i.indexed),
+      event.inputs.map((i: { indexed: boolean }) => i.indexed),
+    );
+  }
+});
 
 test("reserveHold write ABI matches the compiled vault selector and round-trips its structs", () => {
   // Checked against PayvokeVault's compiled Solidity ABI, not derived from a

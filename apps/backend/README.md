@@ -310,7 +310,8 @@ On finalized success the journal atomically records proof/cost, marks HELD, queu
 one `InvocationReady`, and releases the lane. A finalized revert records REJECTED
 and gas cost without a ready event or new attempt. Late, closed, disputed or
 partially consumed holds retain their paid receipt but get `hold_not_executable`
-and **no ready event**; financial recovery/refund execution is a later milestone.
+and **no ready event**; the separately approved finance workflow below can refund
+before the hold expires, or the buyer can reclaim after `resolveBy`.
 Contradictory receipts/holds/nonces are quarantined without releasing the lane.
 
 Finalized log backfill starts at `DEPLOYMENT_START_BLOCK`, scans at most 500 blocks
@@ -340,3 +341,40 @@ replay after revoke, and an actual revoke-after-preview transaction revert.
 Docker mode also proves workers in separate processes cannot double-send/debit.
 Mock-RPC tests cover timeout, crash, reorg, fee budget, malformed evidence and
 bounded retry paths; Docker additionally proves rollback of HELD/outbox/lane.
+
+## Financial lifecycle after HELD
+
+The additive financial-lifecycle migration adds finalized hold projections, an
+immutable event ledger, verifier delivery observations and a separate approved
+finance-decision journal/lane. Original settlement state/receipt remains HELD
+after refund/payout; `GET /v1/invocations/:id` includes a separate `financial`
+projection with finalized block evidence. The projection is not spendable credit.
+
+`POST /v1/invocations/:id/financial-intents` accepts `{action:"dispute",evidenceHash}`
+or `{action:"reclaim"}` after buyer authentication/ownership checks and returns
+**UNSUBMITTED** wallet calldata. It does not submit, refund, open an onchain dispute
+or claim that a pending ticket has locked payout. Buyer must simulate/sign/send;
+the finalized indexer observes wallet transactions independently of this API.
+
+The settlement worker backfills financial events in bounded finalized ranges,
+atomically advancing a separate cursor with ledger/projection updates. It checks
+per-hold conservation, immutable quote bindings and vault solvency. Financial
+contradictions durably block new admission until investigated; successful scans
+never silently clear that block. Existing receipts/reconciliation remain readable.
+
+Refund/release requires an immutable EIP-712 approval, independent executor role,
+current hold version, proper approver roles and exact simulation. Finance uses
+its own dedicated sender lane and gas window; it never takes the relayer key or
+automatically signs a new decision. Persisted signed bytes precede broadcast;
+only canonical finalized receipt/event evidence releases the lane. A finalized
+revert records actual gas without treating the decision as successful.
+
+Release additionally needs a trusted delivery observation and the business review
+window. Provider `result`/failure/cancellation is **not** payment authority. There
+is no provider-facing endpoint for marking delivery verified, nor automatic payout
+or refund policy engine. The internal verifier seam and explicitly enabled manual
+attestation support controlled testing while provider execution/output validation
+are built. Buyer acceptance never bypasses release timing.
+
+See [`operations/financial-lifecycle.md`](operations/financial-lifecycle.md) for
+approval/signing/execution commands, state semantics and remaining launch gates.

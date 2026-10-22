@@ -105,6 +105,13 @@ export function createPaymentValidator(
       intent.authorization,
       intent.signature,
       async () => {
+        const health = await db.vaultFinancialHealth.findUnique({
+          where: {
+            id: `${chain.deployment.chainId}:${chain.deployment.vault.toLowerCase()}`,
+          },
+        });
+        if (health?.blocked)
+          throw new VaultValidationError("financial_reconciliation_required", 503);
         const current = await db.settlementOperation.findUnique({
           where: { invocationId: row.invocationId },
           include: { attempt: true },

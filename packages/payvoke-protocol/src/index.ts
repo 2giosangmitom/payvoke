@@ -109,6 +109,53 @@ export const holdReservedEvent = parseAbi([
   "event HoldReserved(bytes32 indexed holdId, address indexed buyer, bytes32 quoteDigest, bytes32 authorizationDigest, uint256 gross)",
 ])[0];
 
+export const applyDecisionAbi = [
+  {
+    type: "function",
+    name: "applyDecision",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "decision", type: "tuple", components: paymentTypes.ResolutionDecision },
+      { name: "approver", type: "address" },
+      { name: "approvalSignature", type: "bytes" },
+    ],
+    outputs: [],
+  },
+] as const;
+export const vaultFinancialEvents = parseAbi([
+  "event Deposited(address indexed buyer,uint256 amount)",
+  "event AvailableWithdrawn(address indexed buyer,uint256 amount)",
+  "event HoldReserved(bytes32 indexed holdId,address indexed buyer,bytes32 quoteDigest,bytes32 authorizationDigest,uint256 gross)",
+  "event DisputeOpened(bytes32 indexed holdId,bytes32 evidenceHash)",
+  "event DecisionApplied(bytes32 indexed holdId,bytes32 indexed decisionId,uint64 version,uint256 refundAmount,uint256 providerAmount,uint256 feeAmount)",
+  "event HoldReclaimed(bytes32 indexed holdId,address indexed buyer,uint256 amount)",
+  "event ProviderWithdrawn(address indexed provider,uint256 amount)",
+  "event PlatformWithdrawn(address indexed recipient,uint256 amount)",
+]);
+export const vaultFinanceAbi = [
+  ...vaultAdmissionAbi,
+  ...applyDecisionAbi,
+  ...vaultFinancialEvents,
+  ...parseAbi([
+    "function openDispute(bytes32 holdId,bytes32 evidenceHash)",
+    "function reclaim(bytes32 holdId)",
+    "function usedDecisionIds(bytes32 id) view returns(bool)",
+    "function totalAvailable() view returns(uint256)",
+    "function totalHeld() view returns(uint256)",
+    "function totalProviderClaimable() view returns(uint256)",
+    "function totalPlatformClaimable() view returns(uint256)",
+    "function providerClaimable(address account) view returns(uint256)",
+    "function platformClaimable(address account) view returns(uint256)",
+    "error DecisionReplay()",
+    "error HoldVersionMismatch()",
+    "error HoldClosed()",
+    "error HoldDisputed()",
+    "error ReleaseTooEarly()",
+    "error ResolutionExpired()",
+    "error NoEffect()",
+  ]),
+] as const;
+
 // Local tests may supply their isolated chain ID; deployed Payvoke v1 uses Fuji.
 export function vaultDomain(vault: Address, chainId = 43113) {
   return { name: "PayvokeVault", version: "1", chainId, verifyingContract: vault } as const;

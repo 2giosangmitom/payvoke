@@ -147,6 +147,12 @@ export class SettlementWorker {
     let attempt = operation.attempt;
     const client = this.chain.client;
     if (!attempt?.signedTransaction) {
+      if (
+        await this.db.financeLane.findUnique({
+          where: { id: `43113:${this.signer.address.toLowerCase()}` },
+        })
+      )
+        throw new VaultValidationError("relayer_not_dedicated", 503);
       const validation = await createPaymentValidator(
         this.db,
         this.admission,

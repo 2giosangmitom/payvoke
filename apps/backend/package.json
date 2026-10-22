@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "prisma generate --config prisma7.config.ts && tsx --test test/*.test.ts",
     "test:payments:postgres": "prisma generate --config prisma7.config.ts && PAYMENTS_TEST_POSTGRES=1 tsx --test test/quotes.test.ts",
-    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && prisma generate --config prisma7.config.ts && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC|Fuji ceremony tooling' test/quotes.test.ts test/fuji-operations.test.ts"
+    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && prisma generate --config prisma7.config.ts && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC|Fuji ceremony tooling|financial lifecycle' test/quotes.test.ts test/fuji-operations.test.ts"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "1.7.11",

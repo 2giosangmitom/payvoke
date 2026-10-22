@@ -10,6 +10,7 @@ import { facilitatorDeployment } from "./facilitator/config";
 import { SettlementWorker } from "./modules/payments/worker";
 import { loadWorkerConfig, workerGasPolicy } from "./modules/payments/worker-config";
 import { scanFinalizedHolds } from "./modules/payments/scanner";
+import { scanFinancialLifecycle } from "./modules/payments/finance-ledger";
 
 let db: ReturnType<typeof createDatabase> | undefined;
 try {
@@ -60,6 +61,7 @@ try {
       }
       if (!stopping) {
         try {
+          await scanFinancialLifecycle(database, chain, BigInt(config.DEPLOYMENT_START_BLOCK));
           await scanFinalizedHolds(database, chain, BigInt(config.DEPLOYMENT_START_BLOCK));
         } catch {
           console.error("Settlement backfill failed; cursor retained");
