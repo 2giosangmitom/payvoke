@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { ParticleTextEffect } from "@/src/components/ui/interactive-text-particle";
 import { HeroPixelField } from "@/src/components/ui/hero-pixel-field";
+import { LandingMusic } from "@/src/components/landing-music";
 import { WalletAccess } from "@/src/components/wallet-access";
 
 const agents = [
@@ -690,6 +691,7 @@ export function LandingPage() {
         <Providers />
       </main>
       <Footer />
+      <LandingMusic />
     </>
   );
 }
