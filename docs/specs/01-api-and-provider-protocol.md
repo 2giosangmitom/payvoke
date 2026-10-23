@@ -55,7 +55,7 @@ External client authorization/pairing dùng endpoints được định nghĩa đ
 
 ## 4. Đăng ký sản phẩm và slash command
 
-Provider có thể dùng web hoặc API; cả hai đi qua cùng validation, version và approval. API nhận definition có cấu trúc, không bắt buộc manifest file.
+Provider có thể dùng web hoặc API; cả hai đi qua cùng validation và version. Bản triển khai hiện tại tự công khai version hợp lệ, theo quyết định sản phẩm ngày 22/10/2026; operator review trong thiết kế cũ không còn là điều kiện publish. API nhận definition có cấu trúc, không bắt buộc manifest file.
 
 ### 4.1 Version và publishing
 
@@ -68,11 +68,10 @@ Provider có thể dùng web hoặc API; cả hai đi qua cùng validation, vers
 | `POST /v1/provider/apps/{appId}/products/{productId}/commands`                       | `CommandRegistration` gồm `draftVersion`                  | 201 `{commandId,draftVersion}`; tên trùng trong draft trả 409.                          |
 | `PUT /v1/provider/apps/{appId}/products/{productId}/commands/{commandId}`            | Toàn bộ definition mới + `draftVersion,expectedRevision`  | 200 draft revision mới; optimistic concurrency, không patch bản active.                 |
 | `PUT /v1/provider/apps/{appId}/products/{productId}/versions/{version}/settings`     | `{defaultCommandId?,chatTextParameter?,expectedRevision}` | Agent bắt buộc default command và text parameter string; tool không nhận cấu hình chat. |
-| `POST /v1/provider/apps/{appId}/products/{productId}/versions/{version}/submissions` | `{expectedRevision}`                                      | 202 `PENDING_REVIEW`; cần command hợp lệ và điều khoản đầy đủ.                          |
-| `POST /v1/operator/products/{productId}/versions/{version}/reviews`                  | `{decision:"approve"                                      | "reject",reason,expectedRevision}`                                                      | Operator có quyền duyệt; approval chọn bản active, lưu audit. |
+| `POST /v1/provider/apps/{appId}/products/{productId}/versions/{version}/submissions` | `{expectedRevision}`                                      | Validate và tự kích hoạt version hợp lệ; trả active version.                            |
 | `POST /v1/provider/apps/{appId}/products/{productId}/suspensions`                    | `{reason}`                                                | Dừng bán mới; không xóa nghĩa vụ job cũ.                                                |
 
-Các endpoint dưới `/provider` yêu cầu key đúng app; thao tác web chủ app có thể đi qua wallet-auth cùng authorization policy. API key chỉ truy cập app được cấp, không dùng `appId` body để vượt quyền. Operator review không dùng provider key.
+Các endpoint dưới `/provider` yêu cầu key đúng app; thao tác web chủ app có thể đi qua wallet-auth cùng authorization policy. API key chỉ truy cập app được cấp, không dùng `appId` body để vượt quyền. Mỗi app chỉ có một key hiệu lực; rotate thu hồi key cũ trong cùng transaction.
 
 ### 4.2 CommandRegistration
 
@@ -151,6 +150,8 @@ Giá và thời gian trong ví dụ là fixture minh họa, không phải policy
 | `GET /v1/sessions/{sessionId}`          | Không body                                | Session, timeline agent hoặc run history tool, active invocation nếu có.                             |
 
 Session khóa product/kind nhưng **không khóa mọi lần gọi vào một version vĩnh viễn**. Khi product đổi version, UI phải báo; quote mới pin version hiện được buyer xác nhận. Invocation cũ luôn dùng version cũ. Command bị bỏ khỏi version mới không chạy bằng dữ liệu cũ nếu chưa có quote còn hợp lệ.
+
+Catalog lưu sản phẩm yêu thích qua `PUT/DELETE /v1/stars/{productId}` và `GET /v1/stars`. Collection riêng tư của buyer dùng `GET/POST /v1/collections`, `PUT/DELETE /v1/collections/{collectionId}` và `PUT/DELETE /v1/collections/{collectionId}/products/{productId}`. Chỉ sản phẩm đã star mới được thêm vào collection; unstar gỡ mọi membership. Product suspend giữ star nhưng hiển thị unavailable. Collection không có public/share trong MVP.
 
 ### 5.2 Chuẩn bị quote và bắt đầu invocation
 

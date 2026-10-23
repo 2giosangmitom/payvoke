@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import type { FastifyInstance } from "fastify";
 import { x402ResourceServer } from "@x402/core/server";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
@@ -164,6 +164,7 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
               throw app.httpErrors.conflict("SESSION_BUSY");
           }
           const product = session.product;
+          if (product.providerAppId) throw app.httpErrors.conflict("PROVIDER_DELIVERY_NOT_READY");
           if (product.kind !== "TOOL")
             throw app.httpErrors.badRequest("PRODUCT_KIND_NOT_SUPPORTED");
           if (product.status !== "PUBLISHED" || !product.activeVersion) {
@@ -196,7 +197,7 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
           if ("$async" in schema) throw app.httpErrors.serviceUnavailable("INVALID_COMMAND_SCHEMA");
           // Do not retain freshly loaded schema object identities in an unbounded
           // process-wide Ajv cache. This is preparation, not the paid hot path.
-          const validate = new Ajv({
+          const validate = new Ajv2020({
             useDefaults: true,
             coerceTypes: false,
             removeAdditional: false,

@@ -2,14 +2,52 @@
 // workspace/context management and provider execution remain deferred.
 // buyerId is Better Auth User.id, not provider Account.id. Auth models stay
 // CLI-owned; authenticated admission checks ownership against the live User.
+model ProviderApp {
+  id            String @id @default(uuid())
+  ownerId       String
+  clientRequestId String
+  name          String
+  payoutAddress String
+  status        String @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  keys          ProviderApiKey[]
+  products      Product[]
+
+  @@index([ownerId])
+  @@unique([ownerId, clientRequestId])
+  @@map("provider_apps")
+}
+
+model ProviderApiKey {
+  id         String @id @default(uuid())
+  appId      String
+  prefix     String @unique
+  secretHash String @unique
+  scopes     String[]
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  app        ProviderApp @relation(fields: [appId], references: [id], onDelete: Restrict)
+
+  @@index([appId, revokedAt])
+  @@map("provider_api_keys")
+}
+
 model Product {
   id            String @id @default(uuid())
+  providerAppId String?
+  name          String?
+  description   String?
   kind          String
   status        String @default("DRAFT")
   activeVersion Int?
   versions      ProductVersion[]
   sessions      UsageSession[]
+  providerApp   ProviderApp? @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
+  stars         ProductStar[]
+  collectionItems CollectionItem[]
 
+  @@index([status, kind, id])
   @@map("products")
 }
 
@@ -18,6 +56,9 @@ model ProductVersion {
   number        Int
   status        String @default("DRAFT")
   payoutAddress String
+  revision      Int @default(1)
+  defaultCommandId String?
+  chatTextParameter String?
   product       Product @relation(fields: [productId], references: [id], onDelete: Restrict)
   commands      CommandVersion[]
 
@@ -28,9 +69,14 @@ model ProductVersion {
 model CommandVersion {
   id               String @id @default(uuid())
   commandId        String
+  name             String?
+  title            String?
+  description      String?
   productId        String
   productVersion   Int
   inputSchema      Json
+  outputSchema     Json?
+  positionalParameter String?
   grossAmount      Decimal @db.Decimal(78, 0)
   terms            Json
   deliverySeconds  Int
@@ -39,6 +85,45 @@ model CommandVersion {
 
   @@unique([productId, productVersion, commandId])
   @@map("command_versions")
+}
+
+model ProductStar {
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  collectionItems CollectionItem[]
+
+  @@id([userId, productId])
+  @@index([userId, createdAt])
+  @@map("product_stars")
+}
+
+model Collection {
+  id        String @id @default(uuid())
+  ownerId   String
+  name      String
+  nameKey   String
+  createdAt DateTime @default(now())
+  items     CollectionItem[]
+
+  @@unique([ownerId, nameKey])
+  @@unique([id, ownerId])
+  @@map("collections")
+}
+
+model CollectionItem {
+  collectionId String
+  ownerId      String
+  productId    String
+  createdAt    DateTime @default(now())
+  collection Collection @relation(fields: [collectionId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  star ProductStar @relation(fields: [ownerId, productId], references: [userId, productId], onDelete: Cascade)
+
+  @@id([collectionId, productId])
+  @@index([ownerId, productId])
+  @@map("collection_items")
 }
 
 model UsageSession {

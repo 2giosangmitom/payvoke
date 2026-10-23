@@ -39,8 +39,12 @@ export async function registerAuth(app: FastifyInstance, config: Config, db: Pri
     if (request.url.startsWith("/v1/auth/") || request.url.split("?")[0] === "/v1/me") {
       reply.cacheControl("no-store");
     }
+    const providerBearer =
+      request.url.startsWith("/v1/provider/apps/") &&
+      request.headers.authorization?.startsWith("Bearer pvk_");
     if (
       !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+      !providerBearer &&
       request.headers.origin !== webOrigin
     ) {
       throw app.httpErrors.forbidden("INVALID_ORIGIN");

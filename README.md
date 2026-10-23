@@ -424,15 +424,15 @@ terms:
   dataUse
 ```
 
-Web và API dùng cùng validation/approval; không bắt buộc manifest file. API/OpenAPI sẽ là contract tích hợp; hiện các endpoints vẫn là đặc tả, chưa phải API đã chạy.
+Web và API dùng cùng validation/version; không bắt buộc manifest file. Provider app, key, publishing và catalog endpoints đã có; OpenAPI và provider delivery gateway chưa hoàn tất. Sản phẩm mới hiện `NOT_READY` và chưa thể mua.
 
 Input/output dùng subset JSON Schema 2020-12 có giới hạn. Không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần lúc chuẩn bị quote rồi đóng băng.
 
 UI chuyển slash shortcut thành `commandId + arguments`. Backend không shell-eval chuỗi slash thô hoặc nhờ LLM đoán command/giá. Các action điều hướng như help/status/cancel không được biến thành paid command tùy ý.
 
-### Version và duyệt bán
+### Version và tự công khai
 
-Thay đổi schema, giá, default command, payout hoặc điều khoản phải tạo draft version mới. Không sửa ngầm bản đang phục vụ. Quote/invocation cũ pin version cũ; draft/rejected version không được bán.
+Thay đổi schema, giá, default command, payout hoặc điều khoản phải tạo draft version mới. Không sửa ngầm bản đang phục vụ. Quote/invocation cũ pin version cũ; draft version không được bán. Version hợp lệ tự công khai, không qua operator review.
 
 Dừng bán không xóa nghĩa vụ với job đã trả tiền. Đã hold thì giao theo bản cũ hoặc xử lý hoàn, không đổi provider ngầm.
 

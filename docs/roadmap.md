@@ -104,6 +104,8 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 
 ## 6. M3 — Backend nền tảng, identity và command catalog
 
+**Cập nhật quyết định 22/10/2026:** Publishing hợp lệ tự công khai, không cần operator review ở T043. Provider app có tối đa một API key hiệu lực; catalog hỗ trợ star và collection riêng tư. Phần provider gateway chưa có nên sản phẩm mới hiện `NOT_READY` và quote bị chặn. Checkbox task vẫn theo tiêu chí nghiệm thu đầy đủ, không coi UI/catalog slice này là Gate M3.
+
 **Mục tiêu:** API kiểm tra quyền và lưu dữ liệu bền vững; kiểm thử được qua HTTP mà không cần frontend.
 
 | Task     | Phụ thuộc        | Việc làm / đầu ra                                                                                             | Nghiệm thu                                                                                                    |

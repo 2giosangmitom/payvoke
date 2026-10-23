@@ -27,6 +27,22 @@ src/
 ```
 
 Add features under `modules/<feature>` and register them after auth in `app.ts`.
+
+## Provider catalog and saved products
+
+Wallet-authenticated owners create provider apps and rotate one active API key
+per app. Product writes require an active `products:write` key even when the
+owner uses the web UI. A key is scoped to its app and can register product drafts/commands;
+only its hash is stored. Valid drafts publish directly without operator review.
+Published products appear in `/v1/products` with `availability: "NOT_READY"`.
+New provider products cannot create paid quotes until the provider delivery
+gateway exists. Existing local settlement fixtures remain separate.
+
+Signed-in buyers can star products and group starred products into private
+collections. Removing a star also removes its collection memberships. Legacy
+products without an owner app remain stored for existing quote history, but are
+not exposed in the new catalog. Assign ownership through a reviewed migration
+before listing any such product.
 Protected routes use `preHandler: app.requireAccount`. Use existing Fastify
 plugins and TypeBox type inference for application routes. No generic repository
 or DI layers are needed. `generated/prisma` is CLI output.

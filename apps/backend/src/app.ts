@@ -5,6 +5,8 @@ import { createDatabase } from "./database/client";
 import { registerAuth } from "./modules/auth";
 import { registerQuotes } from "./modules/quotes";
 import { registerPaymentStatus } from "./modules/payments";
+import { registerProvider } from "./modules/provider";
+import { registerCatalog } from "./modules/catalog";
 import { registerHttp } from "./plugins/http";
 import type { PrismaClient } from "./generated/prisma/client";
 
@@ -30,6 +32,8 @@ export function createApp(config: Config, database?: PrismaClient) {
       await registerAuth(instance, config, db);
       await instance.register(async (scope) => registerQuotes(scope, config, db));
       await registerPaymentStatus(instance, db);
+      await registerProvider(instance, db);
+      await registerCatalog(instance, db);
     }),
   );
   return app;
