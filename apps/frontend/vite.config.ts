@@ -3,6 +3,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fontless } from "fontless";
+import { nitro } from "nitro/vite";
 
 export default defineConfig({
   server: {
@@ -17,6 +18,7 @@ export default defineConfig({
         routeTreeFileHeader: ["// oxfmt-ignore", "// @ts-nocheck"],
       },
     }),
+    nitro(),
     viteReact(),
     tailwindcss(),
     fontless({
