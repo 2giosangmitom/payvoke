@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
+import { Card } from "@/src/components/ui/card";
+import { Button } from "@/src/components/ui/button";
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return "--:--";
@@ -45,26 +47,29 @@ export function LandingMusic() {
   }
 
   return (
-    <aside className="landing-music" aria-label="Background music">
+    <Card size="sm" className="landing-music" role="group" aria-label="Background music">
       <audio
         ref={audioRef}
         src="/audio/a-litte-idea.opus"
-        preload="metadata"
+        preload="none"
         muted
         loop
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onLoadedMetadata={(event) => updateDuration(event.currentTarget)}
         onDurationChange={(event) => updateDuration(event.currentTarget)}
         onPause={() => setSoundOn(false)}
+        onError={() => {
+          setSoundOn(false);
+          setPlaybackError(true);
+        }}
       />
       <img
         className="landing-music-art"
         src="/audio/a-litte-idea.svg"
-        alt="Geometric spark and connected nodes, the cover for A litte idea"
+        alt="Geometric spark and connected nodes, the cover for A little idea"
       />
       <div className="landing-music-info">
-        <span className="landing-music-eyebrow">PAYVOKE RADIO / 001</span>
-        <strong>A litte idea</strong>
+        <strong>A little idea</strong>
         <div
           className="landing-music-progress"
           role="progressbar"
@@ -74,22 +79,19 @@ export function LandingMusic() {
           aria-valuenow={Math.round(progress)}
           aria-valuetext={`${formatTime(currentTime)} of ${duration > 0 ? formatTime(duration) : "unknown duration"}`}
         >
-          <span style={{ width: `${progress}%` }} />
+          <span style={{ transform: `scaleX(${progress / 100})` }} />
         </div>
-        <div className="landing-music-meta">
-          <span className={soundOn ? "is-on" : ""} aria-live="polite">
-            {playbackError ? "UNAVAILABLE" : soundOn ? "PLAYING" : "MUTED"}
-          </span>
-          <span>
-            {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : "--:--"}
-          </span>
-        </div>
+        <span className="sr-only" aria-live="polite">
+          {playbackError ? "Music unavailable" : soundOn ? "Music playing" : "Music paused"}
+        </span>
       </div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         className="landing-music-toggle"
         onClick={toggleSound}
-        aria-label={soundOn ? "Mute A litte idea" : "Unmute and play A litte idea"}
+        aria-label={soundOn ? "Mute A little idea" : "Unmute and play A little idea"}
         aria-pressed={soundOn}
         title={soundOn ? "Mute music" : "Unmute music"}
       >
@@ -98,7 +100,7 @@ export function LandingMusic() {
         ) : (
           <VolumeX size={19} strokeWidth={1.8} />
         )}
-      </button>
-    </aside>
+      </Button>
+    </Card>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useConnect, useConnection, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
 import { createSiweMessage } from "viem/siwe";
@@ -34,7 +35,7 @@ function walletError(error: unknown): string {
   if (/reject|denied|cancel|user refused/i.test(message))
     return "The wallet request was cancelled. You can try again.";
   if (/fetch|network|failed to connect/i.test(message))
-    return "Cannot reach the authentication service. Check that the API is running.";
+    return "Sign-in is unavailable right now. Please try again shortly.";
   return message.length > 160 ? "Unable to complete the request. Please try again." : message;
 }
 
@@ -46,6 +47,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
   const [busy, setBusy] = useState<"sign" | "logout" | null>(null);
   const [verifiedAddress, setVerifiedAddress] = useState<string | null>(null);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { address, chainId, isConnected } = useConnection();
   const { connectors, connectAsync, isPending: isConnecting } = useConnect();
   const { disconnectAsync } = useDisconnect();
@@ -74,6 +76,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
       if (session && !sessionMatches) {
         const signOut = await authClient.signOut();
         if (signOut.error) throw new Error(signOut.error.message);
+        queryClient.removeQueries({ queryKey: ["account"] });
       }
       const challenge = await authClient.siwe.nonce();
       if (challenge.error || !challenge.data?.nonce) {
@@ -112,6 +115,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
     try {
       const result = await authClient.signOut();
       if (result.error) throw new Error(result.error.message);
+      queryClient.removeQueries({ queryKey: ["account"] });
       setVerifiedAddress(null);
       await disconnectAsync();
       await refetch();
@@ -167,7 +171,6 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
             <div className="dialog-symbol">
               <Wallet size={20} strokeWidth={1.5} />
             </div>
-            <p className="eyebrow">PAYVOKE / IDENTITY</p>
             <DialogTitle className="wallet-title">
               {sessionMatches ? "Your account" : "Sign in with Ethereum"}
             </DialogTitle>
@@ -225,7 +228,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                   <Wallet size={20} />
                 </span>
                 <div>
-                  <span className="account-label">CONNECTED WALLET</span>
+                  <span className="account-label">Connected wallet</span>
                   <strong>{address && shortAddress(address)}</strong>
                 </div>
                 <Check size={17} className="text-primary" />
@@ -234,7 +237,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                 <NetworkAvalancheFuji size={22} />
                 <span>Avalanche Fuji</span>
                 <span className={correctChain ? "chain-ok" : "chain-wrong"}>
-                  {correctChain ? "CONNECTED" : "SWITCH REQUIRED"}
+                  {correctChain ? "Connected" : "Switch required"}
                 </span>
               </div>
               {sessionMatches ? (
@@ -323,7 +326,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
             </p>
           )}
           <div className="wallet-dialog-foot">
-            <ShieldCheck size={14} /> SECURE SIGN-IN · NO GAS FEES · FUJI TESTNET
+            <ShieldCheck size={14} /> Sign a message to verify your wallet. No gas fee.
           </div>
         </DialogContent>
       </Dialog>

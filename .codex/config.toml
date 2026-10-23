@@ -1,3 +1,19 @@
 [mcp_servers.shadcn]
 command = "pnpx"
 args = ["shadcn@latest", "mcp"]
+
+[mcp_servers.magicui]
+command = "pnpx"
+args = ["-y", "@magicuidesign/mcp@latest"]
+
+[mcp_servers.shadcn.tools.search_items_in_registries]
+approval_mode = "approve"
+
+[mcp_servers.shadcn.tools.get_item_examples_from_registries]
+approval_mode = "approve"
+
+[mcp_servers.shadcn.tools.view_items_in_registries]
+approval_mode = "approve"
+
+[mcp_servers.shadcn.tools.get_add_command_for_items]
+approval_mode = "approve"

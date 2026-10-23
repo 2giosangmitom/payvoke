@@ -71,8 +71,6 @@ function sampleNoise(noise: Float32Array, x: number, y: number) {
   return upper * (1 - sy) + lower * sy;
 }
 
-type Ripple = { x: number; y: number; started: number };
-
 export function HeroPixelField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -86,7 +84,8 @@ export function HeroPixelField() {
     const noise = makeNoise();
     const random = seededRandom(0x1e372c);
     const jitter = Float32Array.from({ length: 64 * 64 }, random);
-    const palette = getComputedStyle(document.documentElement);
+    // The hero keeps its dark jade palette even when the rest of the site is in light mode.
+    const palette = getComputedStyle(hero);
     const token = (name: string, fallback: string) =>
       palette.getPropertyValue(name).trim() || fallback;
     const ink = {
@@ -112,9 +111,6 @@ export function HeroPixelField() {
     let frame = 0;
     let lastPaint = -Infinity;
     let inView = true;
-    const pointer = { x: -10000, y: -10000, target: 0, strength: 0 };
-    let ripples: Ripple[] = [];
-
     const measure = () => {
       const bounds = hero.getBoundingClientRect();
       if (bounds.width < 1 || bounds.height < 1) return;
@@ -155,8 +151,6 @@ export function HeroPixelField() {
     const draw = (now: number) => {
       if (!width || !height) return;
       const time = motionQuery.matches ? 0 : now / 1000;
-      pointer.strength += (pointer.target - pointer.strength) * 0.24;
-      ripples = ripples.filter((ripple) => now - ripple.started < 1050);
       context.fillStyle = ink.background;
       context.fillRect(0, 0, width, height);
 
@@ -189,26 +183,13 @@ export function HeroPixelField() {
             lum = shade * (0.3 + 0.52 * drift * drift + 0.18 * flicker) * 0.67;
           }
 
-          const cursorDistance = Math.hypot(cx - pointer.x, cy - pointer.y);
-          const cursorGlow =
-            cursorDistance < reach ? Math.pow(1 - cursorDistance / reach, 2) * pointer.strength : 0;
           const spriteDistance = Math.hypot(cx - spriteX, cy - spriteY);
           const spriteGlow =
             motionQuery.matches || spriteDistance > reach
               ? 0
               : Math.pow(1 - spriteDistance / reach, 2) * 0.65;
-          let heat = Math.max(cursorGlow, spriteGlow);
+          const heat = spriteGlow;
           lum += 0.94 * heat;
-
-          for (const ripple of ripples) {
-            const age = (now - ripple.started) / 1050;
-            const radius = age * cell * 31;
-            const distance = Math.hypot(cx - ripple.x, cy - ripple.y);
-            const ring = Math.max(0, 1 - Math.abs(distance - radius) / (cell * 2.4));
-            const hit = ring * (1 - age) * 0.9;
-            heat = Math.max(heat, hit);
-            lum += hit;
-          }
 
           const threshold =
             0.78 * ((BAYER[(row & 7) * 8 + (col & 7)] + 0.5) / 64) +
@@ -245,33 +226,6 @@ export function HeroPixelField() {
         frame = requestAnimationFrame(animate);
       }
     };
-    const move = (event: PointerEvent) => {
-      if (motionQuery.matches || (event.pointerType !== "mouse" && event.pointerType !== "pen"))
-        return;
-      const rect = hero.getBoundingClientRect();
-      pointer.x = (event.clientX - rect.left) * dpr;
-      pointer.y = (event.clientY - rect.top) * dpr;
-      pointer.target = 1;
-    };
-    const leave = () => {
-      pointer.target = 0;
-    };
-    const ripple = (event: PointerEvent) => {
-      if (
-        motionQuery.matches ||
-        event.button !== 0 ||
-        (event.target instanceof Element &&
-          event.target.closest("a, button, input, textarea, select, label"))
-      )
-        return;
-      const rect = hero.getBoundingClientRect();
-      ripples.push({
-        x: (event.clientX - rect.left) * dpr,
-        y: (event.clientY - rect.top) * dpr,
-        started: performance.now(),
-      });
-      ripples = ripples.slice(-3);
-    };
     const visibility = new IntersectionObserver(
       ([entry]) => {
         inView = entry.isIntersecting;
@@ -297,7 +251,6 @@ export function HeroPixelField() {
     const onMotionChange = () => {
       cancelAnimationFrame(frame);
       frame = 0;
-      pointer.target = 0;
       if (motionQuery.matches) draw(0);
       else schedule();
     };
@@ -306,9 +259,6 @@ export function HeroPixelField() {
     const wordmark = hero.querySelector(".particle-wordmark");
     if (wordmark) resize.observe(wordmark);
     visibility.observe(hero);
-    hero.addEventListener("pointermove", move, { passive: true });
-    hero.addEventListener("pointerleave", leave, { passive: true });
-    hero.addEventListener("pointerdown", ripple, { passive: true });
     document.addEventListener("visibilitychange", onPageVisibility);
     motionQuery.addEventListener("change", onMotionChange);
     measure();
@@ -319,9 +269,6 @@ export function HeroPixelField() {
       cancelAnimationFrame(frame);
       resize.disconnect();
       visibility.disconnect();
-      hero.removeEventListener("pointermove", move);
-      hero.removeEventListener("pointerleave", leave);
-      hero.removeEventListener("pointerdown", ripple);
       document.removeEventListener("visibilitychange", onPageVisibility);
       motionQuery.removeEventListener("change", onMotionChange);
     };

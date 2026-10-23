@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { fontless } from "fontless";
 
 export default defineConfig({
   server: {
@@ -18,5 +19,24 @@ export default defineConfig({
     }),
     viteReact(),
     tailwindcss(),
+    fontless({
+      providers: {
+        adobe: false,
+        bunny: false,
+        fontshare: false,
+        fontsource: false,
+        googleicons: false,
+        npm: false,
+      },
+      defaults: {
+        weights: ["400 800"],
+        styles: ["normal"],
+        subsets: ["latin", "latin-ext", "vietnamese"],
+      },
+      families: [
+        { name: "Geist", provider: "google", preload: true },
+        { name: "JetBrains Mono", provider: "google", weights: [400, 500, 600] },
+      ],
+    }),
   ],
 });

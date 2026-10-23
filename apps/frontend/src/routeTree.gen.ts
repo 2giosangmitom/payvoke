@@ -7,68 +7,110 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppRouteImport } from './routes/app'
+import { Route as MarketRouteImport } from './routes/_market'
+import { Route as MarketIndexRouteImport } from './routes/_market.index'
+import { Route as MarketAgentsRouteImport } from './routes/_market.agents'
+import { Route as MarketAppRouteImport } from './routes/_market.app'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const MarketRoute = MarketRouteImport.update({
+  id: '/_market',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
+const MarketIndexRoute = MarketIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketAgentsRoute = MarketAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketAppRoute = MarketAppRouteImport.update({
   id: '/app',
   path: '/app',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => MarketRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/': typeof MarketIndexRoute
+  '/agents': typeof MarketAgentsRoute
+  '/app': typeof MarketAppRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/agents': typeof MarketAgentsRoute
+  '/app': typeof MarketAppRoute
+  '/': typeof MarketIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/_market': typeof MarketRouteWithChildren
+  '/_market/agents': typeof MarketAgentsRoute
+  '/_market/app': typeof MarketAppRoute
+  '/_market/': typeof MarketIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app'
+  fullPaths: '/' | '/agents' | '/app'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app'
-  id: '__root__' | '/' | '/app'
+  to: '/agents' | '/app' | '/'
+  id: '__root__' | '/_market' | '/_market/agents' | '/_market/app' | '/_market/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AppRoute: typeof AppRoute
+  MarketRoute: typeof MarketRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_market': {
+      id: '/_market'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof MarketRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app': {
-      id: '/app'
+    '/_market/': {
+      id: '/_market/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof MarketIndexRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/agents': {
+      id: '/_market/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof MarketAgentsRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/app': {
+      id: '/_market/app'
       path: '/app'
       fullPath: '/app'
-      preLoaderRoute: typeof AppRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof MarketAppRouteImport
+      parentRoute: typeof MarketRoute
     }
   }
 }
 
+interface MarketRouteChildren {
+  MarketAgentsRoute: typeof MarketAgentsRoute
+  MarketAppRoute: typeof MarketAppRoute
+  MarketIndexRoute: typeof MarketIndexRoute
+}
+
+const MarketRouteChildren: MarketRouteChildren = {
+  MarketAgentsRoute: MarketAgentsRoute,
+  MarketAppRoute: MarketAppRoute,
+  MarketIndexRoute: MarketIndexRoute,
+}
+
+const MarketRouteWithChildren =
+  MarketRoute._addFileChildren(MarketRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AppRoute: AppRoute,
+  MarketRoute: MarketRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

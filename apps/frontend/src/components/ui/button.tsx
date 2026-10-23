@@ -3,12 +3,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-none border border-transparent font-mono text-sm font-medium whitespace-nowrap select-none outline-offset-2 transition-[background-color,border-color,color,transform] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-ring active:scale-[.96] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-none border border-transparent font-sans text-sm font-medium whitespace-nowrap select-none outline-offset-2 transition-[background-color,border-color,color,transform] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-ring active:scale-[.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),white_14%)]",
+        default: "bg-primary text-primary-foreground hover:bg-[var(--t-brand-hover)]",
         outline:
           "border-[var(--t-border-strong)] bg-[var(--t-surface)] text-foreground hover:bg-[var(--t-surface-2)] aria-expanded:bg-[var(--t-surface-2)]",
         secondary:
