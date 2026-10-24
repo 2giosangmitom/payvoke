@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Layers3,
   Search,
+  Star,
   Terminal,
   Wallet,
 } from "lucide-react";
@@ -26,8 +27,8 @@ import {
   AccordionTrigger,
 } from "@/src/components/ui/accordion";
 
-const catalogCategories = ["Research agents", "Developer tools", "Data utilities"];
-const exampleCollections = ["Research", "Projects", "Ideas to try"];
+const catalogCategories = ["Research apps", "Developer commands", "Data utilities"];
+const exampleSavedApps = ["Research brief", "Code review", "Data clean-up"];
 
 export function LandingPage() {
   return (
@@ -55,18 +56,22 @@ export function LandingPage() {
               startOnView={false}
               once
             >
-              {"Tools worth sharing.\nAgents worth finding."}
+              {"Apps worth sharing.\nThreads worth keeping."}
             </TextAnimate>
             <p className="hero-description">
-              A marketplace for independent agents and tools. Find your next favorite, or publish
-              something you built.
+              A marketplace for independent apps, each with its own slash commands. Open one thread
+              list, call what you need, and authorize payment per request.
             </p>
             <div className="hero-buttons">
-              <Button render={<Link to="/agents" />} className="button-primary">
-                Browse agents <ArrowUpRight size={18} />
+              <Button render={<Link to="/store" />} className="button-primary">
+                Browse the store <ArrowUpRight size={18} />
               </Button>
-              <Button render={<Link to="/app" />} variant="outline" className="button-outline">
-                Open workspace <ArrowRight size={18} />
+              <Button
+                render={<Link to="/dashboard" />}
+                variant="outline"
+                className="button-outline"
+              >
+                Open Studio <ArrowRight size={18} />
               </Button>
             </div>
           </div>
@@ -99,7 +104,7 @@ export function LandingPage() {
           </div>
           <div className="story-copy">
             <p>
-              Good tools deserve to travel further than the project they started in. Payvoke gives
+              Good apps deserve to travel further than the project they started in. Payvoke gives
               independent builders a place to share them, and everyone else a place to discover.
             </p>
           </div>
@@ -133,16 +138,16 @@ export function LandingPage() {
                 <div className="feature-card-copy">
                   <h3>Find the right starting point.</h3>
                   <p>
-                    Browse the public directory. Search by name, learn what each listing does, and
-                    see who built it.
+                    Browse public apps. Search by name, inspect each app&apos;s slash commands, and
+                    see the price before opening a thread.
                   </p>
-                  <Link to="/agents" className="text-link">
-                    Explore the catalog <ArrowUpRight size={17} aria-hidden="true" />
+                  <Link to="/store" className="text-link">
+                    Explore the store <ArrowUpRight size={17} aria-hidden="true" />
                   </Link>
                 </div>
                 <div className="feature-preview catalog-preview" aria-hidden="true">
                   <div className="preview-search">
-                    <Search size={16} /> Find an agent or tool
+                    <Search size={16} /> Find an app or command
                     <span>⌘ K</span>
                   </div>
                   {catalogCategories.map((category, index) => (
@@ -160,25 +165,25 @@ export function LandingPage() {
             <Card className="feature-card feature-collections lg:col-span-5">
               <CardContent>
                 <div className="feature-card-top">
-                  <span className="feature-index">02 / COLLECT</span>
+                  <span className="feature-index">02 / SAVE</span>
                   <FolderOpen size={22} strokeWidth={1.5} aria-hidden="true" />
                 </div>
                 <div className="feature-card-copy">
                   <h3>Keep the good ones close.</h3>
                   <p>
-                    Star useful listings and organize them into collections. Your workspace stays
-                    connected to your wallet.
+                    Star useful apps and return to them from any device. Threads stay attached to
+                    the wallet that authorized them.
                   </p>
-                  <Link to="/app" className="text-link">
-                    Open workspace <ArrowUpRight size={17} aria-hidden="true" />
+                  <Link to="/chat" className="text-link">
+                    Open your threads <ArrowUpRight size={17} aria-hidden="true" />
                   </Link>
                 </div>
                 <div className="feature-preview collections-preview" aria-hidden="true">
-                  <span className="preview-caption">YOUR LIBRARY / EXAMPLE</span>
-                  {exampleCollections.map((collection, index) => (
-                    <div className="collection-preview-row" key={collection}>
-                      <FolderOpen size={16} />
-                      <span>{collection}</span>
+                  <span className="preview-caption">SAVED APPS / EXAMPLE</span>
+                  {exampleSavedApps.map((app, index) => (
+                    <div className="collection-preview-row" key={app}>
+                      <Star size={16} />
+                      <span>{app}</span>
                       <small>0{index + 1}</small>
                     </div>
                   ))}
@@ -189,17 +194,17 @@ export function LandingPage() {
             <Card className="feature-card feature-publish lg:col-span-7">
               <CardContent>
                 <div className="feature-card-top">
-                  <span className="feature-index">03 / PUBLISH</span>
+                  <span className="feature-index">03 / OPERATE</span>
                   <Terminal size={22} strokeWidth={1.5} aria-hidden="true" />
                 </div>
                 <div className="feature-card-copy">
-                  <h3>Your tool. Your infrastructure.</h3>
+                  <h3>One app. One command surface.</h3>
                   <p>
-                    Create a provider app, describe an agent or tool, define its commands and terms,
-                    then publish a listing. You remain the operator.
+                    Create an app, define slash commands and terms, rotate a single API key, and
+                    choose public or private visibility. You remain the operator.
                   </p>
-                  <Link to="/app" className="text-link">
-                    Start publishing <ArrowUpRight size={17} aria-hidden="true" />
+                  <Link to="/dashboard" className="text-link">
+                    Open Studio <ArrowUpRight size={17} aria-hidden="true" />
                   </Link>
                 </div>
                 <div className="feature-preview command-preview" aria-hidden="true">
@@ -258,19 +263,22 @@ export function LandingPage() {
                 useful?
               </h2>
               <p>
-                Whether it is an agent or a simple utility, give it a home beyond your own
-                workspace. Your listing explains the job, the inputs, and the terms.
+                Turn a capability into an app with slash commands, explicit terms, and one shared
+                chat surface. Keep it public for the store or private to your own threads.
               </p>
-              <Button render={<Link to="/app" />} className="button-primary">
-                Open workspace <ArrowUpRight size={18} />
+              <Button render={<Link to="/dashboard" />} className="button-primary">
+                Open Studio <ArrowUpRight size={18} />
               </Button>
             </BlurFade>
           </div>
           <Accordion className="provider-details">
-            <AccordionItem value="tool">
+            <AccordionItem value="publish">
               <AccordionTrigger>How do I publish?</AccordionTrigger>
               <AccordionContent>
-                <p>Create a provider app, add commands, and publish a listing.</p>
+                <p>
+                  Create an app, add slash commands and a default command, then choose store
+                  visibility.
+                </p>
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="terms">

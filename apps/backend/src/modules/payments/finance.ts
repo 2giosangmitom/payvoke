@@ -175,7 +175,16 @@ export async function recordPaymentDelivery(
     const now = await databaseTime(tx);
     // Strictly monotone observation time makes "latest" stable within a millisecond.
     check(!latest || now > latest.observedAt, "retry_evidence_observation");
-    return tx.paymentDeliveryEvidence.create({ data: { ...input, observedAt: now } });
+    const evidence = await tx.paymentDeliveryEvidence.create({
+      data: { ...input, observedAt: now },
+    });
+    // Only this trusted verifier path can make a paid run DELIVERED. Provider
+    // reports and AG-UI stream events remain display-only until evidence exists.
+    await tx.invocation.updateMany({
+      where: { id: input.invocationId, executionStatus: "VERIFYING" },
+      data: { executionStatus: "DELIVERED" },
+    });
+    return evidence;
   });
 }
 

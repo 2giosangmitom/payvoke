@@ -1,229 +1,252 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client";
+import { availabilityLabel, isAvailable } from "../apps/schema";
 
-const productSelect = {
-  id: true,
-  name: true,
-  description: true,
-  kind: true,
-  status: true,
-  activeVersion: true,
-  providerApp: { select: { id: true, name: true } },
-} as const;
-const normalizeName = (name: string) => name.trim().replace(/\s+/g, " ");
-const validName = (name: unknown) =>
-  typeof name === "string" && normalizeName(name).length >= 1 && normalizeName(name).length <= 100;
+const commandInclude = { activeRevision: true } as const;
+
+function serializeCommand(command: {
+  id: string;
+  name: string;
+  description: string;
+  activeRevision: {
+    id: string;
+    options: unknown;
+    inputSchema: unknown;
+    outputSchema: unknown;
+    positionalParameter: string | null;
+    grossAmount: { toFixed(digits: number): string };
+    terms: unknown;
+    deliverySeconds: number;
+    reviewSeconds: number;
+    createdAt: Date;
+  } | null;
+}) {
+  return {
+    id: command.id,
+    name: command.name,
+    description: command.description,
+    revision: command.activeRevision
+      ? {
+          ...command.activeRevision,
+          grossAmount: command.activeRevision.grossAmount.toFixed(0),
+        }
+      : null,
+  };
+}
 
 export async function registerCatalog(app: FastifyInstance, db: PrismaClient) {
-  async function visible(productId: string) {
-    const product = await db.product.findFirst({
-      where: {
-        id: productId,
-        providerAppId: { not: null },
-        status: "PUBLISHED",
-        activeVersion: { not: null },
-      },
-      select: productSelect,
-    });
-    if (!product) throw app.httpErrors.notFound("PRODUCT_NOT_FOUND");
-    return product;
+  async function viewer(request: FastifyRequest) {
+    return app.optionalAccount(request);
   }
-  app.get<{ Querystring: { q?: string; kind?: string; cursor?: string; limit?: string } }>(
-    "/v1/products",
+
+  async function visible(appId: string, buyerId: string | null) {
+    const row = await db.app.findFirst({
+      where: {
+        id: appId,
+        archivedAt: null,
+        OR: [{ visibility: "PUBLIC" }, ...(buyerId ? [{ ownerId: buyerId }] : [])],
+      },
+      include: {
+        commands: {
+          where: { archivedAt: null, activeRevisionId: { not: null } },
+          include: commandInclude,
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+    if (!row) throw app.httpErrors.notFound("APP_NOT_FOUND");
+    return row;
+  }
+
+  app.get<{ Querystring: { q?: string; cursor?: string; limit?: string; saved?: string } }>(
+    "/v1/apps",
     async (request) => {
-      const { q, kind, cursor } = request.query;
+      const { q, cursor } = request.query;
       const limit = Number(request.query.limit ?? 20);
+      const account = await viewer(request);
       if (
         !Number.isInteger(limit) ||
         limit < 1 ||
         limit > 50 ||
         (q && q.length > 100) ||
-        (kind && !["AGENT", "TOOL"].includes(kind))
+        (cursor && cursor.length > 128)
       )
         throw app.httpErrors.badRequest("INVALID_CATALOG_QUERY");
-      const rows = await db.product.findMany({
+      const savedOnly = request.query.saved === "1" && Boolean(account);
+      const rows = await db.app.findMany({
         where: {
-          providerAppId: { not: null },
-          status: "PUBLISHED",
-          activeVersion: { not: null },
-          ...(kind ? { kind } : {}),
-          ...(q ? { name: { contains: q.trim(), mode: "insensitive" as const } } : {}),
+          visibility: "PUBLIC",
+          // Suspended apps remain discoverable so saved entries can show their
+          // unavailable state; archived apps are removed from the store.
+          status: { in: ["ACTIVE", "SUSPENDED"] },
+          archivedAt: null,
+          ...(q
+            ? {
+                OR: [
+                  { name: { contains: q.trim(), mode: "insensitive" as const } },
+                  { description: { contains: q.trim(), mode: "insensitive" as const } },
+                  {
+                    commands: {
+                      some: {
+                        archivedAt: null,
+                        activeRevisionId: { not: null },
+                        name: { contains: q.trim(), mode: "insensitive" as const },
+                      },
+                    },
+                  },
+                ],
+              }
+            : {}),
+          ...(savedOnly ? { stars: { some: { userId: account!.id } } } : {}),
           ...(cursor ? { id: { gt: cursor } } : {}),
         },
-        select: productSelect,
+        include: {
+          commands: {
+            where: { archivedAt: null, activeRevisionId: { not: null } },
+            include: commandInclude,
+          },
+        },
         orderBy: { id: "asc" },
         take: limit + 1,
       });
       return {
-        items: rows.slice(0, limit).map((p) => ({ ...p, availability: "NOT_READY" })),
+        items: rows.slice(0, limit).map((row) => {
+          const prices = row.commands
+            .map((command) => command.activeRevision?.grossAmount)
+            .filter((price): price is NonNullable<typeof price> => Boolean(price));
+          return {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            visibility: row.visibility,
+            status: row.status,
+            availability: availabilityLabel(row),
+            commandCount: row.commands.length,
+            fromPrice:
+              prices.length > 0
+                ? prices
+                    .map((price) => BigInt(price.toFixed(0)))
+                    .reduce((min, price) => (price < min ? price : min))
+                    .toString()
+                : null,
+            updatedAt: row.updatedAt,
+          };
+        }),
         nextCursor: rows.length > limit ? rows[limit - 1].id : null,
       };
     },
   );
-  app.get<{ Params: { productId: string } }>("/v1/products/:productId", async (request) => ({
-    ...(await visible(request.params.productId)),
-    availability: "NOT_READY",
-  }));
-  app.get<{ Params: { productId: string } }>(
-    "/v1/products/:productId/commands",
-    async (request) => {
-      const product = await visible(request.params.productId);
-      const rows = await db.commandVersion.findMany({
-        where: { productId: product.id, productVersion: product.activeVersion! },
-        select: {
-          commandId: true,
-          name: true,
-          title: true,
-          description: true,
-          inputSchema: true,
-          outputSchema: true,
-          grossAmount: true,
-          terms: true,
-          positionalParameter: true,
-        },
-        orderBy: { commandId: "asc" },
-      });
-      return {
-        items: rows.map((row) => ({ ...row, grossAmount: row.grossAmount.toString() })),
-        nextCursor: null,
-      };
-    },
-  );
+
+  app.get<{ Params: { appId: string } }>("/v1/apps/:appId", async (request) => {
+    const account = await viewer(request);
+    const row = await visible(request.params.appId, account?.id ?? null);
+    const canChat = isAvailable(row);
+    return {
+      id: row.id,
+      ownerId: row.ownerId,
+      name: row.name,
+      description: row.description,
+      visibility: row.visibility,
+      status: row.status,
+      availability: availabilityLabel(row),
+      canChat,
+      defaultCommandId: row.defaultCommandId,
+      commands: row.commands.map(serializeCommand),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  });
+
+  app.get<{ Params: { appId: string } }>("/v1/apps/:appId/commands", async (request) => {
+    const account = await viewer(request);
+    const row = await visible(request.params.appId, account?.id ?? null);
+    return {
+      items: row.commands.map(serializeCommand),
+      nextCursor: null,
+    };
+  });
+
   app.get("/v1/stars", { preHandler: app.requireAccount }, async (request) => {
-    const rows = await db.productStar.findMany({
+    const rows = await db.appStar.findMany({
       where: { userId: request.account!.id },
-      include: { product: { select: productSelect } },
+      include: {
+        app: {
+          include: {
+            commands: {
+              where: { archivedAt: null, activeRevisionId: { not: null } },
+              include: commandInclude,
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
       take: 200,
     });
-    return rows.map(({ product, createdAt }) => ({
-      ...product,
-      availability: product.status === "PUBLISHED" ? "NOT_READY" : "UNAVAILABLE",
+    return rows.map(({ app: row, createdAt }) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      visibility: row.visibility,
+      status: row.status,
+      availability: availabilityLabel(row),
+      commandCount: row.commands.length,
       starredAt: createdAt,
     }));
   });
-  app.put<{ Params: { productId: string } }>(
-    "/v1/stars/:productId",
+
+  app.put<{ Params: { appId: string } }>(
+    "/v1/apps/:appId/star",
     { preHandler: app.requireAccount },
     async (request) => {
-      await visible(request.params.productId);
-      await db.productStar.upsert({
+      const account = await viewer(request);
+      await visible(request.params.appId, account?.id ?? null);
+      await db.appStar.upsert({
         where: {
-          userId_productId: { userId: request.account!.id, productId: request.params.productId },
+          userId_appId: { userId: request.account!.id, appId: request.params.appId },
         },
-        create: { userId: request.account!.id, productId: request.params.productId },
+        create: { userId: request.account!.id, appId: request.params.appId },
         update: {},
       });
       return { starred: true };
     },
   );
-  app.delete<{ Params: { productId: string } }>(
-    "/v1/stars/:productId",
+
+  app.delete<{ Params: { appId: string } }>(
+    "/v1/apps/:appId/star",
     { preHandler: app.requireAccount },
     async (request) => {
-      await db.productStar.deleteMany({
-        where: { userId: request.account!.id, productId: request.params.productId },
+      await db.appStar.deleteMany({
+        where: { userId: request.account!.id, appId: request.params.appId },
       });
       return { starred: false };
     },
   );
-  app.get("/v1/collections", { preHandler: app.requireAccount }, async (request) => {
-    const rows = await db.collection.findMany({
-      where: { ownerId: request.account!.id },
-      include: {
-        items: { include: { product: { select: productSelect } }, orderBy: { createdAt: "desc" } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
-    return rows.map(({ items, ...collection }) => ({
-      ...collection,
-      items: items.map(({ product }) => ({
-        ...product,
-        availability: product.status === "PUBLISHED" ? "NOT_READY" : "UNAVAILABLE",
-      })),
-    }));
-  });
-  app.post<{ Body: { name: string } }>(
-    "/v1/collections",
-    { preHandler: app.requireAccount, bodyLimit: 2048 },
-    async (request, reply) => {
-      if (!validName(request.body?.name))
-        throw app.httpErrors.badRequest("INVALID_COLLECTION_NAME");
-      const name = normalizeName(request.body.name);
-      const nameKey = name.toLocaleLowerCase("en-US");
-      const prior = await db.collection.findUnique({
-        where: { ownerId_nameKey: { ownerId: request.account!.id, nameKey } },
-      });
-      if (prior) throw app.httpErrors.conflict("COLLECTION_NAME_TAKEN");
-      return reply
-        .code(201)
-        .send(
-          await db.collection.create({ data: { ownerId: request.account!.id, name, nameKey } }),
-        );
-    },
-  );
-  app.put<{ Params: { collectionId: string }; Body: { name: string } }>(
-    "/v1/collections/:collectionId",
-    { preHandler: app.requireAccount, bodyLimit: 2048 },
-    async (request) => {
-      if (!validName(request.body?.name))
-        throw app.httpErrors.badRequest("INVALID_COLLECTION_NAME");
-      const name = normalizeName(request.body.name);
-      const changed = await db.collection.updateMany({
-        where: { id: request.params.collectionId, ownerId: request.account!.id },
-        data: { name, nameKey: name.toLocaleLowerCase("en-US") },
-      });
-      if (!changed.count) throw app.httpErrors.notFound("COLLECTION_NOT_FOUND");
-      return { name };
-    },
-  );
-  app.delete<{ Params: { collectionId: string } }>(
-    "/v1/collections/:collectionId",
+
+  // Backwards-compatible star paths used by older clients.
+  app.put<{ Params: { appId: string } }>(
+    "/v1/stars/:appId",
     { preHandler: app.requireAccount },
     async (request) => {
-      const changed = await db.collection.deleteMany({
-        where: { id: request.params.collectionId, ownerId: request.account!.id },
-      });
-      if (!changed.count) throw app.httpErrors.notFound("COLLECTION_NOT_FOUND");
-      return { deleted: true };
-    },
-  );
-  app.put<{ Params: { collectionId: string; productId: string } }>(
-    "/v1/collections/:collectionId/products/:productId",
-    { preHandler: app.requireAccount },
-    async (request) => {
-      const ownerId = request.account!.id;
-      const collection = await db.collection.findFirst({
-        where: { id: request.params.collectionId, ownerId },
-      });
-      if (!collection) throw app.httpErrors.notFound("COLLECTION_NOT_FOUND");
-      const star = await db.productStar.findUnique({
-        where: { userId_productId: { userId: ownerId, productId: request.params.productId } },
-      });
-      if (!star) throw app.httpErrors.conflict("STAR_REQUIRED");
-      await db.collectionItem.upsert({
+      const account = await viewer(request);
+      await visible(request.params.appId, account?.id ?? null);
+      await db.appStar.upsert({
         where: {
-          collectionId_productId: { collectionId: collection.id, productId: star.productId },
+          userId_appId: { userId: request.account!.id, appId: request.params.appId },
         },
-        create: { collectionId: collection.id, ownerId, productId: star.productId },
+        create: { userId: request.account!.id, appId: request.params.appId },
         update: {},
       });
-      return { added: true };
+      return { starred: true };
     },
   );
-  app.delete<{ Params: { collectionId: string; productId: string } }>(
-    "/v1/collections/:collectionId/products/:productId",
+  app.delete<{ Params: { appId: string } }>(
+    "/v1/stars/:appId",
     { preHandler: app.requireAccount },
     async (request) => {
-      const changed = await db.collectionItem.deleteMany({
-        where: {
-          collectionId: request.params.collectionId,
-          ownerId: request.account!.id,
-          productId: request.params.productId,
-        },
+      await db.appStar.deleteMany({
+        where: { userId: request.account!.id, appId: request.params.appId },
       });
-      return { removed: changed.count > 0 };
+      return { starred: false };
     },
   );
 }

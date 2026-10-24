@@ -7,6 +7,7 @@ import { registerQuotes } from "./modules/quotes";
 import { registerPaymentStatus } from "./modules/payments";
 import { registerProvider } from "./modules/provider";
 import { registerCatalog } from "./modules/catalog";
+import { registerAgui } from "./modules/agui";
 import { registerHttp } from "./plugins/http";
 import type { PrismaClient } from "./generated/prisma/client";
 
@@ -34,6 +35,7 @@ export function createApp(config: Config, database?: PrismaClient) {
       await registerPaymentStatus(instance, db);
       await registerProvider(instance, db);
       await registerCatalog(instance, db);
+      await registerAgui(instance, db, config.AGUI_CURSOR_RETENTION_SECONDS);
     }),
   );
   return app;

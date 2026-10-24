@@ -185,10 +185,12 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.invocation.deleteMany();
     await db.relayerLane.deleteMany();
     await db.quote.deleteMany();
-    await db.usageSession.deleteMany();
-    await db.commandVersion.deleteMany();
-    await db.productVersion.deleteMany();
-    await db.product.deleteMany();
+    await db.chatThread.deleteMany();
+    await db.appCommandRevision.deleteMany();
+    await db.appCommand.deleteMany();
+    await db.appApiKey.deleteMany();
+    await db.appStar.deleteMany();
+    await db.app.deleteMany();
     await db.deploymentPolicy.deleteMany();
     await db.session.deleteMany();
     await db.user.deleteMany();
@@ -226,20 +228,37 @@ describe("quotes, x402 and isolated settlement", () => {
     productId = randomUUID();
     commandId = randomUUID();
     sessionId = randomUUID();
-    await db.product.create({
+    await db.app.create({
       data: {
         id: productId,
-        kind: "TOOL",
-        status: "PUBLISHED",
-        activeVersion: 1,
-        versions: { create: { number: 1, status: "APPROVED", payoutAddress: provider } },
+        ownerId: buyerId,
+        clientRequestId: randomUUID(),
+        name: "Test delivery app",
+        visibility: "PRIVATE",
+        status: "ACTIVE",
+        payoutAddress: provider,
+        lastHeartbeatAt: new Date(),
       },
     });
-    await db.commandVersion.create({
+    await db.appCommand.create({
       data: {
-        productId,
-        productVersion: 1,
+        id: commandId,
+        appId: productId,
+        name: "summarize",
+        description: "Summarize text",
+      },
+    });
+    const revision = await db.appCommandRevision.create({
+      data: {
         commandId,
+        options: [
+          {
+            name: "text",
+            type: "STRING",
+            required: true,
+            description: "Text to summarize",
+          },
+        ],
         inputSchema: {
           type: "object",
           additionalProperties: false,
@@ -249,6 +268,7 @@ describe("quotes, x402 and isolated settlement", () => {
             language: { type: "string", default: "vi" },
           },
         },
+        positionalParameter: "text",
         grossAmount: "100000",
         terms: {
           deliverySeconds: 60,
@@ -262,7 +282,12 @@ describe("quotes, x402 and isolated settlement", () => {
         reviewSeconds: 30,
       },
     });
-    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    await db.appCommand.update({
+      where: { id: commandId },
+      data: { activeRevisionId: revision.id },
+    });
+    await db.app.update({ where: { id: productId }, data: { defaultCommandId: commandId } });
+    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
     await db.deploymentPolicy.create({
       data: {
         version: "policy-1",
@@ -294,7 +319,7 @@ describe("quotes, x402 and isolated settlement", () => {
 
   function body(key = randomUUID()) {
     return {
-      sessionId,
+      threadId: sessionId,
       commandId,
       arguments: { text: "hello" },
       contextSelection: {
@@ -305,7 +330,8 @@ describe("quotes, x402 and isolated settlement", () => {
       clientRequestId: key,
     };
   }
-  function prepare(payload = body(), headers: Record<string, string> = {}) {
+  async function prepare(payload = body(), headers: Record<string, string> = {}) {
+    await db.app.updateMany({ data: { lastHeartbeatAt: new Date() } });
     return app.inject({
       method: "POST",
       url: "/v1/quotes",
@@ -499,7 +525,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const payload = body();
     const first = await prepare(payload);
     assert.equal(first.statusCode, 201, first.body);
-    await db.commandVersion.updateMany({ data: { grossAmount: "999999", reviewSeconds: 100 } });
+    await db.appCommandRevision.updateMany({ data: { grossAmount: "999999", reviewSeconds: 100 } });
     await db.deploymentPolicy.updateMany({ data: { feeBps: 500 } });
     assert.deepEqual((await prepare(payload)).json(), first.json());
     assert.equal(await db.quote.count(), 1);
@@ -520,7 +546,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal((await prepare(body(), { cookie: "" })).statusCode, 401);
     assert.equal((await prepare(body(), { origin: "https://evil.test" })).statusCode, 403);
     assert.equal((await prepare(body(), { "idempotency-key": "wrong" })).statusCode, 400);
-    await db.usageSession.updateMany({ data: { buyerId: "another-user" } });
+    await db.chatThread.updateMany({ data: { buyerId: "another-user" } });
     assert.equal((await prepare()).statusCode, 404);
     await db.user.updateMany({ data: { status: "SUSPENDED" } });
     assert.equal((await prepare()).statusCode, 403);
@@ -539,7 +565,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const selected = body();
     selected.contextSelection.fileIds = ["unowned-file"];
     assert.equal((await prepare(selected)).statusCode, 400);
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
     assert.equal((await prepare()).statusCode, 409);
     assert.equal(await db.quote.count(), 0);
   });
@@ -710,7 +736,7 @@ describe("quotes, x402 and isolated settlement", () => {
 
   it("blocks emergency product suspension before advertising a prepared quote", async () => {
     const q = await quote();
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
     const response = await submit(q);
     assert.equal(response.statusCode, 409);
     assert.ok(!response.headers["payment-required"]);
@@ -942,8 +968,8 @@ describe("quotes, x402 and isolated settlement", () => {
       where: { invocationId: q.invocationId },
       data: { leaseExpiresAt: new Date(0) },
     });
-    const otherSession = await db.usageSession.create({ data: { buyerId, productId } });
-    const response = await prepare({ ...body(), sessionId: otherSession.id });
+    const otherSession = await db.chatThread.create({ data: { buyerId, appId: productId } });
+    const response = await prepare({ ...body(), threadId: otherSession.id });
     assert.equal(response.statusCode, 201, response.body);
     const otherQuote = response.json<QuoteDocument>();
     await pending(otherQuote);
@@ -961,8 +987,8 @@ describe("quotes, x402 and isolated settlement", () => {
   it("serializes concurrent reservations on a relayer and enforces nonce uniqueness in SQL", async () => {
     const first = await quote();
     await pending(first);
-    const otherSession = await db.usageSession.create({ data: { buyerId, productId } });
-    const response = await prepare({ ...body(), sessionId: otherSession.id });
+    const otherSession = await db.chatThread.create({ data: { buyerId, appId: productId } });
+    const response = await prepare({ ...body(), threadId: otherSession.id });
     assert.equal(response.statusCode, 201, response.body);
     const second = response.json<QuoteDocument>();
     await pending(second);
@@ -1079,7 +1105,21 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(replayed.state, "REJECTED");
     assert.equal(await journal.claim(q.invocationId, "retry"), null);
     assert.equal((await prepare()).statusCode, 409, "the old authorization has not expired yet");
+    const busyThread = await app.inject({
+      method: "GET",
+      url: `/v1/threads/${sessionId}`,
+      headers: { origin, cookie },
+    });
+    assert.equal(busyThread.statusCode, 200, busyThread.body);
+    assert.equal(busyThread.json().activeQuoteId, q.quoteId);
     await delay(Math.max(0, q.validUntil * 1000 - Date.now() + 20));
+    const freeThread = await app.inject({
+      method: "GET",
+      url: `/v1/threads/${sessionId}`,
+      headers: { origin, cookie },
+    });
+    assert.equal(freeThread.statusCode, 200, freeThread.body);
+    assert.equal(freeThread.json().activeQuoteId, null);
     assert.equal(
       (
         await journal.recordIntent({
@@ -1228,7 +1268,7 @@ describe("quotes, x402 and isolated settlement", () => {
     f.state.grant.revoked = true;
     f.state.role = false;
     f.state.now = BigInt(q.resolveBy + 1);
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
     const replay = await f.call("verify", p);
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(replay.json().extra.classification, "existing-hold");
@@ -1276,7 +1316,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const suspended = await f.call("verify", p);
     assert.equal(suspended.json().invalidReason, "account_suspended");
     await db.user.updateMany({ data: { status: "ACTIVE" } });
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
     const disabled = await f.call("verify", p);
     assert.equal(disabled.json().invalidReason, "admission_unavailable");
     assert.ok(!f.calls.some((c) => c.method === "simulate"));
@@ -1355,7 +1395,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.ok((await db.settlementAttempt.findFirstOrThrow()).actualGasCost);
     f.preview.state.grant.revoked = true;
     f.preview.state.now = BigInt(q.resolveBy + 1);
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
     const replay = await f.service(f.p, paymentRequirements(q));
     assert.equal(replay.success, true);
     assert.equal(replay.transaction, pendingReceipt.transaction);
@@ -1432,6 +1472,13 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "REVERTED");
     assert.equal(await db.invocationReady.count(), 0);
     assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, null);
+    const thread = await app.inject({
+      method: "GET",
+      url: `/v1/threads/${sessionId}`,
+      headers: { origin, cookie },
+    });
+    assert.equal(thread.statusCode, 200, thread.body);
+    assert.equal(thread.json().activeQuoteId, null);
     await assert.rejects(f.service(f.p, paymentRequirements(q)), /transaction_reverted/);
     await f.makeWorker().tick();
     assert.equal(await db.settlementAttempt.count(), 1);
@@ -1641,8 +1688,8 @@ describe("quotes, x402 and isolated settlement", () => {
     );
     assert.equal(receipt.success, true);
     assert.equal(receipt.transaction, pendingReceipt.transaction);
-    await db.product.updateMany({ data: { status: "SUSPENDED" } });
-    await db.usageSession.updateMany({ data: { archivedAt: new Date() } });
+    await db.app.updateMany({ data: { status: "SUSPENDED" } });
+    await db.chatThread.updateMany({ data: { archivedAt: new Date() } });
     const replay = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
     assert.equal(replay.statusCode, 202, replay.body);
     assert.equal(await db.invocationReady.count(), 1);
@@ -1739,7 +1786,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await f.due();
     await f.makeWorker().tick();
     sessionId = randomUUID();
-    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
     const second = await quote();
     const next = await execution(second);
     next.state.nonce = 1;
@@ -1967,7 +2014,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const grantB = `0x${"b".repeat(64)}` as const;
     await buyerVault.write.registerGrant([grantB, evm.grant]);
     sessionId = randomUUID();
-    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
     const second = await quote();
     const challenge = decodePaymentRequiredHeader(
       (await submit(second)).headers["payment-required"] as string,
@@ -2031,7 +2078,7 @@ describe("quotes, x402 and isolated settlement", () => {
         webOrigin: origin,
         vault: evm.vault,
         buyer: wallet.address,
-        sessionId: q.sessionId,
+        threadId: q.sessionId,
         commandId,
         clientRequestId: randomUUID(),
         arguments: { text: "hello" },
@@ -2116,7 +2163,7 @@ describe("quotes, x402 and isolated settlement", () => {
       webOrigin: origin,
       vault: vault as `0x${string}`,
       buyer: wallet.address,
-      sessionId,
+      threadId: sessionId,
       commandId,
       clientRequestId: randomUUID(),
       arguments: { text: "hello" },
@@ -2158,10 +2205,10 @@ describe("quotes, x402 and isolated settlement", () => {
   });
 
   it("seeds a fresh ceremony catalog without overwriting an existing deployment policy", async () => {
-    await db.usageSession.deleteMany();
-    await db.commandVersion.deleteMany();
-    await db.productVersion.deleteMany();
-    await db.product.deleteMany();
+    await db.chatThread.deleteMany();
+    await db.appCommandRevision.deleteMany();
+    await db.appCommand.deleteMany();
+    await db.app.deleteMany();
     await db.deploymentPolicy.deleteMany();
     const seed = {
       buyerId,
@@ -2181,7 +2228,7 @@ describe("quotes, x402 and isolated settlement", () => {
         webOrigin: origin,
         vault: vault as `0x${string}`,
         buyer: wallet.address,
-        sessionId,
+        threadId: sessionId,
         commandId,
         clientRequestId: randomUUID(),
         arguments: { text: "hello" },
@@ -2241,7 +2288,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.deploymentPolicy.updateMany({
       data: { vault: evm.vault, feeRecipient: platformWallet.address },
     });
-    await db.productVersion.updateMany({ data: { payoutAddress: providerWallet.address } });
+    await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
     await app.close();
     app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
     await app.ready();
@@ -2256,7 +2303,7 @@ describe("quotes, x402 and isolated settlement", () => {
     );
     async function held() {
       sessionId = randomUUID();
-      await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
       const q = await quote();
       await pending(q);
       await worker.tick();
@@ -2770,7 +2817,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const quotes: QuoteDocument[] = [];
     for (let i = 0; i < 11; i++) {
       sessionId = randomUUID();
-      await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
       const q = await quote();
       await pending(q);
       await worker.tick();
@@ -3216,7 +3263,7 @@ describe("quotes, x402 and isolated settlement", () => {
     });
     assert.equal((await f.service(f.p, paymentRequirements(q))).success, true);
     sessionId = randomUUID();
-    await db.usageSession.create({ data: { id: sessionId, buyerId, productId } });
+    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
     const next = await quote();
     const p = await payment(next);
     const preview = await facilitator(next);

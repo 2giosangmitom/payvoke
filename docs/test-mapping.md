@@ -1,13 +1,15 @@
 # T002 — Ánh xạ yêu cầu vào kiểm thử
 
+> Ghi chú 23/10/2026: các ca cũ dùng Product/ProductVersion/UsageSession. Mô hình hiện tại là App/AppCommandRevision/ChatThread; đọc product là app, version là command revision và session là thread khi đối chiếu.
+
 ## Phạm vi và cách đọc
 
 Bằng chứng implementation/test payment hiện tại: [Payment acceptance — S01/S02](payment-acceptance.md)
 (22/10/2026). Tài liệu bên dưới là thiết kế ban đầu, không phải trạng thái nghiệm thu hiện tại.
 
-Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md). Mốc lập: 20/10/2026, sau [baseline T001](baseline.md).
+Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md); bổ sung [S04 AG-UI/A2UI](specs/04-ag-ui-a2ui-streaming.md) ngày 23/10/2026. Mốc lập: 20/10/2026, sau [baseline T001](baseline.md).
 
-Đây là thiết kế kiểm thử, **chưa có các suites bên dưới và chưa có bằng chứng pass**. T002 không tạo framework, fixtures nghiệp vụ hoặc tests thực thi. Các ID `API-*`, `PAY-*`, `MCP-*`, `SYS-*` là ID truy vết của tài liệu này, không phải mã lỗi hoặc ID do đặc tả cấp. Khi triển khai, tham chiếu ID trong test/PR và ghi bằng chứng nghiệm thu dưới task tương ứng ở roadmap; không coi mapping này là bảng tiến độ tests.
+Đây là thiết kế kiểm thử; phần lớn suites bên dưới **chưa được triển khai**. Ngoại lệ đã có bằng chứng pass là API-13 (AG-UI/A2UI) ở mức HTTP/PGlite và renderer React, chưa phải browser/FLOW/Fuji. T002 không tạo framework, fixtures nghiệp vụ hoặc tests thực thi. Các ID `API-*`, `PAY-*`, `MCP-*`, `SYS-*` là ID truy vết của tài liệu này, không phải mã lỗi hoặc ID do đặc tả cấp. Khi triển khai, tham chiếu ID trong test/PR và ghi bằng chứng nghiệm thu dưới task tương ứng ở roadmap; không coi mapping này là bảng tiến độ tests.
 
 Mỗi mục ghi nguồn, ca hợp lệ/ca phải chặn, test surface và task chịu trách nhiệm. Task là chủ sở hữu công việc, không phải người được giao. Mốc đầu tiên chứng minh từng lớp không thay thế gate tích hợp sau đó.
 
@@ -27,17 +29,17 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 
 ## 1. S01 — API, sản phẩm và provider
 
-### API-01 — Product kind và session bất biến
+### API-01 — App, command revision và thread bất biến
 
 - Nguồn: S01 §1, §4.1, §5.1, §7.
-- Chứng minh: agent/tool tạo session đúng buyer/workspace/product; version mới dùng được cho quote mới nhưng invocation cũ giữ version cũ. Từ chối đổi kind/owner/product/provider cùng resource, command của product khác và truy cập session khác buyer; đổi product phải tạo session mới, không tự sao chép context.
+- Chứng minh: buyer tạo thread đúng app; revision mới dùng được cho quote mới nhưng invocation cũ giữ revision cũ. Từ chối đổi app/owner/provider cùng thread, command của app khác và truy cập thread khác buyer; đổi app phải tạo thread mới, không tự sao chép context. App suspend/archive chặn quote/thread mới nhưng lịch sử cũ vẫn đọc được.
 - Surface/gate: UNIT T009; DB/HTTP T041/T044/T049 (M3); FLOW T051/T064 (M4); WEB T097/T109 (M7).
 
-### API-02 — Agent chat, tool không composer và slash parser
+### API-02 — Chat shell, slash command và form arguments
 
 - Nguồn: S01 §1, §4.2–4.3, §5.3; S03 §2.
-- Chứng minh: agent map text vào root string parameter của default command; tool chạy bằng form và hỏi bằng form. DOM tool không có chat composer, cả khi chờ question; chọn tool trong palette mở session riêng. Chặn reserved/unknown/repeated flags, sai type, positional không khai báo và chat settings của tool. Raw slash không tới shell/eval/LLM router; object/array nhập qua form.
-- Surface/gate: UNIT/HTTP T010/T042/T049 (M1/M3); WEB parser/component T098–T100/T102/T106 và E2E T109 (M7). API pass không đủ chứng minh no-composer.
+- Chứng minh: mọi app dùng chung chat shell; free text map vào positional parameter của command đang chọn/default; command không có positional mở form arguments và không tự gửi. Gõ `/` mở danh sách command của app; backend chỉ nhận `commandId + arguments`. Chặn reserved/unknown/repeated flags, sai type, positional không khai báo và enum/number/boolean sai kiểu. Raw slash không tới shell/eval/LLM router; object/array nhập qua form.
+- Surface/gate: UNIT/HTTP T010/T042/T049 (M1/M3); WEB parser/component T098–T100/T102/T106 và E2E T109 (M7).
 
 ### API-03 — HTTP conventions và DTO
 
@@ -60,19 +62,19 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### API-06 — Command schemas và defaults
 
 - Nguồn: S01 §4.2, §5.2.
-- Chứng minh: enum/required/bounds/nested array và defaults hợp lệ; namespace command theo product, `commandId` ổn định qua version. Chặn remote refs, schema quá sâu/lớn, property lạ, tên trùng/reserved, giá không dương/vượt cap và terms thiếu. Defaults áp một lần trước quote, retry không áp default/version mới; không có flag paid-command bypass x402.
+- Chứng minh: enum/required/bounds/nested array và defaults hợp lệ; namespace command theo app, `commandId` ổn định qua revision. Chặn remote refs, schema quá sâu/lớn, property lạ, tên trùng/reserved, giá không dương/vượt cap và terms thiếu. Defaults áp một lần trước quote, retry không áp default/version mới; không có flag paid-command bypass x402.
 - Surface/gate: UNIT T010/T015 (M1); HTTP T042/T049 (M3), T051/T054 (M4).
 
 ### API-07 — Context, file ownership và frozen quote
 
 - Nguồn: S01 §5.2, §5.4; S02 §3.
-- Chứng minh: server resolve context đã chọn từ persisted versions; chỉ gửi nội dung khớp hashes. Không tin history/file content client tự khai; không gửi toàn workspace; tool không nhận message history. Chỉ READY files được chọn, file/brief/message khác owner bị chặn trước settlement. Quote creation chưa giữ tiền/dispatch; hết hạn chưa submit trả lỗi, pending không auto-requote.
+- Chứng minh: server resolve context đã chọn từ persisted versions; chỉ gửi nội dung khớp hashes. Không tin history/file content client tự khai; không gửi toàn bộ lịch sử chat ngoài context được chọn. Chỉ READY files được chọn, file/brief/message khác owner bị chặn trước settlement. Quote creation chưa giữ tiền/dispatch; hết hạn chưa submit trả lỗi, pending không auto-requote.
 - Surface/gate: DB/HTTP T051/T052/T054 (M4), T072–T074 (M5); WEB T098/T101/T109 (M7).
 
-### API-08 — Durable HTTP idempotency và session execution slot
+### API-08 — Durable HTTP idempotency và thread execution slot
 
 - Nguồn: S01 §2, §1, §7.
-- Chứng minh: cùng principal/operation/key/body trả cùng resource; đổi body conflict, principal/operation khác không đọc nhầm resource. Hai DB connections tranh slot chỉ một invocation active; WAITING_BUYER/VERIFYING/UNKNOWN giữ slot. DELIVERED/FAILED/CANCELLED giải phóng dù tiền còn HELD; revision chiếm lại slot hoặc SESSION_BUSY. DRAFT chỉ hết hạn giải phóng nếu không có signed/pending admission chưa đối soát. Read/dispute không chiếm slot.
+- Chứng minh: cùng principal/operation/key/body trả cùng resource; đổi body conflict, principal/operation khác không đọc nhầm resource. Hai DB connections tranh slot chỉ một invocation active; WAITING_BUYER/VERIFYING/UNKNOWN giữ slot. DELIVERED/FAILED/CANCELLED giải phóng dù tiền còn HELD; revision chiếm lại slot hoặc THREAD_BUSY. DRAFT chỉ hết hạn giải phóng nếu không có signed/pending admission chưa đối soát. Read/dispute không chiếm slot.
 - Surface/gate: DB/HTTP T045/T050/T052 (M3/M4); FLOW T063/T064/T070/T078 (M4/M5). Replay sau cache TTL vẫn chịu payment uniqueness PAY-06.
 
 ### API-09 — SSE lease, ACK và replay
@@ -98,6 +100,13 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 - Nguồn: S01 §5.4, §6.1–6.2; S02 §3.2.
 - Chứng minh: upload intent/completion xác minh size/type/checksum và buyer/app/invocation; quarantine/not READY không được quote/deliver. Download/refresh kiểm tra scope mỗi lần, URL ngắn hạn không vào hash/log; đổi URL không đổi quote. Không SSRF fetch URL tùy ý. File không đọc được không DELIVERED, giữ artifact versions cho revision/dispute và điều chỉnh review theo outage có bằng chứng.
 - Surface/gate: HTTP + storage integration/FLOW T072–T074/T078/T079 (M5); finance T082 (M6); WEB T103/T109 (M7).
+
+### API-13 — AG-UI LLM streaming và A2UI widgets (bổ sung 23/10/2026)
+
+- Nguồn: S01 §1, §5.1, §6.4, §9(11); S04 §1–5.
+- Chứng minh: provider nhận runId ổn định theo dispatch/ACK, stream `TEXT_MESSAGE_START/CONTENT/END` với streamSequence riêng, A2UI `CUSTOM payvoke.a2ui` theo catalog. Buyer thấy text tăng dần **trước report result**, renderer cập nhật component/data model mà không reload. Chỉ report `result` đi vào VERIFYING, chỉ M05 chuyển DELIVERED; UI events không charge/refund/release.
+- Ca phải chặn: giả system role, tool call, HTML/JS, unknown component/catalog, out-of-order/duplicate khác payload, stale run, người mua/app khác, action sai questionId. Provider mất kết nối lấy committed cursor và replay; buyer refresh/snapshot/SSE Last-Event-ID hay expired cursor không mất hoặc nhân đôi chữ/widget. A2UI không thay composer; fallback typed result hoạt động nếu không có surface.
+- Surface/gate: HTTP/FLOW T067.a/T075/T076.a/T078/T079 (M5); WEB T098.a/T103.a/T109 (M7); OPS T124 (M9). Đã có test HTTP/PGlite stream text/A2UI/cursor/ownership/delivery, question→answer continuation, revision theo policy, cursor expiry, SSE loopback và renderer React/QuestionForm. Chưa có browser wallet E2E, provider fixture ngoài tiến trình, file verification hay load/soak. Mapping không có nghĩa toàn bộ gate đã pass.
 
 ## 2. S02 — Chữ ký, tiền và recovery
 
@@ -194,7 +203,7 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### PAY-16 — Fuji bằng chứng thực
 
 - Nguồn: S02 §10, §1; S01 §8.
-- Chứng minh: policy/roles/keys được duyệt, publish manifest/source/ABI/token/code; deposit → grant → hold → refund/release/reclaim → withdraw bằng USDC testnet. Headless agent/tool có provider protocol thật; RPC failure/lost response không double debit/dispatch. Lưu tx hashes, finalized state và balance deltas, không fake settled flag/admin bypass.
+- Chứng minh: policy/roles/keys được duyệt, publish manifest/source/ABI/token/code; deposit → grant → hold → refund/release/reclaim → withdraw bằng USDC testnet. Headless app có provider protocol thật; RPC failure/lost response không double debit/dispatch. Lưu tx hashes, finalized state và balance deltas, không fake settled flag/admin bypass.
 - Surface/gate: FUJI T089–T092 (M6), WEB T109 (M7), MCP T121 (M8). Local Counter tests không đáp ứng mục này.
 
 ## 3. S03 — MCP local và quyền chi
@@ -282,8 +291,8 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 
 ### SYS-04 — Gates end-to-end và phát hành
 
-- Nguồn: S01 §9, S02 §10, S03 §14; roadmap gates M0–M9.
-- Surface/gate: VAULT/HTTP/FLOW/FUJI/WEB/MCP/OPS; bằng chứng nối tiếp T034 contract local → T049 auth/catalog/session → T064 headless hold → T079 agent/tool/files/question/revision → T092 finance/recovery/Fuji backend-ready → T109 browser → T121 MCP → T129/T130 release.
+- Nguồn: S01 §9, S02 §10, S03 §14, S04 §5; roadmap gates M0–M9.
+- Surface/gate: VAULT/HTTP/FLOW/FUJI/WEB/MCP/OPS; bằng chứng nối tiếp T034 contract local → T049 auth/catalog/thread → T064 headless hold → T079 app/files/question/revision → T092 finance/recovery/Fuji backend-ready → T109 browser → T121 MCP → T129/T130 release.
 - Load/soak T124 đo nonce queue/DB claims/SSE slow consumers/reconnect/gas cost, có limits đã đo; không hứa throughput chưa thử. T127 staging fresh với DB/ví/provider đúng quyền; T128 demo có hướng dẫn retry/refund; T129 không mở admission nếu thiếu policy/gate, T130 artifacts/version/docs truy về evidence. CI T123 chạy đúng suites theo lớp, không bỏ flaky tests hoặc mock settle để xanh.
 - Mỗi gate lưu commit/deployment manifest, lệnh/env profile không secret, test counts/results và failure evidence; Fuji thêm receipt/finalized reads/tx hashes/balance deltas. Không đánh dấu pass bằng tài liệu, fixture hash-only hoặc Counter sample.
 
@@ -291,7 +300,7 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 
 Các chỉ mục dưới đây truy ngược tới mục ở trên để tránh bỏ sót acceptance bắt buộc; assertions chi tiết vẫn lấy từ đặc tả, không thay bằng tên feature.
 
-### S01 §9 — 10 ca theo số gốc
+### S01 §9 — 11 ca theo số gốc
 
 1. API-01, API-02.
 2. API-01, API-06, API-07.
@@ -303,6 +312,15 @@ Các chỉ mục dưới đây truy ngược tới mục ở trên để tránh 
 8. API-11.
 9. API-02, API-10.
 10. API-11, PAY-14.
+11. API-13, API-10, PAY-06.
+
+### S04 §5 — AG-UI/A2UI streaming
+
+1. API-13, API-09 (buyer `ACTIVITY_SNAPSHOT a2ui-surface` với `content.a2ui_operations` tích lũy).
+2. API-13, API-11, SYS-01.
+3. API-13, API-10, PAY-06.
+4. API-13, API-05, SYS-02.
+5. API-13, API-02, API-12.
 
 ### S02 §10 — vectors/mutations và 8 ca theo số gốc
 
@@ -325,7 +343,7 @@ Các chỉ mục dưới đây truy ngược tới mục ở trên để tránh 
 
 ## 6. Ranh giới và điều kiện đóng T002
 
-- Các yêu cầu được ánh xạ theo lớp, ca hợp lệ/negative và task/milestone; ba bất biến tối thiểu một product/session, một hold/invocation, tool no-composer có kiểm tra riêng ở API-01/PAY-06/API-02.
+- Các yêu cầu được ánh xạ theo lớp, ca hợp lệ/negative và task/milestone; ba bất biến tối thiểu một app/thread, một hold/invocation và mọi app dùng cùng chat shell có kiểm tra riêng ở API-01/PAY-06/API-02.
 - Không viết tests hoặc thay implementation trong task này; “mapping hoàn tất” không phải “coverage/tests đã đạt”. TDD/red-green áp dụng ở task triển khai phù hợp, không xây trước toàn bộ test harness.
 - Remote MCP paid submit/OAuth server/delegated signer, mainnet/multi-chain/arbitrary token, contract-wallet/counterfactual support chưa có tests, Tasks/prompts mới và exactly-once external side effects không được mở rộng vào MVP để làm mapping đầy đủ giả.
 - Không cần URL Neon cho T002; DB suites bị chặn thực thi cho tới khi có môi trường test cô lập. Policy kinh tế/keys/roles thực cần phê duyệt T089; fixture policy ngắn chỉ cho local tests.

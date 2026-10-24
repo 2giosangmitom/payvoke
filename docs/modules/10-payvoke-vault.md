@@ -6,7 +6,7 @@ PayvokeVault là smart contract giữ USDC testnet của buyer trên Avalanche F
 
 Buyer ký giao dịch nạp USDC bằng ví. Có thể cần thêm giao dịch `approve`; không mặc định dùng `permit`. Buyer đăng ký khóa phiên do client tạo, kèm giới hạn chi bằng USDC: tối đa mỗi lần gọi, tối đa trong một khoảng thời gian và thời điểm hết hạn. Khóa riêng nằm ở client, không đưa cho Payvoke. Chỉ ví buyer được tăng giới hạn hoặc thay khóa; buyer có thể giảm giới hạn hoặc thu hồi khóa bất cứ lúc nào. Đăng nhập ví không tự cấp quyền chi.
 
-[S02](../specs/02-x402-and-vault.md) cụ thể hóa grantId/epoch, fixed-period cap và total cap hữu hạn, typed-data, ABI, decision signature và vectors. Grant không phải sessionId của phiên chat/tool. Cập nhật/thu hồi invalidate authorization cũ chưa settle; không reset spending counters khi hoàn tiền hoặc sửa grant. Tổng cap của nhiều grant không tự gộp thành cap toàn ví.
+[S02](../specs/02-x402-and-vault.md) cụ thể hóa grantId/epoch, fixed-period cap và total cap hữu hạn, typed-data, ABI, decision signature và vectors. Grant không phải threadId của hội thoại và không phải phiên đăng nhập. Cập nhật/thu hồi invalidate authorization cũ chưa settle; không reset spending counters khi hoàn tiền hoặc sửa grant. Tổng cap của nhiều grant không tự gộp thành cap toàn ví.
 
 Khóa phiên ký chứng từ x402 tự động khi buyer gửi từng yêu cầu; ví chính không phải hiện hộp thoại ký. Payvoke chỉ chuyển chứng từ tới contract, không được tự trừ tiền khi thiếu chữ ký hợp lệ. Nếu khóa phiên bị lộ, kẻ khác vẫn có thể chi trong giới hạn đã cấp; buyer cần thu hồi khóa và rút phần tiền khả dụng. Giao diện phải nói rõ phạm vi này trước khi buyer bật chi tự động.
 

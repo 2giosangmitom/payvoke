@@ -1,8 +1,8 @@
 # Payvoke
 
-Payvoke là marketplace mua bán agent và công cụ, thanh toán bằng USDC theo từng lần sử dụng.
+Payvoke là marketplace mua bán app AI, thanh toán bằng USDC theo từng lần gọi. Mỗi app dùng chung một giao diện chat, một danh sách thread và các slash command riêng.
 
-Provider tự vận hành dịch vụ. Payvoke cung cấp marketplace, quản lý yêu cầu, giữ tiền qua x402/PayvokeVault, chuyển việc, lưu kết quả và xử lý tài chính/tranh chấp. Buyer có thể sử dụng qua web hoặc MCP bridge local dành cho ứng dụng AI.
+Provider tự vận hành app. Payvoke cung cấp store, thread chat, quản lý command, giữ tiền qua x402/PayvokeVault, chuyển việc, lưu kết quả và xử lý tài chính/tranh chấp. Buyer có thể dùng qua web hoặc MCP bridge local dành cho ứng dụng AI.
 
 > Phạm vi hiện tại là Avalanche Fuji và USDC testnet, chưa phải mainnet hay tiền thật. Phần dưới mô tả thiết kế mục tiêu; không có nghĩa toàn bộ tính năng đã được triển khai.
 
@@ -10,7 +10,7 @@ Provider tự vận hành dịch vụ. Payvoke cung cấp marketplace, quản l�
 
 - [1. Payvoke giải quyết bài toán gì?](#1-payvoke-giải-quyết-bài-toán-gì)
 - [2. Trạng thái hiện tại](#2-trạng-thái-hiện-tại)
-- [3. Agent và tool](#3-agent-và-tool)
+- [3. App, command và thread](#3-app-command-và-thread)
 - [4. Các khái niệm cốt lõi](#4-các-khái-niệm-cốt-lõi)
 - [5. Cách tính tiền](#5-cách-tính-tiền)
 - [6. Hành trình của buyer](#6-hành-trình-của-buyer)
@@ -33,12 +33,12 @@ Provider tự vận hành dịch vụ. Payvoke cung cấp marketplace, quản l�
 Ba bên chính trong hệ thống:
 
 - **Buyer:** người mua và sử dụng dịch vụ.
-- **Provider:** bên tạo, đăng bán và tự vận hành agent/tool.
+- **Provider:** bên tạo, đăng bán và tự vận hành app.
 - **Payvoke:** nền tảng điều phối công việc và thanh toán.
 
-Provider có thể bán agent nghiên cứu, agent viết nội dung, tool tóm tắt văn bản, tool chuyển đổi file hoặc tool phân tích dữ liệu. Tool không bắt buộc sử dụng LLM.
+Provider có thể bán app nghiên cứu, app viết nội dung, app tóm tắt văn bản, app chuyển đổi file hoặc app phân tích dữ liệu. App không bắt buộc dùng LLM.
 
-Buyer chọn sản phẩm, nhập yêu cầu, xem giá và gửi một lần gọi. Payvoke giữ khoản tiền tương ứng rồi mới giao việc cho provider.
+Buyer chọn app trong store hoặc từ danh sách thread, nhập yêu cầu, xem quote và gửi một lần gọi. Payvoke giữ khoản tiền tương ứng rồi mới giao việc cho provider.
 
 Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao kết quả. Payvoke cung cấp giao thức nhận việc/báo cáo cùng các quy tắc thanh toán, dữ liệu và vận hành.
 
@@ -47,104 +47,99 @@ Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao k�
 Hiện tại đã có:
 
 - Tổng quan sản phẩm và mười module chức năng.
-- Ba đặc tả chi tiết về API/provider, x402/vault và MCP.
+- Bốn đặc tả chi tiết về API/provider, x402/vault, MCP và AG-UI/A2UI.
 - Bộ thuật ngữ nghiệp vụ.
 - Fixture EIP-712 đã kiểm tra hashing/chữ ký bằng TypeScript với viem.
 - Roadmap 130 task trong mười giai đoạn.
-- Prisma schema gồm 64 models và 40 enums, đã qua `prisma validate`.
+- Prisma schema cho App, command revision, thread và quote; đã qua `prisma validate` và ba migration mới cho AG-UI stream/continuation cùng `20261023020000_apps_and_threads`.
 
 Chưa có:
 
-- Migration cho schema này.
+- Migration production không phá huỷ; migration hiện tại được phép reset vì chưa release.
 - PayvokeVault hoàn chỉnh; package vault hiện là Hardhat sample.
-- Đầy đủ API nghiệp vụ; backend Fastify vẫn là skeleton.
-- Frontend hoàn chỉnh; React/TanStack vẫn là skeleton.
+- Đầy đủ API nghiệp vụ và bằng chứng end-to-end; backend đã có store, thread, command, quote và AG-UI/A2UI, nhưng chưa phủ hết file, dispute và vận hành.
+- Frontend hoàn chỉnh; store, chat và Studio đã nối API, còn thiếu kiểm thử trình duyệt, thanh toán thật và các trạng thái biên.
 - MCP bridge hoàn chỉnh.
 - Bằng chứng luồng end-to-end của thiết kế này trên Fuji.
 
-Marketplace chưa sử dụng được. Fixture chữ ký và Prisma validation không thay thế contract tests, API integration tests hoặc bằng chứng giao dịch thực tế.
+Backend và frontend nay có luồng thử nghiệm provider → AG-UI/A2UI → buyer trên mô hình app/thread/command, kiểm chứng JSON delivery, question/answer continuation và revision trong phạm vi policy. Các test HTTP/PGlite và frontend build hiện có không thay thế bằng chứng thanh toán và giao hàng end-to-end qua ví/Fuji; chưa nên coi marketplace đủ điều kiện phát hành.
 
 Một số câu trong roadmap được viết trước khi hoàn thiện Prisma nên còn mô tả schema chưa có domain models; đó là trạng thái cũ. Có schema không đồng nghĩa task database đã hoàn tất migration, integration hoặc nghiệm thu.
 
-## 3. Agent và tool
+## 3. App, command và thread
 
-Payvoke có hai loại sản phẩm:
+Payvoke không còn tách Agent và Tool. Mỗi đơn vị được bán là một **App**. App là một bề mặt chat do provider vận hành; buyer không mở nhiều loại giao diện khác nhau cho từng app.
 
-| Thuộc tính         | Agent                              | Tool                                |
-| ------------------ | ---------------------------------- | ----------------------------------- |
-| Giao diện          | Hội thoại, có composer chat        | Form nhập tham số                   |
-| Cách gọi           | Tin nhắn hoặc slash command        | Chọn chức năng và điền form         |
-| Hỏi lại buyer      | Câu hỏi trong hội thoại, có schema | Form câu hỏi có schema              |
-| Kết quả            | Timeline và khu vực kết quả        | Trạng thái, kết quả và lịch sử chạy |
-| Công nghệ thực thi | Không áp đặt engine cụ thể         | Không bắt buộc dùng LLM             |
+| Thuộc tính         | App                                                            |
+| ------------------ | -------------------------------------------------------------- |
+| Giao diện          | Một thread chat dùng chung assistant-ui                        |
+| Cách gọi           | Slash command hoặc free text map vào command đang chọn/default |
+| Hỏi lại buyer      | Câu hỏi có schema và widget A2UI trong thread                  |
+| Kết quả            | Timeline, verified output và lịch sử invocation                |
+| Công nghệ thực thi | Không áp đặt engine; có thể dùng LLM hoặc không                |
 
-Ví dụ agent nghiên cứu:
+Ví dụ app nghiên cứu:
 
 ```text
-Buyer: Phân tích các đối thủ của sản phẩm này.
-Agent: Bạn muốn tập trung thị trường nào?
+Buyer: /research Phân tích các đối thủ của sản phẩm này.
+App: Bạn muốn tập trung thị trường nào?
 Buyer: Việt Nam.
-Agent: Trả báo cáo.
+App: Trả báo cáo.
 ```
 
-Ví dụ tool tóm tắt:
+Ví dụ app tóm tắt:
 
 ```text
-text: Nội dung cần tóm tắt
-language: vi
-maxWords: 150
+/research text: Nội dung cần tóm tắt
+/research language: vi
+/research maxWords: 150
 
-[Báo giá] → [Chạy] → Kết quả
+[Quote] → [Authorize] → Kết quả
 ```
 
-Tool hỏi bổ sung thông tin qua form, không có khung chat. Loại sản phẩm là bất biến; muốn chuyển tool thành agent, provider phải tạo sản phẩm mới.
+Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevisionId`; command id ổn định qua các lần sửa. Free text trong composer được ánh xạ vào tham số vị trí của command mặc định (hoặc command người dùng chọn). Quote hiển thị thành card ghim ngay trên composer, nhưng không thay đổi giao thức x402/vault.
+
+App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Availability suy ra từ trạng thái `ACTIVE`, có default command và heartbeat trong 45 giây gần nhất.
+
+**Chuẩn UI đã chọn (23/10/2026):** chat dùng **assistant-ui** với **AG-UI** để hiển thị token/chunk LLM tăng dần, cùng event stream mang widget **A2UI v0.9.1** từ catalog Payvoke. Provider gửi `CUSTOM payvoke.a2ui` vào gateway; buyer nhận `ACTIVITY_SNAPSHOT a2ui-surface` chứa `a2ui_operations`, có replay/snapshot. Result đang stream là preview; `DELIVERED` chỉ đến sau verification. Không tích hợp MCP Apps. Xem [S04](docs/specs/04-ag-ui-a2ui-streaming.md).
 
 ## 4. Các khái niệm cốt lõi
 
-### Workspace
+### App
 
-Không gian buyer tổ chức công việc: các phiên sử dụng, brief có phiên bản, file và lịch sử yêu cầu/kết quả.
+Một bề mặt chat do provider sở hữu, có tên, mô tả, payout address, visibility và danh sách command. App không có thuộc tính `kind`; mọi app đều dùng cùng một thread UI.
 
-Workspace không có nghĩa mọi provider được đọc mọi dữ liệu bên trong. Buyer phải chọn rõ phần context sẽ gửi.
+Provider quản lý app trong Studio bằng phiên đăng nhập ví. Provider worker dùng bearer API key để nhận event và gửi report.
 
-### Usage session (phiên sử dụng)
+### Command và command revision
 
-Một phiên sử dụng gắn cố định với một buyer, một workspace và đúng một product.
+Một command là chức năng ổn định của app, ví dụ `/summarize` hoặc `/research`. Command có id ổn định, tên chỉ duy nhất trong app và một revision đang active.
 
-```text
-Workspace “Marketing”
-├── Session với Agent viết bài
-├── Session với Agent nghiên cứu
-└── Session với Tool xử lý ảnh
-```
+Mỗi lần sửa schema, giá hoặc điều khoản tạo một `AppCommandRevision` mới. Revision là bất biến. Quote ghim `commandRevisionId`; invocation cũ và quote đã phát hành không bị ảnh hưởng khi provider sửa command.
 
-Mỗi sản phẩm dùng một phiên riêng. Đổi product phải tạo session mới, không tự mang lịch sử/file sang.
+### Thread (hội thoại)
 
-Session không khóa vĩnh viễn mọi lần gọi vào một version. Khi sản phẩm đổi version, quote mới pin version được buyer xác nhận; invocation cũ vẫn dùng bản cũ.
+Một thread gắn cố định với một buyer và đúng một app. Thread chứa prompt, câu trả lời, câu hỏi, revision, widget A2UI và lịch sử invocation.
 
-### Command
+Danh sách thread trộn mọi app, giống hộp thư hội thoại. Buyer có thể đổi tên hoặc archive thread; archive không xoá lịch sử thanh toán. Mỗi thread chỉ có tối đa một invocation đang xử lý tại một thời điểm, kể cả khi đang chờ buyer, kiểm tra kết quả hoặc chưa rõ kết quả thực thi.
 
-Một chức năng của sản phẩm, có tên, mô tả, input schema, output schema, giá và điều khoản giao hàng/sửa/hoàn tiền.
+### Command revision trong quote
 
-Ví dụ: `/ask`, `/summarize`, `/analyze`.
-
-Tên chỉ có ý nghĩa trong sản phẩm tương ứng. Hai sản phẩm có thể cùng có `/summarize`. `commandId` ổn định; cặp `(commandId, productVersion)` xác định definition cụ thể.
+Quote chốt app, command id, `commandRevisionId`, input thực tế sau defaults, giá, điều khoản và deadline. API quote nhận `threadId` và `commandId`; document x402 vẫn giữ các field dây cũ (`sessionId`, `productId`, `productVersion`) để không phá hợp đồng thanh toán on-chain.
 
 ### Invocation (lần gọi)
 
-Một công việc cụ thể được mua, chốt product/version, command, input, context, giá, điều khoản và deadline.
+Một công việc cụ thể được mua, chốt app/command revision, input, context, giá, điều khoản và deadline.
 
-Một session có nhiều invocation theo thời gian. MVP chỉ cho một invocation đang xử lý trong mỗi session, bao gồm cả lúc chờ buyer, kiểm tra kết quả hoặc chưa rõ kết quả thực thi. Invocation đã giao có thể giải phóng execution slot dù tiền còn đang giữ chờ review.
+Thread có nhiều invocation theo thời gian. Invocation đã giao có thể giải phóng execution slot dù tiền còn đang giữ chờ review.
 
 ### Quote (báo giá)
 
-Báo giá có thời hạn cho một invocation, chốt giá, dữ liệu, phiên bản và điều khoản của lần gọi.
-
-Tạo quote chưa giữ tiền và chưa giao việc.
+Báo giá có thời hạn cho một invocation, chốt giá, dữ liệu, command revision và điều khoản của lần gọi. Tạo quote chưa giữ tiền và chưa giao việc. Quote được trình bày thành card ghim trên composer.
 
 ### Spending grant (quyền chi)
 
-Quyền buyer cấp onchain cho một khóa ký do client giữ. Grant khác hoàn toàn với session đăng nhập, usage session và API token.
+Quyền buyer cấp onchain cho một khóa ký do client giữ. Grant khác hoàn toàn với session đăng nhập, thread và API token.
 
 ### Hold (khoản giữ)
 
@@ -185,17 +180,17 @@ Client tạo khóa chi riêng và giữ khóa ở phía buyer. Buyer dùng ví c
 
 Client ký từng lần mua bằng khóa chi trong hạn mức đã cấp, vẫn cần sự đồng ý của buyer.
 
-### Bước 4: Chọn sản phẩm và tạo session
+### Bước 4: Chọn app và mở thread
 
-Buyer chọn agent/tool trong workspace. Tạo session không thu tiền.
+Buyer chọn app trong store hoặc từ danh sách thread. Tạo thread không thu tiền. App offline vẫn đọc được thread cũ nhưng không nhận quote mới.
 
-### Bước 5: Nhập yêu cầu và chọn context
+### Bước 5: Nhập yêu cầu hoặc slash command
 
-Buyer chọn command, nhập parameters và chọn message được chia sẻ nếu là agent, brief hoặc file đã upload. Không tự gửi toàn bộ workspace/lịch sử. Tool không nhận message history.
+Buyer gõ free text để dùng command đang chọn/default, hoặc gõ `/` để chọn command khác. Nếu command không có tham số vị trí, form arguments mở ra. Buyer có thể chọn context được chia sẻ nếu app hỗ trợ.
 
 ### Bước 6: Chuẩn bị quote
 
-Backend kiểm tra quyền, schema, version, giá, dữ liệu và trạng thái phiên. Quote trả input thực tế sau defaults, context được chia sẻ, giá/phí, provider payout, deadline, snapshots và digest để kiểm tra trước ký.
+Backend kiểm tra quyền, schema, command revision, giá, dữ liệu và availability của app. Quote trả input thực tế sau defaults, context được chia sẻ, giá/phí, provider payout, deadline, snapshots và digest để kiểm tra trước ký. Card quote xuất hiện ngay trên composer.
 
 ### Bước 7: Thanh toán qua x402
 
@@ -369,8 +364,8 @@ Gửi token trực tiếp vào contract không qua deposit chỉ tạo surplus, 
 
 Authorization EIP-712 ràng buộc chữ ký buyer với các trường của quote:
 
-- Buyer, invocation và usage session.
-- Product/version và command.
+- Buyer, invocation và thread (field dây cũ `sessionId`).
+- App, command revision và command (field dây cũ `productId`/`productVersion`/`commandId`).
 - Input hash, terms hash và policy hash.
 - Provider, asset và giá.
 - Phí, người nhận phí và các deadline.
@@ -393,9 +388,9 @@ Các ràng buộc này ngăn hệ thống thực thi giá/input khác với giá
 
 ### Tạo app và API key
 
-Provider đăng nhập bằng ví để quản lý app. API key có scope riêng cho sản phẩm, đọc events, ACK, reports và files.
+Provider đăng nhập bằng ví để quản lý app. Provider worker dùng bearer API key với scope đọc events, ACK, reports, files và ghi command. Mỗi app có tối đa một key active; tạo key mới thu hồi key cũ ngay lập tức.
 
-Secret chỉ hiện khi cấp; backend lưu hash. API key không tự đổi payout wallet hoặc cấp operator role. Đổi payout cần chủ app xác thực bằng ví và tạo version mới.
+Secret chỉ hiện một lần khi cấp; backend lưu hash. API key không tự đổi payout wallet hoặc cấp operator role. Chủ app vẫn có thể quản lý bằng phiên đăng nhập ví mà không cần API key.
 
 ### Đăng ký commands
 
@@ -424,17 +419,19 @@ terms:
   dataUse
 ```
 
-Web và API dùng cùng validation/version; không bắt buộc manifest file. Provider app, key, publishing và catalog endpoints đã có; OpenAPI và provider delivery gateway chưa hoàn tất. Sản phẩm mới hiện `NOT_READY` và chưa thể mua.
+Web và API dùng cùng validation; không bắt buộc manifest file. Provider app, key, store catalog, heartbeat availability, ready/ACK/report, AG-UI streaming, A2UI projection, question/answer continuation và revision trong phạm vi policy đã có đường đi thử nghiệm. OpenAPI, file artifacts, lease/fencing nhiều writer và nghiệm thu Fuji end-to-end vẫn chưa hoàn tất.
 
 Input/output dùng subset JSON Schema 2020-12 có giới hạn. Không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần lúc chuẩn bị quote rồi đóng băng.
 
 UI chuyển slash shortcut thành `commandId + arguments`. Backend không shell-eval chuỗi slash thô hoặc nhờ LLM đoán command/giá. Các action điều hướng như help/status/cancel không được biến thành paid command tùy ý.
 
-### Version và tự công khai
+### Command revision, availability và tự công khai
 
-Thay đổi schema, giá, default command, payout hoặc điều khoản phải tạo draft version mới. Không sửa ngầm bản đang phục vụ. Quote/invocation cũ pin version cũ; draft version không được bán. Version hợp lệ tự công khai, không qua operator review.
+Thay đổi schema, giá, default command, payout hoặc điều khoản tạo revision mới hoặc cập nhật app. Không sửa ngầm revision đang phục vụ. Quote/invocation cũ pin revision cũ.
 
-Dừng bán không xóa nghĩa vụ với job đã trả tiền. Đã hold thì giao theo bản cũ hoặc xử lý hoàn, không đổi provider ngầm.
+App được xem là available khi `status = ACTIVE`, có default command và heartbeat trong 45 giây gần nhất. Store trả app `PUBLIC` chưa archive, kể cả app suspend ở trạng thái unavailable; owner vẫn xem được app `PRIVATE` trong Studio và thread của mình.
+
+Dừng bán không xóa nghĩa vụ với job đã trả tiền. Đã hold thì giao theo revision cũ hoặc xử lý hoàn, không đổi provider ngầm.
 
 ### Nhận việc qua SSE
 
@@ -596,8 +593,8 @@ Bridge chạy trên máy buyer, giữ khóa local, làm MCP server đối với 
 
 ### Tools dự kiến
 
-- `search_products`
-- `get_product`
+- `search_apps`
+- `get_app`
 - `list_commands`
 - `create_session`
 - `prepare_invocation`
@@ -696,10 +693,9 @@ Những đường dẫn đánh dấu đề xuất là layout mục tiêu, không
 | -------------------- | ----------------------------------------------------------------------------- |
 | Danh tính            | `Account`, `LoginChallenge`, `WebSession`                                     |
 | Quyền                | `OperatorRoleAssignment`, `ClientAuthorization`, `ClientWorkspaceAccess`      |
-| Provider             | `ProviderApp`, `ProviderApiKey`                                               |
-| Catalog              | `Product`, `ProductVersion`, `Command`, `CommandVersion`                      |
-| Publishing           | `ProductVersionSubmission`, `ProductVersionReview`                            |
-| Workspace/context    | `Workspace`, `UsageSession`, `MessageVersion`, `WorkspaceBriefVersion`        |
+| Provider             | `App`, `AppApiKey`, `AppCommand`, `AppCommandRevision`                        |
+| Store                | `AppStar`                                                                     |
+| Workspace/context    | `ChatThread`, `MessageVersion`, `WorkspaceBriefVersion`                       |
 | Công việc            | `Invocation`, questions, answers, revisions, cancellations                    |
 | Thanh toán           | `Quote`, `PaymentAuthorization`, `PaymentAttempt`                             |
 | Chain                | `ChainOperation`, `ChainTransaction`, `ChainEvent`, nonce slots, sync cursors |
@@ -713,7 +709,7 @@ Quy tắc lưu trữ:
 
 - Tiền dùng `Decimal(78, 0)`, không dùng float; vẫn phải kiểm tra bounds unsigned/uint256.
 - USDC qua API dùng chuỗi atomic integer; 6 decimals nghĩa `"10000"` = 0,01 USDC.
-- Composite foreign keys ràng buộc các quan hệ ownership/product/invocation quan trọng.
+- Composite foreign keys ràng buộc các quan hệ ownership/app/thread/invocation quan trọng.
 - Slot tables giúp thực thi giới hạn concurrency ở database, không chỉ mutex trong process.
 - Transaction replacement không ghi đè lịch sử giao dịch cũ.
 - Token/API key lưu hash, không plaintext secret; không lưu private key buyer.
@@ -725,18 +721,18 @@ Số dư DB là projection từ chain, không phải nguồn tự tạo tiền/q
 
 ## 16. Mười module chức năng
 
-| Module                                                                     | Trách nhiệm                                 |
-| -------------------------------------------------------------------------- | ------------------------------------------- |
-| [M01 — Identity](docs/modules/01-identity-and-access.md)                   | Đăng nhập ví, sessions, access control      |
-| [M02 — Workspace/session](docs/modules/02-workspace-and-conversation.md)   | Agent chat, tool form, context được chia sẻ |
-| [M03 — Pricing](docs/modules/03-per-use-pricing.md)                        | Giá, quote và phạm vi từng invocation       |
-| [M04 — Provider gateway](docs/modules/04-provider-requests-and-gateway.md) | SSE, ACK, reports, execution                |
-| [M05 — Artifacts](docs/modules/05-artifacts-and-verification.md)           | Kiểm tra, giao kết quả, version, revision   |
-| [M06 — Payments](docs/modules/06-x402-payments-and-refunds.md)             | x402, settlement, refund, reconciliation    |
-| [M07 — Publishing](docs/modules/07-provider-publishing.md)                 | Catalog, commands, version, approval        |
-| [M08 — External clients](docs/modules/08-external-client-access.md)        | MCP local và scoped authorization           |
-| [M09 — Operations](docs/modules/09-reputation-and-operations.md)           | Đánh giá, tranh chấp, sự cố, audit          |
-| [M10 — Vault](docs/modules/10-payvoke-vault.md)                            | Deposit, withdraw, grants, holds, payout    |
+| Module                                                                     | Trách nhiệm                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [M01 — Identity](docs/modules/01-identity-and-access.md)                   | Đăng nhập ví, sessions, access control                       |
+| [M02 — Thread chat](docs/modules/02-workspace-and-conversation.md)         | Một chat shell, thread list, command và context được chia sẻ |
+| [M03 — Pricing](docs/modules/03-per-use-pricing.md)                        | Giá, quote và phạm vi từng invocation                        |
+| [M04 — Provider gateway](docs/modules/04-provider-requests-and-gateway.md) | SSE, ACK, reports, execution                                 |
+| [M05 — Artifacts](docs/modules/05-artifacts-and-verification.md)           | Kiểm tra, giao kết quả, version, revision                    |
+| [M06 — Payments](docs/modules/06-x402-payments-and-refunds.md)             | x402, settlement, refund, reconciliation                     |
+| [M07 — Publishing](docs/modules/07-provider-publishing.md)                 | App, visibility, command revision, key và availability       |
+| [M08 — External clients](docs/modules/08-external-client-access.md)        | MCP local và scoped authorization                            |
+| [M09 — Operations](docs/modules/09-reputation-and-operations.md)           | Đánh giá, tranh chấp, sự cố, audit                           |
+| [M10 — Vault](docs/modules/10-payvoke-vault.md)                            | Deposit, withdraw, grants, holds, payout                     |
 
 M01–M10 chia theo chức năng sản phẩm; M0–M9 trong roadmap chia theo giai đoạn triển khai.
 
@@ -793,8 +789,9 @@ Ngoài phạm vi hiện tại:
 - [S01 — API và provider protocol](docs/specs/01-api-and-provider-protocol.md).
 - [S02 — x402 và PayvokeVault](docs/specs/02-x402-and-vault.md).
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
+- [S04 — AG-UI chat streaming và A2UI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
 - [Prisma schema](apps/backend/prisma/schema.prisma).
 - [Roadmap 130 task](docs/roadmap.md).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).
 
-README là bản giải thích tổng thể. S01–S03 là đặc tả triển khai chi tiết; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Không coi endpoint/ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
+README là bản giải thích tổng thể. S01–S04 là đặc tả triển khai chi tiết; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Không coi endpoint/ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.

@@ -13,6 +13,7 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { verifyStructuredDeliveries } from "../src/modules/agui/verify";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;
@@ -98,7 +99,7 @@ async function login(account: typeof wallet) {
   return `${session.name}=${encodeURIComponent(session.value)}`;
 }
 
-it("isolates provider keys, publishes catalog, and keeps starred collections private", async () => {
+it("isolates provider keys, exposes public apps, and keeps stars private", async () => {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
   const web = (
@@ -122,20 +123,12 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
   const appTwo = await web("POST", "/v1/provider/apps", {
     name: "Second",
     payoutAddress: wallet.address,
+    visibility: "PRIVATE",
     clientRequestId: randomUUID(),
   });
+  assert.equal(appTwo.statusCode, 201, appTwo.body);
   const id = appOne.json().id;
   const otherAppId = appTwo.json().id;
-  assert.equal(
-    (
-      await web("POST", `/v1/provider/apps/${id}/products`, {
-        kind: "TOOL",
-        name: "Too early",
-        description: "No key",
-      })
-    ).statusCode,
-    403,
-  );
   const keys = `/v1/provider/apps/${id}/keys`;
   const key = await web("POST", keys, {
     scopes: ["products:write"],
@@ -144,26 +137,14 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
   assert.equal(key.statusCode, 201, key.body);
   assert.equal((await web("GET", keys, undefined, otherCookie)).statusCode, 404);
   const secret = key.json().secret;
-  assert.equal((await db.providerApiKey.findFirstOrThrow()).secretHash.includes(secret), false);
-  const bearer = (url: string, payload: Record<string, unknown>, token = secret) =>
-    app.inject({ method: "POST", url, headers: { authorization: `Bearer ${token}` }, payload });
-  const first = await bearer(`/v1/provider/apps/${id}/products`, {
-    kind: "TOOL",
-    name: "Summarizer",
-    description: "Summarizes text",
-  });
-  assert.equal(first.statusCode, 201, first.body);
-  assert.equal(
-    (
-      await bearer(`/v1/provider/apps/${otherAppId}/products`, {
-        kind: "TOOL",
-        name: "Escape",
-        description: "No",
-      })
-    ).statusCode,
-    401,
-  );
-  const productId = first.json().productId;
+  assert.equal((await db.appApiKey.findFirstOrThrow()).secretHash.includes(secret), false);
+  const bearer = (method: string, url: string, payload: Record<string, unknown>, token = secret) =>
+    app.inject({
+      method: method as "POST",
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      payload,
+    });
   await db.deploymentPolicy.create({
     data: {
       version: "test",
@@ -176,18 +157,26 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
       resolutionGraceSeconds: 60,
     },
   });
-  const command = await bearer(`/v1/provider/apps/${id}/products/${productId}/commands`, {
-    draftVersion: 1,
+  const terms = {
+    deliverySeconds: 600,
+    reviewSeconds: 3600,
+    revisionPolicy: { maxIncluded: 1, description: "One in-scope revision" },
+    refundPolicy: "Refund undelivered",
+    sideEffects: "none",
+    dataUse: "This request",
+  };
+  const first = await bearer("POST", `/v1/provider/apps/${id}/commands`, {
     name: "summarize",
-    title: "Summarize",
     description: "Summarizes text",
-    inputSchema: {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      type: "object",
-      additionalProperties: false,
-      required: ["text"],
-      properties: { text: { type: "string", minLength: 1 } },
-    },
+    options: [
+      {
+        name: "text",
+        type: "STRING",
+        required: true,
+        description: "Text to summarize",
+      },
+    ],
+    positionalParameter: "text",
     outputSchema: {
       type: "object",
       additionalProperties: false,
@@ -195,98 +184,732 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
       properties: { summary: { type: "string" } },
     },
     grossAmount: "10000",
-    terms: {
-      deliverySeconds: 600,
-      reviewSeconds: 3600,
-      revisionPolicy: { maxIncluded: 0, description: "None" },
-      refundPolicy: "Refund undelivered",
-      sideEffects: "none",
-      dataUse: "This request",
-    },
+    terms,
   });
-  assert.equal(command.statusCode, 201, command.body);
-  const published = await bearer(
-    `/v1/provider/apps/${id}/products/${productId}/versions/1/submissions`,
-    { expectedRevision: command.json().revision },
+  assert.equal(first.statusCode, 201, first.body);
+  const commandId = first.json().id;
+  const invalidName = await bearer("POST", `/v1/provider/apps/${id}/commands`, {
+    name: "Not Valid",
+    description: "Invalid command name",
+    options: [{ name: "text", type: "STRING", required: true }],
+    grossAmount: "10000",
+    terms,
+  });
+  assert.equal(invalidName.statusCode, 400, invalidName.body);
+  const formOnly = await bearer("POST", `/v1/provider/apps/${id}/commands`, {
+    name: "form_only",
+    description: "Explicitly has no positional argument",
+    options: [{ name: "text", type: "STRING", required: true }],
+    positionalParameter: null,
+    grossAmount: "10000",
+    terms,
+  });
+  assert.equal(formOnly.statusCode, 201, formOnly.body);
+  assert.equal(formOnly.json().revision.positionalParameter, null);
+  const archivedByKey = await bearer(
+    "DELETE",
+    `/v1/provider/apps/${id}/commands/${formOnly.json().id}`,
+    {},
   );
-  assert.equal(published.statusCode, 200, published.body);
-  const catalog = await web("GET", "/v1/products");
-  assert.equal(catalog.json().items[0].id, productId);
-  assert.equal(catalog.json().items[0].availability, "NOT_READY");
+  assert.equal(archivedByKey.statusCode, 200, archivedByKey.body);
+  assert.equal(
+    (
+      await bearer("POST", `/v1/provider/apps/${otherAppId}/commands`, {
+        name: "escape",
+        description: "No",
+        options: [{ name: "text", type: "STRING", required: true }],
+        grossAmount: "10000",
+        terms,
+      })
+    ).statusCode,
+    401,
+  );
+  const defaulted = await bearer(
+    "POST",
+    `/v1/provider/apps/${id}/commands/${commandId}/default`,
+    {},
+  );
+  assert.equal(defaulted.statusCode, 200, defaulted.body);
+  await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
+  const catalog = await web("GET", "/v1/apps");
+  assert.equal(catalog.statusCode, 200, catalog.body);
+  assert.equal(catalog.json().items[0].id, id);
+  assert.equal(catalog.json().items[0].availability, "AVAILABLE");
+  assert.equal(catalog.json().items[0].fromPrice, "10000");
+  // Private apps stay out of the public catalog but remain visible to the owner.
+  assert.equal(
+    catalog.json().items.some((item: { id: string }) => item.id === otherAppId),
+    false,
+  );
+  assert.equal((await web("GET", `/v1/apps/${otherAppId}`)).statusCode, 200);
   const buyer = await db.walletAddress.findFirstOrThrow({
     where: { address: { equals: wallet.address, mode: "insensitive" } },
   });
-  const session = await db.usageSession.create({ data: { buyerId: buyer.userId, productId } });
+  const threadResponse = await web("POST", "/v1/threads", {
+    appId: id,
+    clientRequestId: "thread-one",
+  });
+  assert.equal(threadResponse.statusCode, 201, threadResponse.body);
+  const thread = threadResponse.json();
   const quote = await app.inject({
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie, "idempotency-key": "not-ready" },
     payload: {
-      sessionId: session.id,
-      commandId: command.json().commandId,
+      threadId: thread.id,
+      commandId,
       arguments: { text: "hello" },
       contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
       clientRequestId: "not-ready",
     },
   });
-  assert.equal(quote.statusCode, 409, quote.body);
-  assert.equal(quote.json().error, "PROVIDER_DELIVERY_NOT_READY");
-  const cloned = await bearer(`/v1/provider/apps/${id}/products/${productId}/versions`, {
-    baseVersion: 1,
-  });
-  assert.equal(cloned.statusCode, 201, cloned.body);
-  const original = await db.commandVersion.findFirstOrThrow({
-    where: { productId, productVersion: 1 },
-  });
-  const changed = await app.inject({
-    method: "PUT",
-    url: `/v1/provider/apps/${id}/products/${productId}/commands/${command.json().commandId}`,
-    headers: { authorization: `Bearer ${secret}` },
-    payload: {
-      draftVersion: 2,
-      expectedRevision: 1,
-      name: original.name,
-      title: original.title,
-      description: original.description,
-      inputSchema: original.inputSchema,
-      outputSchema: original.outputSchema,
-      grossAmount: "20000",
-      terms: original.terms,
-    },
+  assert.equal(quote.statusCode, 201, quote.body);
+  assert.equal(quote.json().effectiveArguments.text, "hello");
+  const recover = await web("GET", `/v1/quotes/${quote.json().quoteId}`);
+  assert.equal(recover.statusCode, 200, recover.body);
+  assert.equal(recover.json().quote.quoteId, quote.json().quoteId);
+  assert.equal(
+    (await web("GET", `/v1/quotes/${quote.json().quoteId}`, undefined, otherCookie)).statusCode,
+    404,
+  );
+  const original = await db.appCommandRevision.findFirstOrThrow({ where: { commandId } });
+  const changed = await bearer("PATCH", `/v1/provider/apps/${id}/commands/${commandId}`, {
+    name: "summarize",
+    description: "Summarizes text",
+    options: [
+      {
+        name: "text",
+        type: "STRING",
+        required: true,
+        description: "Text to summarize",
+      },
+    ],
+    positionalParameter: "text",
+    outputSchema: original.outputSchema as Record<string, unknown>,
+    grossAmount: "20000",
+    terms,
+    expectedRevisionId: original.id,
   });
   assert.equal(changed.statusCode, 200, changed.body);
-  assert.equal(
-    (
-      await bearer(`/v1/provider/apps/${id}/products/${productId}/versions/2/submissions`, {
-        expectedRevision: changed.json().revision,
-      })
-    ).statusCode,
-    200,
-  );
+  assert.notEqual(changed.json().revision.id, original.id);
   assert.equal(original.grossAmount.toString(), "10000");
   assert.equal(
     (
-      await db.commandVersion.findFirstOrThrow({ where: { productId, productVersion: 2 } })
+      await db.appCommandRevision.findUniqueOrThrow({
+        where: { id: changed.json().revision.id },
+      })
     ).grossAmount.toString(),
     "20000",
   );
-  assert.equal((await web("PUT", `/v1/stars/${productId}`)).statusCode, 200);
-  const collection = await web("POST", "/v1/collections", { name: "Useful" });
-  assert.equal(collection.statusCode, 201, collection.body);
-  const collectionId = collection.json().id;
+  assert.equal((await web("PUT", `/v1/apps/${id}/star`)).statusCode, 200);
+  assert.deepEqual((await web("GET", "/v1/stars", undefined, otherCookie)).json(), []);
+  assert.equal((await web("GET", "/v1/stars")).json()[0].id, id);
+  assert.equal((await web("POST", `/v1/provider/apps/${id}/suspensions`)).statusCode, 200);
+  const suspendedCatalog = (await web("GET", "/v1/apps")).json().items;
+  assert.equal(suspendedCatalog.length, 1);
+  assert.equal(suspendedCatalog[0].availability, "SUSPENDED");
   assert.equal(
-    (await web("PUT", `/v1/collections/${collectionId}/products/${productId}`)).statusCode,
+    (
+      await web("POST", "/v1/threads", {
+        appId: id,
+        clientRequestId: "thread-while-suspended",
+      })
+    ).statusCode,
+    404,
+  );
+  const replayedThread = await web("POST", "/v1/threads", {
+    appId: id,
+    clientRequestId: "thread-one",
+  });
+  assert.equal(replayedThread.statusCode, 200, replayedThread.body);
+  assert.equal(replayedThread.json().id, thread.id);
+  assert.equal((await web("GET", "/v1/stars")).json()[0].availability, "SUSPENDED");
+  await web("DELETE", `/v1/apps/${id}/star`);
+  assert.deepEqual((await web("GET", "/v1/stars")).json(), []);
+  // Inject a finalized hold as an isolated test fixture. No browser/provider path
+  // can create this state; the settlement worker is responsible in production.
+  await db.app.update({
+    where: { id },
+    data: { status: "ACTIVE", lastHeartbeatAt: new Date() },
+  });
+  const quoted = quote.json();
+  await db.invocation.create({
+    data: {
+      id: quoted.invocationId,
+      quoteId: quoted.quoteId,
+      buyerId: buyer.userId,
+      executionStatus: "QUEUED",
+    },
+  });
+  await db.settlementOperation.create({
+    data: {
+      invocationId: quoted.invocationId,
+      invocationKey: quoted.protocolQuote.invocationKey,
+      quoteDigest: quoted.quoteDigest,
+      authorizationDigest: `0x${"1".repeat(64)}`,
+      recoveredSigner: wallet.address,
+      paymentPayload: {},
+      state: "HELD",
+    },
+  });
+  await db.invocationReady.create({
+    data: { invocationId: quoted.invocationId, quoteId: quoted.quoteId },
+  });
+  assert.equal((await web("GET", `/v1/quotes/${quoted.quoteId}`)).json().quote, null);
+  const workerKey = await web("POST", keys, {
+    scopes: ["events:read", "events:ack", "reports:write"],
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  });
+  assert.equal(workerKey.statusCode, 201, workerKey.body);
+  const worker = workerKey.json().secret;
+  const workerBase = `/v1/provider/apps/${id}`;
+  const ready = await app.inject({
+    method: "GET",
+    url: `${workerBase}/events?once=1`,
+    headers: { authorization: `Bearer ${worker}` },
+  });
+  assert.equal(ready.statusCode, 200, ready.body);
+  assert.equal(ready.json().events[0].invocationId, quoted.invocationId);
+  const runId = ready.json().events[0].runId;
+  const task = `${workerBase}/invocations/${quoted.invocationId}`;
+  const postWorker = (
+    url: string,
+    payload: unknown,
+    token = worker,
+    contentType = "application/json",
+  ) =>
+    app.inject({
+      method: "POST",
+      url,
+      headers: { authorization: `Bearer ${token}`, "content-type": contentType },
+      payload: typeof payload === "string" ? payload : JSON.stringify(payload),
+    });
+  assert.ok([401, 403].includes((await postWorker(`${task}/acks`, {}, "invalid")).statusCode));
+  assert.equal(
+    (
+      await postWorker(
+        `/v1/provider/apps/${otherAppId}/invocations/${quoted.invocationId}/acks`,
+        {},
+      )
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`, undefined, otherCookie))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await postWorker(`${task}/acks`, { eventId: quoted.invocationId })).statusCode,
     200,
   );
-  assert.equal((await web("GET", "/v1/collections", undefined, otherCookie)).json().length, 0);
+  assert.equal((await postWorker(`${task}/acks`, {})).statusCode, 200);
   assert.equal(
-    (await bearer(`/v1/provider/apps/${id}/products/${productId}/suspensions`, {})).statusCode,
+    (
+      await app.inject({
+        method: "GET",
+        url: `${workerBase}/events?once=1`,
+        headers: { authorization: `Bearer ${worker}` },
+      })
+    ).json().events.length,
+    0,
+  );
+  const report = (sequence: number, type: string, data: unknown = {}) => ({
+    reportId: `report-${sequence}`,
+    sequence,
+    type,
+    data,
+  });
+  // Exercise a real open HTTP socket: injection's once=1 snapshots cannot
+  // prove that a browser EventSource stays connected for later LLM chunks.
+  const listenAddress = await app.listen({ host: "127.0.0.1", port: 0 });
+  const stopLive = new AbortController();
+  try {
+    const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/ag-ui/events?after=0`, {
+      headers: { origin, cookie },
+      signal: stopLive.signal,
+    });
+    assert.equal(live.status, 200);
+    const reader = live.body!.getReader();
+    const welcome = await reader.read();
+    assert.equal(welcome.done, false);
+    assert.match(new TextDecoder().decode(welcome.value), /: connected/);
+    const firstChunk = reader.read();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    assert.equal((await postWorker(`${task}/reports`, report(1, "started"))).statusCode, 200);
+    const streamedChunk = await Promise.race([
+      firstChunk,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("SSE_LATE_EVENT_TIMEOUT")), 4000),
+      ),
+    ]);
+    assert.equal(streamedChunk.done, false, "SSE must remain open until the client closes it");
+    assert.match(new TextDecoder().decode(streamedChunk.value), /RUN_STARTED/);
+  } finally {
+    stopLive.abort();
+  }
+  const stream = `${task}/ag-ui/streams/${runId}`;
+  const emit = (sequence: number, event: unknown) =>
+    JSON.stringify({ streamSequence: sequence, event }) + "\n";
+  const a2ui = (value: unknown) => ({ type: "CUSTOM", name: "payvoke.a2ui", value });
+  const surface = "result";
+  const ndjson = [
+    emit(1, { type: "TEXT_MESSAGE_START", messageId: "answer", role: "assistant" }),
+    emit(2, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer", delta: "Xin " }),
+    emit(
+      3,
+      a2ui({
+        version: "v0.9.1",
+        createSurface: { surfaceId: surface, catalogId: "https://payvoke.dev/a2ui/catalog/v1" },
+      }),
+    ),
+    emit(
+      4,
+      a2ui({
+        version: "v0.9.1",
+        updateComponents: {
+          surfaceId: surface,
+          components: [{ id: "root", component: "Text", text: { path: "/summary" } }],
+        },
+      }),
+    ),
+    emit(
+      5,
+      a2ui({
+        version: "v0.9.1",
+        updateDataModel: { surfaceId: surface, path: "/summary", value: "Draft" },
+      }),
+    ),
+    emit(6, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer", delta: "chào" }),
+    emit(
+      7,
+      a2ui({
+        version: "v0.9.1",
+        updateDataModel: { surfaceId: surface, path: "/summary", value: "Final" },
+      }),
+    ),
+    emit(8, { type: "TEXT_MESSAGE_END", messageId: "answer" }),
+  ].join("");
+  const beforeStream = (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`)).json().cursor;
+  const stopDeltas = new AbortController();
+  let streamed: Response;
+  let finishUpload = () => {};
+  try {
+    const live = await fetch(
+      `${listenAddress}/v1/threads/${thread.id}/ag-ui/events?after=${beforeStream}`,
+      {
+        headers: { origin, cookie },
+        signal: stopDeltas.signal,
+      },
+    );
+    assert.equal(live.status, 200);
+    const reader = live.body!.getReader();
+    assert.match(new TextDecoder().decode((await reader.read()).value), /: connected/);
+    const lines = ndjson.split("\n").filter(Boolean);
+    const uploadBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${lines.slice(0, 2).join("\n")}\n`));
+        finishUpload = () => {
+          controller.enqueue(new TextEncoder().encode(`${lines.slice(2).join("\n")}\n`));
+          controller.close();
+        };
+      },
+    });
+    const upload = fetch(`${listenAddress}${stream}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${worker}`, "content-type": "application/x-ndjson" },
+      body: uploadBody,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    let received = "";
+    const timeout = AbortSignal.timeout(4000);
+    while (!received.includes("TEXT_MESSAGE_CONTENT")) {
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          timeout.addEventListener("abort", () => reject(new Error("SSE_TEXT_WIDGET_TIMEOUT")), {
+            once: true,
+          }),
+        ),
+      ]);
+      assert.equal(next.done, false, "SSE must remain open while the provider streams");
+      received += new TextDecoder().decode(next.value);
+    }
+    assert.match(received, /Xin /);
+    assert.equal(
+      (await db.invocation.findUniqueOrThrow({ where: { id: quoted.invocationId } }))
+        .executionStatus,
+      "RUNNING",
+    );
+    // The provider upload is still open while the buyer has already received
+    // the first LLM delta. Complete the same HTTP stream with A2UI updates.
+    finishUpload();
+    finishUpload = () => {};
+    streamed = await upload;
+    const endTimeout = AbortSignal.timeout(4000);
+    while (!received.includes("a2ui-surface")) {
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          endTimeout.addEventListener("abort", () => reject(new Error("SSE_A2UI_TIMEOUT")), {
+            once: true,
+          }),
+        ),
+      ]);
+      assert.equal(next.done, false);
+      received += new TextDecoder().decode(next.value);
+    }
+    assert.match(received, /a2ui_operations/);
+    // Surface activity IDs are namespaced by run exactly once, so replays and
+    // repeated data-model updates target the same widget.
+    assert.ok(received.includes(`${runId}-a2ui-${surface}`));
+    // This live browser connection received LLM text and A2UI before the
+    // provider could submit its final result report.
+    assert.equal(
+      (await db.invocation.findUniqueOrThrow({ where: { id: quoted.invocationId } }))
+        .executionStatus,
+      "RUNNING",
+    );
+  } finally {
+    finishUpload();
+    stopDeltas.abort();
+  }
+  const streamedBody = await streamed.text();
+  assert.equal(streamed.status, 200, streamedBody);
+  assert.equal(JSON.parse(streamedBody).lastCommittedSequence, 8);
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(8, { type: "TEXT_MESSAGE_END", messageId: "answer" }),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
     200,
   );
-  assert.equal((await web("GET", "/v1/products")).json().items.length, 0);
-  assert.equal((await web("GET", "/v1/stars")).json()[0].availability, "UNAVAILABLE");
-  await web("DELETE", `/v1/stars/${productId}`);
-  assert.equal((await web("GET", "/v1/collections")).json()[0].items.length, 0);
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(8, { type: "TEXT_MESSAGE_END", messageId: "other" }),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(9, { type: "TOOL_CALL_START", toolCallId: "danger" }),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(9, { type: "TEXT_MESSAGE_START", messageId: "x", role: "system" }),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(
+          9,
+          a2ui({
+            version: "v0.9.1",
+            updateDataModel: { surfaceId: surface, path: "/summary", value: "<script>x</script>" },
+          }),
+        ),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(
+          9,
+          a2ui({
+            version: "v0.9.1",
+            updateDataModel: { surfaceId: surface, path: "/__proto__/polluted", value: true },
+          }),
+        ),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    400,
+  );
+  const snapshot = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
+  assert.equal(snapshot.statusCode, 200, snapshot.body);
+  assert.equal(snapshot.json().messages[0].content, "Xin chào");
+  assert.equal(
+    snapshot.json().surfaces[0].content.a2ui_operations.at(-1).updateDataModel.value,
+    "Final",
+  );
+  const streamedToBuyer = await web("GET", `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`);
+  assert.equal(streamedToBuyer.statusCode, 200, streamedToBuyer.body);
+  assert.match(streamedToBuyer.body, /event: ag-ui/);
+  assert.match(streamedToBuyer.body, /TEXT_MESSAGE_CONTENT/);
+  const resumedToBuyer = await app.inject({
+    method: "GET",
+    url: `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`,
+    headers: { origin, cookie, "last-event-id": snapshot.json().cursor },
+  });
+  assert.equal(resumedToBuyer.statusCode, 200, resumedToBuyer.body);
+  assert.doesNotMatch(resumedToBuyer.body, /event: ag-ui/);
+  // A question ends the current run and parks the invocation in WAITING_BUYER.
+  // The buyer answer is free and starts a new run for the same invocation/hold.
+  const questionReport = report(2, "question", {
+    questionId: "format",
+    prompt: "Which format should I use?",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["format"],
+      properties: { format: { type: "string", enum: ["md", "txt"] } },
+    },
+  });
+  assert.equal((await postWorker(`${task}/reports`, questionReport)).statusCode, 200);
+  assert.equal(
+    (await web("GET", `/v1/invocations/${quoted.invocationId}`)).json().executionStatus,
+    "WAITING_BUYER",
+  );
+  const questionSnapshot = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
+  assert.equal(questionSnapshot.json().questions.at(-1).questionId, "format");
+  assert.equal(questionSnapshot.json().questions.at(-1).status, "OPEN");
+  const answerBody = {
+    questionId: "format",
+    arguments: { format: "md" },
+    clientRequestId: "answer-format",
+  };
+  const answered = await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, answerBody);
+  assert.equal(answered.statusCode, 202, answered.body);
+  const continuationRun = answered.json().runId;
+  assert.notEqual(continuationRun, runId);
+  assert.equal(
+    (await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, answerBody)).statusCode,
+    202,
+  );
+  assert.equal(
+    (
+      await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, {
+        ...answerBody,
+        clientRequestId: "answer-format-2",
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, {
+        questionId: "format",
+        arguments: { format: "pdf" },
+        clientRequestId: "answer-format-3",
+      })
+    ).statusCode,
+    409,
+  );
+  const continuationEvents = await app.inject({
+    method: "GET",
+    url: `${workerBase}/events?once=1`,
+    headers: { authorization: `Bearer ${worker}` },
+  });
+  const continuationEvent = continuationEvents
+    .json()
+    .events.find((event: { type: string }) => event.type === "invocation.answer");
+  assert.equal(continuationEvent.runId, continuationRun);
+  assert.deepEqual(continuationEvent.arguments, { format: "md" });
+  assert.equal(
+    (await postWorker(`${task}/acks`, { eventId: answered.json().answerId })).statusCode,
+    200,
+  );
+  assert.equal((await postWorker(`${task}/reports`, report(1, "started"))).statusCode, 200);
+  const continuationStream = `${task}/ag-ui/streams/${continuationRun}`;
+  const continuationNdjson = [
+    emit(1, { type: "TEXT_MESSAGE_START", messageId: "answer2", role: "assistant" }),
+    emit(2, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "Tiếp " }),
+    emit(3, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "tục" }),
+    emit(4, { type: "TEXT_MESSAGE_END", messageId: "answer2" }),
+  ].join("");
+  assert.equal(
+    (await postWorker(continuationStream, continuationNdjson, worker, "application/x-ndjson"))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        stream,
+        emit(9, { type: "TEXT_MESSAGE_END", messageId: "answer" }),
+        worker,
+        "application/x-ndjson",
+      )
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        `${task}/reports`,
+        report(2, "result", { artifactVersion: 1, output: { wrong: "x" }, files: [] }),
+      )
+    ).statusCode,
+    400,
+  );
+  const validResult = report(2, "result", {
+    artifactVersion: 1,
+    output: { summary: "Done" },
+    files: [],
+  });
+  assert.equal((await postWorker(`${task}/reports`, validResult)).statusCode, 200);
+  assert.equal((await postWorker(`${task}/reports`, validResult)).statusCode, 200);
+  assert.equal(
+    (
+      await postWorker(`${task}/reports`, {
+        ...validResult,
+        data: { artifactVersion: 1, output: { summary: "Changed" }, files: [] },
+      })
+    ).statusCode,
+    409,
+  );
+  const invocationStatus = await web("GET", `/v1/invocations/${quoted.invocationId}`);
+  assert.equal(invocationStatus.json().executionStatus, "VERIFYING");
+  const unverified = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
+  assert.equal(unverified.json().invocations[0].output, null);
+  assert.equal(await verifyStructuredDeliveries(db), 1);
+  assert.equal(await verifyStructuredDeliveries(db), 0);
+  assert.equal(await db.paymentDeliveryEvidence.count(), 1);
+  const delivered = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
+  assert.equal(delivered.json().invocations[0].executionStatus, "DELIVERED");
+  assert.deepEqual(delivered.json().invocations[0].output, { summary: "Done" });
+  const threadDetails = await web("GET", `/v1/threads/${thread.id}`);
+  assert.equal(threadDetails.json().activeQuoteId, null);
+  assert.equal(threadDetails.json().revisionPolicy.maxIncluded, 1);
+  // An in-scope revision reuses the invocation/hold and starts one more run.
+  const revisionBody = { reason: "Shorten the summary", clientRequestId: "revision-1" };
+  const revision = await web(
+    "POST",
+    `/v1/invocations/${quoted.invocationId}/revisions`,
+    revisionBody,
+  );
+  assert.equal(revision.statusCode, 202, revision.body);
+  const revisionRun = revision.json().runId;
+  assert.notEqual(revisionRun, continuationRun);
+  assert.equal(
+    (await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, revisionBody))
+      .statusCode,
+    202,
+  );
+  const revisionEvents = await app.inject({
+    method: "GET",
+    url: `${workerBase}/events?once=1`,
+    headers: { authorization: `Bearer ${worker}` },
+  });
+  const revisionEvent = revisionEvents
+    .json()
+    .events.find((event: { type: string }) => event.type === "invocation.revision_requested");
+  assert.equal(revisionEvent.runId, revisionRun);
+  assert.equal(revisionEvent.targetArtifactVersion, 1);
+  assert.equal(
+    (await postWorker(`${task}/acks`, { eventId: revision.json().revisionId })).statusCode,
+    200,
+  );
+  assert.equal((await postWorker(`${task}/reports`, report(1, "started"))).statusCode, 200);
+  assert.equal(
+    (
+      await postWorker(
+        `${task}/reports`,
+        report(2, "result", { artifactVersion: 1, output: { summary: "Same" }, files: [] }),
+      )
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await postWorker(
+        `${task}/reports`,
+        report(2, "result", { artifactVersion: 2, output: { summary: "Short" }, files: [] }),
+      )
+    ).statusCode,
+    200,
+  );
+  assert.equal(await verifyStructuredDeliveries(db), 1);
+  const revised = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
+  assert.equal(revised.json().invocations[0].executionStatus, "DELIVERED");
+  assert.deepEqual(revised.json().invocations[0].output, { summary: "Short" });
+  assert.equal(
+    (
+      await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, {
+        reason: "Again",
+        clientRequestId: "revision-2",
+      })
+    ).statusCode,
+    409,
+  );
+  // Cursors older than the replay window must bootstrap from the snapshot.
+  const earliest = await db.aguiStreamEvent.findMany({
+    where: { threadId: thread.id },
+    orderBy: { cursor: "asc" },
+    take: 2,
+    select: { cursor: true },
+  });
+  await db.aguiStreamEvent.updateMany({
+    where: { cursor: { in: earliest.map((event) => event.cursor) } },
+    data: { createdAt: new Date(Date.now() - 8 * 86400000) },
+  });
+  assert.equal(
+    (await web("GET", `/v1/threads/${thread.id}/ag-ui/events?once=1&after=${earliest[0].cursor}`))
+      .statusCode,
+    409,
+  );
+  // A verified chat turn frees the admission slot while preserving its
+  // original held payment and complete transcript.
+  await db.app.update({ where: { id }, data: { status: "ACTIVE", lastHeartbeatAt: new Date() } });
+  const nextQuote = await app.inject({
+    method: "POST",
+    url: "/v1/quotes",
+    headers: { origin, cookie, "idempotency-key": "second-paid-turn" },
+    payload: {
+      threadId: thread.id,
+      commandId,
+      arguments: { text: "follow up" },
+      contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+      clientRequestId: "second-paid-turn",
+    },
+  });
+  assert.equal(nextQuote.statusCode, 201, nextQuote.body);
+  assert.deepEqual(
+    nextQuote
+      .json()
+      .contextManifest.messages.map(({ role, content }: { role: string; content: string }) => ({
+        role,
+        content,
+      })),
+    [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "Xin chào\nTiếp tục" },
+    ],
+  );
+  assert.equal(
+    (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`)).json().prompts.length,
+    2,
+  );
   const rotated = await web("POST", keys, {
     scopes: ["products:write"],
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
@@ -294,10 +917,12 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
   assert.equal(rotated.statusCode, 201, rotated.body);
   assert.equal(
     (
-      await bearer(`/v1/provider/apps/${id}/products`, {
-        kind: "TOOL",
-        name: "Old",
+      await bearer("POST", `/v1/provider/apps/${id}/commands`, {
+        name: "old",
         description: "No",
+        options: [{ name: "text", type: "STRING", required: true }],
+        grossAmount: "10000",
+        terms,
       })
     ).statusCode,
     401,
@@ -310,8 +935,15 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
   assert.equal(
     (
       await bearer(
-        `/v1/provider/apps/${id}/products`,
-        { kind: "TOOL", name: "Denied", description: "No" },
+        "POST",
+        `/v1/provider/apps/${id}/commands`,
+        {
+          name: "denied",
+          description: "No",
+          options: [{ name: "text", type: "STRING", required: true }],
+          grossAmount: "10000",
+          terms,
+        },
         restricted.json().secret,
       )
     ).statusCode,
@@ -325,8 +957,15 @@ it("isolates provider keys, publishes catalog, and keeps starred collections pri
   assert.equal(
     (
       await bearer(
-        `/v1/provider/apps/${id}/products`,
-        { kind: "TOOL", name: "Revoked", description: "No" },
+        "POST",
+        `/v1/provider/apps/${id}/commands`,
+        {
+          name: "revoked",
+          description: "No",
+          options: [{ name: "text", type: "STRING", required: true }],
+          grossAmount: "10000",
+          terms,
+        },
         restricted.json().secret,
       )
     ).statusCode,

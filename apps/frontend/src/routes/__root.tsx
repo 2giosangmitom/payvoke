@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Find AI agents and tools, save useful work, and publish your own on Payvoke. Building on Avalanche Fuji.",
+          "Find apps with useful slash commands, keep one thread list, and publish your own on Payvoke. Building on Avalanche Fuji.",
       },
     ],
     links: [
@@ -31,9 +31,9 @@ export const Route = createRootRoute({
       <main className="page-container workspace-gate">
         <div>
           <h1>This page is not available.</h1>
-          <p>The link may have changed. Browse the directory to find an agent or tool.</p>
-          <Link to="/agents" className="button-primary">
-            Browse agents
+          <p>The link may have changed. Browse the store to find an app and its slash commands.</p>
+          <Link to="/store" className="button-primary">
+            Browse the store
           </Link>
         </div>
       </main>

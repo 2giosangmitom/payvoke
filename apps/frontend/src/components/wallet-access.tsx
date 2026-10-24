@@ -101,7 +101,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
       setVerifiedAddress(address);
       await refetch();
       setOpen(false);
-      void navigate({ to: "/app" });
+      void navigate({ to: "/dashboard" });
     } catch (cause) {
       setError(walletError(cause));
     } finally {
@@ -249,10 +249,10 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                     className="dialog-action"
                     onClick={() => {
                       setOpen(false);
-                      void navigate({ to: "/app" });
+                      void navigate({ to: "/dashboard" });
                     }}
                   >
-                    Open workspace <ArrowRight size={16} />
+                    Open Studio <ArrowRight size={16} />
                   </Button>
                   <Button
                     variant="outline"

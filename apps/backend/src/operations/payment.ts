@@ -26,7 +26,7 @@ export type PaymentRun = {
   webOrigin: string;
   vault: Address;
   buyer: Address;
-  sessionId: string;
+  threadId: string;
   commandId: string;
   clientRequestId: string;
   arguments: Record<string, unknown>;
@@ -117,7 +117,7 @@ export async function preparePayment(
   const response = await session.request(
     "/v1/quotes",
     {
-      sessionId: run.sessionId,
+      threadId: run.threadId,
       commandId: run.commandId,
       arguments: run.arguments,
       clientRequestId: run.clientRequestId,

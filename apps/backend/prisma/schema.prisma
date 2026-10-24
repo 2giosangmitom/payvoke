@@ -1,6 +1,6 @@
 // Auth models are generated in auth.prisma by `pnpm auth:schema`.
 // This file retains deferred Payvoke domain drafts only. The minimal active
-// Product/ProductVersion/CommandVersion/UsageSession/Quote/DeploymentPolicy
+// App/AppCommand/AppCommandRevision/ChatThread/Quote/DeploymentPolicy
 // definitions live in commerce.prisma; merge these drafts as features ship,
 // do not uncomment duplicate definitions wholesale.
 // Invocation/settlement journal definitions are active in payments.prisma.

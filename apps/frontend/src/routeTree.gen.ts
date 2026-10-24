@@ -11,6 +11,16 @@ import { Route as MarketRouteImport } from './routes/_market'
 import { Route as MarketIndexRouteImport } from './routes/_market.index'
 import { Route as MarketAgentsRouteImport } from './routes/_market.agents'
 import { Route as MarketAppRouteImport } from './routes/_market.app'
+import { Route as MarketChatRouteImport } from './routes/_market.chat'
+import { Route as MarketDashboardRouteImport } from './routes/_market.dashboard'
+import { Route as MarketRunRouteImport } from './routes/_market.run'
+import { Route as MarketStoreRouteImport } from './routes/_market.store'
+import { Route as MarketChatIndexRouteImport } from './routes/_market.chat.index'
+import { Route as MarketChatThreadIdRouteImport } from './routes/_market.chat.$threadId'
+import { Route as MarketDashboardIndexRouteImport } from './routes/_market.dashboard.index'
+import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
+import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
+import { Route as MarketDashboardAppsAppIdRouteImport } from './routes/_market.dashboard.apps.$appId'
 
 const MarketRoute = MarketRouteImport.update({
   id: '/_market',
@@ -31,30 +41,146 @@ const MarketAppRoute = MarketAppRouteImport.update({
   path: '/app',
   getParentRoute: () => MarketRoute,
 } as any)
+const MarketChatRoute = MarketChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketDashboardRoute = MarketDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketRunRoute = MarketRunRouteImport.update({
+  id: '/run',
+  path: '/run',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketStoreRoute = MarketStoreRouteImport.update({
+  id: '/store',
+  path: '/store',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketChatIndexRoute = MarketChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketChatRoute,
+} as any)
+const MarketChatThreadIdRoute = MarketChatThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => MarketChatRoute,
+} as any)
+const MarketDashboardIndexRoute = MarketDashboardIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketDashboardRoute,
+} as any)
+const MarketStoreIndexRoute = MarketStoreIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketStoreRoute,
+} as any)
+const MarketStoreAppIdRoute = MarketStoreAppIdRouteImport.update({
+  id: '/$appId',
+  path: '/$appId',
+  getParentRoute: () => MarketStoreRoute,
+} as any)
+const MarketDashboardAppsAppIdRoute =
+  MarketDashboardAppsAppIdRouteImport.update({
+    id: '/apps/$appId',
+    path: '/apps/$appId',
+    getParentRoute: () => MarketDashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof MarketIndexRoute
   '/agents': typeof MarketAgentsRoute
   '/app': typeof MarketAppRoute
+  '/chat': typeof MarketChatRouteWithChildren
+  '/dashboard': typeof MarketDashboardRouteWithChildren
+  '/run': typeof MarketRunRoute
+  '/store': typeof MarketStoreRouteWithChildren
+  '/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/store/$appId': typeof MarketStoreAppIdRoute
+  '/chat/': typeof MarketChatIndexRoute
+  '/dashboard/': typeof MarketDashboardIndexRoute
+  '/store/': typeof MarketStoreIndexRoute
+  '/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
 }
 export interface FileRoutesByTo {
   '/agents': typeof MarketAgentsRoute
   '/app': typeof MarketAppRoute
+  '/run': typeof MarketRunRoute
   '/': typeof MarketIndexRoute
+  '/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/store/$appId': typeof MarketStoreAppIdRoute
+  '/chat': typeof MarketChatIndexRoute
+  '/dashboard': typeof MarketDashboardIndexRoute
+  '/store': typeof MarketStoreIndexRoute
+  '/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_market': typeof MarketRouteWithChildren
   '/_market/agents': typeof MarketAgentsRoute
   '/_market/app': typeof MarketAppRoute
+  '/_market/chat': typeof MarketChatRouteWithChildren
+  '/_market/dashboard': typeof MarketDashboardRouteWithChildren
+  '/_market/run': typeof MarketRunRoute
+  '/_market/store': typeof MarketStoreRouteWithChildren
   '/_market/': typeof MarketIndexRoute
+  '/_market/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/_market/store/$appId': typeof MarketStoreAppIdRoute
+  '/_market/chat/': typeof MarketChatIndexRoute
+  '/_market/dashboard/': typeof MarketDashboardIndexRoute
+  '/_market/store/': typeof MarketStoreIndexRoute
+  '/_market/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agents' | '/app'
+  fullPaths:
+    | '/'
+    | '/agents'
+    | '/app'
+    | '/chat'
+    | '/dashboard'
+    | '/run'
+    | '/store'
+    | '/chat/$threadId'
+    | '/store/$appId'
+    | '/chat/'
+    | '/dashboard/'
+    | '/store/'
+    | '/dashboard/apps/$appId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/agents' | '/app' | '/'
-  id: '__root__' | '/_market' | '/_market/agents' | '/_market/app' | '/_market/'
+  to:
+    | '/agents'
+    | '/app'
+    | '/run'
+    | '/'
+    | '/chat/$threadId'
+    | '/store/$appId'
+    | '/chat'
+    | '/dashboard'
+    | '/store'
+    | '/dashboard/apps/$appId'
+  id:
+    | '__root__'
+    | '/_market'
+    | '/_market/agents'
+    | '/_market/app'
+    | '/_market/chat'
+    | '/_market/dashboard'
+    | '/_market/run'
+    | '/_market/store'
+    | '/_market/'
+    | '/_market/chat/$threadId'
+    | '/_market/store/$appId'
+    | '/_market/chat/'
+    | '/_market/dashboard/'
+    | '/_market/store/'
+    | '/_market/dashboard/apps/$appId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -91,18 +217,138 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketAppRouteImport
       parentRoute: typeof MarketRoute
     }
+    '/_market/chat': {
+      id: '/_market/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof MarketChatRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/dashboard': {
+      id: '/_market/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof MarketDashboardRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/run': {
+      id: '/_market/run'
+      path: '/run'
+      fullPath: '/run'
+      preLoaderRoute: typeof MarketRunRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/store': {
+      id: '/_market/store'
+      path: '/store'
+      fullPath: '/store'
+      preLoaderRoute: typeof MarketStoreRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/chat/': {
+      id: '/_market/chat/'
+      path: '/'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof MarketChatIndexRouteImport
+      parentRoute: typeof MarketChatRoute
+    }
+    '/_market/chat/$threadId': {
+      id: '/_market/chat/$threadId'
+      path: '/$threadId'
+      fullPath: '/chat/$threadId'
+      preLoaderRoute: typeof MarketChatThreadIdRouteImport
+      parentRoute: typeof MarketChatRoute
+    }
+    '/_market/dashboard/': {
+      id: '/_market/dashboard/'
+      path: '/'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof MarketDashboardIndexRouteImport
+      parentRoute: typeof MarketDashboardRoute
+    }
+    '/_market/store/': {
+      id: '/_market/store/'
+      path: '/'
+      fullPath: '/store/'
+      preLoaderRoute: typeof MarketStoreIndexRouteImport
+      parentRoute: typeof MarketStoreRoute
+    }
+    '/_market/store/$appId': {
+      id: '/_market/store/$appId'
+      path: '/$appId'
+      fullPath: '/store/$appId'
+      preLoaderRoute: typeof MarketStoreAppIdRouteImport
+      parentRoute: typeof MarketStoreRoute
+    }
+    '/_market/dashboard/apps/$appId': {
+      id: '/_market/dashboard/apps/$appId'
+      path: '/apps/$appId'
+      fullPath: '/dashboard/apps/$appId'
+      preLoaderRoute: typeof MarketDashboardAppsAppIdRouteImport
+      parentRoute: typeof MarketDashboardRoute
+    }
   }
 }
+
+interface MarketChatRouteChildren {
+  MarketChatThreadIdRoute: typeof MarketChatThreadIdRoute
+  MarketChatIndexRoute: typeof MarketChatIndexRoute
+}
+
+const MarketChatRouteChildren: MarketChatRouteChildren = {
+  MarketChatThreadIdRoute: MarketChatThreadIdRoute,
+  MarketChatIndexRoute: MarketChatIndexRoute,
+}
+
+const MarketChatRouteWithChildren = MarketChatRoute._addFileChildren(
+  MarketChatRouteChildren,
+)
+
+interface MarketDashboardRouteChildren {
+  MarketDashboardIndexRoute: typeof MarketDashboardIndexRoute
+  MarketDashboardAppsAppIdRoute: typeof MarketDashboardAppsAppIdRoute
+}
+
+const MarketDashboardRouteChildren: MarketDashboardRouteChildren = {
+  MarketDashboardIndexRoute: MarketDashboardIndexRoute,
+  MarketDashboardAppsAppIdRoute: MarketDashboardAppsAppIdRoute,
+}
+
+const MarketDashboardRouteWithChildren = MarketDashboardRoute._addFileChildren(
+  MarketDashboardRouteChildren,
+)
+
+interface MarketStoreRouteChildren {
+  MarketStoreAppIdRoute: typeof MarketStoreAppIdRoute
+  MarketStoreIndexRoute: typeof MarketStoreIndexRoute
+}
+
+const MarketStoreRouteChildren: MarketStoreRouteChildren = {
+  MarketStoreAppIdRoute: MarketStoreAppIdRoute,
+  MarketStoreIndexRoute: MarketStoreIndexRoute,
+}
+
+const MarketStoreRouteWithChildren = MarketStoreRoute._addFileChildren(
+  MarketStoreRouteChildren,
+)
 
 interface MarketRouteChildren {
   MarketAgentsRoute: typeof MarketAgentsRoute
   MarketAppRoute: typeof MarketAppRoute
+  MarketChatRoute: typeof MarketChatRouteWithChildren
+  MarketDashboardRoute: typeof MarketDashboardRouteWithChildren
+  MarketRunRoute: typeof MarketRunRoute
+  MarketStoreRoute: typeof MarketStoreRouteWithChildren
   MarketIndexRoute: typeof MarketIndexRoute
 }
 
 const MarketRouteChildren: MarketRouteChildren = {
   MarketAgentsRoute: MarketAgentsRoute,
   MarketAppRoute: MarketAppRoute,
+  MarketChatRoute: MarketChatRouteWithChildren,
+  MarketDashboardRoute: MarketDashboardRouteWithChildren,
+  MarketRunRoute: MarketRunRoute,
+  MarketStoreRoute: MarketStoreRouteWithChildren,
   MarketIndexRoute: MarketIndexRoute,
 }
 

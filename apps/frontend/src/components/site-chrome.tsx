@@ -5,7 +5,7 @@ import { Button } from "@/src/components/ui/button";
 import { WalletAccess } from "./wallet-access";
 import { ThemeToggle } from "./theme-select";
 
-type SiteSection = "home" | "browse" | "workspace";
+type SiteSection = "home" | "store" | "chat" | "dashboard";
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -48,11 +48,14 @@ export function SiteHeader({
           <Link to="/" aria-current={current === "home" ? "page" : undefined}>
             Home
           </Link>
-          <Link to="/agents" aria-current={current === "browse" ? "page" : undefined}>
-            Browse agents
+          <Link to="/store" aria-current={current === "store" ? "page" : undefined}>
+            Store
           </Link>
-          <Link to="/app" aria-current={current === "workspace" ? "page" : undefined}>
-            Workspace
+          <Link to="/chat" aria-current={current === "chat" ? "page" : undefined}>
+            Chat
+          </Link>
+          <Link to="/dashboard" aria-current={current === "dashboard" ? "page" : undefined}>
+            Studio
           </Link>
         </nav>
         <div className="header-actions">
@@ -81,11 +84,26 @@ export function SiteHeader({
           >
             Home <ArrowUpRight size={15} />
           </Link>
-          <Link to="/agents" onClick={() => setMenu(false)}>
-            Browse agents <ArrowUpRight size={15} />
+          <Link
+            to="/store"
+            onClick={() => setMenu(false)}
+            aria-current={current === "store" ? "page" : undefined}
+          >
+            Store <ArrowUpRight size={15} />
           </Link>
-          <Link to="/app" onClick={() => setMenu(false)}>
-            Workspace <ArrowUpRight size={15} />
+          <Link
+            to="/chat"
+            onClick={() => setMenu(false)}
+            aria-current={current === "chat" ? "page" : undefined}
+          >
+            Chat <ArrowUpRight size={15} />
+          </Link>
+          <Link
+            to="/dashboard"
+            onClick={() => setMenu(false)}
+            aria-current={current === "dashboard" ? "page" : undefined}
+          >
+            Studio <ArrowUpRight size={15} />
           </Link>
         </nav>
       )}
@@ -104,14 +122,13 @@ export function SiteFooter() {
               payvoke<span className="brand-period">.</span>
             </span>
           </Link>
-          <p>A place for the tools you build and the ones you need.</p>
+          <p>A place for the apps you build and the ones you need.</p>
         </div>
         <div className="footer-links">
           <a href="/#overview">Overview</a>
-          <Link to="/agents">Browse agents</Link>
-          <a href="/#marketplace">Explore</a>
-          <a href="/#providers">Providers</a>
-          <Link to="/app">Workspace</Link>
+          <Link to="/store">Store</Link>
+          <Link to="/chat">Chat</Link>
+          <Link to="/dashboard">Studio</Link>
         </div>
       </div>
       <div className="page-container footer-bottom">

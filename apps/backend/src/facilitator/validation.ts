@@ -38,7 +38,7 @@ export async function readPersistedPayment(
   const row = await db.quote.findUnique({
     where: { id: requirements.extra.quoteId },
     include: {
-      session: { include: { product: true } },
+      thread: { include: { app: true } },
       invocation: { include: { settlement: { include: { attempt: true } } } },
     },
   });
@@ -49,9 +49,9 @@ export async function readPersistedPayment(
     if (
       document.quoteId !== row.id ||
       document.invocationId !== row.invocationId ||
-      document.sessionId !== row.sessionId ||
-      document.productId !== row.session.productId ||
-      row.buyerId !== row.session.buyerId ||
+      document.sessionId !== row.threadId ||
+      document.productId !== row.thread.appId ||
+      row.buyerId !== row.thread.buyerId ||
       row.validUntil.getTime() !== document.validUntil * 1000
     )
       throw new Error("identity mismatch");
@@ -145,21 +145,21 @@ export function createPaymentValidator(
         if (!wallet || getAddress(wallet.address) !== getAddress(document.protocolQuote.buyer)) {
           throw new VaultValidationError("buyer_wallet_mismatch", 403);
         }
-        const session = await db.usageSession.findUnique({
-          where: { id: row.sessionId },
-          include: { product: true },
+        const thread = await db.chatThread.findUnique({
+          where: { id: row.threadId },
+          include: { app: true },
         });
         if (
-          !session ||
-          session.buyerId !== row.buyerId ||
-          session.productId !== document.productId ||
-          session.archivedAt ||
-          session.product.status !== "PUBLISHED" ||
-          session.product.kind !== "TOOL"
+          !thread ||
+          thread.buyerId !== row.buyerId ||
+          thread.appId !== document.productId ||
+          thread.archivedAt ||
+          thread.app.status !== "ACTIVE" ||
+          thread.app.archivedAt
         ) {
           throw new VaultValidationError("admission_unavailable", 409);
         }
-        if (session.activeQuoteId !== row.id) throw new VaultValidationError("session_busy", 409);
+        if (thread.activeQuoteId !== row.id) throw new VaultValidationError("thread_busy", 409);
       },
     );
     if (observation.kind === "existing-hold") {

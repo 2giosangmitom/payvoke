@@ -8,7 +8,7 @@
 - Buyer API là nguồn sự thật cho catalog, quyền sở hữu, quote, invocation và kết quả. Bridge không gọi provider trực tiếp, không tự tính giá và không nhận provider API key.
 - Khóa chi phiên được tạo và giữ trên máy buyer. Platform/facilitator/remote MCP không giữ khóa riêng buyer; chỉ nhận public key và chứng từ đã ký. Không bao giờ yêu cầu khóa ví chính.
 - Mọi invocation mới đi qua custom x402 **upfront** của PayvokeVault trên Fuji; chỉ `HELD` đã được xác nhận mới cho phép phát việc. Không dùng x402 `exact` để thay thế scheme riêng.
-- Remote Streamable HTTP chưa nằm trong MVP. Nếu bổ sung trước khi có thiết kế ủy quyền ký riêng, chỉ cho đọc: `search_products`, `get_product`, `list_commands`, `get_invocation`, `get_result`, trong quyền được cấp. Không mở submit bằng cách đưa khóa buyer lên server.
+- Remote Streamable HTTP chưa nằm trong MVP. Nếu bổ sung trước khi có thiết kế ủy quyền ký riêng, chỉ cho đọc: `search_apps`, `get_app`, `list_commands`, `get_invocation`, `get_result`, trong quyền được cấp. Không mở submit bằng cách đưa khóa buyer lên server.
 - Không cung cấp MCP prompts, resources, sampling, roots, elicitation hoặc Tasks extension trong MVP. Dùng các tools tĩnh và polling API. Không phụ thuộc host có slash UI hay thông báo nền.
 
 ### 1.1. Phiên bản nguồn được chốt
@@ -24,28 +24,28 @@ Kiểm tra nguồn chính thức ngày **2026-10-19**:
 
 Không trộn hướng dẫn SDK v1 (`@modelcontextprotocol/sdk`) với v2. Protocol mới khai báo version/capabilities trong metadata **từng request**, dùng `server/discover`, không mặc định handshake `initialize` hay MCP session [S1, S3]. MVP bắt buộc test host với baseline trên; host chỉ hỗ trợ `2025-11-25` phải được ghi rõ không tương thích hoặc có adapter legacy được kiểm thử riêng. Không âm thầm coi host cũ đã hỗ trợ bản mới.
 
-## 2. Mô hình sản phẩm, phiên và commands
+## 2. Mô hình app, thread và commands
 
-### 2.1. Phiên sử dụng, quyền chi và quyền API
+### 2.1. Thread, quyền chi và quyền API
 
-| ID                      | Ý nghĩa                                              | Ràng buộc                                                                                             |
-| ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `sessionId`             | Usage session của buyer API                          | Gắn bất biến `owner`, `workspaceId`, `productId`; không phải phiên đăng nhập hoặc phiên transport MCP |
-| `grantId`               | Ủy quyền chi cho public spend key trong PayvokeVault | Hạn mức/thời hạn/thu hồi onchain; không phải scope API                                                |
-| `clientAuthorizationId` | Quyền API cấp cho một cài đặt bridge                 | Token scoped, owner và workspace allowlist; thu hồi độc lập với `grantId`                             |
+| ID                      | Ý nghĩa                                              | Ràng buộc                                                                                         |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `threadId`              | Thread hội thoại của buyer API                       | Gắn bất biến `owner`, `workspaceId`, `appId`; không phải phiên đăng nhập hoặc phiên transport MCP |
+| `grantId`               | Ủy quyền chi cho public spend key trong PayvokeVault | Hạn mức/thời hạn/thu hồi onchain; không phải scope API                                            |
+| `clientAuthorizationId` | Quyền API cấp cho một cài đặt bridge                 | Token scoped, owner và workspace allowlist; thu hồi độc lập với `grantId`                         |
 
-Một `sessionId` chỉ dùng một product. Đổi product phải tạo session mới. Product có `kind: agent | tool`; cả hai đều có commands, version và JSON Schema do provider đăng qua API:
+Một `threadId` chỉ dùng một app. Đổi app phải tạo thread mới. Mọi app có commands, command revision và JSON Schema do provider đăng qua Studio/API:
 
-- `agent`: UI web là chat + slash commands; message thông thường ánh xạ về command mặc định đã đăng, không tự biến thành lệnh chạy tùy ý.
-- `tool`: UI web là form sinh từ schema + khu vực tiến độ/kết quả; **không có chat composer**. Nhãn `/summarize` chỉ là cách tham chiếu command, không bắt tool phải có chat.
-- MCP chỉ expose bộ tools cố định ở §7. `list_commands` trả metadata/schema động bên trong product; không đăng mỗi command thành một MCP tool, tránh thay đổi tool list theo phiên và collision.
-- `commandId` ổn định trong product; cặp `(commandId,productVersion)` xác định definition/schema bất biến. Quote đóng băng đúng version cùng input/context. Khi provider đổi phiên bản, quote cũ vẫn giữ snapshot hoặc bị API từ chối rõ ràng theo điều khoản; bridge không tự nâng version rồi thu tiền.
+- UI web dùng chung chat + slash commands; free text ánh xạ vào tham số vị trí của command đang chọn/default, không tự biến thành lệnh chạy tùy ý.
+- Command không có tham số vị trí mở form sinh từ options/schema trong thread; nhãn `/summarize` chỉ là cách tham chiếu command.
+- MCP chỉ expose bộ tools cố định ở §7. `list_commands` trả metadata/schema động bên trong app; không đăng mỗi command thành một MCP tool, tránh thay đổi tool list theo phiên và collision.
+- `commandId` ổn định trong app; `commandRevisionId` xác định definition/schema bất biến. Quote đóng băng đúng revision cùng input/context. Khi provider sửa command, quote cũ vẫn giữ snapshot hoặc bị API từ chối rõ ràng theo điều khoản; bridge không tự đổi revision rồi thu tiền.
 
 ### 2.2. Provider slash command không phải MCP prompt
 
 MCP tools là hành động model có thể gọi; MCP prompts là mẫu messages để user chọn, có thể được một host trình bày thành slash nhưng protocol **không bắt buộc UI đó** [S4, S5]. `/ask` hay `/summarize` của Payvoke là command nghiệp vụ có schema/giá, không phải `prompts/get`, và lấy prompt không được gây thanh toán.
 
-Nếu sau này thêm prompts tiện ích, chúng chỉ hướng dẫn chọn product/prepare, không thực thi command, không ký và không bỏ qua xác nhận. Không quảng cáo “thêm server là host tự có `/ask`”.
+Nếu sau này thêm prompts tiện ích, chúng chỉ hướng dẫn chọn app/prepare, không thực thi command, không ký và không bỏ qua xác nhận. Không quảng cáo “thêm server là host tự có `/ask`”.
 
 ## 3. Transport và vòng đời
 
@@ -54,7 +54,7 @@ Nếu sau này thêm prompts tiện ích, chúng chỉ hướng dẫn chọn pro
 1. User tự cài bản bridge có version/integrity đã kiểm tra và chấp thuận lệnh executable/arguments. Host chạy executable local đã pin, không đưa URL/lệnh từ provider vào shell.
 2. Host trao đổi JSON-RPC qua stdin/stdout, một message mỗi dòng. **stdout chỉ dành cho MCP**; log đã redaction đi stderr. Browser approval, CLI hướng dẫn và key material không ghi vào stdout [S3].
 3. Bridge đọc profile cấu hình local do user tạo: API origin cố định, chain/vault/token allowlist, keychain reference, client authorization, policy. Chỉ profile name/path cấu hình trusted lúc khởi chạy; không tool nào được đổi profile hay origin.
-4. Dùng SDK v2 xử lý `server/discover`, metadata và capability; chỉ quảng cáo `tools`, `listChanged: false`. Tool list ổn định, sắp tên deterministic. Không giữ “product hiện tại” ngầm theo connection.
+4. Dùng SDK v2 xử lý `server/discover`, metadata và capability; chỉ quảng cáo `tools`, `listChanged: false`. Tool list ổn định, sắp tên deterministic. Không giữ “app hiện tại” ngầm theo connection.
 5. stdin EOF thì bridge dừng nhanh. Invocation đã tạo trên API vẫn tồn tại. Restart khôi phục journal local và dùng IDs để đọc/retry; không tự mua lại [S3].
 
 Không mở cổng HTTP local cho MCP hoặc callback trong MVP. Chấp nhận rằng host/OS bị chiếm quyền cùng user có thể đọc bộ nhớ hoặc điều khiển tool; keychain và gate không bảo vệ tuyệt đối trước compromise máy local. Hạn mức onchain là lớp chặn thiệt hại cuối cùng [S9].
@@ -75,9 +75,9 @@ Bridge giữ external access token audience buyer API; bearer token nằm ở he
 
 | Scope                 | Cho phép                                                                        |
 | --------------------- | ------------------------------------------------------------------------------- |
-| `catalog:read`        | Tìm/lấy product và command schemas                                              |
+| `catalog:read`        | Tìm/lấy app và command schemas                                                  |
 | `workspace:read`      | Đọc context được cho phép trong workspace; không tự động chọn toàn bộ workspace |
-| `invocation:prepare`  | Tạo usage session và quote, chưa chi tiền                                       |
+| `invocation:prepare`  | Tạo thread và quote, chưa chi tiền                                              |
 | `invocation:submit`   | Gửi invocation đã có quote; vẫn cần quyền chi và local approval                 |
 | `invocation:read`     | Xem trạng thái/kết quả invocation thuộc owner và workspace đã cấp               |
 | `invocation:continue` | Answer/revision/cancellation trong invocation hiện có                           |
@@ -87,7 +87,7 @@ Prepare cần thêm `workspace:read` khi chọn context; submit/continue/read đ
 ### 4.2. Signing grant và policy
 
 - User đăng ký public key local bằng giao dịch từ ví chính trên web, tạo `grantId`; thiết lập tối đa mỗi lần, tổng trong khoảng thời gian, expiry theo M10. Token API không có quyền tăng giới hạn onchain.
-- Policy local phải có allowlist product/command/version, workspace, max mỗi quote, max tổng trong kỳ, expiry, concurrency và cách tính reservation. User xác lập rõ trước khi bật submit; **không tự gán con số “an toàn”**.
+- Policy local phải có allowlist app/command/revision, workspace, max mỗi quote, max tổng trong kỳ, expiry, concurrency và cách tính reservation. User xác lập rõ trước khi bật submit; **không tự gán con số “an toàn”**.
 - Hạn mức hiệu lực là giao của policy local, grant onchain, số dư và quyền API. Không đủ một điều kiện thì fail closed; không tự nạp, rút, approve token, thay key, tăng cap hoặc chuyển chain.
 - Bản policy có version/hash và owner. Thay nới policy chỉ qua trusted CLI/UI ngoài tools, phải có xác nhận; không parse yêu cầu nới cap từ mô tả provider.
 - Local reservation phải atomic giữa mọi process cùng profile. Sau crash, khoản chưa rõ phải tiếp tục giữ reservation đến khi đối soát, không giải phóng chỉ vì timeout.
@@ -113,7 +113,7 @@ Các route dưới đây thuộc buyer-auth plane của S01; không thay đổi 
 6. **Đăng ký quyền chi riêng:** user mở trang vault đã xác thực, web hiển thị đúng public key/fingerprint pairing rồi ví chính ký giao dịch đăng ký cap/expiry trên Fuji. Bridge đọc trạng thái grant từ API/RPC trusted và kiểm tra chain/vault/key/owner; không coi approval API là grant onchain. Profile ghi `grantId` đã xác nhận. Token có submit nhưng chưa có grant vẫn không chi được.
 7. **Kết thúc:** xóa verifier, code và pending record local khi thành công/hết hạn. API lưu audit pairing owner/client/public key/scopes/expiry, không lưu secrets. Polling theo server interval có backoff, không polling vô hạn.
 
-Kiểm soát bắt buộc: giới hạn pending pairings theo IP/client, brute-force userCode, thời hạn ngắn, single-use, chống CSRF approval, không cho token của pairing A đi qua verifier B. Code/fingerprint đối chiếu không chứng minh binary đáng tin; user vẫn phải tự cài bridge chính thức. Hướng dẫn không phê duyệt mã do agent/chat/người khác gửi nếu không tự khởi chạy CLI.
+Kiểm soát bắt buộc: giới hạn pending pairings theo IP/client, brute-force userCode, thời hạn ngắn, single-use, chống CSRF approval, không cho token của pairing A đi qua verifier B. Code/fingerprint đối chiếu không chứng minh binary đáng tin; user vẫn phải tự cài bridge chính thức. Hướng dẫn không phê duyệt mã do chat/người khác gửi nếu không tự khởi chạy CLI.
 
 ### 5.3. Lưu secret và local approval
 
@@ -139,29 +139,29 @@ Token audience MCP **khác** token buyer API. Không nhận token buyer rồi pa
 
 | Nghiệp vụ          | API                                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------------------- |
-| Tìm product        | `GET /v1/products`                                                                                        |
-| Lấy product        | `GET /v1/products/{productId}`                                                                            |
-| Commands           | `GET /v1/products/{productId}/commands`                                                                   |
-| Tạo usage session  | `POST /v1/sessions` body `{productId,workspaceId,clientRequestId}`                                        |
-| Chuẩn bị           | `POST /v1/quotes` body `{sessionId,commandId,arguments,contextSelection,clientRequestId}`                 |
+| Tìm app            | `GET /v1/apps`                                                                                            |
+| Lấy app            | `GET /v1/apps/{appId}`                                                                                    |
+| Commands           | `GET /v1/apps/{appId}` trả command/active revision                                                        |
+| Tạo thread         | `POST /v1/threads` body `{appId,workspaceId,clientRequestId}`                                             |
+| Chuẩn bị           | `POST /v1/quotes` body `{threadId,commandId,arguments,contextSelection,clientRequestId}`                  |
 | Submit             | `POST /v1/invocations` body `{quoteId}`, header `Idempotency-Key`; retry trả phí thêm `PAYMENT-SIGNATURE` |
 | Trạng thái/kết quả | `GET /v1/invocations/{id}`, `GET /v1/invocations/{id}/result`                                             |
 | Trả lời            | `POST /v1/invocations/{id}/answers` body `{questionId,arguments,clientRequestId}`                         |
 | Sửa trong phạm vi  | `POST /v1/invocations/{id}/revisions` body `{reason,clientRequestId}`                                     |
 | Hủy                | `POST /v1/invocations/{id}/cancellations` body `{reason,clientRequestId}`                                 |
 
-Query filters/pagination và DTO chi tiết lấy từ spec API/OpenAPI cùng bộ tài liệu, không tự giả định đường `/mcp/run` hoặc `/products/{id}/execute`. Các field adapter ở §7 là output MCP, không tự thêm chúng vào HTTP body ngoài bảng này.
+Query filters/pagination và DTO chi tiết lấy từ spec API/OpenAPI cùng bộ tài liệu, không tự giả định đường `/mcp/run` hoặc `/apps/{id}/execute`. Các field adapter ở §7 là output MCP, không tự thêm chúng vào HTTP body ngoài bảng này.
 
 ### 6.2. Prepare không trả tiền
 
-Quote trả **cả `quoteId` và `invocationId` đã reserve**, snapshot input/context/version/economics và `quoteDigest`. Bridge lưu snapshot/digest, thời hạn và mapping request local trước khi cho submit. Chuẩn bị không ký x402, không giữ tiền và không phát việc provider.
+Quote trả **cả `quoteId` và `invocationId` đã reserve**, snapshot input/context/command revision/economics và `quoteDigest`. Bridge lưu snapshot/digest, thời hạn và mapping request local trước khi cho submit. Chuẩn bị không ký x402, không giữ tiền và không phát việc provider.
 
-`contextSelection` đúng S01: `{messageIds:[],briefVersionId:null,fileIds:[]}`; server resolve phiên bản/content hashes từ dữ liệu thuộc buyer. Không ngầm upload filesystem, gửi nguyên chat host hoặc mọi tài liệu workspace. Tool product không chọn message history. MVP không có tool upload/read file; file phải được upload trên web trước. Schema command có thể có text nghiệp vụ nhưng không được dùng để yêu cầu bridge fetch URL, đọc file local hoặc ký dữ liệu.
+`contextSelection` đúng S01: `{messageIds:[],briefVersionId:null,fileIds:[]}`; server resolve phiên bản/content hashes từ dữ liệu thuộc buyer. Không ngầm upload filesystem, gửi nguyên chat host hoặc mọi tài liệu workspace. App không tự chọn message history ngoài phần buyer chỉ định. MVP không có tool upload/read file; file phải được upload trên web trước. Schema command có thể có text nghiệp vụ nhưng không được dùng để yêu cầu bridge fetch URL, đọc file local hoặc ký dữ liệu.
 
 ### 6.3. Submit có kiểm tra xác nhận
 
 1. Model gọi `submit_invocation` với quote ID và digest đã thấy. Bridge lấy invocationId từ quote và dùng chính invocationId làm Idempotency-Key theo S01, không cho model chọn một submission identity khác. Bridge tra quote chuẩn bị, owner/profile và approval ngoài model ở §8; thiếu approval trả lỗi, **không ký**.
-2. Bridge kiểm tra policy/grant/balance bằng nguồn trusted; reservation atomic theo `invocationId`. Kiểm tra quote còn hạn, input/context/version không đổi. Không tự re-quote nếu hết hạn.
+2. Bridge kiểm tra policy/grant/balance bằng nguồn trusted; reservation atomic theo `invocationId`. Kiểm tra quote còn hạn, input/context/command revision không đổi. Không tự re-quote nếu hết hạn.
 3. Gọi `POST /v1/invocations {quoteId}` chưa có payment. API trả 402 + `PAYMENT-REQUIRED` cho **chính quote đó**. Auth 401/403 không phải lỗi thanh toán, không xử lý bằng ký tiền.
 4. Kiểm tra challenge theo scheme Payvoke đã chốt: x402 version/scheme, `eip155:43113`, USDC/vault deployment allowlist, amount gross integer base units, invocation ID, quote digest, buyer, provider, phí/điều khoản, deadline. Mọi thành phần phải khớp quote và typed-data spec M06/M10; không dựng calldata hoặc domain từ mô tả provider. Mismatch → dừng trước ký.
 5. Spend key ký payload chuẩn của custom scheme, bind `grantId` theo spec thanh toán. Retry đúng body và **cùng Idempotency-Key**, thêm `PAYMENT-SIGNATURE`; Authorization API vẫn phải có. x402 signature không thay thế owner auth. SDK generic x402 chỉ dùng nếu đã đăng ký custom signer đúng scheme; không fallback `exact` [S10].
@@ -182,21 +182,21 @@ Thời gian chờ xác nhận onchain vẫn cần deadline RPC/HTTP hữu hạn.
 
 ### 7.2. Bảng tools
 
-| Tool                 | Input                                                                 | Output `data` tối thiểu                                                                                                                                                           | Scope                                                  |
-| -------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `search_products`    | `{query?:string,kind?:"agent"\|"tool",cursor?:string,limit?:integer}` | `{products:[product summary có productId,kind,name],nextCursor?}`; query map theo API đã chốt                                                                                     | `catalog:read`                                         |
-| `get_product`        | `{productId}`                                                         | Product DTO: ID, kind, provider, version/điều khoản, trạng thái bán; không credentials                                                                                            | `catalog:read`                                         |
-| `list_commands`      | `{productId,productVersion?:integer,cursor?:string,limit?:integer}`   | `{items:[CommandDTO],nextCursor}`; DTO giữ `commandId,productVersion,inputSchema,outputSchema` theo S01; productVersion input map query `version`                                 | `catalog:read`                                         |
-| `create_session`     | `{productId,workspaceId,clientRequestId}`                             | `{sessionId,productId,workspaceId,kind}` từ API                                                                                                                                   | `invocation:prepare`                                   |
-| `prepare_invocation` | `{sessionId,commandId,arguments,contextSelection,clientRequestId}`    | Frozen quote DTO gồm `quoteId,invocationId,quoteDigest`, economics, expiry, command/input/context snapshot; adapter thêm `approvalRequired:true` và hướng dẫn user mở trusted CLI | `invocation:prepare` + `workspace:read` nếu có context |
-| `submit_invocation`  | `{quoteId,expectedQuoteDigest}`                                       | `{invocationId,sessionId,paymentStatus,executionStatus,statusUrl,resultUrl}` từ API; adapter thêm `accepted:boolean,pollAfterMs?`; 202 HELD → accepted true                       | `invocation:submit` + policy/grant/approval            |
-| `get_invocation`     | `{invocationId}`                                                      | Invocation DTO: ID, session/product, trạng thái nghiệp vụ và payment tách biệt, progress, câu hỏi/schema đang chờ, timestamps; adapter thêm `pollAfterMs?`                        | `invocation:read`                                      |
-| `get_result`         | `{invocationId}`                                                      | Result DTO: nội dung/kết quả, verification, artifacts metadata, quyền/link xem trên web; chưa sẵn sàng → `RESULT_NOT_READY`                                                       | `invocation:read`                                      |
-| `answer`             | `{invocationId,questionId,arguments,clientRequestId}`                 | Invocation/action DTO; không tạo payment hay invocation mới                                                                                                                       | `invocation:continue`                                  |
-| `revise`             | `{invocationId,reason:string,clientRequestId}`                        | Invocation/action DTO; ngoài phạm vi → `REVISION_OUT_OF_SCOPE`                                                                                                                    | `invocation:continue`                                  |
-| `cancel`             | `{invocationId,reason:string,clientRequestId}`                        | Cancellation action/current invocation DTO; thể hiện requested/accepted/rejected theo API, không hứa refund                                                                       | `invocation:continue`                                  |
+| Tool                 | Input                                                             | Output `data` tối thiểu                                                                                                                                                                    | Scope                                                  |
+| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| `search_apps`        | `{query?:string,cursor?:string,limit?:integer}`                   | `{items:[app summary],nextCursor?}`; query map sang HTTP `q`                                                                                                                               | `catalog:read`                                         |
+| `get_app`            | `{appId}`                                                         | App DTO: ID, provider, command/active revision, terms, availability; không credentials                                                                                                     | `catalog:read`                                         |
+| `list_commands`      | `{appId,cursor?:string,limit?:integer}`                           | `{items:[CommandDTO],nextCursor}`; DTO giữ `commandId,revision:{id,options,inputSchema,outputSchema,grossAmount,terms}` theo S01                                                           | `catalog:read`                                         |
+| `create_thread`      | `{appId,clientRequestId,title?}`                                  | `{threadId,appId,title,createdAt}` từ API                                                                                                                                                  | `invocation:prepare`                                   |
+| `prepare_invocation` | `{threadId,commandId,arguments,contextSelection,clientRequestId}` | Frozen quote DTO gồm `quoteId,invocationId,quoteDigest`, economics, expiry, command revision/input/context snapshot; adapter thêm `approvalRequired:true` và hướng dẫn user mở trusted CLI | `invocation:prepare` + `workspace:read` nếu có context |
+| `submit_invocation`  | `{quoteId,expectedQuoteDigest}`                                   | `{invocationId,threadId,paymentStatus,executionStatus,statusUrl,resultUrl}` từ API; adapter thêm `accepted:boolean,pollAfterMs?`; 202 HELD → accepted true                                 | `invocation:submit` + policy/grant/approval            |
+| `get_invocation`     | `{invocationId}`                                                  | Invocation DTO: ID, thread/app, trạng thái nghiệp vụ và payment tách biệt, progress, câu hỏi/schema đang chờ, timestamps; adapter thêm `pollAfterMs?`                                      | `invocation:read`                                      |
+| `get_result`         | `{invocationId}`                                                  | Result DTO: nội dung/kết quả, verification, artifacts metadata, quyền/link xem trên web; chưa sẵn sàng → `RESULT_NOT_READY`                                                                | `invocation:read`                                      |
+| `answer`             | `{invocationId,questionId,arguments,clientRequestId}`             | Invocation/action DTO; không tạo payment hay invocation mới                                                                                                                                | `invocation:continue`                                  |
+| `revise`             | `{invocationId,reason:string,clientRequestId}`                    | Invocation/action DTO; ngoài phạm vi → `REVISION_OUT_OF_SCOPE`                                                                                                                             | `invocation:continue`                                  |
+| `cancel`             | `{invocationId,reason:string,clientRequestId}`                    | Cancellation action/current invocation DTO; thể hiện requested/accepted/rejected theo API, không hứa refund                                                                                | `invocation:continue`                                  |
 
-`create_session` dùng clientRequestId và Idempotency-Key tương ứng như S01; mất response retry cùng key/body nhận lại session cũ. `search_products.query` map sang HTTP query `q`, không gửi tên query tùy ý. Các tool mutation có clientRequestId phải đặt header khớp; riêng submit tự lấy invocationId đã reserve làm key.
+`create_thread` dùng clientRequestId và Idempotency-Key tương ứng như S01; mất response retry cùng key/body nhận lại thread cũ. `search_apps.query` map sang HTTP query `q`, không gửi tên query tùy ý. Các tool mutation có clientRequestId phải đặt header khớp; riêng submit tự lấy invocationId đã reserve làm key.
 
 Annotations: các GET tools `readOnlyHint:true`; các mutation còn lại false. Submit/cancel phải được mô tả có tác động tài chính/nghiệp vụ. `idempotentHint` chỉ true khi dedup semantics thực sự được bảo đảm với keys bắt buộc; annotation không phải cơ chế cấp quyền, model/host không được dùng nó để bỏ gate [S4].
 
@@ -208,7 +208,7 @@ MVP không tự fetch URL do provider trả. `get_result` trả text có giới 
 
 Bridge không coi `confirmed:true`, digest model gửi lại hoặc quyền gọi tool do host cấp là sự đồng ý trả tiền. `expectedQuoteDigest` chỉ dùng kiểm tra snapshot. Buyer phải duyệt quote qua CLI theo quy trình dưới đây.
 
-MVP dùng trusted local CLI ngoài MCP: user tự chạy `payvoke approve-quote <quoteId>` (tên lệnh là yêu cầu UX, chưa có implementation). CLI lấy quote từ buyer API cùng profile, hiện product/provider/command/version, chính xác arguments và context được gửi, gross USDC/phí, expiry, invocation ID, policy còn lại và grant cap/balance cập nhật; nếu không đọc được balance thì không cho xác nhận. User xác nhận tại TTY do CLI trực tiếp kiểm soát, không đọc xác nhận từ stdin của host hay nhận flag auto-yes.
+MVP dùng trusted local CLI ngoài MCP: user tự chạy `payvoke approve-quote <quoteId>` (tên lệnh là yêu cầu UX, chưa có implementation). CLI lấy quote từ buyer API cùng profile, hiện app/provider/command revision, chính xác arguments và context được gửi, gross USDC/phí, expiry, invocation ID, policy còn lại và grant cap/balance cập nhật; nếu không đọc được balance thì không cho xác nhận. User xác nhận tại TTY do CLI trực tiếp kiểm soát, không đọc xác nhận từ stdin của host hay nhận flag auto-yes.
 
 CLI ghi approval local một lần, bind `{owner,clientAuthorizationId,profile,quoteId,invocationId,quoteDigest,spendPolicyHash,expiresAt}` trong storage có quyền truy cập hạn chế và khóa chống race. Đây là quyết định người dùng ngoài model, không token gửi vào tool. Bridge chỉ có thể dùng approval cho đúng quote; retry cùng invocation được tái dùng quyết định cũ, không dùng cho invocation mới. Nếu host không có terminal phù hợp thì dừng paid flow và đưa user về web thực hiện invocation, không thêm approval tool.
 
@@ -220,7 +220,7 @@ Các tool không nhận đối số hạ tầng tùy ý, gồm API/base URL, cal
 
 ## 9. Idempotency, retry và mất phản hồi
 
-- API hash-bind `clientRequestId` theo owner + operation + object đích + canonical request payload. Cùng key/cùng payload trả cùng resource/action; cùng key/khác payload → conflict. Prepare bind cả arguments/contextSelection/command/session; answers bind question; revisions/cancellations bind reason. Không tự thay business key khi retry.
+- API hash-bind `clientRequestId` theo owner + operation + object đích + canonical request payload. Cùng key/cùng payload trả cùng resource/action; cùng key/khác payload → conflict. Prepare bind cả arguments/contextSelection/command/thread; answers bind question; revisions/cancellations bind reason. Không tự thay business key khi retry.
 - Submit `Idempotency-Key` bắt buộc bằng invocationId của quote; quote đã bind immutable digest/invocation. Contract dùng invocationKey dẫn xuất từ invocationId theo S02. Sai header key bị từ chối trước charge, không tạo execution/payment thứ hai. Chữ ký bind economics, không chỉ bind header key.
 - Trước network send, journal local lưu owner/profile/keys/quote/digest/reserved invocation ID, phase và reservation atomic. Không ghi private key hay payment signature vào plaintext journal. Restart cần ký lại chỉ khi scheme cho phép cùng business invocation; chưa rõ thì read/reconcile trước, không nonce/quote mới.
 - Mất response prepare: retry cùng `clientRequestId` và body để nhận quote cũ. Quote hết hạn thì hiển thị lỗi, user chủ động tạo thao tác mới/approval mới.
@@ -249,7 +249,7 @@ Các mã dưới đây là mã adapter Payvoke; giữ `requestId`/mã lỗi gố
 | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `AUTH_REVOKED`                                         | Không                                  | User pairing lại ngoài MCP; không ký tiền                                       |
 | `INSUFFICIENT_SCOPE`, `WORKSPACE_FORBIDDEN`, `NOT_FOUND`                                | Không                                  | Kiểm tra quyền/ID; không lộ dữ liệu object khác owner                           |
 | `INVALID_ARGUMENTS`, `COMMAND_VERSION_UNAVAILABLE`                                      | Không                                  | Trả field path/schema error đã redaction; lấy commands lại, prepare mới nếu cần |
-| `SESSION_PRODUCT_MISMATCH`                                                              | Không                                  | Tạo usage session đúng product; không sửa product session cũ                    |
+| `THREAD_APP_MISMATCH`                                                                   | Không                                  | Tạo thread đúng app; không sửa app của thread cũ                                |
 | `QUOTE_EXPIRED`, `QUOTE_DIGEST_MISMATCH`                                                | Không                                  | Không auto-requote; user chuẩn bị và xác nhận mới                               |
 | `CONFIRMATION_REQUIRED`, `POLICY_DENIED`                                                | Không                                  | Chỉ ra trusted CLI/web và giới hạn bị chặn; không nhận approval qua model       |
 | `SPEND_GRANT_MISSING`, `SPEND_GRANT_REVOKED`, `BUDGET_EXCEEDED`, `INSUFFICIENT_BALANCE` | Không                                  | Mở web trusted; ví chính xử lý grant/nạp nếu user muốn                          |
@@ -270,27 +270,27 @@ Không coi các mục sau đã được chốt chỉ vì có ví dụ. Deploymen
 - Max schema/input/output sizes, max search page size, context/file giới hạn; policy cap/kỳ/concurrency do user xác nhận. Tiền biểu diễn integer base-unit string USDC (6 decimals), không dùng float để so tiền.
 - Chính sách phí/trần, giữ tiền/hoàn/payout, xử lý pending reconciliation và grant window lấy từ M06/M10/spec thanh toán. Chưa chốt thì không enable spending; không dùng “MVP default” ngầm.
 
-Audit ghi client authorization/profile identity (không secret), owner/workspace/product/session/command version, quote/invocation IDs, digest, business key hash, policy decision/reservation, approval timestamp, kết quả payment/reconciliation. Không log context nhạy cảm hoặc nội dung input mặc định; retention/access theo policy.
+Audit ghi client authorization/profile identity (không secret), owner/workspace/app/thread/command revision, quote/invocation IDs, digest, business key hash, policy decision/reservation, approval timestamp, kết quả payment/reconciliation. Không log context nhạy cảm hoặc nội dung input mặc định; retention/access theo policy.
 
 ## 13. Ví dụ đầu-cuối
 
 Ví dụ là **business tool arguments**, không phải JSON-RPC envelope hoàn chỉnh; SDK thêm metadata bắt buộc theo protocol. IDs, schema và amount chỉ minh họa, không deployment defaults.
 
-### 13.1. Agent `/ask`
+### 13.1. App `/ask`
 
-1. User chọn product `research-agent` (`kind:agent`), command metadata `/ask`, version 1; parameters có `question:string`.
-2. `create_session({productId:"prod_agent",workspaceId:"ws_A",clientRequestId:"session_agent_01"})` → `sessionId:"ses_agent"`.
-3. `prepare_invocation({sessionId:"ses_agent",commandId:"cmd_ask",arguments:{question:"So sánh hai đề xuất trong file đã chọn"},contextSelection:{messageIds:[],briefVersionId:null,fileIds:["file_A"]},clientRequestId:"req_ask_01"})` → `quoteId:"quo_A"`, `invocationId:"inv_A"`, `quoteDigest:"digest_A"`, quote frozen. Digest trong ví dụ là nhãn minh họa; trên wire phải đủ bytes32 S02. Không lấy toàn bộ host chat.
+1. User chọn app `research`, command `/ask` với option `question:string`.
+2. `create_thread({appId:"app_research",clientRequestId:"thread_ask_01"})` → `threadId:"thr_ask"`.
+3. `prepare_invocation({threadId:"thr_ask",commandId:"cmd_ask",arguments:{question:"So sánh hai đề xuất trong file đã chọn"},contextSelection:{messageIds:[],briefVersionId:null,fileIds:["file_A"]},clientRequestId:"req_ask_01"})` → `quoteId:"quo_A"`, `invocationId:"inv_A"`, `quoteDigest:"digest_A"`, quote frozen. Digest trong ví dụ là nhãn minh họa; trên wire phải đủ bytes32 S02. Không lấy toàn bộ host chat.
 4. User chạy CLI approve quote, xem input/file/phí/hạn mức và xác nhận. Host không cần có `/ask` slash; nó chỉ gọi prepare tool.
 5. `submit_invocation({quoteId:"quo_A",expectedQuoteDigest:"digest_A"})` → bridge dùng Idempotency-Key `inv_A`, xử lý 402 rồi retry x402 → API 202/HELD → MCP trả `inv_A` ngay.
 6. `get_invocation({invocationId:"inv_A"})` → câu hỏi; `answer({invocationId:"inv_A",questionId:"q_A",arguments:{focus:"chi phí"},clientRequestId:"answer_A"})`; không payment mới. Poll rồi `get_result`.
 
-### 13.2. Tool `/summarize`
+### 13.2. App `/summarize` qua form
 
-1. Product `document-summarizer` (`kind:tool`) có command `/summarize`, parameters `{fileId:string,style:enum}`. Web hiển thị form file/style, không chat composer.
-2. `create_session({productId:"prod_tool",workspaceId:"ws_A",clientRequestId:"session_tool_01"})` → `ses_tool`. Không dùng `ses_agent` cho command này.
-3. `prepare_invocation({sessionId:"ses_tool",commandId:"cmd_summary",arguments:{fileId:"file_A",style:"bullets"},contextSelection:{messageIds:[],briefVersionId:null,fileIds:["file_A"]},clientRequestId:"req_summary_01"})` → quote mới. Ví dụ này thuộc product có schema file/style khác fixture text của S01. API kiểm tra fileId và context thuộc owner và thống nhất; không tự tải đường dẫn local.
-4. User approve quote mới; submit qua cùng x402 flow, poll `get_invocation`, rồi `get_result`. Tool không cần LLM hoặc hội thoại; kết quả có thể chỉ là artifact.
+1. App `document-summarizer` có command `/summarize`, options `{fileId:string,style:enum}`. Web mở form options trong thread chung.
+2. `create_thread({appId:"app_summarizer",clientRequestId:"thread_summary_01"})` → `thr_summary`. Không dùng `thr_ask` cho command này.
+3. `prepare_invocation({threadId:"thr_summary",commandId:"cmd_summary",arguments:{fileId:"file_A",style:"bullets"},contextSelection:{messageIds:[],briefVersionId:null,fileIds:["file_A"]},clientRequestId:"req_summary_01"})` → quote mới. API kiểm tra fileId/context thuộc owner và thống nhất; không tự tải đường dẫn local.
+4. User approve quote mới; submit qua cùng x402 flow, poll `get_invocation`, rồi `get_result`.
 5. `revise({invocationId:"inv_B",reason:"Giữ tối đa năm ý theo phạm vi đã mua",clientRequestId:"revision_B"})` không payment. Nếu API báo ngoài phạm vi, dừng và hỏi user có muốn một lượt mới; không tự quote/charge.
 
 ## 14. Acceptance tests bắt buộc
@@ -300,7 +300,7 @@ Ví dụ là **business tool arguments**, không phải JSON-RPC envelope hoàn 
 - [ ] SDK package/version/integrity pin chính xác; `server/discover`, per-request metadata, tools/list và tools/call chạy với host/Inspector hỗ trợ `2026-07-28`. Host legacy bị từ chối rõ hoặc qua adapter legacy được test, không trộn era.
 - [ ] Stdout chỉ có MCP messages; stderr và lỗi không chứa token/key/payment signature. EOF/restart không mất invocation đã tạo.
 - [ ] Tool list cố định và outputSchema validate được cả success/error; không tạo dynamic tool cho provider commands, không quảng cáo prompts/Tasks không hỗ trợ.
-- [ ] Agent có chat + slash; tool có form/no composer. Test host không có slash UI vẫn hoàn thành cả hai ví dụ bằng tools.
+- [ ] Mọi app dùng chung chat shell + slash command; command không có positional mở form. Test host không có slash UI vẫn hoàn thành cả hai ví dụ bằng tools.
 
 ### Auth, pairing và isolation
 
@@ -308,7 +308,7 @@ Ví dụ là **business tool arguments**, không phải JSON-RPC envelope hoàn 
 - [ ] Cùng pairing exchange chỉ phát một token; mất response yêu cầu pairing lại; token không xuất hiện ở browser URL/MCP/log. Public key/scopes không thay sau approval.
 - [ ] Wallet login/approval API không tự tạo grant. Token submit thiếu grant không ký; grant còn hạn nhưng token revoke cũng không được submit.
 - [ ] Thu hồi token có hiệu lực trên request tiếp; revoke grant chặn settlement sau xác nhận; race đã HELD không bị báo hoàn tự động. Owner vẫn đọc kết quả trên web.
-- [ ] Đổi owner/workspace bằng session/quote/invocation/question/file ID đoán được bị chặn; possession of ID không phải auth.
+- [ ] Đổi owner/workspace bằng thread/quote/invocation/question/file ID đoán được bị chặn; possession of ID không phải auth.
 - [ ] Không secure keychain → paid mode bị tắt; profile/config không chứa plaintext key. Tool args không đổi được origin/token/vault/chain/calldata.
 
 ### Thanh toán và chống injection
@@ -317,11 +317,11 @@ Ví dụ là **business tool arguments**, không phải JSON-RPC envelope hoàn 
 - [ ] Approval bind quote/digest/invocation/owner/policy/expiry; sửa arguments/context/version/amount/phí/provider/deadline sau approval không ký.
 - [ ] Challenge sai scheme/network/USDC/vault/owner/invocation/digest/economics bị chặn trước ký; 401/403 không đi vào 402 handler; không fallback x402 exact.
 - [ ] Payment signature không thể thay API owner auth; API scopes không thể nâng grant cap; hết cap/số dư/expiry không phát việc provider.
-- [ ] Prompt injection trong product description/file/provider question/result không tạo approval, nới cap, gửi secret, fetch URL hoặc mua thêm. `confirmed:true` bị outer schema từ chối.
+- [ ] Prompt injection trong app description/file/provider question/result không tạo approval, nới cap, gửi secret, fetch URL hoặc mua thêm. `confirmed:true` bị outer schema từ chối.
 
 ### Idempotency và async
 
-- [ ] Mất response prepare retry cùng key nhận cùng quote/invocation; cùng key đổi payload conflict. Session product bất biến.
+- [ ] Mất response prepare retry cùng key nhận cùng quote/invocation; cùng key đổi payload conflict. App của thread bất biến.
 - [ ] Hai submit đồng thời/cùng quote/khác JSON-RPC IDs chỉ giữ tiền một lần và một logical provider execution. Khác idempotency key không cho thu lại cùng invocation.
 - [ ] Crash sau ký, sau broadcast, sau HELD trước response, sau enqueue: restart dùng journal + read/reconcile; không tạo quote/invocation/nonce mới để né trạng thái chưa rõ.
 - [ ] Local budget reservation atomic qua nhiều process; timeout/404 chưa rõ không giải phóng tiền để vượt cap. Backend/contract vẫn enforce độc lập.

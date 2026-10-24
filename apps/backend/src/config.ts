@@ -17,6 +17,9 @@ const schema = Type.Object({
   PAYMENTS_ENABLED: Type.Boolean({ default: false }),
   FACILITATOR_URL: Type.Optional(Type.String()),
   FACILITATOR_TOKEN: Type.Optional(Type.String()),
+  // Buyer AG-UI replay window. A cursor older than the oldest event inside
+  // this window must bootstrap from the snapshot instead.
+  AGUI_CURSOR_RETENTION_SECONDS: Type.Integer({ minimum: 60, default: 604800 }),
 });
 
 export type Config = Readonly<Static<typeof schema>>;

@@ -100,7 +100,7 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
       });
       return {
         invocationId: invocation.id,
-        sessionId: invocation.quote.sessionId,
+        threadId: invocation.quote.threadId,
         paymentStatus:
           operation.state === "PENDING" && attempt?.state === "UNKNOWN"
             ? "UNKNOWN"

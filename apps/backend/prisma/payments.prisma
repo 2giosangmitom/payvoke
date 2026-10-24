@@ -18,6 +18,12 @@ enum SettlementAttemptState {
 enum InvocationExecutionStatus {
   NOT_STARTED
   QUEUED
+  ACKED
+  RUNNING
+  WAITING_BUYER
+  VERIFYING
+  DELIVERED
+  FAILED
 }
 
 model Invocation {
@@ -25,10 +31,19 @@ model Invocation {
   quoteId         String @unique
   buyerId         String
   executionStatus InvocationExecutionStatus @default(NOT_STARTED)
+  // Points at the run currently allowed to stream/report. A question answer or
+  // in-scope revision starts a new run for the same invocation and hold.
+  runId           String? @unique
   createdAt       DateTime @default(now())
   quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Restrict)
   settlement      SettlementOperation?
   readyEvent      InvocationReady?
+  streamEvents    AguiStreamEvent[]
+  run             ProviderRun? @relation("ActiveRun", fields: [runId], references: [runId], onDelete: Restrict)
+  runs            ProviderRun[] @relation("InvocationRuns")
+  questions       InvocationQuestion[]
+  answers         InvocationAnswer[]
+  revisions       InvocationRevision[]
 
   @@index([buyerId, createdAt])
   @@map("invocations")
@@ -108,9 +123,130 @@ model InvocationReady {
   invocationId String @id
   quoteId      String
   createdAt    DateTime @default(now())
+  acknowledgedAt DateTime?
+  runId        String @default(uuid())
   invocation   Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
 
   @@map("invocation_ready")
+}
+
+model ProviderRun {
+  runId           String @id @default(uuid())
+  invocationId    String
+  sequence        Int @default(0)
+  reportSequence  Int @default(0)
+  activeMessageId String?
+  state           String @default("QUEUED")
+  result          Json?
+  acknowledgedAt  DateTime?
+  updatedAt       DateTime @updatedAt
+  invocation      Invocation @relation("InvocationRuns", fields: [invocationId], references: [id], onDelete: Restrict)
+  activeFor       Invocation? @relation("ActiveRun")
+  surfaces        AguiSurface[]
+  reports         ProviderReport[]
+
+  @@index([invocationId, updatedAt])
+  @@map("provider_runs")
+}
+
+model ProviderReport {
+  runId String
+  sequence Int
+  reportId String
+  contentHash String
+  type String
+  run ProviderRun @relation(fields: [runId], references: [runId], onDelete: Restrict)
+
+  @@id([runId, sequence])
+  @@unique([runId, reportId])
+  @@map("provider_reports")
+}
+
+model AguiStreamEvent {
+  cursor BigInt @id @default(autoincrement())
+  invocationId String
+  threadId String
+  runId String
+  streamSequence Int?
+  sourceHash String?
+  event Json
+  createdAt DateTime @default(now())
+  invocation Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, streamSequence])
+  @@index([threadId, cursor])
+  @@map("agui_stream_events")
+}
+
+model AguiSurface {
+  runId String
+  surfaceId String
+  operations Json
+  updatedAt DateTime @updatedAt
+  run ProviderRun @relation(fields: [runId], references: [runId], onDelete: Restrict)
+
+  @@id([runId, surfaceId])
+  @@map("agui_surfaces")
+}
+
+// A provider question closes the current run with RUN_FINISHED but keeps the
+// invocation (and its hold) alive. Only a buyer answer starts the next run.
+model InvocationQuestion {
+  id                String   @id @default(uuid())
+  invocationId      String
+  questionId        String
+  runId             String
+  prompt            String
+  inputSchema       Json
+  chatTextParameter String?
+  status            String   @default("OPEN")
+  createdAt         DateTime @default(now())
+  answeredAt        DateTime?
+  invocation        Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  answer            InvocationAnswer?
+
+  @@unique([invocationId, questionId])
+  @@index([invocationId, status])
+  @@map("invocation_questions")
+}
+
+model InvocationAnswer {
+  id              String   @id @default(uuid())
+  invocationId    String
+  questionId      String
+  runId           String
+  buyerId         String
+  clientRequestId String   @db.VarChar(128)
+  arguments       Json
+  acknowledgedAt  DateTime?
+  createdAt       DateTime @default(now())
+  invocation      Invocation         @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  question        InvocationQuestion @relation(fields: [invocationId, questionId], references: [invocationId, questionId], onDelete: Restrict)
+
+  @@unique([invocationId, clientRequestId])
+  @@unique([invocationId, questionId])
+  @@index([buyerId, createdAt])
+  @@map("invocation_answers")
+}
+
+// In-scope revisions reuse the invocation/hold. A revision may only target a
+// delivered artifact and the next result must publish a higher artifactVersion.
+model InvocationRevision {
+  id                   String   @id @default(uuid())
+  invocationId         String
+  runId                String
+  buyerId              String
+  clientRequestId      String   @db.VarChar(128)
+  reason               String   @db.Text
+  targetArtifactVersion Int?
+  status               String   @default("REQUESTED")
+  acknowledgedAt       DateTime?
+  createdAt            DateTime @default(now())
+  invocation           Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+
+  @@unique([invocationId, clientRequestId])
+  @@index([buyerId, createdAt])
+  @@map("invocation_revisions")
 }
 
 model SettlementScanCursor {

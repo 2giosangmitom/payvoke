@@ -1,44 +1,92 @@
 # Payvoke
 
-Payvoke kết nối buyer với các sản phẩm do provider vận hành; mỗi lần gọi có giá và phạm vi công việc riêng.
+Payvoke là marketplace mua bán app AI, thanh toán bằng USDC theo từng lần gọi. Mỗi app dùng chung một giao diện chat, một danh sách thread và các slash command riêng.
 
 ## Language
 
 **Buyer**:
-Người dùng mua và sử dụng sản phẩm bằng tài khoản gắn với ví của mình.
+Người dùng mua và sử dụng app bằng tài khoản gắn với ví của mình.
 
 **Provider**:
-Bên đăng bán và chịu trách nhiệm vận hành sản phẩm, giao kết quả theo điều khoản.
+Bên đăng bán và chịu trách nhiệm vận hành app, giao kết quả theo điều khoản.
 
-**Sản phẩm**:
-Một agent hoặc tool được đăng bán bởi một provider; loại sản phẩm không thay đổi trong suốt danh tính của nó.
-_Avoid_: Dùng “agent” để gọi mọi sản phẩm, kể cả tool.
+**App**:
+Đơn vị được bán và được chat trên Payvoke. App gồm tên, mô tả, payout address, visibility, command và presence. Mọi app dùng cùng một giao diện thread chat; không còn phân biệt agent và tool.
+_Avoid_: Dùng “agent”, “tool” hoặc “sản phẩm” như ba loại app khác nhau.
 
-**Agent**:
-Sản phẩm có giao diện hội thoại, nhận tin nhắn hoặc slash command và có thể hỏi lại buyer trong phạm vi một lần gọi.
+**Provider app**:
+Cách gọi app ở góc nhìn provider trong Studio. Không phải một model dữ liệu riêng; cùng một `App` ở store và dashboard.
 
-**Tool**:
-Sản phẩm nhận tham số qua form và trả kết quả hoặc trạng thái; không có khung soạn tin nhắn hội thoại.
+**Command (slash command)**:
+Chức năng có tên, schema tham số, giá và điều khoản thuộc một app. Command có id ổn định trong suốt vòng đời app; tên chỉ cần duy nhất trong app.
+_Avoid_: Dùng “tool” để gọi một command.
 
-**Phiên sử dụng**:
-Không gian tương tác của buyer gắn cố định với đúng một sản phẩm; phiên agent là hội thoại, phiên tool là màn hình chạy và lịch sử kết quả.
-_Avoid_: Dùng “phiên” không định nghĩa để đồng thời chỉ phiên đăng nhập, quyền chi và hội thoại.
+**Command revision**:
+Bản bất biến của command tại một thời điểm, chứa options, JSON Schema, giá, terms và thời hạn. Sửa command tạo revision mới. Quote ghim `commandRevisionId`, nên quote/invocation cũ không đổi khi provider sửa command.
 
-**Slash command**:
-Chức năng có tên và bộ tham số thuộc một sản phẩm; có thể được chọn trong chat của agent hoặc màn hình chạy tool.
+**Default command**:
+Command nhận free text khi buyer không gõ slash command. Free text được map vào tham số vị trí của default command; nếu default command không có tham số vị trí, UI mở form arguments.
 
-**Lần gọi**:
-Một công việc đã chốt sản phẩm, chức năng, đầu vào, giá và điều khoản; trả lời câu hỏi hoặc sửa trong phạm vi của nó không phải lần gọi mới.
-_Avoid_: Đồng nhất một lần gọi với một tin nhắn, một lần gửi lại hoặc một event.
+**Thread (hội thoại)**:
+Không gian chat gắn cố định với một buyer và đúng một app. Thread chứa tin nhắn, câu hỏi, revision, widget A2UI và lịch sử invocation. Danh sách thread trộn mọi app và hỗ trợ đổi tên/archive.
+_Avoid_: Dùng “phiên sử dụng”, “session” hoặc “phiên” để đồng thời chỉ đăng nhập, quyền chi và hội thoại.
 
-**Báo giá**:
-Cam kết có thời hạn về giá, đầu vào, chức năng và điều khoản của một lần gọi cụ thể.
+**Availability**:
+Trạng thái app có thể nhận quote mới hay không. App available khi `status = ACTIVE`, có default command và có heartbeat trong 45 giây gần nhất. App offline vẫn mở và đọc được thread cũ nhưng không nhận quote mới.
 
-**Quyền chi**:
-Quyền có hạn buyer cấp cho một khóa phiên để thanh toán các lần gọi; độc lập với quyền đăng nhập hoặc đọc dữ liệu.
+**Store**:
+Danh mục công khai các app `PUBLIC` và `ACTIVE`. Store hiển thị command, giá, availability và lối mở thread. App `PRIVATE` không xuất hiện trong store.
 
-**Khoản giữ**:
-Phần số dư đã dành cho một lần gọi, chưa được hoàn về buyer hoặc giải ngân cho provider và nền tảng.
+**Studio / Dashboard**:
+Khu vực owner quản lý app: settings, visibility, payout, command revision, default command, API key, suspend/activate/archive và mở chat thử.
 
-**Giao hàng**:
-Việc cung cấp phiên bản kết quả đã qua các kiểm tra đã công bố và buyer có thể truy cập được; không đồng nghĩa mọi nội dung đã đúng chuyên môn.
+**Provider API key**:
+Bearer key cho worker của provider, dùng để đọc event, ACK, gửi report, stream AG-UI và ghi command. Mỗi app có tối đa một key active; tạo key mới thu hồi key cũ. Secret chỉ hiện một lần.
+
+**Star / saved**:
+Đánh dấu app để quay lại. Star không phải collection và không cấp quyền truy cập app `PRIVATE`.
+
+**Lần gọi (invocation)**:
+Một công việc đã chốt app, command revision, đầu vào, giá và điều khoản; trả lời câu hỏi hoặc sửa trong phạm vi đã mua không tạo lần gọi mới.
+
+**Quote (báo giá)**:
+Báo giá có thời hạn cho một lần gọi, do buyer yêu cầu trước khi trả tiền. Quote chốt command revision và input sau defaults. UI trình bày quote thành card ghim ngay trên composer; việc này chỉ đổi cách hiển thị, không đổi giao thức x402/vault.
+
+**Spending grant (quyền chi)**:
+Quyền buyer cấp onchain cho một khóa ký do client giữ. Grant độc lập với đăng nhập, thread và provider API key.
+
+**Hold (khoản giữ)**:
+Khoản tiền được dành riêng cho một invocation và chưa trả cho provider.
+
+**Release / payout**:
+Chuyển khoản đã giữ cho provider sau khi hết thời gian review hoặc theo kết quả tranh chấp.
+
+**Platform fee**:
+Phần trăm Payvoke giữ lại trên doanh thu provider. Giá buyer thấy luôn là giá gộp; phí không do provider tự đặt.
+
+**Artifact version**:
+Một phiên bản kết quả đã được lưu và kiểm chứng. Buyer xem bản mới nhất đã được duyệt, không xem raw output chưa kiểm tra.
+
+**Revision trong phạm vi**:
+Một yêu cầu sửa kết quả đã giao, nằm trong `revisionPolicy.maxIncluded` và thời hạn review. Revision không tạo hold mới; sửa ngoài phạm vi phải mua invocation mới.
+
+**Dispute (tranh chấp)**:
+Hồ sơ buyer mở khi kết quả không đúng thỏa thuận. Tranh chấp có thể chặn payout onchain nhưng không tự hoàn tiền.
+
+**PayvokeVault**:
+Contract giữ USDC và thực thi grant, hold, release, refund theo chữ ký và điều kiện đã định.
+
+**Protocol quote**:
+Phần quote được ký/đưa vào thanh toán, giữ các field dây cũ như `sessionId`, `productId`, `productVersion` để tương thích x402/on-chain. Các field này map nội bộ sang thread, app và revision hiện tại; chúng không phải thuật ngữ UI.
+
+**AG-UI**:
+Giao thức event cho stream hội thoại giữa provider và UI buyer. Payvoke dùng để phát text tăng dần, trạng thái chạy và widget.
+
+**A2UI**:
+Đặc tả giao diện khai báo bằng JSON. Provider gửi envelope A2UI; Payvoke validate theo catalog rồi chiếu thành surface trong thread. A2UI không cấp quyền thực thi hoặc thanh toán.
+
+**Continuation**:
+Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏi hoặc yêu cầu revision. Continuation dùng runId mới nhưng không tạo quote/hold mới.
+
+**MCP bridge**:
+Tiến trình local cho ứng dụng AI bên ngoài dùng chung API buyer. MCP không phải giao diện chat của Payvoke và không được thay đổi giá hoặc bỏ qua admission.

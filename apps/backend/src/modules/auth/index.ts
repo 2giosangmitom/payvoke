@@ -12,6 +12,7 @@ declare module "fastify" {
   }
   interface FastifyInstance {
     requireAccount(request: FastifyRequest): Promise<void>;
+    optionalAccount(request: FastifyRequest): Promise<AuthIdentity | null>;
   }
 }
 
@@ -22,6 +23,15 @@ export async function registerAuth(app: FastifyInstance, config: Config, db: Pri
   const webOrigin = new URL(config.WEB_ORIGIN).origin;
 
   app.decorateRequest("account", null);
+  app.decorate("optionalAccount", async function (request: FastifyRequest) {
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(request.headers) });
+    if (!session || session.user.status !== "ACTIVE") return null;
+    const wallet = await db.walletAddress.findFirst({
+      where: { userId: session.user.id, chainId: 43113, isPrimary: true },
+    });
+    if (!wallet) return null;
+    return { id: session.user.id, walletAddress: wallet.address.toLowerCase() };
+  });
   app.decorate("requireAccount", async function (request: FastifyRequest) {
     const session = await auth.api.getSession({ headers: fromNodeHeaders(request.headers) });
     if (!session) throw app.httpErrors.unauthorized("UNAUTHENTICATED");

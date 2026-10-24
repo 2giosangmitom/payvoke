@@ -1,8 +1,9 @@
 # Payment acceptance — S01/S02
 
-Review date: 2026-10-22. Base implementation: `19a11b8`; this working-tree
-update adds crash/race regression proof and a finance receipt-identity fix.
-This is the current evidence matrix, not a claim of launch readiness.
+> Ghi chú 23/10/2026: dùng App/ChatThread/AppCommandRevision thay Product/UsageSession/ProductVersion. Quote document vẫn giữ field dây cũ để tương thích x402.
+> Review date: 2026-10-22. Base implementation: `19a11b8`; this working-tree
+> update adds crash/race regression proof and a finance receipt-identity fix.
+> This is the current evidence matrix, not a claim of launch readiness.
 
 Sources: [S01](specs/01-api-and-provider-protocol.md),
 [S02](specs/02-x402-and-vault.md), trace IDs from

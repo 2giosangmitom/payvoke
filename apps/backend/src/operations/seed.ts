@@ -56,30 +56,46 @@ export async function seedCeremony(db: PrismaClient, seed: Seed) {
   if (!buyer || getAddress(buyer.address) !== getAddress(seed.run.buyer))
     throw new Error("Seed buyer must first authenticate through SIWE");
   await db.$transaction(async (tx) => {
-    if ((await tx.deploymentPolicy.count()) || (await tx.product.count()))
+    if ((await tx.deploymentPolicy.count()) || (await tx.app.count()))
       throw new Error("Fresh ceremony database required");
-    await tx.product.create({
-      data: { id: seed.productId, kind: "TOOL", status: "PUBLISHED", activeVersion: 1 },
-    });
-    await tx.productVersion.create({
+    const providerApp = await tx.app.create({
       data: {
-        productId: seed.productId,
-        number: 1,
-        status: "APPROVED",
+        id: seed.productId,
+        ownerId: seed.buyerId,
+        clientRequestId: `ceremony-${seed.productId}`,
+        name: "Isolated ceremony app",
+        description: "Controlled payment test app",
+        visibility: "PRIVATE",
         payoutAddress: getAddress(seed.provider),
+        lastHeartbeatAt: new Date(),
       },
     });
-    await tx.commandVersion.create({
+    const command = await tx.appCommand.create({
       data: {
-        commandId: seed.run.commandId,
-        productId: seed.productId,
-        productVersion: 1,
+        id: seed.run.commandId,
+        appId: providerApp.id,
+        name: "run",
+        description: "Controlled invocation",
+      },
+    });
+    const revision = await tx.appCommandRevision.create({
+      data: {
+        commandId: command.id,
+        options: [
+          {
+            name: "text",
+            description: "Prompt text",
+            type: "STRING",
+            required: true,
+          },
+        ],
         inputSchema: {
           type: "object",
           additionalProperties: false,
           properties: { text: { type: "string", minLength: 1 } },
           required: ["text"],
         },
+        positionalParameter: "text",
         grossAmount: seed.grossAmount,
         deliverySeconds: seed.deliverySeconds,
         reviewSeconds: seed.reviewSeconds,
@@ -96,8 +112,21 @@ export async function seedCeremony(db: PrismaClient, seed: Seed) {
         },
       },
     });
-    await tx.usageSession.create({
-      data: { id: seed.run.sessionId, buyerId: seed.buyerId, productId: seed.productId },
+    await tx.appCommand.update({
+      where: { id: command.id },
+      data: { activeRevisionId: revision.id },
+    });
+    await tx.app.update({
+      where: { id: providerApp.id },
+      data: { defaultCommandId: command.id },
+    });
+    await tx.chatThread.create({
+      data: {
+        id: seed.run.threadId,
+        buyerId: seed.buyerId,
+        appId: providerApp.id,
+        title: "Ceremony thread",
+      },
     });
     await tx.deploymentPolicy.create({
       data: {
@@ -113,9 +142,9 @@ export async function seedCeremony(db: PrismaClient, seed: Seed) {
     });
   });
   return {
-    sessionId: seed.run.sessionId,
+    threadId: seed.run.threadId,
     commandId: seed.run.commandId,
-    productId: seed.productId,
+    appId: seed.productId,
     policyVersion: seed.policyVersion,
   };
 }

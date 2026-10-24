@@ -106,7 +106,7 @@ export class SettlementJournal {
     if (
       document.quoteId !== row.id ||
       document.invocationId !== row.invocationId ||
-      document.sessionId !== row.sessionId
+      document.sessionId !== row.threadId
     ) {
       throw new SettlementError("QUOTE_INCONSISTENT", 500);
     }
@@ -117,12 +117,12 @@ export class SettlementJournal {
       throw new SettlementError("INVALID_PAYMENT", 400);
     }
     return this.db.$transaction(async (tx) => {
-      // All quote-slot admission paths lock the same session row first.
-      const locked = await tx.usageSession.updateMany({
-        where: { id: row.sessionId, buyerId: input.buyerId },
+      // All quote-slot admission paths lock the same thread row first.
+      const locked = await tx.chatThread.updateMany({
+        where: { id: row.threadId, buyerId: input.buyerId, archivedAt: null },
         data: { quoteLockVersion: { increment: 1 } },
       });
-      if (!locked.count) throw new SettlementError("SESSION_NOT_FOUND", 404);
+      if (!locked.count) throw new SettlementError("THREAD_NOT_FOUND", 404);
       const previous = await tx.settlementOperation.findUnique({
         where: { invocationId: row.invocationId },
       });
@@ -137,18 +137,18 @@ export class SettlementJournal {
         // suspension. This branch never authorizes a new onchain admission.
         return previous;
       }
-      const session = await tx.usageSession.findUniqueOrThrow({
-        where: { id: row.sessionId },
-        include: { product: true },
+      const thread = await tx.chatThread.findUniqueOrThrow({
+        where: { id: row.threadId },
+        include: { app: true },
       });
       const user = await tx.user.findUnique({ where: { id: input.buyerId } });
       if (!user || user.status !== "ACTIVE") throw new SettlementError("ACCOUNT_SUSPENDED", 403);
-      if (session.productId !== document.productId || session.product.kind !== "TOOL") {
+      if (thread.appId !== document.productId) {
         throw new SettlementError("QUOTE_INCONSISTENT", 500);
       }
-      if (session.archivedAt || session.product.status !== "PUBLISHED")
+      if (thread.archivedAt || thread.app.status !== "ACTIVE" || thread.app.archivedAt)
         throw new SettlementError("ADMISSION_UNAVAILABLE");
-      if (session.activeQuoteId !== row.id) throw new SettlementError("SESSION_BUSY");
+      if (thread.activeQuoteId !== row.id) throw new SettlementError("THREAD_BUSY");
       const now = await databaseTime(tx);
       if (document.validUntil * 1000 <= now.getTime())
         throw new SettlementError("QUOTE_EXPIRED", 410);
