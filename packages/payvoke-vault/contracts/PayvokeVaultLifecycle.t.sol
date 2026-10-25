@@ -97,13 +97,11 @@ contract PayvokeVaultLifecycleTest is PayvokeVaultFinanceFixture {
                 uint256 refund = (seed >> 32) % (h.remaining + 2);
                 PayvokeVault.ResolutionDecision memory d = PayvokeVault.ResolutionDecision(
                     id, keccak256(abi.encode(seed, "decision")), h.version, refund,
-                    action == 4, seed & 512 != 0, uint48(vm.getBlockTimestamp() + 100));
+                    action == 4, uint48(vm.getBlockTimestamp() + 100));
                 bytes memory signature = signDecision(d);
                 attempt(seed & 1024 == 0 ? actor : executor,
                     abi.encodeCall(vault.applyDecision, (d, vm.addr(approverKey), signature)));
-            } else if (action == 5) {
-                attempt(actor, abi.encodeCall(vault.openDispute, (id, bytes32(seed))));
-            } else if (action == 6) {
+            } else if (action == 5 || action == 6) {
                 attempt(actor, abi.encodeCall(vault.reclaim, (id)));
             } else if (action == 7) {
                 attempt(seed & 1024 == 0 ? actor : address(0xF0),

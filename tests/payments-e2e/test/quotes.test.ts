@@ -6,9 +6,6 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type { PGlite } from "@electric-sql/pglite";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -61,23 +58,6 @@ import { createSettlementService } from "@payvoke/payments/settlement";
 import { scanFinalizedHolds } from "@payvoke/payments/scanner";
 import { localEvm } from "@payvoke/testkit/local-evm";
 import {
-  paymentSession,
-  preparePayment,
-  submitPayment,
-  pollPayment,
-  verifyPayment,
-  type PreparedPayment,
-} from "ops/payment";
-import {
-  loadJson,
-  prepareOperation,
-  broadcastOperation,
-  operationReceipt,
-  type Ceremony,
-  type SignedOperation,
-} from "ops/fuji";
-import { journalEvidence, seedCeremony } from "ops/seed";
-import {
   FinanceService,
   parseDecision,
   recordPaymentDelivery,
@@ -85,6 +65,7 @@ import {
   type WireDecision,
 } from "@payvoke/payments/finance";
 import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
+import { AutoFinance, autoOutcome } from "@payvoke/payments/finance-policy";
 import { vaultFinanceAbi } from "@payvoke/protocol";
 
 describe("quotes, x402 and isolated settlement", () => {
@@ -2109,199 +2090,19 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.invocationReady.count(), 1);
     assert.equal(await evm.contract.read.totalHeld(), 100000n);
 
-    // Exercise the exact operator recovery tooling against the real held funds.
-    const directory = await mkdtemp(join(tmpdir(), "fuji-reclaim-"));
-    t.after(() => rm(directory, { recursive: true }));
-    const ceremony: Ceremony = {
-      admin: evm.adminWallet.account.address,
-      relayer: relayer.address,
-      buyer: wallet.address,
-      grantSigner: grantSigner.address,
-      adminDelay: 100,
-      feeCapBps: 500,
-      maxQuoteLifetimeSeconds: 3600,
-      maxHoldSeconds: 30 * 86400,
-      vault: evm.vault,
-      expectedCodeHash: evm.admission.deployment.expectedCodeHash,
-      deploymentBlock: evm.startBlock.toString(),
-      maxGas: "1000000",
-      maxFeePerGas: "10000000000",
-      maxPriorityFeePerGas: "1000000000",
-      maxTransactionCost: "10000000000000000",
-    };
-    const prepared: PreparedPayment = {
-      quote: q,
-      paymentPayload: p,
-      run: {
-        apiOrigin: api,
-        webOrigin: origin,
-        vault: evm.vault,
-        buyer: wallet.address,
-        threadId: q.sessionId,
-        commandId,
-        clientRequestId: randomUUID(),
-        arguments: { text: "hello" },
-        grantId: `0x${"a".repeat(64)}`,
-        grantEpoch: "1",
-        maxAmount: "100000",
-      },
-    };
-    const proof = await verifyPayment(
-      evm.client,
-      ceremony,
-      prepared,
-      attempt.transactionHash as `0x${string}`,
-    );
-    assert.equal(proof.outcome, "held");
-    assert.equal(
-      (await journalEvidence(db, prepared, attempt.transactionHash!)).readyEventCount,
-      1,
-    );
+    // With no finance decision, the buyer recovers the held funds directly.
+    const holdId = q.protocolQuote.invocationKey as `0x${string}`;
     await assert.rejects(
-      prepareOperation(
-        evm.client,
-        ceremony,
-        { kind: "reclaim", holdId: q.protocolQuote.invocationKey as `0x${string}` },
-        wallet,
-        `${directory}/early.json`,
-      ),
+      buyerVault.simulate.reclaim([holdId], { account: wallet }),
+      /ReclaimTooEarly/,
     );
     await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
     await evm.test.mine({ blocks: 1 });
-    for (const action of [
-      { kind: "reclaim" as const, holdId: q.protocolQuote.invocationKey as `0x${string}` },
-      { kind: "withdraw" as const, amount: "10000000" },
-    ]) {
-      const path = `${directory}/${action.kind}.json`;
-      const signed = await prepareOperation(evm.client, ceremony, action, wallet, path);
-      const op = await loadJson<SignedOperation>(path);
-      await broadcastOperation(evm.client, op, path, signed.transactionHash);
-      assert.equal((await operationReceipt(evm.client, op)).status, "success");
-    }
+    await buyerVault.write.reclaim([holdId]);
+    await buyerVault.write.withdrawAvailable([10000000n]);
     assert.equal(await evm.contract.read.totalHeld(), 0n);
     assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
     assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
-  });
-
-  it("operator runner authenticates, persists authorization, submits and polls through real HTTP handlers", async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "fuji-runner-"));
-    t.after(() => rm(directory, { recursive: true }));
-    let privateApp: ReturnType<typeof createFacilitatorApp> | undefined;
-    t.mock.method(
-      globalThis,
-      "fetch",
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(String(input));
-        const target =
-          url.origin === api
-            ? app
-            : url.origin === "https://runner-facilitator.test"
-              ? privateApp
-              : undefined;
-        assert.ok(target, "runner may only call explicitly configured origins");
-        const headers: Record<string, string> = {};
-        new Headers(init?.headers).forEach((v, k) => {
-          headers[k] = v;
-        });
-        const response = await target.inject({
-          method: init?.method === "POST" ? "POST" : "GET",
-          url: url.pathname,
-          headers,
-          payload: init?.body as string | undefined,
-        });
-        const result = new Headers();
-        for (const [k, v] of Object.entries(response.headers)) {
-          if (v !== undefined)
-            for (const value of Array.isArray(v) ? v : [String(v)]) result.append(k, value);
-        }
-        return new Response(response.body, { status: response.statusCode, headers: result });
-      },
-    );
-    const run = {
-      apiOrigin: api,
-      webOrigin: origin,
-      vault: vault as `0x${string}`,
-      buyer: wallet.address,
-      threadId: sessionId,
-      commandId,
-      clientRequestId: randomUUID(),
-      arguments: { text: "hello" },
-      grantId: `0x${"a".repeat(64)}` as `0x${string}`,
-      grantEpoch: "1",
-      maxAmount: "100000",
-    };
-    const session = await paymentSession(run, wallet);
-    try {
-      const summary = await preparePayment(session, run, grantSigner, `${directory}/payment.json`);
-      assert.equal(await db.settlementOperation.count(), 0, "preparation never submits payment");
-      const prepared = await loadJson<PreparedPayment>(`${directory}/payment.json`);
-      const f = await facilitator(prepared.quote, true);
-      privateApp = f.f;
-      await app.close();
-      app = createApp(
-        {
-          ...config,
-          PAYMENTS_ENABLED: true,
-          FACILITATOR_URL: "https://runner-facilitator.test",
-          FACILITATOR_TOKEN: serviceToken,
-        },
-        db,
-      );
-      await app.ready();
-      await assert.rejects(submitPayment(session, prepared, `0x${"0".repeat(64)}`), /Approve/);
-      const submission = await submitPayment(session, prepared, summary.authorizationDigest);
-      assert.equal(submission.status, 503);
-      assert.equal(submission.paymentResponse, null);
-      const state = await pollPayment(session, prepared);
-      assert.equal(state.paymentStatus, "PENDING");
-      assert.equal(state.invocationId, summary.invocationId);
-      const replay = await submitPayment(session, prepared, summary.authorizationDigest);
-      assert.equal(replay.status, 503);
-      assert.equal(await db.settlementOperation.count(), 1);
-    } finally {
-      await session.close();
-    }
-  });
-
-  it("seeds a fresh ceremony catalog without overwriting an existing deployment policy", async () => {
-    await db.chatThread.deleteMany();
-    await db.appCommandRevision.deleteMany();
-    await db.appCommand.deleteMany();
-    await db.app.deleteMany();
-    await db.deploymentPolicy.deleteMany();
-    const seed = {
-      buyerId,
-      productId,
-      policyVersion: "fuji-test",
-      provider,
-      feeRecipient,
-      feeBps: 100,
-      quoteLifetimeSeconds: 120,
-      maxHoldSeconds: 600,
-      resolutionGraceSeconds: 60,
-      deliverySeconds: 60,
-      reviewSeconds: 30,
-      grossAmount: "100000",
-      minGrossAmount: "1000",
-      run: {
-        apiOrigin: api,
-        webOrigin: origin,
-        vault: vault as `0x${string}`,
-        buyer: wallet.address,
-        threadId: sessionId,
-        commandId,
-        clientRequestId: randomUUID(),
-        arguments: { text: "hello" },
-        grantId: `0x${"a".repeat(64)}` as `0x${string}`,
-        grantEpoch: "1",
-        maxAmount: "100000",
-      },
-    };
-    await seedCeremony(db, seed);
-    const q = await quote();
-    assert.equal(q.grossAmount, "100000");
-    await assert.rejects(seedCeremony(db, seed), /Fresh ceremony/);
-    assert.equal(await db.deploymentPolicy.count(), 1);
   });
 
   it("completes financial lifecycle on real local USDC with approval separation, recovery and finalized projections", async (t) => {
@@ -2340,7 +2141,6 @@ describe("quotes, x402 and isolated settlement", () => {
       ["FINANCE_EXECUTOR_ROLE", executor.address],
       ["REFUND_APPROVER_ROLE", approver.address],
       ["RELEASE_APPROVER_ROLE", approver.address],
-      ["DISPUTE_RESOLVER_ROLE", approver.address],
       ["PAUSER_ROLE", evm.adminWallet.account.address],
     ] as const) {
       await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
@@ -2424,7 +2224,6 @@ describe("quotes, x402 and isolated settlement", () => {
       refund: string,
       release = false,
       evidenceId: string | null = null,
-      resolve = false,
     ): Promise<FinanceApproval> {
       const hold = await evm.client.readContract({
         address: evm.vault,
@@ -2438,7 +2237,6 @@ describe("quotes, x402 and isolated settlement", () => {
         expectedVersion: hold.version.toString(),
         refundAmount: refund,
         releaseRemainder: release,
-        resolveDispute: resolve,
         validUntil: String(q.resolveBy - 1),
       };
       const signature = await approver.signTypedData({
@@ -2729,26 +2527,7 @@ describe("quotes, x402 and isolated settlement", () => {
       ).status,
       "REFUNDED",
     );
-    const disputeIntent = await app.inject({
-      method: "POST",
-      url: `/v1/invocations/${third.invocationId}/financial-intents`,
-      headers: { cookie, origin },
-      payload: { action: "dispute", evidenceHash: `0x${"d".repeat(64)}` },
-    });
-    assert.equal(disputeIntent.statusCode, 200, disputeIntent.body);
-    assert.equal(disputeIntent.json().status, "UNSUBMITTED");
-    await buyerClient.sendTransaction({ to: evm.vault, data: disputeIntent.json().data });
-    await sync();
-    assert.equal(
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: third.protocolQuote.invocationKey },
-        })
-      ).status,
-      "DISPUTED",
-    );
-    await assert.rejects(service().enqueue(await approvalFor(third, "100000")), /hold_disputed/);
-    await finish(await approvalFor(third, "100000", false, null, true));
+    await finish(await approvalFor(third, "100000"));
     const corrupted = await approvalFor(seventh, "100000");
     await service().enqueue(corrupted);
     const offline = t.mock.method(evm.client, "sendRawTransaction", async () => {
@@ -2913,7 +2692,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await buyerUsdc.write.approve([evm.vault, 10000000n]);
     await buyerVault.write.deposit([10000000n]);
     await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
-    for (const role of ["REFUND_APPROVER_ROLE", "RELEASE_APPROVER_ROLE", "DISPUTE_RESOLVER_ROLE"])
+    for (const role of ["REFUND_APPROVER_ROLE", "RELEASE_APPROVER_ROLE"])
       await evm.contract.write.grantRole([keccak256(stringToHex(role)), approver.address]);
     await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
     await app.close();
@@ -2972,7 +2751,6 @@ describe("quotes, x402 and isolated settlement", () => {
         expectedVersion: hold.version.toString(),
         refundAmount: "100000",
         releaseRemainder: false,
-        resolveDispute: false,
         validUntil: String(q.resolveBy),
       };
       const approval: FinanceApproval = {
@@ -3159,40 +2937,10 @@ describe("quotes, x402 and isolated settlement", () => {
       assert.equal((await f.tick()).state, "FINALIZED");
     });
     await scenario(
-      "dispute executed between signing and sending wins; no automatic resolver retry",
-      async () => {
-        const f = await fixture(quotes[4]);
-        const send = evm.client.sendRawTransaction.bind(evm.client);
-        const race = t.mock.method(
-          evm.client,
-          "sendRawTransaction",
-          async (args: Parameters<typeof send>[0]) => {
-            await buyerVault.write.openDispute([
-              quotes[4].protocolQuote.invocationKey,
-              `0x${"e".repeat(64)}`,
-            ]);
-            return send(args);
-          },
-        );
-        await f.tick();
-        race.mock.restore();
-        assert.equal((await f.tick()).state, "REVERTED");
-        assert.equal((await row(f.id)).broadcastCount, 1);
-        assert.equal(await f.service().tick(f.id, f.signer), false);
-        await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-        assert.equal(
-          (
-            await db.vaultHoldProjection.findUniqueOrThrow({
-              where: { holdId: quotes[4].protocolQuote.invocationKey },
-            })
-          ).status,
-          "DISPUTED",
-        );
-      },
-    );
-    await scenario(
       "pre-finality reorg recovers the original signed transaction and scanner rollback is atomic",
       async () => {
+        // Index everything before this decision so only its event is pending.
+        await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
         const f = await fixture(quotes[7]);
         const head = await evm.settlement.finalized();
         const snapshot = await evm.test.snapshot();
@@ -3366,6 +3114,167 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.settlementAttempt.count(), 11);
   });
 
+  it("automatic finance policy refunds failed or late work and releases verified on-time delivery", () => {
+    const hold = { closed: false, deliveryDeadline: 100, releaseNotBefore: 130, resolveBy: 200 };
+    const terms = { verification: { minEvidence: "SIGN" } };
+    const delivered = {
+      id: "e",
+      evidenceLevel: "SIGN",
+      observedAt: new Date(90_000),
+      accessInterruptionSeconds: 0,
+    };
+    const outcome = (over: Partial<Parameters<typeof autoOutcome>[0]>) =>
+      autoOutcome({ hold, now: 0n, executionStatus: "RUNNING", terms, evidence: null, ...over });
+    assert.equal(outcome({ now: 99n }), null, "still within the delivery window");
+    assert.equal(outcome({ now: 100n })?.reason, "auto_not_delivered");
+    assert.equal(outcome({ executionStatus: "FAILED" })?.reason, "auto_execution_failed");
+    // Review runs from the observed delivery: 90 + (130 - 100) = 120, floored at 130.
+    assert.equal(outcome({ evidence: delivered, now: 129n }), null);
+    assert.deepEqual(outcome({ evidence: delivered, now: 130n }), {
+      refund: false,
+      reason: "auto_delivered",
+      evidenceId: "e",
+    });
+    assert.equal(
+      outcome({ evidence: { ...delivered, observedAt: new Date(100_000) }, now: 150n })?.reason,
+      "auto_delivered_late",
+    );
+    assert.equal(
+      outcome({ evidence: { ...delivered, accessInterruptionSeconds: 80 }, now: 150n })?.reason,
+      "auto_review_window_exhausted",
+    );
+    // Evidence below the signed floor is not a delivery; it is refunded at the deadline.
+    const rec = { verification: { minEvidence: "REC" } };
+    assert.equal(
+      outcome({ evidence: delivered, terms: rec, now: 130n })?.reason,
+      "auto_not_delivered",
+    );
+    assert.equal(outcome({ hold: { ...hold, closed: true }, now: 150n }), null);
+  });
+
+  it("runs the automatic financial lifecycle on real local USDC without manual approval", async (t) => {
+    if (process.env.PAYMENTS_TEST_EVM !== "1") {
+      t.skip("Run isolated financial lifecycle EVM test");
+      return;
+    }
+    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+    t.after(evm.stop);
+    const executor = privateKeyToAccount(generatePrivateKey()),
+      approver = privateKeyToAccount(generatePrivateKey()),
+      providerWallet = privateKeyToAccount(generatePrivateKey());
+    await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
+    const buyerClient = createWalletClient({
+      account: wallet,
+      chain: avalancheFuji,
+      transport: http(evm.rpc),
+    });
+    const buyerVault = getContract({
+      address: evm.vault,
+      abi: evm.vaultArtifact.abi,
+      client: { public: evm.client, wallet: buyerClient },
+    });
+    await getContract({
+      address: ASSET,
+      abi: evm.token.abi,
+      client: { public: evm.client, wallet: buyerClient },
+    }).write.approve([evm.vault, 10000000n]);
+    await buyerVault.write.deposit([10000000n]);
+    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+    for (const [role, account] of [
+      ["FINANCE_EXECUTOR_ROLE", executor.address],
+      ["REFUND_APPROVER_ROLE", approver.address],
+      ["RELEASE_APPROVER_ROLE", approver.address],
+    ] as const)
+      await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
+    await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+    await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
+    await app.close();
+    app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
+    await app.ready();
+    journal = new SettlementJournal(db, { vault: evm.vault, resourceUrl: `${api}/v1/invocations` });
+    const worker = new SettlementWorker(
+      db,
+      evm.admission,
+      evm.settlement,
+      relayer,
+      `${api}/v1/invocations`,
+      gasPolicy,
+    );
+    async function held() {
+      sessionId = randomUUID();
+      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+      const q = await quote();
+      await pending(q);
+      await worker.tick();
+      await db.settlementOperation.updateMany({
+        where: { state: "PENDING" },
+        data: { nextCheckAt: new Date(0) },
+      });
+      await worker.tick();
+      return q;
+    }
+    const delivered = await held(),
+      failed = await held(),
+      silent = await held();
+    const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+    const status = async (q: QuoteDocument) =>
+      (
+        await db.vaultHoldProjection.findUniqueOrThrow({
+          where: { holdId: q.protocolQuote.invocationKey },
+        })
+      ).status;
+    await sync();
+    const auto = new AutoFinance(
+      new FinanceService(db, evm.settlement, executor.address, gasPolicy),
+      approver,
+      executor,
+    );
+    async function settle() {
+      for (let i = 0; i < 8; i++) {
+        await auto.execute();
+        await db.financeDecision.updateMany({ data: { nextCheckAt: new Date(0) } });
+      }
+      await sync();
+    }
+    await recordPaymentDelivery(db, {
+      id: "auto-delivered",
+      invocationId: delivered.invocationId,
+      artifactVersion: 1,
+      outputHash: `0x${"1".repeat(64)}`,
+      verifier: "isolated-test-output-verifier",
+      accessInterruptionSeconds: 0,
+      evidenceLevel: "SIGN",
+    });
+    await db.invocation.update({
+      where: { id: failed.invocationId },
+      data: { executionStatus: "FAILED" },
+    });
+    // Before any deadline only the provider-reported failure is decidable.
+    assert.equal(await auto.propose(), 1);
+    assert.equal(await auto.propose(), 0, "one open decision per hold");
+    await settle();
+    assert.equal(await status(failed), "REFUNDED");
+    assert.equal(await status(delivered), "HELD");
+    assert.equal(await status(silent), "HELD");
+    await evm.test.setNextBlockTimestamp({
+      timestamp: BigInt(Math.max(delivered.releaseNotBefore, silent.releaseNotBefore)),
+    });
+    await evm.test.mine({ blocks: 1 });
+    assert.equal(await auto.propose(), 2);
+    await settle();
+    assert.equal(await status(delivered), "RELEASED");
+    assert.equal(await status(silent), "REFUNDED");
+    assert.equal(await evm.contract.read.totalHeld(), 0n);
+    assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 99000n);
+    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+    assert.equal(await auto.propose(), 0, "closed holds are never decided again");
+    const rows = await db.financeDecision.findMany();
+    assert.equal(rows.length, 3);
+    assert.ok(
+      rows.every((r) => r.state === "FINALIZED" && r.approver === approver.address.toLowerCase()),
+    );
+  });
+
   it("blocks new payment admission on a financial incident without hiding an existing receipt", async () => {
     const q = await quote(),
       f = await execution(q);
@@ -3463,26 +3372,22 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(intent.statusCode, 200, intent.body);
     assert.equal(intent.json().status, "UNSUBMITTED");
     assert.equal(intent.json().requiresWalletSignature, true);
-    // Without an explicit hash, a dispute references the latest Evidence Envelope.
+    assert.equal(
+      intent.json().data,
+      encodeFunctionData({
+        abi: vaultFinanceAbi,
+        functionName: "reclaim",
+        args: [q.protocolQuote.invocationKey as `0x${string}`],
+      }),
+    );
+    // There is no dispute path; the only buyer-side recovery is reclaim.
     const dispute = await app.inject({
       method: "POST",
       url: endpoint,
       headers: { cookie, origin },
       payload: { action: "dispute" },
     });
-    assert.equal(dispute.statusCode, 200, dispute.body);
-    assert.equal(dispute.json().evidenceHash, stored.envelopeHash);
-    assert.equal(
-      dispute.json().data,
-      encodeFunctionData({
-        abi: vaultFinanceAbi,
-        functionName: "openDispute",
-        args: [
-          q.protocolQuote.invocationKey as `0x${string}`,
-          stored.envelopeHash as `0x${string}`,
-        ],
-      }),
-    );
+    assert.equal(dispute.statusCode, 400, dispute.body);
     const status = await app.inject({
       method: "GET",
       url: `/v1/invocations/${q.invocationId}`,

@@ -31,7 +31,6 @@ export function emptyHold(): Hold {
     deliveryDeadline: 0,
     releaseNotBefore: 0,
     resolveBy: 0,
-    disputed: false,
     closed: false,
     version: 0n,
     grantId: zero,

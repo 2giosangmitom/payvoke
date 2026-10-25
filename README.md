@@ -2,30 +2,28 @@
 
 Payvoke là marketplace mua bán app AI, thanh toán bằng USDC theo từng lần gọi. Mỗi app dùng chung một giao diện chat, một danh sách thread và các slash command riêng.
 
-Provider tự vận hành app. Payvoke cung cấp store, thread chat, quản lý command, giữ tiền qua x402/PayvokeVault, chuyển việc, lưu kết quả và xử lý tài chính/tranh chấp. Buyer có thể dùng qua web hoặc MCP bridge local dành cho ứng dụng AI.
+Provider tự vận hành app. Payvoke cung cấp store, thread chat, quản lý command, giữ tiền qua x402/PayvokeVault, chuyển việc, lưu kết quả và tự động hoàn tiền/giải ngân. Buyer có thể dùng qua web hoặc MCP bridge local dành cho ứng dụng AI.
 
-> Phạm vi hiện tại là Avalanche Fuji và USDC testnet, chưa phải mainnet hay tiền thật. Phần dưới mô tả thiết kế mục tiêu; không có nghĩa toàn bộ tính năng đã được triển khai.
+> Payvoke chạy trên Avalanche Fuji với USDC testnet, chưa dùng mainnet hay tiền thật.
 
 ## Mục lục
 
 - [1. Payvoke giải quyết bài toán gì?](#1-payvoke-giải-quyết-bài-toán-gì)
-- [2. Trạng thái hiện tại](#2-trạng-thái-hiện-tại)
-- [3. App, command và thread](#3-app-command-và-thread)
-- [4. Các khái niệm cốt lõi](#4-các-khái-niệm-cốt-lõi)
-- [5. Cách tính tiền](#5-cách-tính-tiền)
-- [6. Hành trình của buyer](#6-hành-trình-của-buyer)
-- [7. Vai trò của x402](#7-vai-trò-của-x402)
-- [8. PayvokeVault và vòng đời tiền](#8-payvokevault-và-vòng-đời-tiền)
-- [9. Chữ ký và snapshots](#9-chữ-ký-và-snapshots)
-- [10. Provider tích hợp như thế nào?](#10-provider-tích-hợp-như-thế-nào)
-- [11. Chống trùng và phục hồi sự cố](#11-chống-trùng-và-phục-hồi-sự-cố)
-- [12. Trạng thái tiền và công việc](#12-trạng-thái-tiền-và-công-việc)
-- [13. Kết quả, file, sửa và tranh chấp](#13-kết-quả-file-sửa-và-tranh-chấp)
-- [14. MCP cho ứng dụng AI](#14-mcp-cho-ứng-dụng-ai)
-- [15. Kiến trúc kỹ thuật và database](#15-kiến-trúc-kỹ-thuật-và-database)
-- [16. Mười module chức năng](#16-mười-module-chức-năng)
-- [17. Roadmap triển khai](#17-roadmap-triển-khai)
-- [18. Quyết định còn mở và ranh giới MVP](#18-quyết-định-còn-mở-và-ranh-giới-mvp)
+- [2. App, command và thread](#2-app-command-và-thread)
+- [3. Các khái niệm cốt lõi](#3-các-khái-niệm-cốt-lõi)
+- [4. Cách tính tiền](#4-cách-tính-tiền)
+- [5. Hành trình của buyer](#5-hành-trình-của-buyer)
+- [6. Vai trò của x402](#6-vai-trò-của-x402)
+- [7. PayvokeVault và vòng đời tiền](#7-payvokevault-và-vòng-đời-tiền)
+- [8. Chữ ký và snapshots](#8-chữ-ký-và-snapshots)
+- [9. Provider tích hợp như thế nào?](#9-provider-tích-hợp-như-thế-nào)
+- [10. Chống trùng và phục hồi sự cố](#10-chống-trùng-và-phục-hồi-sự-cố)
+- [11. Trạng thái tiền và công việc](#11-trạng-thái-tiền-và-công-việc)
+- [12. Kết quả, file, sửa và hoàn tiền](#12-kết-quả-file-sửa-và-hoàn-tiền)
+- [13. MCP cho ứng dụng AI](#13-mcp-cho-ứng-dụng-ai)
+- [14. Kiến trúc kỹ thuật và database](#14-kiến-trúc-kỹ-thuật-và-database)
+- [15. Mười module chức năng](#15-mười-module-chức-năng)
+- [16. Phạm vi](#16-phạm-vi)
 - [Tài liệu chi tiết](#tài-liệu-chi-tiết)
 - [Tài liệu tham khảo và lời cảm ơn](#tài-liệu-tham-khảo-và-lời-cảm-ơn)
 
@@ -43,32 +41,7 @@ Buyer chọn app trong store hoặc từ danh sách thread, nhập yêu cầu, x
 
 Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao kết quả. Payvoke cung cấp giao thức nhận việc/báo cáo cùng các quy tắc thanh toán, dữ liệu và vận hành.
 
-## 2. Trạng thái hiện tại
-
-Kiểm tra lại ngày 25/10/2026 trên commit `a7b97ec`.
-
-Hiện tại đã có:
-
-- Tổng quan sản phẩm, mười module chức năng, bốn đặc tả (API/provider, x402/vault, MCP, AG-UI/OpenUI) và bộ thuật ngữ.
-- `PayvokeVault.sol` với 82 test pass (71 Solidity gồm adversarial, fuzz và invariant; 11 Node.js) và Ignition module.
-- `packages/payvoke-protocol` (EIP-712, JCS, snapshots; 8 test vectors/ABI), `packages/payvoke-x402` (adapter client/server/facilitator của scheme `payvoke-vault`) và `packages/openui-components` (catalog widget).
-- Backend Fastify: đăng nhập SIWE, store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance (refund/release/reclaim), provider SSE/ACK/report, AG-UI/OpenUI stream, question/answer và revision. 10 migration Prisma; 112 test pass, 6 skip (case EVM/PostgreSQL cần cờ riêng); typecheck đầy đủ pass.
-- Frontend: store, chat, Studio, renderer OpenUI và ký thanh toán; typecheck và build pass.
-- Đối chiếu thiết kế với 13 nghiên cứu về x402 và agentic payments ([chi tiết](docs/research/agentic-payments-literature.md)).
-
-Chưa có:
-
-- Deployment vault trên Fuji và bằng chứng end-to-end trên Fuji.
-- File, dispute, acceptance, cancellation, đọc kết quả riêng và resync event chưa ACK khi cursor hết hạn.
-- Verifier cho file artifact (mức bằng chứng `REC` tự động). Mức bằng chứng tối thiểu trước khi giải ngân đã có (R03/R04): hiện chỉ có `SIGN` từ verifier JSON và attestation thủ công.
-- OpenAPI sinh từ code, CI, cấu hình deploy backend/worker; frontend chưa có script `test` và browser E2E.
-- MCP bridge (`apps/mcp`) và `packages/payvoke-client`.
-- Migration production không phá huỷ; migration hiện tại được phép reset vì chưa release.
-- Policy đã duyệt cho phí, deadline, con số giá sàn `minGrossAmount` (cơ chế đã có), ngân sách AVAX và chủ sở hữu key/role.
-
-Có thể demo trên local/staging: Hardhat node chain ID 43113 + PostgreSQL + backend, facilitator, settlement worker + frontend. Chưa nên coi marketplace đủ điều kiện phát hành trên Fuji cho đến khi qua các gate T092/T129 của roadmap.
-
-## 3. App, command và thread
+## 2. App, command và thread
 
 Payvoke không còn tách Agent và Tool. Mỗi đơn vị được bán là một **App**. App là một bề mặt chat do provider vận hành; buyer không mở nhiều loại giao diện khác nhau cho từng app.
 
@@ -103,9 +76,9 @@ Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevis
 
 App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Availability suy ra từ trạng thái `ACTIVE`, có default command và heartbeat trong 45 giây gần nhất.
 
-**Chuẩn UI đã chọn (23/10/2026; widget chuyển sang OpenUI Lang 25/10/2026):** chat dùng **assistant-ui** với **AG-UI** để hiển thị token/chunk LLM tăng dần, cùng event stream mang widget **OpenUI Lang** từ catalog Payvoke. Provider gửi `CUSTOM payvoke.openui` vào gateway; buyer nhận `ACTIVITY_SNAPSHOT openui-surface` chứa chương trình OpenUI Lang đầy đủ, có replay/snapshot. Result đang stream là preview; `DELIVERED` chỉ đến sau verification. Không tích hợp MCP Apps. Xem [S04](docs/specs/04-ag-ui-a2ui-streaming.md).
+**Chuẩn UI:** chat dùng **assistant-ui** với **AG-UI** để hiển thị token/chunk LLM tăng dần, cùng event stream mang widget **OpenUI Lang** từ catalog Payvoke. Provider gửi `CUSTOM payvoke.openui` vào gateway; buyer nhận `ACTIVITY_SNAPSHOT openui-surface` chứa chương trình OpenUI Lang đầy đủ, có replay/snapshot. Result đang stream là preview; `DELIVERED` chỉ đến sau verification. Không tích hợp MCP Apps. Xem [S04](docs/specs/04-ag-ui-a2ui-streaming.md).
 
-## 4. Các khái niệm cốt lõi
+## 3. Các khái niệm cốt lõi
 
 ### App
 
@@ -147,7 +120,7 @@ Quyền buyer cấp onchain cho một khóa ký do client giữ. Grant khác ho�
 
 Khoản tiền được dành riêng cho một invocation. Tiền đã chuyển từ số dư khả dụng sang khoản giữ, chưa được trả cho provider.
 
-## 5. Cách tính tiền
+## 4. Cách tính tiền
 
 Provider đăng ký giá USDC cố định cho từng command trong từng phiên bản sản phẩm. Payvoke tính tiền theo invocation, không mặc định theo tin nhắn, token hoặc thời gian chạy.
 
@@ -164,7 +137,7 @@ Yêu cầu mới, đổi mục tiêu, sửa ngoài phạm vi hoặc chạy comma
 
 Tin nhắn mới không tham chiếu câu hỏi hoặc yêu cầu sửa không tự được coi là phần tiếp tục miễn phí. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng.
 
-## 6. Hành trình của buyer
+## 5. Hành trình của buyer
 
 ### Bước 1: Đăng nhập bằng ví
 
@@ -204,15 +177,15 @@ Chỉ sau khi xác nhận hold thành công, backend mới tạo event để pro
 
 ### Bước 9: Theo dõi và nhận kết quả
 
-Buyer xem tiến độ, trả lời câu hỏi, nhận kết quả đã được kiểm tra, yêu cầu sửa đúng phạm vi, đề nghị hủy hoặc mở tranh chấp.
+Buyer xem tiến độ, trả lời câu hỏi, nhận kết quả đã được kiểm tra, yêu cầu sửa đúng phạm vi hoặc đề nghị hủy.
 
 ### Bước 10: Kết thúc tài chính
 
-Tiền được hoàn toàn bộ, hoàn một phần rồi giải ngân phần còn lại, giải ngân theo điều kiện hoặc buyer reclaim phần còn giữ khi quá hạn cuối.
+Finance worker tự kết thúc từng khoản giữ: giao đúng hạn và đã kiểm tra thì giải ngân sau review window; không giao, lỗi hoặc giao trễ thì hoàn toàn bộ cho buyer. Nếu không có quyết định nào trước hạn cuối, buyer tự reclaim phần còn giữ.
 
-## 7. Vai trò của x402
+## 6. Vai trò của x402
 
-x402 xử lý thanh toán ở lớp HTTP. Payvoke quản lý catalog, giao việc, kết quả và tranh chấp.
+x402 xử lý thanh toán ở lớp HTTP. Payvoke quản lý catalog, giao việc, kết quả và hoàn tiền/giải ngân.
 
 ```text
 Client gửi yêu cầu mua
@@ -258,15 +231,15 @@ Luồng chính: chuẩn bị quote trả `quoteId`, `invocationId` và snapshots
 
 Paid submit dùng `Idempotency-Key` bằng `invocationId`; bước submit không nhận input/giá mới để thay quote. Các request đọc trạng thái, kết quả và continuation đúng phạm vi không thực hiện debit mới.
 
-Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter dự kiến tích hợp ở Fastify `preHandler`; dùng stock middleware settle ở `onRequest` có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
+Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter tích hợp ở Fastify `preHandler`; dùng stock middleware settle ở `onRequest` có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
 
 Pending có thể vẫn trả HTTP 402 kèm transaction receipt. Client phải đọc trạng thái và reconcile, không coi mọi 402 là chưa trả tiền. Không tự fallback sang scheme `exact`, chain khác hoặc public facilitator.
 
 ### Đối chiếu với nghiên cứu bảo mật x402
 
-Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Giá sàn so với gas nằm trong policy deployment, và `pnpm --dir tests/payments-e2e test:conformance` kiểm tra từng quy tắc bằng ca âm tính có tên. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
+Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` được thiết kế để chặn từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Giá sàn so với gas nằm trong policy deployment. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
 
-## 8. PayvokeVault và vòng đời tiền
+## 7. PayvokeVault và vòng đời tiền
 
 Vault là smart contract giữ USDC và thực thi các quy tắc tài chính. Có bốn nhóm số dư:
 
@@ -319,7 +292,7 @@ provider = net - fee
 
 Ví dụ minh họa: giá 1 USDC, hoàn 0,2 USDC, phí giả định 5%. Khi release, platform nhận 0,04 USDC, provider nhận 0,76 USDC; buyer đã được hoàn 0,2 USDC.
 
-Tỷ lệ phí thực tế chưa được chốt. Refund đưa tiền về buyer available, không tự chuyển ra ví ngoài và không reset spending counters.
+Refund đưa tiền về buyer available, không tự chuyển ra ví ngoài và không reset spending counters.
 
 ### Deadline
 
@@ -332,17 +305,16 @@ Tỷ lệ phí thực tế chưa được chốt. Refund đưa tiền về buyer
 
 Các mốc được chốt trước ký, không tính lại mỗi retry. Buyer bấm chấp nhận không cho phép bỏ qua thời điểm release tối thiểu.
 
-Nếu giao muộn hoặc buyer không truy cập được file, thời gian review thực tế phải được bảo vệ. Không tự kéo dài hold bằng cách sửa chữ ký cũ; nếu không đủ thời gian trước `resolveBy` thì chuyển resolver/refund.
+Nếu giao muộn hoặc buyer không truy cập được file, thời gian review thực tế phải được bảo vệ. Không tự kéo dài hold bằng cách sửa chữ ký cũ; nếu không đủ thời gian trước `resolveBy` thì hoàn tiền.
 
 ### Phân quyền tài chính
 
 - **Relayer:** giữ tiền theo buyer authorization, không tự rút/giải ngân.
-- **Refund/release approver:** duyệt quyết định hoàn/giải ngân.
-- **Dispute resolver:** cần thêm khi xử lý disputed hold.
-- **Finance executor:** gửi quyết định đã được duyệt.
+- **Refund/release approver:** ký quyết định hoàn/giải ngân theo policy tự động.
+- **Finance executor:** gửi quyết định đã được ký.
 - **Pauser:** dừng admission mới.
 
-Executor chỉ gửi quyết định đã được duyệt. Approval ràng buộc decision ID, expected hold version và expiry; không replay quyết định cũ. Khi vận hành, approver và executor phải dùng khóa riêng.
+Executor chỉ gửi quyết định đã được duyệt. Approval ràng buộc decision ID, expected hold version và expiry; không replay quyết định cũ. Approver và executor là hai khóa riêng trong finance worker; contract từ chối nếu trùng địa chỉ.
 
 Pause không được khóa vô thời hạn quyền revoke grant, rút available hoặc reclaim đủ điều kiện. Contract không có quyền admin tùy ý lấy số dư buyer. Tuy vậy, token issuer vẫn có thể freeze/blacklist khiến transfer thất bại.
 
@@ -357,7 +329,7 @@ gross = refunded + remaining + providerReleased + feeReleased
 
 Gửi token trực tiếp vào contract không qua deposit chỉ tạo surplus, không tự thành số dư buyer. Một invocation chỉ reserve một lần; release terminal không được thực hiện lại.
 
-## 9. Chữ ký và snapshots
+## 8. Chữ ký và snapshots
 
 Authorization EIP-712 ràng buộc chữ ký buyer với các trường của quote:
 
@@ -381,7 +353,7 @@ Khóa chi ký `DebitAuthorization` chứa quote digest, grant ID và grant epoch
 
 Các ràng buộc này ngăn hệ thống thực thi giá/input khác với giá/input buyer đã ký. Hash/chữ ký không chứng minh chất lượng đầu ra; contract cũng không kiểm chứng giá catalog.
 
-## 10. Provider tích hợp như thế nào?
+## 9. Provider tích hợp như thế nào?
 
 ### Tạo app và API key
 
@@ -416,7 +388,7 @@ terms:
   dataUse
 ```
 
-Web và API dùng cùng validation; không bắt buộc manifest file. Provider app, key, store catalog, heartbeat availability, ready/ACK/report, AG-UI streaming, OpenUI projection, question/answer continuation và revision trong phạm vi policy đã có đường đi thử nghiệm. OpenAPI, file artifacts, lease/fencing nhiều writer và nghiệm thu Fuji end-to-end vẫn chưa hoàn tất.
+Web và API dùng cùng validation; không bắt buộc manifest file.
 
 Input/output dùng subset JSON Schema 2020-12 có giới hạn. Không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần lúc chuẩn bị quote rồi đóng băng.
 
@@ -441,7 +413,7 @@ Events gồm:
 - `invocation.revision_requested`
 - `invocation.cancel_requested`
 
-MVP một active stream lease/app, dùng fencing để stream mới thay stream cũ. Provider có thể tự phân phối job cho worker của mình.
+Mỗi app có một active stream lease, dùng fencing để stream mới thay stream cũ. Provider có thể tự phân phối job cho worker của mình.
 
 ### ACK khác hoàn thành
 
@@ -451,7 +423,7 @@ Reports gồm started, progress, question, result, failed, unknown và cancelled
 
 Provider không được gửi report tự đổi payment status, refund hoặc payout. Questions không được dùng để xin khóa, tăng giá hoặc lấy thêm dữ liệu ngoài scope.
 
-## 11. Chống trùng và phục hồi sự cố
+## 10. Chống trùng và phục hồi sự cố
 
 Ba lớp bảo vệ:
 
@@ -492,7 +464,7 @@ Chỉ giao việc khi có receipt thành công, đúng hold và bằng chứng f
 
 Sau xác nhận, một SQL transaction cập nhật `HELD` và tạo logical ready event. Nếu commit mất, reconciler phục hồi idempotently. Nếu thiếu snapshot/input thì cách ly để recovery/refund, không dựng nội dung từ hash.
 
-## 12. Trạng thái tiền và công việc
+## 11. Trạng thái tiền và công việc
 
 Payvoke lưu payment status và execution status riêng.
 
@@ -531,7 +503,7 @@ Execution: DELIVERED    Payment: HELD
 
 Quote hết hạn có thể giải phóng draft slot nếu chưa submit; pending/unknown chỉ giải phóng sau reconciliation, không dựa vào timeout đơn thuần.
 
-## 13. Kết quả, file, sửa và tranh chấp
+## 12. Kết quả, file, sửa và hoàn tiền
 
 ### Kết quả
 
@@ -546,7 +518,7 @@ Các kiểm tra này không xác minh nội dung chuyên môn. Tiến độ tạ
 - Download kiểm tra quyền rồi cấp URL ngắn hạn.
 - Signed URL không nằm trong snapshot thanh toán hoặc log công khai.
 - Không tự tải URL Internet bất kỳ do provider đưa, tránh SSRF.
-- Retention theo điều khoản; legal hold của dispute có thể ngăn xóa.
+- Retention theo điều khoản.
 
 Upload xong không tự có nghĩa artifact đã giao.
 
@@ -558,11 +530,18 @@ Sửa đúng phạm vi giữ invocation cũ, không thu thêm tiền, tạo arti
 
 Bấm hủy tạo đề nghị dừng. Cần xác nhận riêng việc provider đã dừng, side effect đã xảy ra hay chưa và tiền đã hoàn hay chưa.
 
-### Dispute
+### Hoàn tiền và giải ngân tự động
 
-Tranh chấp có hồ sơ trong backend và giao dịch trên contract. Chỉ giao dịch tranh chấp onchain đã xác nhận mới kích hoạt quy tắc disputed hold và chặn payout onchain; ticket trong database chưa đủ.
+Payvoke không phân xử chất lượng nội dung và không có quy trình tranh chấp; chất lượng dựa vào uy tín provider và đánh giá của buyer. Finance worker chỉ áp dụng các quy tắc kiểm chứng được:
 
-Operator xem điều khoản, kết quả, bằng chứng và phản hồi để quyết định tài chính. Hold disputed cần đúng quyền resolver khi giải quyết. Sau `resolveBy`, buyer có thể reclaim phần còn giữ, kể cả khi paused/disputed.
+| Tình huống                                                               | Kết quả      |
+| ------------------------------------------------------------------------ | ------------ |
+| Kết quả đạt `minEvidence` trước `deliveryDeadline`, đã hết review window | Giải ngân    |
+| Provider báo `FAILED` mà chưa có kết quả đạt chuẩn                       | Hoàn toàn bộ |
+| Quá `deliveryDeadline` mà chưa giao, hoặc giao trễ                       | Hoàn toàn bộ |
+| Review window kéo quá `resolveBy`                                        | Hoàn toàn bộ |
+
+Nếu worker dừng hoặc quyết định thất bại liên tục, buyer vẫn reclaim được phần còn giữ sau `resolveBy`, kể cả khi vault đang pause.
 
 Sau terminal release, không thể refund từ chính hold đã đóng. Bồi hoàn muộn cần nguồn tiền riêng; không được lấy tiền buyer khác để bù.
 
@@ -570,11 +549,11 @@ Sau terminal release, không thể refund từ chính hold đã đóng. Bồi ho
 
 Buyer đánh giá invocation đã trả tiền và được giao. Đánh giá gắn với phiên bản sản phẩm, sửa có lịch sử. Mẫu quảng cáo provider không được trình bày như đánh giá buyer.
 
-Vì Payvoke trả gas cho giao dịch giữ tiền, số invocation có thể bị làm giả rẻ như đã thấy trên x402 công khai. Store nên hiển thị số buyer độc lập đã xác minh và rating theo command revision thay cho số giao dịch thô; giải ngân nên dựa trên mức bằng chứng tối thiểu mà command đã khai báo. Đây là đề xuất, xem [M05](docs/modules/05-artifacts-and-verification.md) và [M09](docs/modules/09-reputation-and-operations.md).
+Vì Payvoke trả gas cho giao dịch giữ tiền, số invocation có thể bị làm giả rẻ như đã thấy trên x402 công khai. Store nên hiển thị số buyer độc lập đã xác minh và rating theo command revision thay cho số giao dịch thô; giải ngân nên dựa trên mức bằng chứng tối thiểu mà command đã khai báo. Xem [M05](docs/modules/05-artifacts-and-verification.md) và [M09](docs/modules/09-reputation-and-operations.md).
 
 Operator có thể dừng bán, revoke key lộ và xử lý sự cố theo quyền. Mọi hành động cần audit: ai làm, lý do, thời điểm và điều kiện mở lại. Provider offline không làm biến mất job đã trả; outcome chưa rõ phải điều tra trước khi phát lại.
 
-## 14. MCP cho ứng dụng AI
+## 13. MCP cho ứng dụng AI
 
 MCP giúp ứng dụng AI bên ngoài sử dụng Payvoke:
 
@@ -590,7 +569,7 @@ x402 / Vault / Provider
 
 Bridge chạy trên máy buyer, giữ khóa local, làm MCP server đối với AI host và HTTP client đối với Payvoke. Bridge dùng cùng buyer API/x402, không gọi provider trực tiếp hoặc tự tính giá.
 
-### Tools dự kiến
+### Tools
 
 - `search_apps`
 - `get_app`
@@ -621,21 +600,21 @@ Có một quyền không thay thế quyền kia. API revoke và grant revoke là
 
 `confirmed:true` hoặc model nói “người dùng đã đồng ý” không phải approval hợp lệ.
 
-MVP yêu cầu buyer phê duyệt quote qua trusted local CLI ngoài MCP. Approval gắn với đúng quote/digest/invocation/profile và spending policy; retry cùng invocation có thể dùng quyết định cũ, invocation mới phải được duyệt mới.
+Buyer phê duyệt quote qua trusted local CLI ngoài MCP. Approval gắn với đúng quote/digest/invocation/profile và spending policy; retry cùng invocation có thể dùng quyết định cũ, invocation mới phải được duyệt mới.
 
 Bridge chỉ ký khi đồng thời hợp lệ: API authorization, owner/workspace, quote, explicit approval, local policy, grant, reservation/balance và payment challenge. Không để LLM đánh giá thay các kiểm tra deterministic này.
 
 Mô tả command, tài liệu hoặc output provider là dữ liệu không đáng tin, không được thay policy, đổi vault hoặc yêu cầu submit thêm để “mở khóa kết quả”. Tools không nhận private key, token, RPC, chain, vault, calldata hoặc origin tùy ý.
 
-### Lưu khóa và giới hạn MVP
+### Lưu khóa và giới hạn
 
 Khóa/token ở OS keychain. Không có secure storage phù hợp thì paid mode phải tắt, không fallback plaintext.
 
 Local reservation/journal khóa chống race giữa các process; timeout không giải phóng ngân sách nếu chưa rõ đã giữ tiền hay chưa. Submit trả job ID sau API acceptance, không đợi provider chạy xong; host đọc trạng thái bằng polling.
 
-MVP không có remote paid signing, tự đọc filesystem/upload file, tự fetch URL hoặc tự render script từ kết quả. File đầu vào được upload trên web trước. Stdio stdout chỉ dành cho protocol, log đã redact đi stderr. Dùng SDK/protocol đã pin và kiểm tra tương thích host, không mặc định mọi host MCP đều tương thích.
+Bridge không hỗ trợ remote paid signing, tự đọc filesystem/upload file, tự fetch URL hoặc tự render script từ kết quả. File đầu vào được upload trên web trước. Stdio stdout chỉ dành cho protocol, log đã redact đi stderr. Dùng SDK/protocol đã pin và kiểm tra tương thích host, không mặc định mọi host MCP đều tương thích.
 
-## 15. Kiến trúc kỹ thuật và database
+## 14. Kiến trúc kỹ thuật và database
 
 ### Kiến trúc tổng thể
 
@@ -658,7 +637,7 @@ Provider   ↔ SSE + ACK/reports API
 Files      ↔ Object storage
 ```
 
-Stack đã chọn:
+Stack:
 
 - **Fastify:** API.
 - **PostgreSQL + Prisma:** persistence.
@@ -668,7 +647,7 @@ Stack đã chọn:
 - **Local stdio MCP bridge:** tích hợp ứng dụng AI.
 - **S3-compatible storage:** khi bật file.
 
-Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm Redis/Kafka. API process và process giữ khóa settlement phải tách quyền; facilitator không nhận yêu cầu relay tùy ý từ bên ngoài.
+Điều phối dùng PostgreSQL outbox, transaction, lease và fencing, không cần Redis/Kafka. API process và process giữ khóa settlement phải tách quyền; facilitator không nhận yêu cầu relay tùy ý từ bên ngoài.
 
 ### Layout repository
 
@@ -677,7 +656,7 @@ Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm 
 | `apps/api`                   | API Fastify cho frontend và provider (auth, catalog, quote, x402 gateway, AG-UI) |
 | `apps/facilitator`           | Facilitator x402 nội bộ, không giữ khóa                                          |
 | `apps/settlement-worker`     | Worker gửi `reserveHold`, giữ khóa relayer                                       |
-| `apps/ops`                   | CLI vận hành Fuji và finance (operator, approver, executor tách env)             |
+| `apps/finance-worker`        | Worker tự động hoàn tiền/giải ngân, giữ khóa approver và executor                |
 | `packages/payvoke-db`        | Prisma schema, migrations và client dùng chung                                   |
 | `packages/payvoke-payments`  | Domain thanh toán: journal, admission, settlement, finance                       |
 | `packages/payvoke-server`    | Env loader, redaction, cấu hình deployment vault dùng chung cho service          |
@@ -686,54 +665,50 @@ Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm 
 | `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                               |
 | `apps/frontend`              | Web UI: store, chat, Studio                                                      |
 | `apps/slide`                 | Slide pitch                                                                      |
-| `docs`                       | Modules, specs, nghiên cứu và roadmap                                            |
+| `docs`                       | Modules, specs và nghiên cứu                                                     |
 | `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                              |
 | `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                     |
 | `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                       |
-| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                           |
-| `apps/mcp`                   | Đề xuất: bridge local stdio                                                      |
-
-Những đường dẫn đánh dấu đề xuất là layout mục tiêu, chưa tồn tại. Provider fixture sẽ chạy ngoài process Payvoke như provider thật.
 
 ### Services và deploy
 
 Backend gồm bốn process deploy riêng. Mỗi process đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
 
-| Service                  | Lệnh local                            | Docker target       | Giữ khóa                               |
-| ------------------------ | ------------------------------------- | ------------------- | -------------------------------------- |
-| `apps/api`               | `pnpm --filter api dev`               | `api`               | Không                                  |
-| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `facilitator`       | Không (chỉ `RELAYER_ADDRESS`)          |
-| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `settlement-worker` | `RELAYER_PRIVATE_KEY`                  |
-| `apps/ops`               | `pnpm --filter ops ops:<role> …`      | Không (chạy tay)    | Mỗi role một file `private/<role>.env` |
+| Service                  | Lệnh local                            | Docker target       | Giữ khóa                                                       |
+| ------------------------ | ------------------------------------- | ------------------- | -------------------------------------------------------------- |
+| `apps/api`               | `pnpm --filter api dev`               | `api`               | Không                                                          |
+| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `facilitator`       | Không (chỉ `RELAYER_ADDRESS`)                                  |
+| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `settlement-worker` | `RELAYER_PRIVATE_KEY`                                          |
+| `apps/finance-worker`    | `pnpm --filter finance-worker dev`    | `finance-worker`    | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
 
 Migrations: `pnpm --filter @payvoke/db migrate`, hoặc image target `migrate` (one-shot).
 
 ```sh
-docker build --target api -t payvoke-api .          # tương tự: facilitator, settlement-worker, migrate
-docker compose --profile stack up --build            # db + migrate + api + facilitator + worker
+docker build --target api -t payvoke-api .          # tương tự: facilitator, settlement-worker, finance-worker, migrate
+docker compose --profile stack up --build            # db + migrate + api + facilitator + hai worker
 ```
 
 Trong compose, facilitator dùng chung network namespace với API nên chỉ nghe trên loopback và không publish port. Deploy tách máy thì facilitator phải đặt sau TLS (`FACILITATOR_URL=https://…`). `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
 
 ### Vai trò của Prisma schema
 
-[Schema hiện tại](packages/payvoke-db/prisma/schema.prisma) bao phủ:
+[Prisma schema](packages/payvoke-db/prisma/schema.prisma) bao phủ:
 
-| Nhóm                 | Models tiêu biểu                                                              |
-| -------------------- | ----------------------------------------------------------------------------- |
-| Danh tính            | `Account`, `LoginChallenge`, `WebSession`                                     |
-| Quyền                | `OperatorRoleAssignment`, `ClientAuthorization`, `ClientWorkspaceAccess`      |
-| Provider             | `App`, `AppApiKey`, `AppCommand`, `AppCommandRevision`                        |
-| Store                | `AppStar`                                                                     |
-| Workspace/context    | `ChatThread`, `MessageVersion`, `WorkspaceBriefVersion`                       |
-| Công việc            | `Invocation`, questions, answers, revisions, cancellations                    |
-| Thanh toán           | `Quote`, `PaymentAuthorization`, `PaymentAttempt`                             |
-| Chain                | `ChainOperation`, `ChainTransaction`, `ChainEvent`, nonce slots, sync cursors |
-| Vault projections    | `SpendGrant`, `VaultBalance`, `VaultHold`                                     |
-| Provider delivery    | `OutboxEvent`, connection, delivery, receipt, report                          |
-| Kết quả/file         | `ArtifactVersion`, `ArtifactCheck`, `FileAsset`                               |
-| Tài chính/tranh chấp | `Dispute`, evidence, `FinancialDecision`                                      |
-| Kiểm toán            | `AuditLog`, `IdempotencyRecord`, ratings                                      |
+| Nhóm              | Models tiêu biểu                                                              |
+| ----------------- | ----------------------------------------------------------------------------- |
+| Danh tính         | `Account`, `LoginChallenge`, `WebSession`                                     |
+| Quyền             | `OperatorRoleAssignment`, `ClientAuthorization`, `ClientWorkspaceAccess`      |
+| Provider          | `App`, `AppApiKey`, `AppCommand`, `AppCommandRevision`                        |
+| Store             | `AppStar`                                                                     |
+| Workspace/context | `ChatThread`, `MessageVersion`, `WorkspaceBriefVersion`                       |
+| Công việc         | `Invocation`, questions, answers, revisions, cancellations                    |
+| Thanh toán        | `Quote`, `PaymentAuthorization`, `PaymentAttempt`                             |
+| Chain             | `ChainOperation`, `ChainTransaction`, `ChainEvent`, nonce slots, sync cursors |
+| Vault projections | `SpendGrant`, `VaultBalance`, `VaultHold`                                     |
+| Provider delivery | `OutboxEvent`, connection, delivery, receipt, report                          |
+| Kết quả/file      | `ArtifactVersion`, `ArtifactCheck`, `FileAsset`                               |
+| Tài chính         | evidence, `FinancialDecision`                                                 |
+| Kiểm toán         | `AuditLog`, `IdempotencyRecord`, ratings                                      |
 
 Quy tắc lưu trữ:
 
@@ -749,7 +724,7 @@ Quy tắc lưu trữ:
 
 Số dư DB là projection từ chain, không phải nguồn tự tạo tiền/quyền chi. Nếu projection lệch phải dừng admission và reconcile. PostgreSQL tmpfs trong môi trường test không thay thế storage bền vững cho deployment.
 
-## 16. Mười module chức năng
+## 15. Mười module chức năng
 
 | Module                                                                     | Trách nhiệm                                                  |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
@@ -761,46 +736,14 @@ Số dư DB là projection từ chain, không phải nguồn tự tạo tiền/q
 | [M06 — Payments](docs/modules/06-x402-payments-and-refunds.md)             | x402, settlement, refund, reconciliation                     |
 | [M07 — Publishing](docs/modules/07-provider-publishing.md)                 | App, visibility, command revision, key và availability       |
 | [M08 — External clients](docs/modules/08-external-client-access.md)        | MCP local và scoped authorization                            |
-| [M09 — Operations](docs/modules/09-reputation-and-operations.md)           | Đánh giá, tranh chấp, sự cố, audit                           |
+| [M09 — Operations](docs/modules/09-reputation-and-operations.md)           | Đánh giá, sự cố, audit                                       |
 | [M10 — Vault](docs/modules/10-payvoke-vault.md)                            | Deposit, withdraw, grants, holds, payout                     |
 
-M01–M10 chia theo chức năng sản phẩm; M0–M9 trong roadmap chia theo giai đoạn triển khai.
+## 16. Phạm vi
 
-## 17. Roadmap triển khai
+Config sai chain, vault hoặc capability phải fail closed. Giá trị fixture không được dùng làm cấu hình thật.
 
-[Roadmap](docs/roadmap.md) chia 130 task theo dependency và acceptance criteria, cộng 8 task R01–R08 bổ sung từ nghiên cứu ([§17](docs/roadmap.md#17-bổ-sung-từ-nghiên-cứu-25102026)):
-
-| Giai đoạn | Mục tiêu                            |
-| --------- | ----------------------------------- |
-| M0        | Môi trường, config, checks, CI      |
-| M1        | Shared schemas, snapshots, signing  |
-| M2        | Vault hoàn chỉnh ở local            |
-| M3        | Backend identity và command catalog |
-| M4        | Quote, x402, settlement, recovery   |
-| M5        | Provider gateway, execution, files  |
-| M6        | Finance, fault injection, Fuji      |
-| M7        | Frontend                            |
-| M8        | MCP local                           |
-| M9        | Hardening và phát hành Fuji         |
-
-Gate T092 yêu cầu kiểm chứng luồng backend/payment/provider/finance/recovery qua client headless trên Fuji trước khi bắt đầu frontend. Tests phải chứng minh không trừ tiền hai lần, chỉ giao việc sau thanh toán và phục hồi được sau crash. Task chỉ hoàn tất khi có code, tests và bằng chứng nghiệm thu.
-
-## 18. Quyết định còn mở và ranh giới MVP
-
-Trước khi bật giao dịch deployment cần duyệt:
-
-- Phí và trần phí.
-- Thời hạn quote.
-- Thời gian giao/review/resolve tối đa.
-- Gas/AVAX budgets.
-- Upload, retention và rate limits.
-- Token expiry.
-- Địa chỉ deployment, ABI/codehash và cấu hình chain/token.
-- Chủ sở hữu keys/roles và quy trình phê duyệt tài chính/vận hành.
-
-Không biến giá trị fixture thành cấu hình thật. Thiếu policy thật không chặn local development với fixture riêng, nhưng phải chặn bật giao dịch deployment. Config sai chain, vault hoặc capability phải fail closed.
-
-Ngoài phạm vi hiện tại:
+Ngoài phạm vi:
 
 - Mainnet và tài sản thật.
 - Multi-chain.
@@ -821,12 +764,11 @@ Ngoài phạm vi hiện tại:
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
 - [S04 — AG-UI chat streaming và OpenUI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
 - [Prisma schema](packages/payvoke-db/prisma/schema.prisma).
-- [Roadmap 130 task + R01–R08](docs/roadmap.md).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).
 - [Nghiên cứu agentic payments áp dụng cho Payvoke](docs/research/agentic-payments-literature.md).
 - [Ma trận bằng chứng thanh toán](docs/payment-acceptance.md).
 
-README là bản giải thích tổng thể. S01–S04 là đặc tả quy tắc nghiệp vụ và giao thức; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Tài liệu không liệt kê routes API: method, path và request/response lấy từ code trong `apps/api/src/modules/*`, là nguồn sự thật duy nhất. Không coi ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
+README là bản giải thích tổng thể. S01–S04 là đặc tả quy tắc nghiệp vụ và giao thức; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Tài liệu không liệt kê routes API: method, path và request/response lấy từ code trong `apps/api/src/modules/*`, là nguồn sự thật duy nhất.
 
 ## Tài liệu tham khảo và lời cảm ơn
 

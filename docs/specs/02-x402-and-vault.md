@@ -87,7 +87,7 @@ resolveBy        = releaseNotBefore + resolutionGraceSeconds
 
 Chốt trước ký, không tính lại dựa trên thời điểm retry. Contract yêu cầu `now < validUntil < deliveryDeadline <= releaseNotBefore < resolveBy`, duration không vượt deployment cap. Nếu reviewSeconds=0 thì bằng nhau được ở mốc release; policy nền tảng quyết định có cho phép 0 không.
 
-`releaseNotBefore` là thời điểm sớm nhất được giải ngân. Quyết định nghiệp vụ chỉ được cho phép release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Release còn cần evidence mới nhất đạt `minEvidence` của TermsSnapshot. Nếu không đủ thời gian hoặc không đủ bằng chứng trước resolveBy, chuyển resolver/refund; không kéo dài hold bằng cách sửa chữ ký cũ. Contract kiểm tra deadline/counter; platform phải xác nhận việc giao và khả năng truy cập file.
+`releaseNotBefore` là thời điểm sớm nhất được giải ngân. Quyết định nghiệp vụ chỉ được cho phép release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Release còn cần evidence mới nhất đạt `minEvidence` của TermsSnapshot. Nếu không đủ thời gian hoặc không đủ bằng chứng trước resolveBy thì hoàn tiền; không kéo dài hold bằng cách sửa chữ ký cũ. Contract kiểm tra deadline/counter; platform phải xác nhận việc giao và khả năng truy cập file.
 
 ## 4. EIP-712 chính thức của Payvoke v1
 
@@ -247,7 +247,6 @@ function revokeGrant(bytes32 grantId) external;
 function reserveHold(InvocationQuote calldata quote,
     DebitAuthorization calldata authorization, bytes calldata signature)
     external returns (bytes32 holdId);
-function openDispute(bytes32 holdId, bytes32 evidenceHash) external;
 function applyDecision(ResolutionDecision calldata decision,
     address approver, bytes calldata approvalSignature) external;
 function reclaim(bytes32 holdId) external;
@@ -278,21 +277,19 @@ struct ResolutionDecision {
     uint64 expectedVersion;
     uint256 refundAmount;
     bool releaseRemainder;
-    bool resolveDispute;
     uint48 validUntil;
 }
 ```
 
-`GrantView` gồm GrantConfig, uint64 epoch, uint256 spentTotal/spentInPeriod, uint64 currentPeriod, bool revoked. `HoldView` gồm quoteDigest/authorizationDigest, buyer/provider/feeRecipient, gross/refunded/remaining/providerReleased/feeReleased, feeBps, deliveryDeadline/releaseNotBefore/resolveBy, disputed/closed, uint64 version và grantId. Event lưu invocationKey/quoteDigest để index mapping; transaction hash được lấy từ receipt, không contract state.
+`GrantView` gồm GrantConfig, uint64 epoch, uint256 spentTotal/spentInPeriod, uint64 currentPeriod, bool revoked. `HoldView` gồm quoteDigest/authorizationDigest, buyer/provider/feeRecipient, gross/refunded/remaining/providerReleased/feeReleased, feeBps, deliveryDeadline/releaseNotBefore/resolveBy, closed, uint64 version và grantId. Event lưu invocationKey/quoteDigest để index mapping; transaction hash được lấy từ receipt, không contract state.
 
 - `RELAYER_ROLE`: reserveHold có buyer authorization hợp lệ; không quyền rút/giải ngân.
 - `FINANCE_EXECUTOR_ROLE`: gửi applyDecision nhưng vẫn cần chữ ký approver hợp lệ.
 - `REFUND_APPROVER_ROLE`: duyệt decision có refundAmount > 0.
 - `RELEASE_APPROVER_ROLE`: duyệt releaseRemainder; nếu vừa refund vừa release thì signer phải có cả hai role.
-- `DISPUTE_RESOLVER_ROLE`: bắt buộc thêm khi disputed hold hoặc resolveDispute=true. Decision thiếu cờ resolveDispute không được giải ngân disputed hold.
 - `PAUSER_ROLE`: dừng admission mới. Admin/cap/role changes dùng delayed admin/multisig, không tùy ý lấy buyerAvailable hoặc upgrade implementation.
 
-ResolutionDecision ký EIP-712 cùng domain, primaryType `ResolutionDecision`, đúng field order/width ở trên. SignatureChecker kiểm tra `approver` supplied có role đúng và ký đúng digest; không tin approver string từ worker. decisionId single-use, expectedVersion khớp, now<validUntil và now<resolveBy, refundAmount<=remaining; zero-refund/no-release/no-effect bị từ chối. Worker không có approver key trong cùng process production.
+ResolutionDecision ký EIP-712 cùng domain, primaryType `ResolutionDecision`, đúng field order/width ở trên. SignatureChecker kiểm tra `approver` supplied có role đúng và ký đúng digest; không tin approver string từ worker. decisionId single-use, expectedVersion khớp, now<validUntil và now<resolveBy, refundAmount<=remaining; zero-refund/no-release/no-effect bị từ chối. Payvoke không có quy trình tranh chấp: finance worker ký decision bằng khóa approver theo policy tự động (§8.5) và gửi bằng khóa executor riêng; contract từ chối approver trùng executor.
 
 ### 8.2 reserveHold
 
@@ -307,9 +304,22 @@ ResolutionDecision ký EIP-712 cùng domain, primaryType `ResolutionDecision`, �
 - `applyDecision` refundAmount trả về buyer available của chính hold. Refund từng phần chỉ giảm remaining; không ghi provider/platform income trước release.
 - releaseRemainder chỉ khi now>=releaseNotBefore, now<resolveBy, state hợp lệ và decision đủ role. Khoản phí cuối = floor((gross - refundedTotal) * feeBps / 10000); provider nhận phần net còn lại. Release terminal, không release lần hai.
 - Full refund hoặc remaining=0 đóng hold. Không refund từ hold đã release. Không `force payout` trước earliest deadline vì buyer đã bấm accept.
-- Buyer `openDispute` khi còn held, chưa closed, now<resolveBy; do buyer gửi trực tiếp onchain. DB dispute ticket không thay thế tx này. Disputed giữ nguyên đến final resolution/reclaim; không reopen vô hạn sau terminal.
-- Buyer `reclaim` khi now>=resolveBy, remaining>0, kể cả pause/disputed; trả phần còn giữ về available, đóng hold. applyDecision sau mốc này bị chặn để loại race capture/reclaim.
+- Buyer `reclaim` khi now>=resolveBy, remaining>0, kể cả khi pause; trả phần còn giữ về available, đóng hold. applyDecision sau mốc này bị chặn để loại race capture/reclaim.
 - Rút provider/platform chỉ từ claimable của msg.sender; available của buyer chỉ rút về buyer. Pause không chặn revoke, withdrawAvailable, reclaim. USDC freeze/blacklist vẫn có thể làm token transfer fail, không hứa chống lại issuer.
+
+### 8.5 Policy hoàn tiền/giải ngân tự động
+
+Payvoke không phân xử chất lượng nội dung. `apps/finance-worker` quyết định mỗi hold đang mở theo đúng một trong các quy tắc sau, dựa trên evidence mới nhất, execution status và deadline trong hold đã finalized:
+
+| Điều kiện                                                                                     | Decision                   |
+| --------------------------------------------------------------------------------------------- | -------------------------- |
+| Evidence đạt `minEvidence`, quan sát trước `deliveryDeadline`, block time >= earliest release | `releaseRemainder`         |
+| Evidence đạt chuẩn nhưng quan sát từ `deliveryDeadline` trở đi                                | refund toàn bộ `remaining` |
+| Earliest release >= `resolveBy`                                                               | refund toàn bộ `remaining` |
+| Không có evidence đạt chuẩn và execution `FAILED`                                             | refund toàn bộ `remaining` |
+| Không có evidence đạt chuẩn và block time >= `deliveryDeadline`                               | refund toàn bộ `remaining` |
+
+Mỗi hold có tối đa một decision đang xử lý và tối đa ba lần thử; sau đó buyer tự reclaim sau `resolveBy`.
 
 ### 8.4 Bất biến và events
 
@@ -323,9 +333,9 @@ providerReleased + feeReleased chỉ tăng khi release đủ điều kiện
 
 Token donation trực tiếp tạo surplus, không tự thành buyer balance. Không có admin sweep tùy ý vào liabilities; hỗ trợ duy nhất USDC fixed, không fee-on-transfer/rebasing arbitrary tokens. SafeERC20, EIP712/SignatureChecker, CEI, ReentrancyGuard và delayed roles theo OpenZeppelin đã pin. [R3]
 
-Events tối thiểu: `Deposited(buyer,amount)`, `AvailableWithdrawn(buyer,amount)`, `GrantRegistered/GrantUpdated/GrantRevoked(buyer,grantId,epoch)`, `HoldReserved(holdId,buyer,quoteDigest,authorizationDigest,gross)`, `DisputeOpened(holdId,evidenceHash)`, `DecisionApplied(holdId,decisionId,version,refundAmount,providerAmount,feeAmount)`, `HoldReclaimed(holdId,buyer,amount)`, `ProviderWithdrawn`, `PlatformWithdrawn`, pause/role/cap changes. HoldView/read methods cung cấp những field không nằm trong log.
+Events tối thiểu: `Deposited(buyer,amount)`, `AvailableWithdrawn(buyer,amount)`, `GrantRegistered/GrantUpdated/GrantRevoked(buyer,grantId,epoch)`, `HoldReserved(holdId,buyer,quoteDigest,authorizationDigest,gross)`, `DecisionApplied(holdId,decisionId,version,refundAmount,providerAmount,feeAmount)`, `HoldReclaimed(holdId,buyer,amount)`, `ProviderWithdrawn`, `PlatformWithdrawn`, pause/role/cap changes. HoldView/read methods cung cấp những field không nằm trong log.
 
-Custom error codes mục tiêu: `InvalidAsset`, `InvalidSignature`, `GrantExpired`, `GrantRevoked`, `GrantEpochMismatch`, `InsufficientAvailable`, `PerCallLimitExceeded`, `PeriodLimitExceeded`, `TotalLimitExceeded`, `QuoteExpired`, `DeadlineInvalid`, `FeeCapExceeded`, `InvocationConflict`, `HoldClosed`, `HoldDisputed`, `DecisionReplay`, `HoldVersionMismatch`, `ReleaseTooEarly`, `ResolutionExpired`, `ReclaimTooEarly`, `Unauthorized`. Mapping facilitator giữ errorReason machine-readable, không gom mọi lỗi thành “không đủ tiền”.
+Custom error codes mục tiêu: `InvalidAsset`, `InvalidSignature`, `GrantExpired`, `GrantRevoked`, `GrantEpochMismatch`, `InsufficientAvailable`, `PerCallLimitExceeded`, `PeriodLimitExceeded`, `TotalLimitExceeded`, `QuoteExpired`, `DeadlineInvalid`, `FeeCapExceeded`, `InvocationConflict`, `HoldClosed`, `DecisionReplay`, `HoldVersionMismatch`, `ReleaseTooEarly`, `ResolutionExpired`, `ReclaimTooEarly`, `Unauthorized`. Mapping facilitator giữ errorReason machine-readable, không gom mọi lỗi thành “không đủ tiền”.
 
 ## 9. Persistence và recovery matrix
 
@@ -337,7 +347,7 @@ Custom error codes mục tiêu: `InvalidAsset`, `InvalidSignature`, `GrantExpire
 | Receipt revert                    | Không dispatch; lưu lỗi/nonce; cho user sửa quyền/số dư rồi thao tác theo state machine, không đổi input ngầm.    |
 | Core retry settle pending         | Reconcile operation cũ, không broadcast lần nữa chỉ vì SDK gọi lần hai.                                           |
 | Chain held nhưng DB chưa commit   | Reconciler phục hồi HELD và outbox, không cần browser online.                                                     |
-| Provider offline/timeout sau hold | Job không mất; theo hạn giao chuyển resolver/refund, không thu thêm để retry.                                     |
+| Provider offline/timeout sau hold | Job không mất; quá hạn giao thì finance worker hoàn toàn bộ, không thu thêm để retry.                             |
 | Quote/grant hết hạn sau hold      | Đọc lại receipt và job vẫn hợp lệ, không reserve lại hoặc xóa hold.                                               |
 | Balance projection lệch chain     | Dừng admission, reconcile; không sửa số dư DB như nguồn tiền độc lập.                                             |
 | Refund muộn sau terminal payout   | Ngoài hold v1; cần reserve USDC riêng cấp vốn vào available bằng transfer thực. Không lấy số dư buyer khác để bù. |
@@ -354,7 +364,7 @@ Mutation tests: chain/vault/version/provider/amount/fee/input/terms/session/prod
 2. Refund không reset allowance, period boundary đúng fixed epoch, update không reset counters.
 3. Multiple partial refunds + terminal release ra fee đúng net, rounding không tạo tiền.
 4. Decision replay/expectedVersion sai/worker thiếu approval không thay tiền.
-5. Dispute confirmed chặn release không resolver; reclaim sau resolveBy hoạt động khi pause/disputed.
+5. Policy tự động refund khi lỗi/không giao/giao trễ và release khi giao đúng hạn; reclaim sau resolveBy hoạt động khi pause.
 6. Invalid POST/body/quote ownership fail trước settlement; HTTP500/pending/timeout không mất receipt hoặc charge lại.
 7. Kill/restart trên mọi điểm matrix; một hold chỉ có một logical provider ready event.
 8. Fuji end-to-end với test USDC, receipt/event/finalized read và balance delta; công bố địa chỉ/roles/ABI/txHashes trước demo.

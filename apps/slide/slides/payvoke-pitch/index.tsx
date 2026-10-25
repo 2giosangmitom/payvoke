@@ -414,7 +414,7 @@ const Problem: Page = () => (
         Có app, nhưng thiếu store, payment rail và lớp giữ tiền.
       </Card>
       <Card index="03" kicker="TRUST" title="Trả trước cho output chưa thấy.">
-        Không hold, không refund, không dispute. Provider tốt cũng không có cách chứng minh.
+        Không hold, không tự hoàn tiền khi lỗi. Provider tốt cũng không có cách chứng minh.
       </Card>
     </div>
 
@@ -789,8 +789,8 @@ const Trust: Page = () => (
       <Card index="02" kicker="HOLD" title="Một hold cho một việc.">
         Quá resolveBy mà chưa xử lý, buyer reclaim được.
       </Card>
-      <Card index="03" kicker="DISPUTE" title="Không admin nào rút hộ.">
-        Approver và executor dùng khóa riêng; mọi quyết định idempotent.
+      <Card index="03" kicker="AUTO REFUND" title="Lỗi hay trễ là hoàn tiền.">
+        Không giao, báo lỗi hoặc trễ hạn thì tự hoàn; giao đúng hạn thì tự giải ngân.
       </Card>
     </div>
 
@@ -1140,7 +1140,7 @@ const Status: Page = () => (
       <StatusColumn
         kicker="→ ĐANG XÂY"
         color={warm}
-        items={['PayvokeVault contract', 'x402 facilitator adapters', 'MCP bridge local', 'Dispute & operations']}
+        items={['PayvokeVault contract', 'x402 facilitator adapters', 'MCP bridge local', 'Auto refund & release']}
       />
       <StatusColumn
         kicker="— CHƯA CÓ"
@@ -1229,7 +1229,7 @@ export const notes: (string | undefined)[] = [
   'Chốt định vị trong một câu: store + thread + vault. Store để khám phá, thread để dùng, vault để tin. Đừng sa vào chi tiết kỹ thuật ở trang này — để dành sang phần sau.',
   'Đây là trang demo. Nếu có bản chạy live, chuyển sang demo ngay sau trang này. Nếu không, đi qua năm bước và chỉ vào mock thread: một câu lệnh, một câu hỏi làm rõ, một quote, một kết quả verified.',
   'Đi chậm ở bước 402 → ký → hold. Nhấn mạnh: provider chỉ nhận job sau khi hold được xác nhận, và chỉ được release sau khi kết quả verify. Ba chữ “KHÔNG” ở dưới là ba lỗi phổ biến của marketplace.',
-  'Đây là phần khiến buyer dám trả tiền: grant có hạn mức, hold theo từng invocation, và dispute có approver/executor tách quyền. Câu bất biến kế toán là bằng chứng kỹ thuật — đọc chậm, đừng giảng giải quá lâu.',
+  'Đây là phần khiến buyer dám trả tiền: grant có hạn mức, hold theo từng invocation, và hoàn tiền tự động khi provider lỗi hoặc trễ hạn — không cần ai phân xử. Câu bất biến kế toán là bằng chứng kỹ thuật — đọc chậm, đừng giảng giải quá lâu.',
   'Provider không phải chuyển code lên Payvoke. Họ tạo app trong Studio, giữ payout address, mở SSE để nhận việc. Revision bất biến nghĩa là sửa giá không làm hỏng quote cũ — đây là điểm bán cho provider.',
   'Mô hình doanh thu rất đơn giản: take rate trên net đã settle. Buyer thấy một giá gộp, provider nhận phần còn lại. Nói rõ tỷ lệ phí chưa chốt — đừng để judge nghĩ con số 5% là cam kết.',
   'So sánh để định vị, không phải để nói đối thủ dở. GPT Store mạnh distribution nhưng không có per-call payment và escrow. RapidAPI mạnh API nhưng không chat-native. x402 là rail, không phải marketplace. Payvoke ghép cả ba.',

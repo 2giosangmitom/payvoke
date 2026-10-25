@@ -34,5 +34,5 @@ export class PaymentsController {
     this.paymentStatusService.status(request.account!.id, request.params.id);
 
   financialIntent = async (request: FastifyRequest<FinancialIntentRoute>) =>
-    this.paymentStatusService.financialIntent(request.account!.id, request.params.id, request.body);
+    this.paymentStatusService.financialIntent(request.account!.id, request.params.id);
 }

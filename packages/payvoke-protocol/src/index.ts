@@ -43,7 +43,6 @@ export const paymentTypes = {
     { name: "expectedVersion", type: "uint64" },
     { name: "refundAmount", type: "uint256" },
     { name: "releaseRemainder", type: "bool" },
-    { name: "resolveDispute", type: "bool" },
     { name: "validUntil", type: "uint48" },
   ],
 } as const;
@@ -75,7 +74,7 @@ export const vaultAdmissionAbi = [
   ...reserveHoldAbi,
   ...parseAbi([
     "function getGrant(address buyer, bytes32 grantId) view returns (((address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config,uint64 epoch,uint256 spentTotal,uint256 spentInPeriod,uint64 currentPeriod,bool revoked) grant)",
-    "function getHold(bytes32 holdId) view returns ((bytes32 quoteDigest,bytes32 authorizationDigest,address buyer,address provider,address feeRecipient,uint256 gross,uint256 refunded,uint256 remaining,uint256 providerReleased,uint256 feeReleased,uint16 feeBps,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy,bool disputed,bool closed,uint64 version,bytes32 grantId) hold)",
+    "function getHold(bytes32 holdId) view returns ((bytes32 quoteDigest,bytes32 authorizationDigest,address buyer,address provider,address feeRecipient,uint256 gross,uint256 refunded,uint256 remaining,uint256 providerReleased,uint256 feeReleased,uint16 feeBps,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy,bool closed,uint64 version,bytes32 grantId) hold)",
     "function asset() view returns (address)",
     "function decimals() view returns (uint8)",
     "function feeCapBps() view returns (uint16)",
@@ -126,7 +125,6 @@ export const vaultFinancialEvents = parseAbi([
   "event Deposited(address indexed buyer,uint256 amount)",
   "event AvailableWithdrawn(address indexed buyer,uint256 amount)",
   "event HoldReserved(bytes32 indexed holdId,address indexed buyer,bytes32 quoteDigest,bytes32 authorizationDigest,uint256 gross)",
-  "event DisputeOpened(bytes32 indexed holdId,bytes32 evidenceHash)",
   "event DecisionApplied(bytes32 indexed holdId,bytes32 indexed decisionId,uint64 version,uint256 refundAmount,uint256 providerAmount,uint256 feeAmount)",
   "event HoldReclaimed(bytes32 indexed holdId,address indexed buyer,uint256 amount)",
   "event ProviderWithdrawn(address indexed provider,uint256 amount)",
@@ -137,7 +135,6 @@ export const vaultFinanceAbi = [
   ...applyDecisionAbi,
   ...vaultFinancialEvents,
   ...parseAbi([
-    "function openDispute(bytes32 holdId,bytes32 evidenceHash)",
     "function reclaim(bytes32 holdId)",
     "function usedDecisionIds(bytes32 id) view returns(bool)",
     "function totalAvailable() view returns(uint256)",
@@ -149,7 +146,6 @@ export const vaultFinanceAbi = [
     "error DecisionReplay()",
     "error HoldVersionMismatch()",
     "error HoldClosed()",
-    "error HoldDisputed()",
     "error ReleaseTooEarly()",
     "error ResolutionExpired()",
     "error NoEffect()",

@@ -26,10 +26,9 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
     bytes32 public constant FINANCE_EXECUTOR_ROLE = keccak256("FINANCE_EXECUTOR_ROLE");
     bytes32 public constant REFUND_APPROVER_ROLE = keccak256("REFUND_APPROVER_ROLE");
     bytes32 public constant RELEASE_APPROVER_ROLE = keccak256("RELEASE_APPROVER_ROLE");
-    bytes32 public constant DISPUTE_RESOLVER_ROLE = keccak256("DISPUTE_RESOLVER_ROLE");
     bytes32 private constant QUOTE_TYPEHASH = keccak256("InvocationQuote(bytes32 invocationKey,bytes32 quoteKey,address buyer,bytes32 usageSessionKey,bytes32 productKey,uint64 productVersion,bytes32 commandKey,bytes32 inputHash,bytes32 termsHash,bytes32 policyHash,address provider,address asset,uint256 grossAmount,uint16 feeBps,address feeRecipient,uint48 validUntil,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy)");
     bytes32 private constant AUTHORIZATION_TYPEHASH = keccak256("DebitAuthorization(bytes32 quoteDigest,bytes32 grantId,uint64 grantEpoch)");
-    bytes32 private constant DECISION_TYPEHASH = keccak256("ResolutionDecision(bytes32 holdId,bytes32 decisionId,uint64 expectedVersion,uint256 refundAmount,bool releaseRemainder,bool resolveDispute,uint48 validUntil)");
+    bytes32 private constant DECISION_TYPEHASH = keccak256("ResolutionDecision(bytes32 holdId,bytes32 decisionId,uint64 expectedVersion,uint256 refundAmount,bool releaseRemainder,uint48 validUntil)");
 
     struct InvocationQuote {
         bytes32 invocationKey;
@@ -74,7 +73,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         uint64 expectedVersion;
         uint256 refundAmount;
         bool releaseRemainder;
-        bool resolveDispute;
         uint48 validUntil;
     }
 
@@ -102,7 +100,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         uint48 deliveryDeadline;
         uint48 releaseNotBefore;
         uint48 resolveBy;
-        bool disputed;
         bool closed;
         uint64 version;
         bytes32 grantId;
@@ -144,7 +141,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
     error Unauthorized();
     error HoldNotFound();
     error HoldClosed();
-    error HoldDisputed();
     error DecisionReplay();
     error HoldVersionMismatch();
     error ReleaseTooEarly();
@@ -158,7 +154,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
     event GrantRegistered(address indexed buyer, bytes32 indexed grantId, uint64 epoch);
     event GrantUpdated(address indexed buyer, bytes32 indexed grantId, uint64 epoch);
     event HoldReserved(bytes32 indexed holdId, address indexed buyer, bytes32 quoteDigest, bytes32 authorizationDigest, uint256 gross);
-    event DisputeOpened(bytes32 indexed holdId, bytes32 evidenceHash);
     event DecisionApplied(bytes32 indexed holdId, bytes32 indexed decisionId, uint64 version, uint256 refundAmount, uint256 providerAmount, uint256 feeAmount);
     event HoldReclaimed(bytes32 indexed holdId, address indexed buyer, uint256 amount);
     event ProviderWithdrawn(address indexed provider, uint256 amount);
@@ -255,17 +250,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         return _hashTypedDataV4(keccak256(abi.encode(DECISION_TYPEHASH, decision)));
     }
 
-    function openDispute(bytes32 holdId, bytes32 evidenceHash) external nonReentrant {
-        HoldView storage hold = _openHold(holdId);
-        if (msg.sender != hold.buyer) revert Unauthorized();
-        if (block.timestamp >= hold.resolveBy) revert ResolutionExpired();
-        if (hold.disputed) revert HoldDisputed();
-        hold.disputed = true;
-        // Invalidate any ordinary approval signed before the dispute reached chain.
-        hold.version += 1;
-        emit DisputeOpened(holdId, evidenceHash);
-    }
-
     function applyDecision(ResolutionDecision calldata decision, address approver, bytes calldata approvalSignature)
         external nonReentrant
     {
@@ -275,12 +259,9 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         if (decision.expectedVersion != hold.version) revert HoldVersionMismatch();
         if (block.timestamp >= decision.validUntil || block.timestamp >= hold.resolveBy) revert ResolutionExpired();
         if (decision.refundAmount > hold.remaining) revert InvalidAmount();
-        // A resolve flag alone must not clear a dispute without a financial resolution.
         if (decision.refundAmount == 0 && !decision.releaseRemainder) revert NoEffect();
-        if (hold.disputed && !decision.resolveDispute) revert HoldDisputed();
         if (decision.refundAmount > 0 && !hasRole(REFUND_APPROVER_ROLE, approver)) revert Unauthorized();
         if (decision.releaseRemainder && !hasRole(RELEASE_APPROVER_ROLE, approver)) revert Unauthorized();
-        if ((hold.disputed || decision.resolveDispute) && !hasRole(DISPUTE_RESOLVER_ROLE, approver)) revert Unauthorized();
         if (decision.releaseRemainder && block.timestamp < hold.releaseNotBefore) revert ReleaseTooEarly();
         if (!SignatureChecker.isValidSignatureNow(approver, hashDecision(decision), approvalSignature)) revert InvalidSignature();
 
@@ -310,11 +291,7 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
             totalProviderClaimable += providerAmount;
             totalPlatformClaimable += feeAmount;
         }
-        if (hold.remaining == 0) {
-            hold.closed = true;
-            hold.disputed = false;
-        }
-        // Partial dispute refunds keep the dispute lock until terminal resolution/reclaim.
+        if (hold.remaining == 0) hold.closed = true;
         emit DecisionApplied(decision.holdId, decision.decisionId, hold.version, refund, providerAmount, feeAmount);
     }
 
@@ -326,7 +303,6 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         hold.remaining = 0;
         hold.refunded += amount;
         hold.closed = true;
-        hold.disputed = false;
         hold.version += 1;
         totalHeld -= amount;
         availableBalance[hold.buyer] += amount;
@@ -398,7 +374,7 @@ contract PayvokeVault is AccessControlDefaultAdminRules, EIP712, Pausable, Reent
         totalHeld += gross;
         holds[holdId] = HoldView(quoteDigest, digest, quote.buyer, quote.provider, quote.feeRecipient,
             gross, 0, gross, 0, 0, quote.feeBps, quote.deliveryDeadline, quote.releaseNotBefore, quote.resolveBy,
-            false, false, 1, authorization.grantId);
+            false, 1, authorization.grantId);
         emit HoldReserved(holdId, quote.buyer, quoteDigest, digest, gross);
     }
 

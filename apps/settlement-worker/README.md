@@ -1,10 +1,5 @@
 # Settlement worker
 
-Operator tooling for the next controlled Fuji run is documented in
-[`apps/ops`](../ops/README.md). It separates read-only checks,
-no-broadcast signing, explicitly approved single-use sends and finalized evidence;
-building this tooling does not authorize a Fuji deployment or funding.
-
 The signing process is off by default:
 
 ```sh
@@ -40,10 +35,10 @@ worker startup; no confirmation-count fallback exists.
 
 On finalized success the journal atomically records proof/cost, marks HELD, queues
 one `InvocationReady`, and releases the lane. A finalized revert records REJECTED
-and gas cost without a ready event or new attempt. Late, closed, disputed or
+and gas cost without a ready event or new attempt. Late, closed or
 partially consumed holds retain their paid receipt but get `hold_not_executable`
-and **no ready event**; the separately approved finance workflow below can refund
-before the hold expires, or the buyer can reclaim after `resolveBy`.
+and **no ready event**; [`apps/finance-worker`](../finance-worker/README.md)
+refunds them after `deliveryDeadline`, or the buyer can reclaim after `resolveBy`.
 Contradictory receipts/holds/nonces are quarantined without releasing the lane.
 
 Finalized log backfill starts at `DEPLOYMENT_START_BLOCK`, scans at most 500 blocks
@@ -55,7 +50,7 @@ Unsigned reservations that can no longer pass admission remain blocked for manua
 recovery; their nonce is not silently reassigned.
 
 `InvocationReady` is the durable handoff that the provider event stream delivers.
-There is no automatic refund/release.
+Refund and release are handled by [`apps/finance-worker`](../finance-worker/README.md).
 
 The worker also runs the bounded financial-lifecycle backfill described in
 [`@payvoke/payments`](../../packages/payvoke-payments/README.md).

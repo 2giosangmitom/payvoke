@@ -21,7 +21,6 @@ enum OperatorRole {
   ADMIN
   PRODUCT_REVIEWER
   SUPPORT
-  DISPUTE_RESOLVER
   REFUND_APPROVER
   RELEASE_APPROVER
   FINANCE_EXECUTOR
@@ -172,7 +171,6 @@ enum ChainTransactionStatus {
 
 enum VaultHoldStatus {
   HELD
-  DISPUTED
   PARTIALLY_REFUNDED
   REFUNDED
   RELEASED
@@ -277,7 +275,6 @@ enum CheckStatus {
 enum FilePurpose {
   BUYER_INPUT
   PROVIDER_ARTIFACT
-  DISPUTE_EVIDENCE
 }
 
 enum FileStatus {
@@ -290,26 +287,6 @@ enum FileStatus {
   DELETION_PENDING
   DELETED
   EXPIRED
-}
-
-enum DisputeStatus {
-  OPEN
-  IN_REVIEW
-  RESOLVED
-  CLOSED
-}
-
-enum DisputeChainStatus {
-  NOT_SUBMITTED
-  PENDING
-  CONFIRMED
-  FAILED
-  UNKNOWN
-}
-
-enum DisputeEntryVisibility {
-  PARTICIPANTS
-  OPERATORS_ONLY
 }
 
 enum FinancialDecisionStatus {
@@ -460,7 +437,6 @@ model ProviderApp {
   reports        ProviderReport[]
   outboxEvents   OutboxEvent[]
   files          FileAsset[]
-  disputeEntries DisputeEntry[]
 
   @@unique([id, ownerId])
   @@unique([ownerId, clientRequestId])
@@ -487,7 +463,6 @@ model ProviderApiKey {
   connections    ProviderConnection[]
   reports        ProviderReport[]
   receipts       ProviderEventReceipt[]
-  disputeEntries DisputeEntry[]
   auditEntries   AuditLog[]
 
   @@unique([id, appId])
@@ -808,7 +783,6 @@ model Invocation {
   artifacts            ArtifactVersion[]
   files                FileAsset[]
   reviewInterruptions  ReviewInterruption[]
-  dispute              Dispute?
   decisions            FinancialDecision[]
   rating               ProductRating?
 
@@ -1276,7 +1250,6 @@ model FileAsset {
   invocation  Invocation?           @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
   selectedFor InvocationInputFile[]
   artifacts   ArtifactFile[]
-  evidence    DisputeEvidence[]
 
   @@unique([uploadScope, clientRequestId])
   @@unique([bucket, objectKey])
@@ -1559,7 +1532,6 @@ model ChainTransaction {
   replaces     ChainTransaction?  @relation("TransactionReplacement", fields: [replacesId], references: [id], onDelete: Restrict)
   replacements ChainTransaction[] @relation("TransactionReplacement")
   events       ChainEvent[]
-  disputes     Dispute[]
 
   @@unique([chainId, hash])
   @@index([nonceSlotId, chainId])
@@ -1696,7 +1668,6 @@ model VaultHold {
   feeBps              Int
   stateVersion        Decimal         @db.Decimal(20, 0)
   status              VaultHoldStatus @default(HELD)
-  disputed            Boolean         @default(false)
   closed              Boolean         @default(false)
   deliveryDeadline    DateTime        @db.Timestamptz(3)
   releaseNotBefore    DateTime        @db.Timestamptz(3)
@@ -1712,7 +1683,6 @@ model VaultHold {
   invocation Invocation?         @relation(fields: [invocationId, invocationKey], references: [id, invocationKey], onDelete: Restrict, onUpdate: Restrict)
   lastEvent  ChainEvent?         @relation(fields: [lastEventId], references: [id], onDelete: Restrict)
   decisions  FinancialDecision[]
-  dispute    Dispute?
 
   @@unique([deploymentId, invocationKey])
   @@unique([invocationId, invocationKey])
@@ -1747,98 +1717,17 @@ model RelayerState {
   @@map("relayer_states")
 }
 
-// Disputes and approved financial decisions retain evidence and audit trails.
-
-model Dispute {
-  id                 String             @id @default(uuid())
-  invocationId       String
-  holdId             String?            @unique
-  openedById         String
-  assignedToId       String?
-  chainTransactionId String?
-  clientRequestId    String             @db.VarChar(128)
-  reason             String             @db.Text
-  status             DisputeStatus      @default(OPEN)
-  chainStatus        DisputeChainStatus @default(NOT_SUBMITTED)
-  evidenceHash       String?            @db.Char(66)
-  resolutionReason   String?            @db.Text
-  openedAt           DateTime           @default(now()) @db.Timestamptz(3)
-  chainConfirmedAt   DateTime?          @db.Timestamptz(3)
-  resolvedAt         DateTime?          @db.Timestamptz(3)
-  closedAt           DateTime?          @db.Timestamptz(3)
-  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
-
-  invocation       Invocation          @relation(fields: [invocationId, openedById], references: [id, buyerId], onDelete: Restrict, onUpdate: Restrict)
-  hold             VaultHold?          @relation(fields: [holdId], references: [id], onDelete: Restrict)
-  openedBy         User                @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  assignedTo       User?               @relation("DisputeAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
-  chainTransaction ChainTransaction?   @relation(fields: [chainTransactionId], references: [id], onDelete: Restrict)
-  entries          DisputeEntry[]
-  evidence         DisputeEvidence[]
-  decisions        FinancialDecision[]
-
-  @@unique([id, invocationId])
-  @@unique([invocationId, openedById])
-  @@unique([openedById, clientRequestId])
-  @@index([status, openedAt])
-  @@index([chainStatus, openedAt])
-  @@index([assignedToId, status])
-  @@index([chainTransactionId])
-  @@map("disputes")
-}
-
-model DisputeEntry {
-  id               String                 @id @default(uuid())
-  disputeId        String
-  actorKind        ActorKind
-  authorAccountId  String?
-  providerAppId    String?
-  providerApiKeyId String?
-  visibility       DisputeEntryVisibility @default(PARTICIPANTS)
-  body             Json                   @db.JsonB
-  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
-
-  dispute     Dispute           @relation(fields: [disputeId], references: [id], onDelete: Restrict)
-  author      User?             @relation(fields: [authorAccountId], references: [id], onDelete: Restrict)
-  providerApp ProviderApp?      @relation(fields: [providerAppId], references: [id], onDelete: Restrict)
-  providerKey ProviderApiKey?   @relation(fields: [providerApiKeyId, providerAppId], references: [id, appId], onDelete: Restrict, onUpdate: Restrict)
-  evidence    DisputeEvidence[]
-
-  @@unique([id, disputeId])
-  @@index([disputeId, createdAt])
-  @@index([authorAccountId])
-  @@index([providerAppId])
-  @@index([providerApiKeyId, providerAppId])
-  @@map("dispute_entries")
-}
-
-model DisputeEvidence {
-  disputeId String
-  fileId    String
-  entryId   String?
-  addedAt   DateTime @default(now()) @db.Timestamptz(3)
-
-  dispute Dispute       @relation(fields: [disputeId], references: [id], onDelete: Restrict)
-  file    FileAsset     @relation(fields: [fileId], references: [id], onDelete: Restrict)
-  entry   DisputeEntry? @relation(fields: [entryId, disputeId], references: [id, disputeId], onDelete: Restrict, onUpdate: Restrict)
-
-  @@id([disputeId, fileId])
-  @@index([fileId])
-  @@index([entryId, disputeId])
-  @@map("dispute_evidence")
-}
+// Approved financial decisions retain evidence and audit trails.
 
 model FinancialDecision {
   id                      String                  @id @default(uuid())
   invocationId            String
   deploymentId            String
   holdId                  String
-  disputeId               String?
   onchainDecisionId       String                  @db.Char(66)
   expectedVersion         Decimal                 @db.Decimal(20, 0)
   refundAmount            Decimal                 @default(0) @db.Decimal(78, 0)
   releaseRemainder        Boolean                 @default(false)
-  resolveDispute          Boolean                 @default(false)
   status                  FinancialDecisionStatus @default(DRAFT)
   reason                  String                  @db.Text
   evidenceHash            String                  @db.Char(66)
@@ -1860,7 +1749,6 @@ model FinancialDecision {
   invocation     Invocation      @relation(fields: [invocationId], references: [id], onDelete: Restrict)
   deployment     VaultDeployment @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
   hold           VaultHold       @relation(fields: [holdId, invocationId, deploymentId], references: [id, invocationId, deploymentId], onDelete: Restrict, onUpdate: Restrict)
-  dispute        Dispute?        @relation(fields: [disputeId, invocationId], references: [id, invocationId], onDelete: Restrict, onUpdate: Restrict)
   createdBy      User            @relation("DecisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   approvedBy     User?           @relation("DecisionApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
   executionEvent ChainEvent?     @relation(fields: [executionEventId], references: [id], onDelete: Restrict)
@@ -1870,7 +1758,6 @@ model FinancialDecision {
   @@unique([id, invocationId])
   @@index([invocationId, createdAt])
   @@index([holdId, invocationId, deploymentId])
-  @@index([disputeId, invocationId])
   @@index([status, validUntil])
   @@index([createdById])
   @@index([approvedById])

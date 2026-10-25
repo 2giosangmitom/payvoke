@@ -16,7 +16,7 @@ Mỗi khoản thu ghi mã lần gọi duy nhất, ví buyer, provider nhận ti�
 
 Contract thực thi quyết định hợp lệ để hoàn khoản đang giữ về số dư buyer hoặc giải ngân. Phí Payvoke tính trên giá gộp trừ phần đã hoàn; doanh thu provider bằng phần đó trừ phí Payvoke. Contract ghi riêng hai số dư này và chỉ cho từng bên rút phần của mình. Không thu trùng, hoàn quá tiền đã giữ hoặc giải ngân hai lần. Buyer tự rút số dư khả dụng về chính ví của mình; tạm dừng thu mới không được khóa quyền rút đó.
 
-Mỗi lần gọi có thời điểm sớm nhất được giải ngân và hạn xử lý cuối cùng, cố định khi thu tiền. Buyer có thể đánh dấu tranh chấp trước khi giải ngân để chặn payout tự động; bên giải quyết tranh chấp chỉ được hoàn hoặc giải ngân theo số tiền còn giữ. Nếu hết hạn xử lý mà chưa có quyết định, buyer được tự lấy lại phần còn giữ. Contract không tự biết provider đã giao hàng; quyết định nghiệp vụ vẫn thuộc M09.
+Mỗi lần gọi có thời điểm sớm nhất được giải ngân và hạn xử lý cuối cùng, cố định khi thu tiền. Không có tranh chấp: finance worker hoàn hoặc giải ngân tự động theo số tiền còn giữ. Nếu hết hạn xử lý mà chưa có quyết định, buyer được tự lấy lại phần còn giữ. Contract không tự biết provider đã giao hàng; quyết định dựa trên bằng chứng giao hàng của M05.
 
 ## Phí gas
 
@@ -26,7 +26,7 @@ Mặc định buyer trả gas bằng AVAX khi `approve`, nạp, đăng ký khóa
 
 Contract dùng OpenZeppelin Contracts phiên bản khóa cố định: `SafeERC20` cho USDC, `EIP712`/`SignatureChecker` cho chứng từ, `ReentrancyGuard` cho đường chuyển tiền, `Pausable` chỉ chặn thu mới, `AccessControlDefaultAdminRules` và multisig/timelock cho quyền quản trị. Quyền relay thu tiền, quyết định hoàn, giải ngân và tạm dừng tách riêng; mỗi thay đổi phát event. Đổi quyền và trần phí phải có thời gian chờ; khóa vận hành bị lộ có thể dừng thu mới. Không có hàm rút tùy ý số dư buyer hay nâng cấp contract tùy ý. [Chữ ký EIP-712](https://docs.openzeppelin.com/contracts/5.x/api/utils/cryptography), [quyền quản trị](https://docs.openzeppelin.com/contracts/5.x/access-control), [chống tái nhập và tạm dừng](https://docs.openzeppelin.com/contracts/5.x/api/utils).
 
-Trước khi cho nạp USDC testnet, kiểm thử bất biến tổng số dư phải khớp USDC contract đang giữ, hạn mức không thể bị vượt, khoản giữ không thể chi hai lần, tranh chấp chặn payout và quyền rút vẫn hoạt động khi dừng thu. Cần fuzz test, rà soát độc lập và diễn tập mất khóa. Bản triển khai chỉ trên Fuji; địa chỉ contract, mã nguồn, địa chỉ USDC, tỷ lệ/trần phí và quyền vận hành phải công khai trước khi buyer nạp.
+Trước khi cho nạp USDC testnet, kiểm thử bất biến tổng số dư phải khớp USDC contract đang giữ, hạn mức không thể bị vượt, khoản giữ không thể chi hai lần, release không sớm hơn `releaseNotBefore` và quyền rút vẫn hoạt động khi dừng thu. Cần fuzz test, rà soát độc lập và diễn tập mất khóa. Bản triển khai chỉ trên Fuji; địa chỉ contract, mã nguồn, địa chỉ USDC, tỷ lệ/trần phí và quyền vận hành phải công khai trước khi buyer nạp.
 
 ## Liên hệ với nghiên cứu
 

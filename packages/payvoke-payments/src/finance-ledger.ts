@@ -206,11 +206,9 @@ export async function scanFinancialLifecycle(
             ? hold.providerReleased + hold.feeReleased > 0n
               ? "RELEASED"
               : "REFUNDED"
-            : hold.disputed
-              ? "DISPUTED"
-              : hold.refunded > 0n
-                ? "PARTIALLY_REFUNDED"
-                : "HELD";
+            : hold.refunded > 0n
+              ? "PARTIALLY_REFUNDED"
+              : "HELD";
         const data = {
           vault,
           invocationId,

@@ -1,8 +1,8 @@
 # payments-e2e
 
 Cross-service payment tests: quote → x402 gateway (`apps/api`) → facilitator
-(`apps/facilitator`) → settlement worker and finance (`@payvoke/payments`) → ops
-ceremony tooling (`apps/ops`). This is the only workspace allowed to import apps.
+(`apps/facilitator`) → settlement worker and automatic finance
+(`@payvoke/payments`). This is the only workspace allowed to import apps.
 
 ```sh
 pnpm --filter payments-e2e test                     # PGlite + mock RPC

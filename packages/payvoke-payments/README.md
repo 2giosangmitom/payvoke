@@ -1,7 +1,7 @@
 # @payvoke/payments
 
 Settlement and finance domain shared by the API, facilitator, settlement worker
-and ops CLI. No HTTP framework or env loading lives here.
+and finance worker. No HTTP framework or env loading lives here.
 
 | Export                             | Owns                                                        |
 | ---------------------------------- | ----------------------------------------------------------- |
@@ -12,6 +12,7 @@ and ops CLI. No HTTP framework or env loading lives here.
 | `@payvoke/payments/scanner`        | finalized hold backfill                                     |
 | `@payvoke/payments/finance`        | approved refund/release decisions and delivery observations |
 | `@payvoke/payments/finance-ledger` | finalized financial projection and ledger                   |
+| `@payvoke/payments/finance-policy` | automatic refund/release decisions for the finance worker   |
 | `@payvoke/payments/evidence`       | evidence levels and signed-terms evidence floors            |
 
 ## Settlement journal
@@ -50,10 +51,9 @@ finance-decision journal/lane. Original settlement state/receipt remains HELD
 after refund/payout; invocation status includes a separate `financial`
 projection with finalized block evidence. The projection is not spendable credit.
 
-The buyer financial-intents action accepts `{action:"dispute",evidenceHash}`
-or `{action:"reclaim"}` after buyer authentication/ownership checks and returns
-**UNSUBMITTED** wallet calldata. It does not submit, refund, open an onchain dispute
-or claim that a pending ticket has locked payout. Buyer must simulate/sign/send;
+The buyer financial-intents action accepts `{action:"reclaim"}` after buyer
+authentication/ownership checks and returns **UNSUBMITTED** wallet calldata. It
+does not submit or refund anything itself. Buyer must simulate/sign/send;
 the finalized indexer observes wallet transactions independently of this API.
 
 The settlement worker backfills financial events in bounded finalized ranges,
@@ -64,21 +64,28 @@ never silently clear that block. Existing receipts/reconciliation remain readabl
 
 Refund/release requires an immutable EIP-712 approval, independent executor role,
 current hold version, proper approver roles and exact simulation. Finance uses
-its own dedicated sender lane and gas window; it never takes the relayer key or
-automatically signs a new decision. Persisted signed bytes precede broadcast;
+its own dedicated sender lane and gas window and never takes the relayer key. Persisted signed bytes precede broadcast;
 only canonical finalized receipt/event evidence releases the lane. A finalized
 revert records actual gas without treating the decision as successful.
 
 Release additionally needs a trusted delivery observation whose evidence level
 satisfies the quote's signed `terms.verification.minEvidence` (SIGN by default;
 REC and WIT are incomparable) and the business review window. Each observation
-stores a JCS Evidence Envelope whose hash is the default dispute `evidenceHash`.
+stores a JCS Evidence Envelope with a reproducible hash.
 Commands and quotes below the active policy's `minGrossAmount` price floor are
-rejected. Provider `result`/failure/cancellation is **not** payment authority. There
-is no provider-facing endpoint for marking delivery verified, nor automatic payout
-or refund policy engine. The internal verifier seam and explicitly enabled manual
-attestation support controlled testing while provider execution/output validation
-are built. Buyer acceptance never bypasses release timing.
+rejected. A provider `result` is **not** payment authority: there is no
+provider-facing endpoint for marking delivery verified. Buyer acceptance never
+bypasses release timing.
 
-See [`apps/ops/financial-lifecycle.md`](../../apps/ops/financial-lifecycle.md) for
-approval/signing/execution commands, state semantics and remaining launch gates.
+`@payvoke/payments/finance-policy` is the automatic decision engine run by
+[`apps/finance-worker`](../../apps/finance-worker/README.md). Payvoke does not
+arbitrate quality, so there is no dispute path. `autoOutcome` releases a delivery
+whose evidence meets `minEvidence` before `deliveryDeadline` once the review
+window has passed, and fully refunds provider-reported `FAILED` work, missed or
+late delivery, and reviews that would run past `resolveBy`. `AutoFinance` signs at
+most one decision per open hold (three attempts at most) and advances them
+through `FinanceService`.
+
+Finance states: APPROVED → RESERVED → SIGNED → BROADCAST/UNKNOWN →
+FINALIZED/REVERTED. A stale unattempted decision becomes REJECTED; contradictory
+nonce/receipt/transaction evidence becomes QUARANTINED, retaining lane and budget.

@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const node = "pnpm exec tsx --test --test-reporter=tap test/*.test.ts";
 // The backend suite spans every service package that owns payment tests.
 const commands: Record<Suite, { cwd: string; command: string }[]> = {
-  backend: ["apps/api", "apps/facilitator", "apps/ops", "tests/payments-e2e"].map((dir) => ({
+  backend: ["apps/api", "apps/facilitator", "tests/payments-e2e"].map((dir) => ({
     cwd: `${root}${dir}`,
     command: node,
   })),

@@ -57,14 +57,13 @@ function uint(s: string, bits: number) {
 export function parseDecision(w: WireDecision): ResolutionDecision {
   check(
     Object.keys(w).sort().join() ===
-      "decisionId,expectedVersion,holdId,refundAmount,releaseRemainder,resolveDispute,validUntil",
+      "decisionId,expectedVersion,holdId,refundAmount,releaseRemainder,validUntil",
     "invalid_decision",
   );
   check(
     /^0x[\da-f]{64}$/.test(w.holdId) &&
       /^0x[\da-f]{64}$/.test(w.decisionId) &&
-      typeof w.releaseRemainder === "boolean" &&
-      typeof w.resolveDispute === "boolean",
+      typeof w.releaseRemainder === "boolean",
     "invalid_decision",
   );
   return {
@@ -73,7 +72,6 @@ export function parseDecision(w: WireDecision): ResolutionDecision {
     expectedVersion: uint(w.expectedVersion, 64),
     refundAmount: uint(w.refundAmount, 256),
     releaseRemainder: w.releaseRemainder,
-    resolveDispute: w.resolveDispute,
     validUntil: Number(uint(w.validUntil, 48)),
   };
 }
@@ -116,6 +114,20 @@ async function validateSigned(row: FinanceDecision, signed: Hex, data: Hex) {
   } catch {
     throw new Error("finance_transaction_inconsistent");
   }
+}
+
+type HoldTimes = { deliveryDeadline: number; releaseNotBefore: number };
+// The buyer keeps the full signed review window after the observed delivery,
+// extended by any confirmed access interruption, and never before releaseNotBefore.
+export function releaseSchedule(
+  evidence: { observedAt: Date; accessInterruptionSeconds: number },
+  hold: HoldTimes,
+) {
+  const review = BigInt(hold.releaseNotBefore - hold.deliveryDeadline);
+  const observed = BigInt(Math.ceil(evidence.observedAt.getTime() / 1000));
+  const businessEarliest = observed + review + BigInt(evidence.accessInterruptionSeconds);
+  const floor = BigInt(hold.releaseNotBefore);
+  return { observed, earliest: businessEarliest > floor ? businessEarliest : floor };
 }
 
 // Trusted verifier seam, not a provider-facing "delivered=true" endpoint.
@@ -185,8 +197,7 @@ export async function recordPaymentDelivery(
     const now = await databaseTime(tx);
     // Strictly monotone observation time makes "latest" stable within a millisecond.
     check(!latest || now > latest.observedAt, "retry_evidence_observation");
-    // The Evidence Envelope is what a buyer dispute references onchain; JCS keeps
-    // its hash reproducible from the stored envelope.
+    // JCS keeps the Evidence Envelope hash reproducible from the stored envelope.
     const envelope = {
       schemaVersion: 1,
       invocationId: input.invocationId,
@@ -318,7 +329,6 @@ export class FinanceService {
         d.validUntil <= hold.resolveBy,
       "resolution_expired",
     );
-    check(!hold.disputed || d.resolveDispute, "hold_disputed");
     const op = await this.db.settlementOperation.findUnique({
       where: { invocationKey: d.holdId },
       include: { invocation: { include: { quote: true } } },
@@ -344,14 +354,8 @@ export class FinanceService {
         minimum !== null && evidenceSatisfies(latest.evidenceLevel, minimum),
         "evidence_below_minimum",
       );
-      const review = BigInt(q.releaseNotBefore - q.deliveryDeadline);
-      const observed = BigInt(Math.ceil(latest.observedAt.getTime() / 1000));
-      const businessEarliest = observed + review + BigInt(latest.accessInterruptionSeconds);
-      const earliest =
-        businessEarliest > BigInt(hold.releaseNotBefore)
-          ? businessEarliest
-          : BigInt(hold.releaseNotBefore);
-      check(observed < BigInt(hold.deliveryDeadline), "delivery_late_requires_resolution");
+      const { observed, earliest } = releaseSchedule(latest, hold);
+      check(observed < BigInt(hold.deliveryDeadline), "delivery_late_requires_refund");
       check(earliest < BigInt(hold.resolveBy), "review_window_exhausted");
       check(block.timestamp >= earliest, "business_review_not_complete");
     }
@@ -364,9 +368,6 @@ export class FinanceService {
       ["FINANCE_EXECUTOR_ROLE", this.executor] as const,
       ...(d.refundAmount > 0n ? [["REFUND_APPROVER_ROLE", a.approver] as const] : []),
       ...(d.releaseRemainder ? [["RELEASE_APPROVER_ROLE", a.approver] as const] : []),
-      ...(hold.disputed || d.resolveDispute
-        ? [["DISPUTE_RESOLVER_ROLE", a.approver] as const]
-        : []),
     ];
     for (const [role, account] of roles)
       check(
@@ -512,9 +513,8 @@ export class FinanceService {
             "stale_finance_decision",
             "resolution_expired",
             "invalid_approval_signature",
-            "hold_disputed",
             "verified_delivery_required",
-            "delivery_late_requires_resolution",
+            "delivery_late_requires_refund",
             "review_window_exhausted",
             "hold_recovery_required",
           ].includes(reason);

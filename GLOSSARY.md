@@ -59,7 +59,7 @@ Quyền buyer cấp onchain cho một khóa ký do client giữ. Grant độc l�
 Khoản tiền được dành riêng cho một invocation và chưa trả cho provider.
 
 **Release / payout**:
-Chuyển khoản đã giữ cho provider sau khi hết thời gian review hoặc theo kết quả tranh chấp.
+Chuyển khoản đã giữ cho provider khi kết quả đạt mức bằng chứng tối thiểu trước hạn giao và đã hết thời gian review. Finance worker thực hiện tự động.
 
 **Platform fee**:
 Phần trăm Payvoke giữ lại trên doanh thu provider. Giá buyer thấy luôn là giá gộp; phí không do provider tự đặt.
@@ -70,8 +70,11 @@ Một phiên bản kết quả đã được lưu và kiểm chứng. Buyer xem 
 **Revision trong phạm vi**:
 Một yêu cầu sửa kết quả đã giao, nằm trong `revisionPolicy.maxIncluded` và thời hạn review. Revision không tạo hold mới; sửa ngoài phạm vi phải mua invocation mới.
 
-**Dispute (tranh chấp)**:
-Hồ sơ buyer mở khi kết quả không đúng thỏa thuận. Tranh chấp có thể chặn payout onchain nhưng không tự hoàn tiền.
+**Refund (hoàn tiền)**:
+Trả toàn bộ khoản giữ về số dư buyer khi provider báo lỗi, không giao hoặc giao trễ. Payvoke không có quy trình tranh chấp chất lượng; finance worker hoàn tiền tự động theo các điều kiện kiểm chứng được.
+
+**Reclaim**:
+Buyer tự lấy lại phần còn giữ sau `resolveBy` khi chưa có quyết định hoàn/giải ngân nào, kể cả khi vault đang pause.
 
 **PayvokeVault**:
 Contract giữ USDC và thực thi grant, hold, release, refund theo chữ ký và điều kiện đã định.
@@ -95,7 +98,7 @@ Tiến trình local cho ứng dụng AI bên ngoài dùng chung API buyer. MCP k
 Cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (đúng schema, đúng key app) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận; hai mức này không thay thế nhau). Command revision mang `terms.verification.minEvidence` (mặc định `SIGN`); finance không giải ngân khi bằng chứng thấp hơn mức này. Xem [M05](docs/modules/05-artifacts-and-verification.md).
 
 **Evidence Envelope**:
-Bản ghi bất biến của một lần quan sát giao hàng (invocation, artifact version, hash output, file, thời điểm giao, mức bằng chứng, verifier), canonicalize bằng JCS. Hash của nó là `evidenceHash` mặc định khi buyer mở dispute onchain.
+Bản ghi bất biến của một lần quan sát giao hàng (invocation, artifact version, hash output, file, thời điểm giao, mức bằng chứng, verifier), canonicalize bằng JCS. Hash của nó cho phép tái tạo và đối chiếu đúng lần quan sát mà quyết định giải ngân đã dựa vào.
 
 **Giá sàn (`minGrossAmount`)**:
 Giá gộp tối thiểu, tính bằng atomic USDC, trong policy deployment đã duyệt, để mỗi lần gọi đủ bù gas hold + release do Payvoke trả. Command dưới sàn không được đăng và không nhận quote mới.

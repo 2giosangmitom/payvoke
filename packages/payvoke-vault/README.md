@@ -10,11 +10,11 @@ pnpm test
 pnpm typecheck
 ```
 
-The vault supports deposits, grants, holds, partial/full refunds, release, dispute,
-reclaim and buyer/provider/platform withdrawals. Finance execution requires a
-separate EIP-712 approver with the relevant refund/release/resolver roles; the
-executor cannot approve its own decision. Partial dispute refunds keep the dispute
-lock until terminal resolution or reclaim. Refunds never replenish grant allowance.
+The vault supports deposits, grants, holds, partial/full refunds, release,
+reclaim and buyer/provider/platform withdrawals. There is no dispute path: the
+backend finance worker refunds or releases automatically. Finance execution
+requires a separate EIP-712 approver with the relevant refund/release role; the
+executor cannot approve its own decision. Refunds never replenish grant allowance.
 
 Local tests are not a security audit or Fuji E2E proof. Deployment policy, multisig
 admin and role/key ownership must be approved before deployment. Backend approvers
@@ -34,3 +34,17 @@ Once the vault is ready for Fuji deployment, configure `FUJI_RPC_URL` and
 ```shell
 pnpm exec hardhat ignition deploy ignition/modules/PayvokeVault.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
+
+Then grant the backend roles with `ignition/modules/PayvokeVaultRoles.ts`, signed by the
+admin key. Add a `PayvokeVaultRoles` object with `relayer` (settlement worker),
+`financeApprover` and `financeExecutor` (finance worker) to the same parameters file:
+
+```shell
+pnpm exec hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuji --build-profile production --parameters /path/to/parameters.json
+```
+
+The contract changed when disputes were removed (`ResolutionDecision` and `HoldView`
+lost their dispute fields), so the earlier Fuji deployment in
+`ignition/deployments/chain-43113` does not match this source. Redeploy, then update
+`VAULT_ADDRESS`, `EXPECTED_VAULT_CODE_HASH` and `DEPLOYMENT_START_BLOCK` in every
+service `.env`.

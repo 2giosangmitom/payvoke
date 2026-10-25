@@ -6,6 +6,7 @@
     "./evidence": "./src/evidence.ts",
     "./finance": "./src/finance.ts",
     "./finance-ledger": "./src/finance-ledger.ts",
+    "./finance-policy": "./src/finance-policy.ts",
     "./journal": "./src/journal.ts",
     "./scanner": "./src/scanner.ts",
     "./settlement": "./src/settlement.ts",

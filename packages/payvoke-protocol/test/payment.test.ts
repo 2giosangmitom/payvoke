@@ -153,7 +153,6 @@ test("ResolutionDecision binds approval fields", () => {
     expectedVersion: 1n,
     refundAmount: 10n,
     releaseRemainder: false,
-    resolveDispute: false,
     validUntil: 1800000000,
   };
   const digest = hashDecision(domain, decision);

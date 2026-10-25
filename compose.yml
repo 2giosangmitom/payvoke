@@ -82,5 +82,16 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
 
+  finance-worker:
+    profiles: [stack]
+    build: { context: ., target: finance-worker }
+    env_file:
+      - path: apps/finance-worker/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
 volumes:
   db-data:

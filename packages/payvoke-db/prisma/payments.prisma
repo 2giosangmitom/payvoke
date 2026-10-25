@@ -316,7 +316,7 @@ model PaymentDeliveryEvidence {
   verifier String
   observedAt DateTime
   accessInterruptionSeconds Int
-  // SIGN/REC/WIT evidence class and the JCS envelope disputes reference.
+  // SIGN/REC/WIT evidence class and its JCS envelope.
   evidenceLevel String
   envelope Json
   envelopeHash String

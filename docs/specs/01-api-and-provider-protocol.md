@@ -100,7 +100,7 @@ Ví dụ command:
     "deliverySeconds": 600,
     "reviewSeconds": 86400,
     "revisionPolicy": { "maxIncluded": 1, "description": "Một lần sửa tóm tắt cùng văn bản" },
-    "refundPolicy": "Không giao được kết quả thì hoàn toàn bộ; sai phạm vi được xét tranh chấp",
+    "refundPolicy": "Lỗi, không giao hoặc giao trễ thì hoàn toàn bộ",
     "sideEffects": "none",
     "dataUse": "Chỉ dùng input cho yêu cầu này"
   }
@@ -151,7 +151,7 @@ Sau hold xác nhận, response mang `PAYMENT-RESPONSE`, vị trí trạng thái 
 - Sửa trong thời hạn/số lần/phạm vi đã hứa; vượt phạm vi yêu cầu invocation mới, không tự charge.
 - Đề nghị hủy chỉ ghi yêu cầu dừng; không khẳng định đã dừng tác động bên ngoài hay đã refund.
 - Chấp nhận kết quả không bypass thời điểm payout tối thiểu S02.
-- Tranh chấp tạo hồ sơ và onchain dispute intent; chỉ tranh chấp chain đã xác nhận mới chặn payout onchain.
+- Không có tranh chấp chất lượng: finance worker tự hoàn tiền khi lỗi/không giao/giao trễ và giải ngân khi giao đúng hạn (S02 §8.5). Buyer chỉ còn reclaim sau `resolveBy`.
 
 Lời nhắn trả lời phải tham chiếu `questionId`; sửa phải tham chiếu invocation và được kiểm tra policy, không dùng arbitrary `free:true`. Câu hỏi render form theo schema; câu trả lời có thể nhập chat rồi map vào parameter string được schema question chỉ định.
 
@@ -223,8 +223,8 @@ Provider vẫn dùng reports `question/result/failed/...` để chuyển state. 
 
 Payment status theo S02, execution status: `DRAFT`, `PAYMENT_PENDING`, `QUEUED`, `SENT`, `ACKED`, `RUNNING`, `WAITING_BUYER`, `VERIFYING`, `DELIVERED`, `FAILED`, `UNKNOWN`, `CANCELLED`. CANCELLED chỉ khi đã xác nhận không chạy/đã dừng, không từ click cancel. DELIVERED có thể mở in-scope revision về QUEUED/VERIFYING theo policy nhưng không tạo hold mới.
 
-- Slot active invocation của thread khóa bằng DB constraint/transaction, không mutex trong process. DELIVERED chờ review không cho gửi thêm input tự do vào invocation cũ; tạo lượt mới khi slot đã đóng, revision/dispute vẫn theo invocation cũ.
-- Revision cần chiếm lại execution slot của cùng thread; nếu invocation khác đang chạy, trả `THREAD_BUSY`, không chạy chồng hai invocation trong cùng timeline và không charge để vượt giới hạn. Dispute/read không cần execution slot.
+- Slot active invocation của thread khóa bằng DB constraint/transaction, không mutex trong process. DELIVERED chờ review không cho gửi thêm input tự do vào invocation cũ; tạo lượt mới khi slot đã đóng, revision vẫn theo invocation cũ.
+- Revision cần chiếm lại execution slot của cùng thread; nếu invocation khác đang chạy, trả `THREAD_BUSY`, không chạy chồng hai invocation trong cùng timeline và không charge để vượt giới hạn. Read/reclaim không cần execution slot.
 - Quote creation chưa trả phí có thể giữ slot DRAFT hữu hạn; expired chưa submit được giải phóng. Nếu đã nhận signed submission/pending thì chỉ giải phóng sau reconciliation S02.
 - State payment độc lập execution: `FAILED + HELD` là trạng thái có thể có, cần workflow refund. Thread history tồn tại sau revoke hoặc app dừng bán.
 - Thay command revision/app khi quote còn hạn: revision/terms được pin tiếp tục hiệu lực, trừ emergency suspension chặn admission chưa hold; đã hold thì giao theo bản cũ hoặc xử lý hoàn, không đổi provider ngầm.

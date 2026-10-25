@@ -16,14 +16,13 @@ abstract contract PayvokeVaultFinanceFixture is PayvokeVaultFixture {
         address approver = vm.addr(approverKey);
         vault.grantRole(vault.REFUND_APPROVER_ROLE(), approver);
         vault.grantRole(vault.RELEASE_APPROVER_ROLE(), approver);
-        vault.grantRole(vault.DISPUTE_RESOLVER_ROLE(), approver);
         reserve(holdId, 10000);
     }
 
     function decision(uint256 refund, bool release) internal view returns (PayvokeVault.ResolutionDecision memory) {
         PayvokeVault.HoldView memory hold = vault.getHold(holdId);
         return PayvokeVault.ResolutionDecision(holdId, keccak256(abi.encode(holdId, hold.version)), hold.version,
-            refund, release, false, hold.resolveBy);
+            refund, release, hold.resolveBy);
     }
 
     function signDecision(PayvokeVault.ResolutionDecision memory d) internal view returns (bytes memory) {
@@ -75,9 +74,7 @@ contract PayvokeVaultFinanceTest is PayvokeVaultFinanceFixture {
         assertConservation();
     }
 
-    function test_ReclaimAtDeadlineWhilePausedAndDisputed() public {
-        vm.prank(buyer);
-        vault.openDispute(holdId, keccak256("evidence"));
+    function test_ReclaimAtDeadlineWhilePaused() public {
         vault.pause();
         vm.warp(vault.getHold(holdId).resolveBy);
         vm.prank(buyer);
@@ -163,47 +160,8 @@ contract PayvokeVaultFinanceTest is PayvokeVaultFinanceFixture {
         expectDecisionFailure(stale, PayvokeVault.HoldVersionMismatch.selector);
     }
 
-    function test_DisputeInvalidatesAlreadySignedApproval() public {
-        PayvokeVault.ResolutionDecision memory stale = decision(0, true);
-        vm.prank(buyer);
-        vault.openDispute(holdId, keccak256("evidence"));
-        vm.warp(vault.getHold(holdId).releaseNotBefore);
-        expectDecisionFailure(stale, PayvokeVault.HoldVersionMismatch.selector);
-    }
-
-    function test_DisputedHoldRequiresFlagAndResolverEvenForRefund() public {
-        vm.prank(buyer);
-        vault.openDispute(holdId, keccak256("evidence"));
-        expectDecisionFailure(decision(100, false), PayvokeVault.HoldDisputed.selector);
-        PayvokeVault.ResolutionDecision memory d = decision(100, false);
-        d.resolveDispute = true;
-        vault.revokeRole(vault.DISPUTE_RESOLVER_ROLE(), vm.addr(approverKey));
-        expectDecisionFailure(d, PayvokeVault.Unauthorized.selector);
-        vault.grantRole(vault.DISPUTE_RESOLVER_ROLE(), vm.addr(approverKey));
-        executeDecision(d);
-        assertTrue(vault.getHold(holdId).disputed);
-        vm.warp(vault.getHold(holdId).releaseNotBefore);
-        d = decision(0, true);
-        expectDecisionFailure(d, PayvokeVault.HoldDisputed.selector);
-        d.resolveDispute = true;
-        executeDecision(d);
-        assertTrue(vault.getHold(holdId).closed);
-        assertFalse(vault.getHold(holdId).disputed);
-        assertConservation();
-    }
-
-    function test_ResolveFlagAlwaysRequiresResolver() public {
-        PayvokeVault.ResolutionDecision memory d = decision(100, false);
-        d.resolveDispute = true;
-        vault.revokeRole(vault.DISPUTE_RESOLVER_ROLE(), vm.addr(approverKey));
-        expectDecisionFailure(d, PayvokeVault.Unauthorized.selector);
-    }
-
     function test_NoEffectDecisionRejected() public {
         expectDecisionFailure(decision(0, false), PayvokeVault.NoEffect.selector);
-        PayvokeVault.ResolutionDecision memory d = decision(0, false);
-        d.resolveDispute = true;
-        expectDecisionFailure(d, PayvokeVault.NoEffect.selector);
     }
 
     function test_RefundCannotExceedRemaining() public {
@@ -259,33 +217,10 @@ contract PayvokeVaultFinanceTest is PayvokeVaultFinanceFixture {
         assertConservation();
     }
 
-    function test_OnlyBuyerCanDisputeOrReclaim() public {
-        vm.expectRevert(PayvokeVault.Unauthorized.selector);
-        vault.openDispute(holdId, bytes32(0));
+    function test_OnlyBuyerCanReclaim() public {
         vm.warp(vault.getHold(holdId).resolveBy);
         vm.expectRevert(PayvokeVault.Unauthorized.selector);
         vault.reclaim(holdId);
-    }
-
-    function test_DisputeCannotReopenOrChangeEvidenceRepeatedly() public {
-        vm.prank(buyer);
-        vault.openDispute(holdId, keccak256("evidence"));
-        vm.prank(buyer);
-        vm.expectRevert(PayvokeVault.HoldDisputed.selector);
-        vault.openDispute(holdId, keccak256("other-evidence"));
-        PayvokeVault.ResolutionDecision memory d = decision(10000, false);
-        d.resolveDispute = true;
-        executeDecision(d);
-        vm.prank(buyer);
-        vm.expectRevert(PayvokeVault.HoldClosed.selector);
-        vault.openDispute(holdId, bytes32(0));
-    }
-
-    function test_DisputeAfterResolveDeadlineRejected() public {
-        vm.warp(vault.getHold(holdId).resolveBy);
-        vm.prank(buyer);
-        vm.expectRevert(PayvokeVault.ResolutionExpired.selector);
-        vault.openDispute(holdId, bytes32(0));
     }
 
     function test_ReclaimTooEarlyAndThenOnlyRemaining() public {
@@ -307,8 +242,6 @@ contract PayvokeVaultFinanceTest is PayvokeVaultFinanceFixture {
 
     function test_NonexistentHoldIsNotARealHold() public {
         bytes32 missing = keccak256("missing");
-        vm.expectRevert(PayvokeVault.HoldNotFound.selector);
-        vault.openDispute(missing, bytes32(0));
         vm.expectRevert(PayvokeVault.HoldNotFound.selector);
         vault.reclaim(missing);
         PayvokeVault.ResolutionDecision memory d = decision(1, false);

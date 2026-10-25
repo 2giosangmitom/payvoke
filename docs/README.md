@@ -20,7 +20,7 @@ Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đ�
 2. Buyer kết nối ví, nạp USDC vào PayvokeVault và cấp quyền chi có hạn cho khóa phiên; sau đó mở thread, chọn command hoặc nhập free text và chọn dữ liệu/file sẽ chia sẻ.
 3. Mỗi lần buyer gửi yêu cầu mới đi qua x402: client ký chứng từ bằng khóa phiên, Payvoke quyết toán khoản trừ đúng giá trong vault rồi mới phát event cho provider. Gửi lại cùng thao tác không trừ thêm tiền hoặc chạy thêm lần nữa.
 4. Provider tự xử lý rồi gửi tiến độ, câu hỏi hoặc kết quả về Payvoke. Payvoke lưu, kiểm tra và giao kết quả cho buyer.
-5. Buyer yêu cầu sửa trong phạm vi đã trả tiền hoặc mở tranh chấp; tiền hoàn trả vào số dư có thể rút.
+5. Buyer yêu cầu sửa trong phạm vi đã trả tiền; nếu provider lỗi, không giao hoặc giao trễ, tiền tự hoàn vào số dư có thể rút.
 
 ## Module
 
@@ -34,7 +34,7 @@ Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đ�
 | [M06 · Thanh toán](modules/06-x402-payments-and-refunds.md)   | x402, thu theo lần gọi, hoàn tiền, đối soát                        |
 | [M07 · Đăng bán](modules/07-provider-publishing.md)           | App, visibility, command revision, key và availability             |
 | [M08 · Client ngoài](modules/08-external-client-access.md)    | MCP local dùng cùng buyer API và x402; quyền API/chi riêng         |
-| [M09 · Vận hành](modules/09-reputation-and-operations.md)     | Đánh giá, tranh chấp, sự cố                                        |
+| [M09 · Vận hành](modules/09-reputation-and-operations.md)     | Đánh giá, sự cố                                                    |
 | [M10 · PayvokeVault](modules/10-payvoke-vault.md)             | Nạp/rút USDC, giới hạn chi, phí nền tảng, giữ tiền và trả provider |
 
 Tài sản thanh toán đã chốt: USDC testnet trên Fuji. Mỗi lần gọi bắt buộc qua x402 với scheme riêng cho PayvokeVault; Payvoke phải triển khai client và facilitator tương ứng. Trước khi bật giao dịch, cần chốt tỷ lệ/trần phí và thời hạn giữ tiền. Scheme riêng không tự tương thích với client hoặc facilitator x402 bên ngoài.

@@ -352,6 +352,43 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  apps/finance-worker:
+    dependencies:
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-x402
+      close-with-grace:
+        specifier: ^2.5.0
+        version: 2.5.0
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typebox:
+        specifier: ^1.4.3
+        version: 1.4.3
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   apps/frontend:
     dependencies:
       '@assistant-ui/react':
@@ -454,43 +491,6 @@ importers:
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
-
-  apps/ops:
-    dependencies:
-      '@payvoke/db':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-db
-      '@payvoke/payments':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-payments
-      '@payvoke/protocol':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-protocol
-      '@payvoke/server':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-server
-      '@payvoke/x402':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-x402
-      '@x402/core':
-        specifier: 2.28.0
-        version: 2.28.0
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
-      viem:
-        specifier: 2.57.7
-        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
-    devDependencies:
-      '@payvoke/testkit':
-        specifier: workspace:*
-        version: link:../../packages/payvoke-testkit
-      '@types/node':
-        specifier: ^26.6.5
-        version: 26.6.5
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
 
   apps/settlement-worker:
     dependencies:
@@ -807,9 +807,6 @@ importers:
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
-      ops:
-        specifier: workspace:*
-        version: link:../../apps/ops
       pg:
         specifier: ^8.23.1
         version: 8.23.1

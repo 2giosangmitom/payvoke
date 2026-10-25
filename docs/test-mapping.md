@@ -74,7 +74,7 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### API-08 — Durable HTTP idempotency và thread execution slot
 
 - Nguồn: S01 §2, §1, §7.
-- Chứng minh: cùng principal/operation/key/body trả cùng resource; đổi body conflict, principal/operation khác không đọc nhầm resource. Hai DB connections tranh slot chỉ một invocation active; WAITING_BUYER/VERIFYING/UNKNOWN giữ slot. DELIVERED/FAILED/CANCELLED giải phóng dù tiền còn HELD; revision chiếm lại slot hoặc THREAD_BUSY. DRAFT chỉ hết hạn giải phóng nếu không có signed/pending admission chưa đối soát. Read/dispute không chiếm slot.
+- Chứng minh: cùng principal/operation/key/body trả cùng resource; đổi body conflict, principal/operation khác không đọc nhầm resource. Hai DB connections tranh slot chỉ một invocation active; WAITING_BUYER/VERIFYING/UNKNOWN giữ slot. DELIVERED/FAILED/CANCELLED giải phóng dù tiền còn HELD; revision chiếm lại slot hoặc THREAD_BUSY. DRAFT chỉ hết hạn giải phóng nếu không có signed/pending admission chưa đối soát. Read/reclaim không chiếm slot.
 - Surface/gate: DB/HTTP T045/T050/T052 (M3/M4); FLOW T063/T064/T070/T078 (M4/M5). Replay sau cache TTL vẫn chịu payment uniqueness PAY-06.
 
 ### API-09 — SSE lease, ACK và replay
@@ -92,13 +92,13 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### API-11 — Continuation, cancel và side-effect UNKNOWN
 
 - Nguồn: S01 §1, §5.3, §6.2, §7.
-- Chứng minh: answer đúng question/schema và revision đúng scope/quota/window giữ nguyên invocation/hold, không signer/settle thêm. Stale/foreign question bị chặn; arbitrary message/free:true/vượt scope không thành continuation. Cancel chỉ ghi request; cancelled cần bằng chứng sideEffectStatus=none, UNKNOWN không tự rerun/chuyển provider/refund. Dispute pending không được hiển thị đã khóa payout.
+- Chứng minh: answer đúng question/schema và revision đúng scope/quota/window giữ nguyên invocation/hold, không signer/settle thêm. Stale/foreign question bị chặn; arbitrary message/free:true/vượt scope không thành continuation. Cancel chỉ ghi request; cancelled cần bằng chứng sideEffectStatus=none, UNKNOWN không tự rerun/chuyển provider/refund. `FAILED` hoặc quá hạn giao được finance worker hoàn tiền tự động.
 - Surface/gate: HTTP/FLOW T068/T070/T071/T078/T079 (M5), T083 (M6); WEB T102–T104/T109 (M7); MCP T117/T121 (M8).
 
 ### API-12 — Storage và artifact lifecycle
 
 - Nguồn: S01 §5.4, §6.1–6.2; S02 §3.2.
-- Chứng minh: upload intent/completion xác minh size/type/checksum và buyer/app/invocation; quarantine/not READY không được quote/deliver. Download/refresh kiểm tra scope mỗi lần, URL ngắn hạn không vào hash/log; đổi URL không đổi quote. Không SSRF fetch URL tùy ý. File không đọc được không DELIVERED, giữ artifact versions cho revision/dispute và điều chỉnh review theo outage có bằng chứng.
+- Chứng minh: upload intent/completion xác minh size/type/checksum và buyer/app/invocation; quarantine/not READY không được quote/deliver. Download/refresh kiểm tra scope mỗi lần, URL ngắn hạn không vào hash/log; đổi URL không đổi quote. Không SSRF fetch URL tùy ý. File không đọc được không DELIVERED, giữ artifact versions cho revision và điều chỉnh review theo outage có bằng chứng.
 - Surface/gate: HTTP + storage integration/FLOW T072–T074/T078/T079 (M5); finance T082 (M6); WEB T103/T109 (M7).
 
 ### API-13 — AG-UI LLM streaming và OpenUI widgets (bổ sung 23/10/2026)
@@ -173,7 +173,7 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### PAY-11 — Financial decisions và separation of duties
 
 - Nguồn: S02 §8.1, §8.3.
-- Chứng minh: EIP-712 ResolutionDecision đúng field order/domain; executor không tự duyệt, refund/release kết hợp cần đủ hai roles, disputed thêm resolver và resolveDispute. Sai role/signature/expectedVersion/expiry, replay decisionId hoặc no-effect decision không thay tiền. Provider report không tạo payout/refund; approver key không cùng production worker process.
+- Chứng minh: EIP-712 ResolutionDecision đúng field order/domain; executor không tự duyệt, refund/release kết hợp cần đủ hai roles. Sai role/signature/expectedVersion/expiry, replay decisionId hoặc no-effect decision không thay tiền. Provider report không trực tiếp tạo payout/refund; finance worker chỉ quyết định theo policy tự động S02 §8.5 với approver và executor là hai khóa khác nhau.
 - Surface/gate: VAULT T027/T028/T030/T033 (M2); HTTP/DB/FLOW T080/T081/T088 (M6), WEB T107/T109 (M7).
 
 ### PAY-12 — Refund, net fee và terminal release
@@ -185,13 +185,13 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### PAY-13 — Actual delivery/review quyết định eligibility
 
 - Nguồn: S02 §3.3, §8.3; S01 §5.3–5.4.
-- Chứng minh: earliest release là max(signed releaseNotBefore, actualDeliveredAt + reviewSeconds + outage được xác nhận). Buyer accept/provider timestamp không payout sớm; file access outage được tính bằng evidence. Không đủ review trước resolveBy phải resolver/refund, không sửa chữ ký/deadline hold. Contract bảo vệ earliest signed deadline, backend bảo vệ actual-delivery eligibility.
+- Chứng minh: earliest release là max(signed releaseNotBefore, actualDeliveredAt + reviewSeconds + outage được xác nhận). Buyer accept/provider timestamp không payout sớm; file access outage được tính bằng evidence. Không đủ review trước resolveBy thì hoàn tiền, không sửa chữ ký/deadline hold. Contract bảo vệ earliest signed deadline, backend bảo vệ actual-delivery eligibility.
 - Surface/gate: VAULT T029 (M2); storage/FLOW T074 (M5), finance T082/T092 (M6); WEB T103/T109 (M7).
 
-### PAY-14 — Dispute/reclaim và deadline race
+### PAY-14 — Policy tự động, reclaim và deadline race
 
-- Nguồn: S02 §8.1, §8.3; S01 §5.3.
-- Chứng minh: đúng buyer openDispute trước resolveBy, held chưa closed; DB ticket/pending tx không giả confirmed. Confirmed dispute chặn ordinary release, resolver xử lý đúng role. Tại now >= resolveBy chỉ reclaim remaining về buyer, applyDecision bị chặn; reclaim hoạt động paused/disputed, không reopen terminal hoặc lấy tiền hold khác.
+- Nguồn: S02 §8.3, §8.5; S01 §5.3.
+- Chứng minh: provider `FAILED`, quá hạn giao hoặc giao trễ thì refund toàn bộ; giao đúng hạn với evidence đạt `minEvidence` thì release sau review window; mỗi hold tối đa một decision đang xử lý. Tại now >= resolveBy chỉ reclaim remaining về buyer, applyDecision bị chặn; reclaim hoạt động khi paused, không reopen terminal hoặc lấy tiền hold khác.
 - Surface/gate: VAULT T030/T031/T033 (M2); HTTP/FLOW T083/T084/T088 (M6); WEB T104/T109 (M7).
 
 ### PAY-15 — Conservation và reconciliation

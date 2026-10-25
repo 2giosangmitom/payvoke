@@ -164,7 +164,6 @@ export class SettlementChain {
         ...proof,
         outcome:
           hold.closed ||
-          hold.disputed ||
           hold.remaining !== q.grossAmount ||
           head.timestamp >= BigInt(q.deliveryDeadline)
             ? "not_executable"

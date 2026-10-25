@@ -2,9 +2,9 @@ import type { Cradle } from "@fastify/awilix";
 import { vaultFinanceAbi } from "@payvoke/protocol";
 import type { QuoteDocument } from "@payvoke/x402";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
-import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
+import { ConflictError, NotFoundError } from "../../errors";
 
-export type FinancialIntentBody = { action: "dispute" | "reclaim"; evidenceHash?: Hex };
+export type FinancialIntentBody = { action: "reclaim" };
 
 const latestEvidence = { orderBy: [{ observedAt: "desc" as const }, { id: "desc" as const }] };
 
@@ -78,7 +78,7 @@ export class PaymentStatusService {
 
   // Returns UNSUBMITTED wallet calldata only. The buyer simulates, signs and
   // sends it; the finalized indexer observes the transaction independently.
-  async financialIntent(buyerId: string, invocationId: string, body: FinancialIntentBody) {
+  async financialIntent(buyerId: string, invocationId: string) {
     const invocation = await this.db.invocation.findFirst({
       where: { id: invocationId, buyerId },
       include: { quote: true, settlement: true },
@@ -93,34 +93,14 @@ export class PaymentStatusService {
       throw new ConflictError("HOLD_CLOSED");
     const quote = invocation.quote.document as unknown as QuoteDocument;
     const holdId = settlement.invocationKey as Hex;
-    const dispute = body.action === "dispute";
-    // A dispute references the latest Evidence Envelope unless the buyer
-    // supplies their own evidence hash (e.g. nothing was ever delivered).
-    const latest =
-      dispute && !body.evidenceHash
-        ? await this.db.paymentDeliveryEvidence.findFirst({
-            where: { invocationId: invocation.id },
-            ...latestEvidence,
-            select: { envelopeHash: true },
-          })
-        : null;
-    const evidenceHash = (body.evidenceHash ?? latest?.envelopeHash) as Hex | undefined;
-    if (dispute && !evidenceHash) throw new BadRequestError("EVIDENCE_HASH_REQUIRED");
     return {
       status: "UNSUBMITTED",
       chainId: 43113,
       from: getAddress(quote.protocolQuote.buyer),
       to: getAddress(quote.vault),
       value: "0",
-      data: dispute
-        ? encodeFunctionData({
-            abi: vaultFinanceAbi,
-            functionName: "openDispute",
-            args: [holdId, evidenceHash!],
-          })
-        : encodeFunctionData({ abi: vaultFinanceAbi, functionName: "reclaim", args: [holdId] }),
+      data: encodeFunctionData({ abi: vaultFinanceAbi, functionName: "reclaim", args: [holdId] }),
       resolveBy: quote.resolveBy,
-      ...(dispute ? { evidenceHash } : {}),
       requiresWalletSignature: true,
       requiresSimulation: true,
     };

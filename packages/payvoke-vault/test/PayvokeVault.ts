@@ -251,7 +251,6 @@ describe("PayvokeVault / viem session authorization", async () => {
         expectedVersion: hold.version,
         refundAmount,
         releaseRemainder,
-        resolveDispute: false,
         validUntil: quote.resolveBy,
       };
       assert.equal(await vault.read.hashDecision([decision]), hashDecision(domain, decision));
@@ -304,7 +303,6 @@ describe("PayvokeVault / viem session authorization", async () => {
     for (const role of [
       await vault.read.REFUND_APPROVER_ROLE(),
       await vault.read.RELEASE_APPROVER_ROLE(),
-      await vault.read.DISPUTE_RESOLVER_ROLE(),
     ]) {
       await vault.write.grantRole([role, approver.account.address]);
     }
@@ -316,7 +314,6 @@ describe("PayvokeVault / viem session authorization", async () => {
       expectedVersion: 1n,
       refundAmount: 1n,
       releaseRemainder: false,
-      resolveDispute: false,
       validUntil: quote.resolveBy,
     };
     const data = {
@@ -369,13 +366,10 @@ describe("PayvokeVault / viem session authorization", async () => {
     assert.equal(await vault.read.usedDecisionIds([decision.decisionId]), false);
   });
 
-  it("reclaims a disputed hold after its deadline without approver or relayer availability", async () => {
+  it("reclaims a hold after its deadline without approver or relayer availability", async () => {
     const { vault, token, quote, authorization, signature } =
       await networkHelpers.loadFixture(fixture);
     await vault.write.reserveHold([quote, authorization, signature]);
-    await vault.write.openDispute([quote.invocationKey, businessKey("quote", "evidence")], {
-      account: buyer.account,
-    });
     await vault.write.grantRole([await vault.read.PAUSER_ROLE(), admin.account.address]);
     await vault.write.pause();
     await networkHelpers.time.increaseTo(quote.resolveBy);

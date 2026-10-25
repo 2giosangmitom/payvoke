@@ -24,8 +24,7 @@ export const financialIntentSchema = {
     required: ["action"],
     additionalProperties: false,
     properties: {
-      action: { enum: ["dispute", "reclaim"] },
-      evidenceHash: { type: "string", pattern: "^0x[0-9a-f]{64}$" },
+      action: { enum: ["reclaim"] },
     },
   },
 };

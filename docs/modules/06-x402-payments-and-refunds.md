@@ -18,9 +18,9 @@ Một mã yêu cầu chỉ được trừ một lần. Gửi lại chứng từ 
 
 ## Hoàn tiền và payout
 
-Tiền của lần gọi nằm trong khoản đang giữ cho đến khi hết thời hạn giao/tranh chấp theo điều khoản. M09 quyết định hoàn toàn bộ hoặc một phần; M06 trả phần đó về số dư khả dụng của đúng ví buyer. Buyer có thể rút từ số dư này. Phần còn lại mới chia thành phí Payvoke và khoản provider được rút; phí chỉ tính trên phần không hoàn. Không cho payout sớm hơn thời hạn hoàn nếu chưa có nguồn dự phòng.
+Tiền của lần gọi nằm trong khoản đang giữ cho đến khi finance worker quyết định theo policy tự động (S02 §8.5): hoàn toàn bộ khi lỗi, không giao hoặc giao trễ; M06 trả về số dư khả dụng của đúng ví buyer và buyer có thể rút từ số dư này. Giao đúng hạn và đã hết review window thì giải ngân: phần còn giữ chia thành phí Payvoke và khoản provider được rút; phí chỉ tính trên phần không hoàn. Không payout sớm hơn `releaseNotBefore`.
 
-Payvoke đối chiếu tổng tiền trong vault với số dư buyer, khoản đang giữ và khoản provider/Payvoke chưa rút. Ghi riêng giao dịch onchain và trạng thái nghiệp vụ; không xem báo cáo từ trình duyệt là bằng chứng tiền đã chuyển. Quyền duyệt hoàn và quyền thực hiện payout tách nhau.
+Payvoke đối chiếu tổng tiền trong vault với số dư buyer, khoản đang giữ và khoản provider/Payvoke chưa rút. Ghi riêng giao dịch onchain và trạng thái nghiệp vụ; không xem báo cáo từ trình duyệt là bằng chứng tiền đã chuyển. Khóa ký quyết định (approver) và khóa gửi giao dịch (executor) tách nhau.
 
 Trước khi bật thanh toán, phải chốt tỷ lệ/trần phí nền tảng, thời hạn giữ tiền, nguồn xử lý hoàn muộn và đặc tả scheme x402 cho PayvokeVault. Chính sách gas ở M10. Kiểm thử chứng từ sai/hết hạn/thu hồi, thu trùng, hai yêu cầu đồng thời, mất phản hồi sau giao dịch, rút trong lúc thu và hoàn sau payout.
 
