@@ -52,19 +52,19 @@ Hiện tại đã có:
 - Tổng quan sản phẩm, mười module chức năng, bốn đặc tả (API/provider, x402/vault, MCP, AG-UI/OpenUI) và bộ thuật ngữ.
 - `PayvokeVault.sol` với 82 test pass (71 Solidity gồm adversarial, fuzz và invariant; 11 Node.js) và Ignition module.
 - `packages/payvoke-protocol` (EIP-712, JCS, snapshots; 8 test vectors/ABI), `packages/payvoke-x402` (adapter client/server/facilitator của scheme `payvoke-vault`) và `packages/openui-components` (catalog widget).
-- Backend Fastify: đăng nhập SIWE, store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance (refund/release/reclaim), provider SSE/ACK/report, AG-UI/OpenUI stream, question/answer và revision. 10 migration Prisma; 109 test pass, 6 skip (case EVM/PostgreSQL cần cờ riêng); typecheck đầy đủ pass.
+- Backend Fastify: đăng nhập SIWE, store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance (refund/release/reclaim), provider SSE/ACK/report, AG-UI/OpenUI stream, question/answer và revision. 10 migration Prisma; 112 test pass, 6 skip (case EVM/PostgreSQL cần cờ riêng); typecheck đầy đủ pass.
 - Frontend: store, chat, Studio, renderer OpenUI và ký thanh toán; typecheck và build pass.
 - Đối chiếu thiết kế với 13 nghiên cứu về x402 và agentic payments ([chi tiết](docs/research/agentic-payments-literature.md)).
 
 Chưa có:
 
 - Deployment vault trên Fuji và bằng chứng end-to-end trên Fuji.
-- API file, dispute, acceptance, cancellation, `/result` và `pending-events`; route ACK hiện lệch S01 (xem [S01 §6.2](docs/specs/01-api-and-provider-protocol.md#62-ack-và-báo-cáo)).
-- Verifier cho file artifact và cơ chế mức bằng chứng trước khi giải ngân (đề xuất R03/R04).
+- File, dispute, acceptance, cancellation, đọc kết quả riêng và resync event chưa ACK khi cursor hết hạn.
+- Verifier cho file artifact (mức bằng chứng `REC` tự động). Mức bằng chứng tối thiểu trước khi giải ngân đã có (R03/R04): hiện chỉ có `SIGN` từ verifier JSON và attestation thủ công.
 - OpenAPI sinh từ code, CI, cấu hình deploy backend/worker; frontend chưa có script `test` và browser E2E.
 - MCP bridge (`apps/mcp`) và `packages/payvoke-client`.
 - Migration production không phá huỷ; migration hiện tại được phép reset vì chưa release.
-- Policy đã duyệt cho phí, deadline, giá sàn so với gas, ngân sách AVAX và chủ sở hữu key/role.
+- Policy đã duyệt cho phí, deadline, con số giá sàn `minGrossAmount` (cơ chế đã có), ngân sách AVAX và chủ sở hữu key/role.
 
 Có thể demo trên local/staging: Hardhat node chain ID 43113 + PostgreSQL + backend, facilitator, settlement worker + frontend. Chưa nên coi marketplace đủ điều kiện phát hành trên Fuji cho đến khi qua các gate T092/T129 của roadmap.
 
@@ -254,18 +254,9 @@ Flow upfront của SDK không bảo đảm gọi `/verify` trước `/settle`. V
 
 ### Tích hợp với API
 
-Luồng chính:
+Luồng chính: chuẩn bị quote trả `quoteId`, `invocationId` và snapshots; submit quote đó trả HTTP 402 khi chưa có payment và trả kết quả thành công khi hold đã xác nhận và job được queue. Route cụ thể đọc từ code backend.
 
-```text
-POST /v1/quotes
-  → quoteId + invocationId + snapshots
-
-POST /v1/invocations {quoteId}
-  → 402 khi chưa có payment
-  → 202 khi hold đã xác nhận và job được queue
-```
-
-Paid submit dùng `Idempotency-Key` bằng `invocationId`; endpoint này không nhận input/giá mới để thay quote. Các request đọc trạng thái, kết quả và continuation đúng phạm vi không thực hiện debit mới.
+Paid submit dùng `Idempotency-Key` bằng `invocationId`; bước submit không nhận input/giá mới để thay quote. Các request đọc trạng thái, kết quả và continuation đúng phạm vi không thực hiện debit mới.
 
 Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter dự kiến tích hợp ở Fastify `preHandler`; dùng stock middleware settle ở `onRequest` có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
 
@@ -273,7 +264,7 @@ Pending có thể vẫn trả HTTP 402 kèm transaction receipt. Client phải �
 
 ### Đối chiếu với nghiên cứu bảo mật x402
 
-Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Còn thiếu giá sàn so với gas và một conformance suite đặt tên theo từng quy tắc. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
+Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Giá sàn so với gas nằm trong policy deployment, và `pnpm --dir apps/backend test:conformance` kiểm tra từng quy tắc bằng ca âm tính có tên. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
 
 ## 8. PayvokeVault và vòng đời tiền
 
@@ -807,7 +798,7 @@ Ngoài phạm vi hiện tại:
 - [Nghiên cứu agentic payments áp dụng cho Payvoke](docs/research/agentic-payments-literature.md).
 - [Ma trận bằng chứng thanh toán](docs/payment-acceptance.md).
 
-README là bản giải thích tổng thể. S01–S04 là đặc tả triển khai chi tiết; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Không coi endpoint/ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
+README là bản giải thích tổng thể. S01–S04 là đặc tả quy tắc nghiệp vụ và giao thức; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Tài liệu không liệt kê routes API: method, path và request/response lấy từ code trong `apps/backend/src/modules/*`, là nguồn sự thật duy nhất. Không coi ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
 
 ## Tài liệu tham khảo và lời cảm ơn
 

@@ -14,9 +14,9 @@ src/
   plugins/http.ts       # sensible, helmet, CORS, cookies and rate limits
   modules/auth/
     auth.ts             # Better Auth + Prisma + SIWE, Payvoke policy hooks
-    index.ts            # Fastify bridge, session guard and /v1/me
+    index.ts            # Fastify bridge, session guard and current-user route
   modules/quotes/
-    index.ts            # immutable tool quotes and SDK payment challenge
+    index.ts            # immutable quotes and SDK payment challenge
   modules/payments/
     journal.ts          # intent, fenced leases and signed transaction journal
     index.ts            # authenticated read-only invocation status
@@ -28,21 +28,19 @@ src/
 
 Add features under `modules/<feature>` and register them after auth in `app.ts`.
 
-## Provider catalog and saved products
+**Routes are documented by code only.** This README and `docs/` describe rules,
+not method/path/body catalogs. Read the route registrations in `src/modules/*`
+(or an OpenAPI document generated from them) for the current HTTP surface.
 
-Wallet-authenticated owners create provider apps and rotate one active API key
-per app. Product writes require an active `products:write` key even when the
-owner uses the web UI. A key is scoped to its app and can register product drafts/commands;
-only its hash is stored. Valid drafts publish directly without operator review.
-Published products appear in `/v1/products` with `availability: "NOT_READY"`.
-New provider products cannot create paid quotes until the provider delivery
-gateway exists. Existing local settlement fixtures remain separate.
+## Provider apps and catalog
 
-Signed-in buyers can star products and group starred products into private
-collections. Removing a star also removes its collection memberships. Legacy
-products without an owner app remain stored for existing quote history, but are
-not exposed in the new catalog. Assign ownership through a reviewed migration
-before listing any such product.
+Wallet-authenticated owners create apps and rotate one active API key per app;
+only the key hash is stored. Command writes accept the owner session or a key
+with `products:write`. A key is scoped to its app. `PUBLIC` apps that are not
+archived appear in the store without operator review; availability requires
+`ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
+can star apps.
+
 Protected routes use `preHandler: app.requireAccount`. Use existing Fastify
 plugins and TypeBox type inference for application routes. No generic repository
 or DI layers are needed. `generated/prisma` is CLI output.
@@ -96,15 +94,12 @@ No Neon migration has been applied by the implementation process.
 
 ## Better Auth SIWE
 
-Use Better Auth's SIWE client or these native endpoints, with browser
-`credentials: "include"` and an exact trusted `Origin` for writes:
-
-1. `POST /v1/auth/siwe/nonce` with `{}` returns `{nonce}` and a signed browser cookie.
-2. Build/sign an EIP-4361 message with that nonce, the web domain/URI, chain 43113,
-   `issuedAt` and `expirationTime` at most 5 minutes apart.
-3. `POST /v1/auth/siwe/verify` with `{message, signature}` in the same browser.
-4. `GET /v1/me` returns Payvoke buyer identity; `POST /v1/auth/sign-out` logs out.
-   `GET /v1/auth/get-session` is the native Better Auth session endpoint.
+Use Better Auth's SIWE client against the native endpoints under the auth base
+path (see `src/modules/auth`), with browser `credentials: "include"` and an exact
+trusted `Origin` for writes. Request a nonce (it sets a signed browser cookie),
+build/sign an EIP-4361 message with that nonce, the web domain/URI, chain 43113,
+`issuedAt` and `expirationTime` at most 5 minutes apart, then verify it in the
+same browser. A separate current-user route returns the Payvoke buyer identity.
 
 Better Auth owns nonce consumption, signed session cookies, session storage and
 logout. Invalid verification consumes the nonce: request a fresh one to retry.
@@ -116,13 +111,12 @@ Fastify provides process-local rate limits; proxy headers are not trusted.
 **Storage change:** Better Auth stores its native session token (not our former
 custom hash) in `session`. Its native SIWE response includes that token;
 authentication requires its signed cookie, not a Payvoke bearer-token plugin.
-Treat auth tables as sensitive. `/v1/me` never exposes session tokens. Login never
+Treat auth tables as sensitive. The current-user route never exposes session tokens. Login never
 grants permission to debit the vault; no email/password/social login is enabled.
 
 ## Identity and initial migration
 
-This intentionally replaces `/auth/challenges`, `/auth/sessions` and the old
-DELETE logout endpoint. Clients must switch together; old cookies are not valid
+This intentionally replaces the former custom challenge/session/logout API. Clients must switch together; old cookies are not valid
 under Better Auth, so users sign in again. Do not run mixed auth API versions.
 
 `User.id` is the buyer identity. Better Auth's `Account` stores the SIWE provider
@@ -160,16 +154,18 @@ work; only the Docker run exercises concurrent connections/processes.
 
 ## Quote/x402 milestone (not live payments)
 
-- `POST /v1/quotes` authenticates the buyer, validates persisted TOOL command
+- Quote preparation authenticates the buyer, validates the active command revision
   arguments/defaults and freezes input/terms/policy snapshots plus EIP-712 quote.
   `Idempotency-Key` must equal `clientRequestId`. One active quote/operation
-  occupies the session; replays return the same stored document without
+  occupies the thread; replays return the same stored document without
   extending deadlines. Pending/UNKNOWN/HELD operations retain that slot even
   after quote expiry. Rejected, never-attempted operations can release after
-  expiry; finalized reverted attempts allow a fresh quote immediately.
-- Only empty context selections are supported. Nonempty selections and AGENT
-  products fail explicitly; there is no silent context omission.
-- `POST /v1/invocations {quoteId}` requires the invocation ID as idempotency key.
+  expiry; finalized reverted attempts and DELIVERED/FAILED runs allow a fresh
+  quote immediately. An in-scope revision must reclaim the same slot.
+- Only empty context selections are supported. Nonempty selections fail
+  explicitly; there is no silent context omission.
+- Invocation submission takes only `{quoteId}` and requires the invocation ID as
+  idempotency key.
   After ownership/availability/schema gates it returns an SDK-encoded v2
   `PAYMENT-REQUIRED` header for `payvoke-vault` on Fuji, with `payTo` set to vault.
 - Core/client/server adapters live in `@payvoke/x402`, pinned to core 2.28.0.
@@ -177,17 +173,16 @@ work; only the Docker run exercises concurrent connections/processes.
   `onRequest`, before body validation. Final orchestration must run only after
   auth/body/ownership gates, using core's upfront flow.
 
-To exercise quotes locally, provision approved product/command, owned usage
-session and active policy records in a development DB, and configure a matching
-`VAULT_ADDRESS`. There are intentionally no catalog/session-management endpoints
-or production fixtures in this milestone. Quotes do not prove onchain admission.
+To exercise quotes locally, provision an app with a default command, a thread,
+an active policy and a matching `VAULT_ADDRESS` in a development DB. Quotes do
+not prove onchain admission.
 
 **Spending remains disabled by default.** With `PAYMENTS_ENABLED=false`, signed
 submissions still return `SETTLEMENT_NOT_AVAILABLE`. Opt-in requires the private
 facilitator URL/token and matching capabilities at API startup, a separately
 enabled facilitator submission service, and the signing worker below. The full
 path is exercised on an isolated local EVM; no Fuji deployment/E2E or production
-enablement has been performed. Provider dispatch is not implemented.
+enablement has been performed.
 
 ## Settlement journal foundation
 
@@ -212,7 +207,7 @@ owns their transactional mutations:
 - Preserve bytes/hash through BROADCAST/UNKNOWN. An attempt, even RESERVED, cannot
   be discarded through `rejectUnattempted`. Reconciliation is required instead.
 
-`GET /v1/invocations/{id}` is authenticated, no-store and free. It exposes payment
+Invocation status reads are authenticated, no-store and free. It exposes payment
 and execution status plus known tx hash/finalized receipt, never authorization or
 signed bytes. The finality reader supplies evidence to the journal's atomic
 HELD/ready transition. Only one `InvocationReady` row can exist per invocation.
@@ -220,8 +215,8 @@ HELD/ready transition. Only one `InvocationReady` row can exist per invocation.
 ## Private facilitator
 
 `pnpm dev:facilitator` runs a separate Fastify process. It does not register
-Better Auth, browser CORS or paid gateway routes. All of `GET /supported`,
-`POST /verify` and `POST /settle` require `Authorization: Bearer <service token>`
+Better Auth, browser CORS or paid gateway routes. Every x402 facilitator route
+(supported/verify/settle) requires `Authorization: Bearer <service token>`
 using `@fastify/bearer-auth`. Keep it on loopback/private networking; use TLS for
 remote transport. Rate limits are process-local and bodies are limited to 8 KiB.
 
@@ -261,9 +256,9 @@ as observations: **this does not establish finality or a successful receipt**.
 An unresolved attempt requires reconciliation; an orphan hold or inconsistent
 journal requires recovery. Neither path creates a replacement operation.
 
-`/verify` is read-only. A valid result contains `extra.admission="preview"`, a
+Verify is read-only. A valid result contains `extra.admission="preview"`, a
 classification and observed block metadata; no nonce/intent/lane is reserved.
-`/settle` defaults to validation-only: valid previews return HTTP 503
+Settle defaults to validation-only: valid previews return HTTP 503
 `settlement_unavailable`. With explicit `SETTLEMENT_ENABLED=true`, new submissions
 are independently validated and durably journaled. Existing intents are bound to
 the same quote/authorization before reading their prior state, without applying
@@ -271,7 +266,7 @@ new-admission expiry/grant checks again. Neither HTTP process signs or broadcast
 When execution mode is enabled, startup tolerates missing relayer role for receipt
 recovery; the role is still mandatory on every new-admission validation.
 
-The pinned `HTTPFacilitatorClient` accepts the `/supported` and `/verify` results.
+The pinned `HTTPFacilitatorClient` accepts the supported and verify results.
 A 503 JSON error without `success` is a transport exception in core 2.28.0, not a
 `SettleResponse` or payment receipt. This behavior is covered through SDK HTTP
 calls routed into `Fastify.inject()`. Core's HTTP orchestration may synthesize an
@@ -338,8 +333,8 @@ No cursor/lane/attempt TTL cleanup or operator force-release endpoint is provide
 Unsigned reservations that can no longer pass admission remain blocked for manual
 recovery; their nonce is not silently reassigned.
 
-`InvocationReady` is a durable handoff, not a provider-delivery implementation.
-There is no provider HTTP call, ACK loop or automatic refund/release in this task.
+`InvocationReady` is the durable handoff that the provider event stream delivers.
+There is no automatic refund/release.
 
 ### Local execution proof
 
@@ -363,10 +358,10 @@ bounded retry paths; Docker additionally proves rollback of HELD/outbox/lane.
 The additive financial-lifecycle migration adds finalized hold projections, an
 immutable event ledger, verifier delivery observations and a separate approved
 finance-decision journal/lane. Original settlement state/receipt remains HELD
-after refund/payout; `GET /v1/invocations/:id` includes a separate `financial`
+after refund/payout; invocation status includes a separate `financial`
 projection with finalized block evidence. The projection is not spendable credit.
 
-`POST /v1/invocations/:id/financial-intents` accepts `{action:"dispute",evidenceHash}`
+The buyer financial-intents action accepts `{action:"dispute",evidenceHash}`
 or `{action:"reclaim"}` after buyer authentication/ownership checks and returns
 **UNSUBMITTED** wallet calldata. It does not submit, refund, open an onchain dispute
 or claim that a pending ticket has locked payout. Buyer must simulate/sign/send;
@@ -385,8 +380,12 @@ automatically signs a new decision. Persisted signed bytes precede broadcast;
 only canonical finalized receipt/event evidence releases the lane. A finalized
 revert records actual gas without treating the decision as successful.
 
-Release additionally needs a trusted delivery observation and the business review
-window. Provider `result`/failure/cancellation is **not** payment authority. There
+Release additionally needs a trusted delivery observation whose evidence level
+satisfies the quote's signed `terms.verification.minEvidence` (SIGN by default;
+REC and WIT are incomparable) and the business review window. Each observation
+stores a JCS Evidence Envelope whose hash is the default dispute `evidenceHash`.
+Commands and quotes below the active policy's `minGrossAmount` price floor are
+rejected. Provider `result`/failure/cancellation is **not** payment authority. There
 is no provider-facing endpoint for marking delivery verified, nor automatic payout
 or refund policy engine. The internal verifier seam and explicitly enabled manual
 attestation support controlled testing while provider execution/output validation

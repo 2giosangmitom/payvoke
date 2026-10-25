@@ -51,6 +51,8 @@ export async function verifyStructuredDeliveries(db: PrismaClient) {
       outputHash: hashSnapshot(result.output as Json),
       verifier: "payvoke-host-structured-v1",
       accessInterruptionSeconds: 0,
+      // Schema-valid output bound to app, invocation and artifact version (M05).
+      evidenceLevel: "SIGN",
     });
     verified++;
   }

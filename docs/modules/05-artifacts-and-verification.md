@@ -14,28 +14,28 @@ Khi giao, M05 ghi phiên bản và thời điểm; buyer có thể chấp nhận
 
 Quyền tải kiểm tra người xem ở mỗi lần truy cập. Link tạm thời không đưa lên trang công khai hoặc nhật ký phân tích. File được giữ theo thời hạn đã hứa; tranh chấp có thể tạm ngăn xóa.
 
-## Mức bằng chứng trước khi giải ngân (đề xuất)
+## Mức bằng chứng trước khi giải ngân
 
-> Trạng thái: đề xuất từ nghiên cứu 25/10/2026, chưa có trong S01 bắt buộc và chưa có implementation. Hiện finance chỉ release khi có quan sát verifier tin cậy/thủ công (PAY-13 **Partial** trong [payment-acceptance](../payment-acceptance.md)).
+> Trạng thái 25/10/2026: đã có code và test local (R03/R04). Mức `SIGN` do verifier structured JSON ghi; `WIT`/`REC` hiện chỉ đến từ attestation thủ công có kiểm soát. `REC` tự động cho file vẫn chờ file verifier, nên PAY-13 trong [payment-acceptance](../payment-acceptance.md) vẫn là **Partial**.
 
-TessPay [P7] và RAILS [P8] cùng chỉ ra rằng escrow chỉ an toàn khi quyết định giải ngân dựa trên bằng chứng có cấp độ rõ ràng, không phải trên lời provider tự báo. Payvoke đã có hình dạng "verify-then-pay": hold → `VERIFYING` → `DELIVERED` → quyết định finance có approver tách khỏi executor. Phần còn thiếu là định nghĩa _bằng chứng nào đủ_.
+TessPay [P7] và RAILS [P8] cùng chỉ ra rằng escrow chỉ an toàn khi quyết định giải ngân dựa trên bằng chứng có cấp độ rõ ràng, không phải trên lời provider tự báo. Payvoke có hình dạng "verify-then-pay": hold → `VERIFYING` → `DELIVERED` → quyết định finance có approver tách khỏi executor. Thang bằng chứng dưới đây định nghĩa _bằng chứng nào đủ_.
 
-Đề xuất áp dụng thang bằng chứng của RAILS, rút gọn cho MVP:
+Thang bằng chứng, rút gọn từ RAILS cho MVP:
 
-| Lớp    | Nghĩa trong Payvoke                                                                 | Ví dụ                                                    |
-| ------ | ----------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `SELF` | Provider tự báo `result`                                                            | Report `result` chưa kiểm tra                            |
-| `SIGN` | Output khớp `outputSchema`, gắn đúng app/invocation/artifactVersion, do key app gửi | Kết quả JSON đã qua verifier schema hiện có              |
-| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được    | Object storage xác nhận checksum; log truy cập của buyer |
-| `WIT`  | Người có quyền xác nhận                                                             | Buyer chấp nhận; operator duyệt trong dispute            |
-| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                     | Ngoài MVP                                                |
+| Lớp    | Nghĩa trong Payvoke                                                                 | Nguồn hiện có                                          |
+| ------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `SELF` | Provider tự báo `result`                                                            | Report `result` chưa kiểm tra; không bao giờ được ghi  |
+| `SIGN` | Output khớp `outputSchema`, gắn đúng app/invocation/artifactVersion, do key app gửi | Verifier structured JSON của host                      |
+| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được    | Attestation thủ công; file verifier tự động chưa có    |
+| `WIT`  | Người có quyền xác nhận                                                             | Attestation thủ công (buyer chấp nhận, operator duyệt) |
+| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                     | Ngoài MVP                                              |
 
-`REC` và `WIT` không so sánh trực tiếp được: một bên chứng minh dữ liệu đã đến, bên kia chứng minh người nhận đồng ý.
+Thứ tự là `SELF < SIGN < {REC, WIT} < ATT`. `REC` và `WIT` không so sánh trực tiếp được: một bên chứng minh dữ liệu đã đến, bên kia chứng minh người nhận đồng ý. Vì vậy `minEvidence: REC` không được thoả bằng `WIT`.
 
-Cách áp dụng:
+Quy tắc:
 
-1. Command revision khai báo `terms.verification.minEvidence` (mặc định `SIGN` cho output văn bản/JSON, `REC` khi có file). Thay đổi là revision mới, như mọi điều khoản khác (R03).
-2. Mỗi artifact version lưu mức bằng chứng đạt được và một **Evidence Envelope**: hash của output, danh sách file/checksum, thời điểm giao do platform ghi, các quan sát verifier. Hash envelope là giá trị dùng cho `evidenceHash` khi buyer mở dispute onchain.
-3. Finance chỉ tạo quyết định release khi mức đạt được ≥ `minEvidence` và đã qua `releaseNotBefore` theo S02. Thiếu bằng chứng trước `resolveBy` thì chuyển resolver/refund, không release (R04).
+1. Command revision mang `terms.verification.minEvidence` (`SIGN` hoặc `REC`). Provider không khai báo thì server điền `SIGN` trước khi lưu revision, nên giá trị này luôn đi vào `termsHash`. TermsSnapshot vì vậy có `schemaVersion: 2`. Đổi mức là revision mới, như mọi điều khoản khác.
+2. Mỗi quan sát giao hàng lưu mức bằng chứng đạt được và một **Evidence Envelope** bất biến, canonicalize bằng JCS: invocation, artifact version, hash output, danh sách file, thời điểm giao do platform ghi, mức bằng chứng, verifier và thời gian buyer không truy cập được. Hash của envelope tái tạo được từ bản lưu và ổn định khi replay. Khi buyer mở dispute mà không tự đưa hash bằng chứng, `evidenceHash` onchain mặc định là hash envelope mới nhất.
+3. Finance chỉ tạo và thực thi quyết định release khi mức của evidence mới nhất thoả `minEvidence` (lỗi `evidence_below_minimum`) và đã qua review window theo S02. Thiếu bằng chứng trước `resolveBy` thì đi nhánh refund/resolver hoặc buyer reclaim, không release.
 
 Thang này không chứng minh nội dung đúng chuyên môn; nó chỉ bảo đảm tiền không được giải ngân dựa trên bằng chứng yếu hơn mức đã hứa với buyer lúc ký quote. Chi tiết: [nghiên cứu agentic payments](../research/agentic-payments-literature.md#2-verify-then-pay-và-bằng-chứng-giao-hàng).

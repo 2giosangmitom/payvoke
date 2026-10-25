@@ -45,7 +45,18 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
       if (projection && ["RELEASED", "REFUNDED", "RECLAIMED"].includes(projection.status))
         throw app.httpErrors.conflict("HOLD_CLOSED");
       const q = invocation.quote.document as unknown as QuoteDocument;
-      if (request.body.action === "dispute" && !request.body.evidenceHash)
+      // A dispute references the latest Evidence Envelope unless the buyer
+      // supplies their own evidence hash (e.g. nothing was ever delivered).
+      const latest =
+        request.body.action === "dispute" && !request.body.evidenceHash
+          ? await db.paymentDeliveryEvidence.findFirst({
+              where: { invocationId: invocation.id },
+              orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+              select: { envelopeHash: true },
+            })
+          : null;
+      const evidenceHash = (request.body.evidenceHash ?? latest?.envelopeHash) as Hex | undefined;
+      if (request.body.action === "dispute" && !evidenceHash)
         throw app.httpErrors.badRequest("EVIDENCE_HASH_REQUIRED");
       return {
         status: "UNSUBMITTED",
@@ -58,7 +69,7 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
             ? encodeFunctionData({
                 abi: vaultFinanceAbi,
                 functionName: "openDispute",
-                args: [invocation.settlement.invocationKey as Hex, request.body.evidenceHash!],
+                args: [invocation.settlement.invocationKey as Hex, evidenceHash!],
               })
             : encodeFunctionData({
                 abi: vaultFinanceAbi,
@@ -66,6 +77,7 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
                 args: [invocation.settlement.invocationKey as Hex],
               }),
         resolveBy: q.resolveBy,
+        ...(request.body.action === "dispute" ? { evidenceHash } : {}),
         requiresWalletSignature: true,
         requiresSimulation: true,
       };
@@ -98,6 +110,11 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
       const financial = await db.vaultHoldProjection.findUnique({
         where: { holdId: operation.invocationKey },
       });
+      const evidence = await db.paymentDeliveryEvidence.findFirst({
+        where: { invocationId: invocation.id },
+        orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+        select: { artifactVersion: true, evidenceLevel: true, envelopeHash: true },
+      });
       return {
         invocationId: invocation.id,
         threadId: invocation.quote.threadId,
@@ -114,6 +131,7 @@ export async function registerPaymentStatus(app: FastifyInstance, db: PrismaClie
               finalizedBlockHash: financial.blockHash,
             }
           : null,
+        delivery: evidence,
         transaction: attempt?.transactionHash ?? null,
         failure: operation.errorReason ? { code: operation.errorReason } : null,
         receipt:

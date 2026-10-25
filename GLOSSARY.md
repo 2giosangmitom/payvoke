@@ -92,7 +92,13 @@ Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏ
 Tiến trình local cho ứng dụng AI bên ngoài dùng chung API buyer. MCP không phải giao diện chat của Payvoke và không được thay đổi giá hoặc bỏ qua admission.
 
 **Mức bằng chứng (evidence level)**:
-Đề xuất từ nghiên cứu: cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (đúng schema, đúng key app) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận). Command có thể khai báo mức tối thiểu trước khi được giải ngân. Xem [M05](docs/modules/05-artifacts-and-verification.md).
+Cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (đúng schema, đúng key app) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận; hai mức này không thay thế nhau). Command revision mang `terms.verification.minEvidence` (mặc định `SIGN`); finance không giải ngân khi bằng chứng thấp hơn mức này. Xem [M05](docs/modules/05-artifacts-and-verification.md).
+
+**Evidence Envelope**:
+Bản ghi bất biến của một lần quan sát giao hàng (invocation, artifact version, hash output, file, thời điểm giao, mức bằng chứng, verifier), canonicalize bằng JCS. Hash của nó là `evidenceHash` mặc định khi buyer mở dispute onchain.
+
+**Giá sàn (`minGrossAmount`)**:
+Giá gộp tối thiểu, tính bằng atomic USDC, trong policy deployment đã duyệt, để mỗi lần gọi đủ bù gas hold + release do Payvoke trả. Command dưới sàn không được đăng và không nhận quote mới.
 
 **Buyer độc lập đã xác minh**:
 Đề xuất cho chỉ số store: buyer có invocation `DELIVERED` đã qua `releaseNotBefore`, không phải ví owner hoặc payout address của chính app. Dùng thay cho số invocation thô vì số giao dịch có thể làm giả khi platform trả gas. Xem [M09](docs/modules/09-reputation-and-operations.md).

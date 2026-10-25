@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   applyDecisionAbi,
   hashDecision,
+  hashSnapshot,
   paymentTypes,
   vaultDomain,
   vaultFinanceAbi,
@@ -24,6 +25,12 @@ import {
   type LocalAccount,
 } from "viem";
 import { Prisma, type PrismaClient, type FinanceDecision } from "../../generated/prisma/client";
+import {
+  evidenceLevels,
+  evidenceSatisfies,
+  termsMinEvidence,
+  type EvidenceLevel,
+} from "../apps/schema";
 import { databaseTime, type GasPolicy } from "./journal";
 import { validateGasPolicy } from "./worker";
 import { financialDeployment, financialJson, readFinalizedHold } from "./finance-ledger";
@@ -123,10 +130,12 @@ export async function recordPaymentDelivery(
     outputHash: Hex;
     verifier: string;
     accessInterruptionSeconds: number;
+    evidenceLevel: EvidenceLevel;
   },
 ) {
   check(
-    /^[a-zA-Z0-9_-]{1,128}$/.test(input.id) &&
+    evidenceLevels.includes(input.evidenceLevel) &&
+      /^[a-zA-Z0-9_-]{1,128}$/.test(input.id) &&
       /^0x[\da-f]{64}$/.test(input.outputHash) &&
       input.verifier.length > 0 &&
       input.verifier.length <= 128 &&
@@ -156,7 +165,8 @@ export async function recordPaymentDelivery(
           previous.artifactVersion === input.artifactVersion &&
           previous.outputHash === input.outputHash &&
           previous.verifier === input.verifier &&
-          previous.accessInterruptionSeconds === input.accessInterruptionSeconds,
+          previous.accessInterruptionSeconds === input.accessInterruptionSeconds &&
+          previous.evidenceLevel === input.evidenceLevel,
         "evidence_conflict",
       );
       return previous;
@@ -175,8 +185,21 @@ export async function recordPaymentDelivery(
     const now = await databaseTime(tx);
     // Strictly monotone observation time makes "latest" stable within a millisecond.
     check(!latest || now > latest.observedAt, "retry_evidence_observation");
+    // The Evidence Envelope is what a buyer dispute references onchain; JCS keeps
+    // its hash reproducible from the stored envelope.
+    const envelope = {
+      schemaVersion: 1,
+      invocationId: input.invocationId,
+      artifactVersion: input.artifactVersion,
+      outputHash: input.outputHash,
+      files: [],
+      deliveredAt: Math.floor(now.getTime() / 1000),
+      evidenceLevel: input.evidenceLevel,
+      verifier: input.verifier,
+      accessInterruptionSeconds: input.accessInterruptionSeconds,
+    };
     const evidence = await tx.paymentDeliveryEvidence.create({
-      data: { ...input, observedAt: now },
+      data: { ...input, observedAt: now, envelope, envelopeHash: hashSnapshot(envelope) },
     });
     // Only this trusted verifier path can make a paid run DELIVERED. Provider
     // reports and AG-UI stream events remain display-only until evidence exists.
@@ -313,6 +336,14 @@ export class FinanceService {
       });
       check(latest && latest.id === a.evidenceId, "verified_delivery_required");
       const q = op.invocation.quote.document as unknown as QuoteDocument;
+      // Never release on weaker evidence than the signed terms promised the buyer.
+      const minimum = termsMinEvidence(
+        (q.termsSnapshot as { definition?: unknown } | null)?.definition,
+      );
+      check(
+        minimum !== null && evidenceSatisfies(latest.evidenceLevel, minimum),
+        "evidence_below_minimum",
+      );
       const review = BigInt(q.releaseNotBefore - q.deliveryDeadline);
       const observed = BigInt(Math.ceil(latest.observedAt.getTime() / 1000));
       const businessEarliest = observed + review + BigInt(latest.accessInterruptionSeconds);

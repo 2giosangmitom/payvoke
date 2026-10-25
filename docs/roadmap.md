@@ -28,7 +28,7 @@ Nền tảng → contract → backend/API → x402 và recovery → provider/job
 
 **Hiện trạng 25/10/2026** (kiểm tra lại trên commit `a7b97ec`):
 
-- Backend Fastify có auth SIWE (Better Auth), catalog/store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance, AG-UI/OpenUI stream và công cụ vận hành Fuji. 10 migration Prisma; `pnpm --dir apps/backend test` 109 pass, 6 skip (EVM/PostgreSQL cần cờ riêng). `tsc --noEmit` đầy đủ đã pass; lỗi `thread-stream` ghi ở baseline không còn.
+- Backend Fastify có auth SIWE (Better Auth), catalog/store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance, AG-UI/OpenUI stream và công cụ vận hành Fuji. 10 migration Prisma; `pnpm --dir apps/backend test` 112 pass, 6 skip (EVM/PostgreSQL cần cờ riêng). `tsc --noEmit` đầy đủ đã pass; lỗi `thread-stream` ghi ở baseline không còn.
 - `PayvokeVault.sol` đã thay Counter sample: 82 test pass (71 Solidity gồm adversarial/fuzz/invariant, 11 Node.js) và Ignition module.
 - `packages/payvoke-protocol` (8 test vectors/ABI), `packages/payvoke-x402`, `packages/openui-components` đã tồn tại.
 - Frontend có store, chat, Studio, renderer OpenUI và ký thanh toán; build pass; 4 test renderer chạy được bằng tsx nhưng chưa có script `test`.
@@ -350,7 +350,7 @@ Task triển khai đầu tiên nên giao theo dạng: “Làm T001/T003 trong ph
 
 ## 17. Bổ sung từ nghiên cứu (25/10/2026)
 
-Các task dưới đây rút từ [nghiên cứu agentic payments](research/agentic-payments-literature.md). Chúng không đổi gate hiện có; mỗi task vẫn theo Definition of Done ở §1. R03/R04 thay đổi TermsSnapshot nên phải tăng `schemaVersion` và cập nhật vectors.
+Các task dưới đây rút từ [nghiên cứu agentic payments](research/agentic-payments-literature.md). Chúng không đổi gate hiện có; mỗi task vẫn theo Definition of Done ở §1. **Tiến độ 25/10/2026:** R01–R04 đã có code và test local: `test:conformance`, `minGrossAmount` trong policy, `terms.verification.minEvidence` + Evidence Envelope, và release bị chặn khi `evidence_below_minimum`. Checkbox vẫn để trống cho đến khi có bằng chứng Fuji và con số sàn được duyệt (T089); `REC` tự động cho file phụ thuộc T072–T074. R03/R04 thay đổi TermsSnapshot nên phải tăng `schemaVersion` và cập nhật vectors.
 
 | Task    | Phụ thuộc        | Việc làm / đầu ra                                                                                                                                                                                      | Nghiệm thu                                                                                                          |
 | ------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |

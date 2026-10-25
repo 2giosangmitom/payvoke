@@ -133,6 +133,8 @@ model DeploymentPolicy {
   quoteLifetimeSeconds   Int
   maxHoldSeconds         Int
   resolutionGraceSeconds Int
+  // Smallest gross price, in atomic USDC, that covers sponsored hold + release gas.
+  minGrossAmount         Decimal @db.Decimal(78, 0)
 
   @@map("deployment_policies")
 }

@@ -24,7 +24,7 @@ import {
   recoverTypedDataAddress,
 } from "viem";
 import { avalancheFuji } from "viem/chains";
-import { paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/protocol";
+import { hashSnapshot, paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/protocol";
 import { x402Client } from "@x402/core/client";
 import { HTTPFacilitatorClient, resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
 import {
@@ -44,7 +44,9 @@ import {
   type QuoteDocument,
 } from "@payvoke/x402";
 import { createApp } from "../src/app";
-import { loadConfig } from "../src/config";
+import { loadConfig, logRedaction } from "../src/config";
+import fastify from "fastify";
+import { Writable } from "node:stream";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { SettlementJournal } from "../src/modules/payments/journal";
 import { createFacilitatorApp } from "../src/facilitator/app";
@@ -277,6 +279,7 @@ describe("quotes, x402 and isolated settlement", () => {
           refundPolicy: "Refund undelivered work",
           sideEffects: "none",
           dataUse: "Only this request",
+          verification: { minEvidence: "SIGN" },
         },
         deliverySeconds: 60,
         reviewSeconds: 30,
@@ -298,6 +301,7 @@ describe("quotes, x402 and isolated settlement", () => {
         quoteLifetimeSeconds: 120,
         maxHoldSeconds: 600,
         resolutionGraceSeconds: 60,
+        minGrossAmount: "1000",
       },
     });
   });
@@ -652,6 +656,67 @@ describe("quotes, x402 and isolated settlement", () => {
     }
     await db.quote.updateMany({ data: { buyerId: "another-user" } });
     assert.equal((await submit(q)).statusCode, 404);
+  });
+
+  it("keeps payment metadata uncacheable and free of prompts, PII and signatures", async () => {
+    const secret = "Nguyen Van A, 0912345678, hidden prompt";
+    const prepared = await prepare({ ...body(), arguments: { text: secret } });
+    assert.equal(prepared.statusCode, 201, prepared.body);
+    assert.match(String(prepared.headers["cache-control"]), /no-store/);
+    const q = prepared.json<QuoteDocument>();
+    const unpaid = await submit(q);
+    assert.equal(unpaid.statusCode, 402, unpaid.body);
+    assert.match(String(unpaid.headers["cache-control"]), /no-store/);
+    // PAYMENT-REQUIRED carries opaque IDs, hashes and a fixed description only.
+    const required = decodePaymentRequiredHeader(unpaid.headers["payment-required"] as string);
+    assert.equal(required.resource.description, "Payvoke invocation");
+    assert.equal(JSON.stringify(required).includes(secret), false);
+    assert.equal(String(unpaid.headers["payment-required"]).includes(secret), false);
+    const signed = await payment(q);
+    assert.equal(JSON.stringify(signed).includes(secret), false);
+    const status = await app.inject({
+      method: "GET",
+      url: `/v1/invocations/${q.invocationId}`,
+      headers: { origin, cookie },
+    });
+    assert.match(String(status.headers["cache-control"]), /no-store/);
+    const intent = await app.inject({
+      method: "POST",
+      url: `/v1/invocations/${q.invocationId}/financial-intents`,
+      headers: { origin, cookie },
+      payload: { action: "reclaim" },
+    });
+    assert.match(String(intent.headers["cache-control"]), /no-store/);
+    // The production redaction policy removes payment headers, cookies and bodies.
+    const lines: string[] = [];
+    const logger = fastify({
+      logger: {
+        level: "trace",
+        redact: logRedaction,
+        stream: new Writable({
+          write(chunk, _encoding, done) {
+            lines.push(String(chunk));
+            done();
+          },
+        }),
+      },
+    });
+    const signature = JSON.stringify(signed);
+    logger.log.info(
+      {
+        req: {
+          headers: { "payment-signature": signature, cookie, authorization: "Bearer pvk_x" },
+          body: { arguments: { text: secret } },
+        },
+        signature,
+      },
+      "payment request",
+    );
+    await logger.close();
+    const output = lines.join("");
+    assert.match(output, /payment request/);
+    for (const leaked of [secret, signature, cookie, "pvk_x"])
+      assert.equal(output.includes(leaked), false, leaked);
   });
 
   it("keeps requirements stable over retries and does not trust Host", async () => {
@@ -2223,6 +2288,7 @@ describe("quotes, x402 and isolated settlement", () => {
       deliverySeconds: 60,
       reviewSeconds: 30,
       grossAmount: "100000",
+      minGrossAmount: "1000",
       run: {
         apiOrigin: api,
         webOrigin: origin,
@@ -2330,9 +2396,30 @@ describe("quotes, x402 and isolated settlement", () => {
       fifth = await held(),
       sixth = await held(),
       seventh = await held();
+    // A revision promising REC evidence: schema-signed (SIGN) output cannot release it.
+    const signOnly = await db.appCommandRevision.findFirstOrThrow({ where: { commandId } });
+    await db.appCommandRevision.update({
+      where: { id: signOnly.id },
+      data: {
+        terms: {
+          ...(signOnly.terms as Record<string, unknown>),
+          verification: { minEvidence: "REC" },
+        },
+      },
+    });
+    const eighth = await held();
+    await db.appCommandRevision.update({
+      where: { id: signOnly.id },
+      data: { terms: signOnly.terms as object },
+    });
+    assert.equal(
+      (eighth.termsSnapshot as { definition: { verification: { minEvidence: string } } }).definition
+        .verification.minEvidence,
+      "REC",
+    );
     const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
     await sync();
-    assert.equal(await db.vaultHoldProjection.count(), 7);
+    assert.equal(await db.vaultHoldProjection.count(), 8);
     const service = () => new FinanceService(db, evm.settlement, executor.address, gasPolicy);
     assert.throws(
       () => new FinanceService(db, evm.settlement, relayer.address, gasPolicy),
@@ -2551,6 +2638,7 @@ describe("quotes, x402 and isolated settlement", () => {
       outputHash: `0x${"1".repeat(64)}`,
       verifier: "isolated-test-output-verifier",
       accessInterruptionSeconds: 0,
+      evidenceLevel: "SIGN" as const,
     });
     assert.equal(
       (
@@ -2561,6 +2649,7 @@ describe("quotes, x402 and isolated settlement", () => {
           outputHash: `0x${"1".repeat(64)}`,
           verifier: "isolated-test-output-verifier",
           accessInterruptionSeconds: 0,
+          evidenceLevel: "SIGN" as const,
         })
       ).id,
       evidence.id,
@@ -2580,6 +2669,33 @@ describe("quotes, x402 and isolated settlement", () => {
       ),
     });
     await evm.test.mine({ blocks: 1 });
+    const signed = await recordPaymentDelivery(db, {
+      id: "eighth-schema-only",
+      invocationId: eighth.invocationId,
+      artifactVersion: 1,
+      outputHash: `0x${"2".repeat(64)}`,
+      verifier: "isolated-test-output-verifier",
+      accessInterruptionSeconds: 0,
+      evidenceLevel: "SIGN" as const,
+    });
+    await assert.rejects(
+      service().enqueue(await approvalFor(eighth, "0", true, signed.id)),
+      /evidence_below_minimum/,
+    );
+    const witnessed = await recordPaymentDelivery(db, {
+      id: "eighth-buyer-witness",
+      invocationId: eighth.invocationId,
+      artifactVersion: 1,
+      outputHash: `0x${"2".repeat(64)}`,
+      verifier: "isolated-test-output-verifier",
+      accessInterruptionSeconds: 0,
+      evidenceLevel: "WIT" as const,
+    });
+    // WIT and REC are incomparable: buyer agreement does not prove file receipt.
+    await assert.rejects(
+      service().enqueue(await approvalFor(eighth, "0", true, witnessed.id)),
+      /evidence_below_minimum/,
+    );
     const staleRelease = await approvalFor(first, "0", true, evidence.id);
     await service().enqueue(staleRelease);
     const correctedEvidence = await recordPaymentDelivery(db, {
@@ -2589,6 +2705,7 @@ describe("quotes, x402 and isolated settlement", () => {
       outputHash: `0x${"1".repeat(64)}`,
       verifier: "isolated-test-output-verifier",
       accessInterruptionSeconds: 1,
+      evidenceLevel: "SIGN" as const,
     });
     await service().tick(staleRelease.decision.decisionId, executor);
     const rejectedRelease = await db.financeDecision.findUniqueOrThrow({
@@ -2668,7 +2785,7 @@ describe("quotes, x402 and isolated settlement", () => {
       corrupted.decision.decisionId,
     );
     const readyCount = await db.invocationReady.count();
-    assert.equal(readyCount, 7);
+    assert.equal(readyCount, 8);
     const providerClient = createWalletClient({
       account: providerWallet,
       chain: avalancheFuji,
@@ -2692,7 +2809,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 79200n);
     assert.equal(await evm.usdc.read.balanceOf([platformWallet.address]), 800n);
     await evm.test.setNextBlockTimestamp({
-      timestamp: BigInt(Math.max(fourth.resolveBy, seventh.resolveBy)),
+      timestamp: BigInt(Math.max(fourth.resolveBy, seventh.resolveBy, eighth.resolveBy)),
     });
     await evm.test.mine({ blocks: 1 });
     await evm.contract.write.pause();
@@ -2705,6 +2822,9 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(reclaim.statusCode, 200, reclaim.body);
     await buyerClient.sendTransaction({ to: evm.vault, data: reclaim.json().data });
     await buyerVault.write.reclaim([seventh.protocolQuote.invocationKey]);
+    // Evidence never reached the promised REC floor before resolveBy: the buyer
+    // reclaims instead of the provider being paid on weaker evidence.
+    await buyerVault.write.reclaim([eighth.protocolQuote.invocationKey]);
     await buyerVault.write.withdrawAvailable([9920000n]);
     await sync();
     assert.equal(
@@ -2735,7 +2855,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const grant = (await evm.contract.read.getGrant([wallet.address, `0x${"a".repeat(64)}`])) as {
       spentTotal: bigint;
     };
-    assert.equal(grant.spentTotal, 700000n, "refund/reclaim never resets grant spend");
+    assert.equal(grant.spentTotal, 800000n, "refund/reclaim never resets grant spend");
     const cursor = await db.settlementScanCursor.findUniqueOrThrow({
       where: { id: `finance:43113:${evm.vault.toLowerCase()}` },
     });
@@ -3292,6 +3412,7 @@ describe("quotes, x402 and isolated settlement", () => {
         outputHash: `0x${"1".repeat(64)}`,
         verifier: "trusted-test-verifier",
         accessInterruptionSeconds: 0,
+        evidenceLevel: "SIGN" as const,
       }),
       /payment_not_held/,
     );
@@ -3305,12 +3426,26 @@ describe("quotes, x402 and isolated settlement", () => {
       outputHash: `0x${"1".repeat(64)}` as `0x${string}`,
       verifier: "trusted-test-verifier",
       accessInterruptionSeconds: 0,
+      evidenceLevel: "SIGN" as const,
     };
-    await recordPaymentDelivery(db, input);
-    await recordPaymentDelivery(db, input);
+    const stored = await recordPaymentDelivery(db, input);
+    const replayed = await recordPaymentDelivery(db, input);
+    // The Evidence Envelope hash is reproducible from the stored envelope and stable on replay.
+    assert.equal(replayed.envelopeHash, stored.envelopeHash);
+    assert.equal(hashSnapshot(stored.envelope as never), stored.envelopeHash);
+    assert.equal((stored.envelope as { outputHash: string }).outputHash, input.outputHash);
+    assert.equal((stored.envelope as { evidenceLevel: string }).evidenceLevel, "SIGN");
     await assert.rejects(
       recordPaymentDelivery(db, { ...input, accessInterruptionSeconds: 60 }),
       /evidence_conflict/,
+    );
+    await assert.rejects(
+      recordPaymentDelivery(db, { ...input, evidenceLevel: "WIT" }),
+      /evidence_conflict/,
+    );
+    await assert.rejects(
+      recordPaymentDelivery(db, { ...input, id: "self-report", evidenceLevel: "SELF" as never }),
+      /invalid_delivery_evidence/,
     );
     assert.equal(await db.paymentDeliveryEvidence.count(), 1);
     const endpoint = `/v1/invocations/${q.invocationId}/financial-intents`;
@@ -3334,6 +3469,33 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(intent.statusCode, 200, intent.body);
     assert.equal(intent.json().status, "UNSUBMITTED");
     assert.equal(intent.json().requiresWalletSignature, true);
+    // Without an explicit hash, a dispute references the latest Evidence Envelope.
+    const dispute = await app.inject({
+      method: "POST",
+      url: endpoint,
+      headers: { cookie, origin },
+      payload: { action: "dispute" },
+    });
+    assert.equal(dispute.statusCode, 200, dispute.body);
+    assert.equal(dispute.json().evidenceHash, stored.envelopeHash);
+    assert.equal(
+      dispute.json().data,
+      encodeFunctionData({
+        abi: vaultFinanceAbi,
+        functionName: "openDispute",
+        args: [
+          q.protocolQuote.invocationKey as `0x${string}`,
+          stored.envelopeHash as `0x${string}`,
+        ],
+      }),
+    );
+    const status = await app.inject({
+      method: "GET",
+      url: `/v1/invocations/${q.invocationId}`,
+      headers: { cookie, origin },
+    });
+    assert.equal(status.json().delivery.evidenceLevel, "SIGN");
+    assert.equal(status.json().delivery.envelopeHash, stored.envelopeHash);
     assert.equal(await db.vaultFinancialEvent.count(), 0);
     assert.equal(await db.settlementAttempt.count(), 1);
     assert.equal(await db.financeDecision.count(), 0);

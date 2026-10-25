@@ -2,7 +2,7 @@
 
 Buyer nạp USDC vào [PayvokeVault](10-payvoke-vault.md) trên Avalanche Fuji C-Chain (chain ID 43113, `eip155:43113`). Mỗi lần gọi phải thanh toán qua x402 từ số dư đó. Client dùng khóa phiên đã được buyer cấp quyền để ký chứng từ cho từng yêu cầu; buyer không phải mở ví chính để ký lại. Số dư là USDC có thể rút, không phải lượt sử dụng.
 
-[S02](../specs/02-x402-and-vault.md) chốt scheme/payload/EIP-712/ABI và recovery; [S01](../specs/01-api-and-provider-protocol.md) chốt quote/invocation endpoints. Invocation mới từ chat, form hay MCP đều cùng luồng này. Polling, trả lời questionId và revision đúng phạm vi không tạo khoản thu mới. Với `upfront`, facilitator `settle` phải kiểm tra đầy đủ vì core không gọi `/verify` trong luồng chuẩn.
+[S02](../specs/02-x402-and-vault.md) chốt scheme/payload/EIP-712/ABI và recovery; [S01](../specs/01-api-and-provider-protocol.md) chốt quy tắc quote/invocation (route lấy từ code). Invocation mới từ chat, form hay MCP đều cùng luồng này. Polling, trả lời questionId và revision đúng phạm vi không tạo khoản thu mới. Với `upfront`, facilitator `settle` phải kiểm tra đầy đủ vì core không gọi `/verify` trong luồng chuẩn.
 
 ## Thu tiền
 
@@ -28,16 +28,16 @@ Trước khi bật thanh toán, phải chốt tỷ lệ/trần phí nền tảng
 
 Bốn nghiên cứu độc lập năm 2026 kiểm tra x402 thực tế và đều tìm thấy lỗ hổng ở facilitator/SDK công khai: 49 vi phạm trên 15 facilitator lớn [P1], các lỗi thay resource, settle trùng, overdraft và từ chối settle [P2], năm tấn công thực hiện được trên local chain, testnet và endpoint thật [P3], và 40 phát hiện hình thức mới qua Tamarin [P4]. Scheme `payvoke-vault` được thiết kế để chặn các lớp lỗi này:
 
-| Lớp lỗi trong nghiên cứu                       | Cách Payvoke chặn                                                                   | Trạng thái                     |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ |
-| Báo thành công khi chưa settle (Free Shopping) | Chỉ `HELD` sau receipt + event + finalized read; pending trả receipt, không success | Local                          |
-| Chữ ký dùng cho resource khác                  | Chữ ký gắn `invocationKey`, quote, input/terms/policy hash                          | Local                          |
-| Settle trùng khi request đồng thời             | CAS durable theo invocation; contract consume-once                                  | Local                          |
-| Overdraft allowance (`upto`)                   | Không dùng `upto`; cap grant cộng dồn atomic trong `reserveHold`                    | Local                          |
-| Gas abuse, calldata tùy ý                      | Trần gas/phí, ngân sách cửa sổ; signer chỉ ký `reserveHold` trên đúng vault         | Local                          |
-| Settle không kiểm tra lại sau verify           | `settle` chạy lại toàn bộ checks                                                    | Local                          |
-| Header bị replay/cache                         | Chỉ `RELAYER_ROLE` settle được; response `no-store`                                 | Local                          |
-| Lộ PII trong metadata thanh toán [P5]          | Header chỉ có ID/hash và mô tả cố định; prompt/file không qua facilitator           | Local; cần test hồi quy        |
-| Payment vô nghĩa kinh tế                       | `grossAmount` dương trong cap                                                       | Thiếu giá sàn so với gas (R02) |
+| Lớp lỗi trong nghiên cứu                       | Cách Payvoke chặn                                                                   | Trạng thái |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- | ---------- |
+| Báo thành công khi chưa settle (Free Shopping) | Chỉ `HELD` sau receipt + event + finalized read; pending trả receipt, không success | Local      |
+| Chữ ký dùng cho resource khác                  | Chữ ký gắn `invocationKey`, quote, input/terms/policy hash                          | Local      |
+| Settle trùng khi request đồng thời             | CAS durable theo invocation; contract consume-once                                  | Local      |
+| Overdraft allowance (`upto`)                   | Không dùng `upto`; cap grant cộng dồn atomic trong `reserveHold`                    | Local      |
+| Gas abuse, calldata tùy ý                      | Trần gas/phí, ngân sách cửa sổ; signer chỉ ký `reserveHold` trên đúng vault         | Local      |
+| Settle không kiểm tra lại sau verify           | `settle` chạy lại toàn bộ checks                                                    | Local      |
+| Header bị replay/cache                         | Chỉ `RELAYER_ROLE` settle được; response `no-store`                                 | Local      |
+| Lộ PII trong metadata thanh toán [P5]          | Header chỉ có ID/hash và mô tả cố định; prompt/file không qua facilitator           | Local      |
+| Payment vô nghĩa kinh tế                       | `grossAmount` dương, trong cap và không thấp hơn giá sàn của policy                 | Local      |
 
-"Local" nghĩa là đã có test chạy trên PGlite/PostgreSQL và Hardhat node chain ID 43113, chưa phải bằng chứng Fuji. Việc tiếp theo là gom các ca trên thành một **conformance suite** đặt tên theo quy tắc SR1–SR8 của [P1] và bất biến I1–I5 của [P2], để mỗi lớp lỗi có test riêng có thể chạy lại (R01). Bảng đầy đủ: [S02 §11](../specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [nghiên cứu agentic payments](../research/agentic-payments-literature.md#1-bảo-mật-facilitator-và-scheme-x402).
+"Local" nghĩa là đã có test chạy trên PGlite/PostgreSQL và Hardhat node chain ID 43113, chưa phải bằng chứng Fuji. Các ca trên được gom thành **conformance suite** (R01) theo mã SR1–SR8 của [P1], F1–F4 của [P2] và M1–M6 của [P3]; chạy bằng `pnpm --dir apps/backend test:conformance`, mỗi quy tắc có ít nhất một ca âm tính và suite fail nếu thiếu ca. Bảng đầy đủ: [S02 §11](../specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [nghiên cứu agentic payments](../research/agentic-payments-literature.md#1-bảo-mật-facilitator-và-scheme-x402).
