@@ -9,28 +9,61 @@ streams. It holds no signing keys; settlement runs in
 
 ```text
 src/
-  server.ts             # process startup and graceful shutdown
-  app.ts                # app composition and DB lifecycle
-  config.ts             # typed environment config
-  http/errors.ts        # sanitized Fastify error responses
-  plugins/http.ts       # sensible, helmet, CORS, cookies and rate limits
-  modules/auth/
-    auth.ts             # Better Auth + Prisma + SIWE, Payvoke policy hooks
-    index.ts            # Fastify bridge, session guard and current-user route
-  modules/quotes/
-    index.ts            # immutable quotes and SDK payment challenge
-  modules/payments/
-    gateway.ts          # x402 resource server and facilitator client
-    index.ts            # authenticated read-only invocation status
-  modules/{apps,catalog,provider,agui,openui}/
+  server.ts               # process startup and graceful shutdown
+  app.ts                  # composition: DI container, plugins, module routes
+  container.ts            # Awilix registrations and the typed Cradle
+  config.ts               # typed environment config
+  errors.ts               # AppError classes with public codes
+  http/errors.ts          # the one error handler and the 404 handler
+  http/financial-json.ts  # duplicate-key-rejecting JSON parser for checkout scopes
+  http/sse.ts             # text/event-stream helper
+  plugins/http.ts         # sensible, helmet, CORS, cookies and rate limits
+  modules/<feature>/
+    <feature>.routes.ts      # paths, schemas, hooks, limits; no logic
+    <feature>.controller.ts  # HTTP adapter: request in, status/headers out
+    *.service.ts             # business rules and Prisma access
+    *.validation.ts / *.schemas.ts / pure helpers
 ```
+
+| Module     | Owns                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `auth`     | Better Auth SIWE bridge, `requireAccount` guard, web-write Origin policy                |
+| `catalog`  | public store, app detail, stars                                                         |
+| `provider` | owner app lifecycle, command revisions, API keys and key authentication                 |
+| `threads`  | buyer chat threads, AG-UI snapshot and SSE replay                                       |
+| `quotes`   | immutable quote documents and the verified transcript                                   |
+| `payments` | paid submission, x402 gateway, payment status and financial intents                     |
+| `runs`     | provider feed/ACK/reports/NDJSON stream, buyer answers and revisions, delivery verifier |
+| `openui`   | OpenUI validation and the provider component catalog                                    |
+| `apps`     | shared app/command rules and serializers                                                |
+
+### Dependency injection
+
+`container.ts` builds one strict Awilix container per app (tests create several
+apps in one process, so `@fastify/awilix`'s module-level container is never
+used). Services and controllers are singletons in `PROXY` mode: a class takes
+the cradle in its constructor and keeps only what it uses. Routes resolve their
+controller from `app.diContainer.cradle` once, at registration. Startup work
+uses Awilix lifecycle hooks: `paymentGateway.verifyCapabilities` runs on ready
+(`asyncInit`), and the delivery verifier starts on ready and stops on close.
+
+To add a feature: write the service and controller, register both in
+`container.ts` (and the `Cradle` declaration), and register its routes in
+`app.ts` after `authGuard`.
+
+### Errors
+
+Services throw `AppError` subclasses (`NotFoundError("THREAD_NOT_FOUND")`, …),
+never Fastify helpers. The error handler sends `{ error: code }` with the class
+status. Prisma unique and missing-record races become 409 `CONFLICT` and 404
+`NOT_FOUND`; Fastify validation, body-limit and rate-limit errors keep their
+status and code. Anything else is 500 `INTERNAL_ERROR`, logged with the error
+type only, because driver messages can contain SQL or credentials.
 
 Shared code lives in workspace packages: Prisma schema and client in
 [`@payvoke/db`](../../packages/payvoke-db), the settlement/finance domain in
 [`@payvoke/payments`](../../packages/payvoke-payments), and env/redaction helpers in
 [`@payvoke/server`](../../packages/payvoke-server).
-
-Add features under `modules/<feature>` and register them after auth in `app.ts`.
 
 **Routes are documented by code only.** This README and `docs/` describe rules,
 not method/path/body catalogs. Read the route registrations in `src/modules/*`
@@ -45,9 +78,8 @@ archived appear in the store without operator review; availability requires
 `ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
 can star apps.
 
-Protected routes use `preHandler: app.requireAccount`. Use existing Fastify
-plugins and TypeBox type inference for application routes. No generic repository
-or DI layers are needed.
+Protected routes use `preHandler: app.requireAccount`. Prisma is the data
+layer; no generic repository layer sits between services and the client.
 
 `auth.cli.ts` loads the same Better Auth factory as the server, without starting
 Fastify or querying the database. It writes `packages/payvoke-db/prisma/auth.prisma`;

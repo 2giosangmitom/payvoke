@@ -11,7 +11,7 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "@payvoke/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { verifyStructuredDeliveries } from "../src/modules/agui/verify";
+import { verifyStructuredDeliveries } from "../src/modules/runs/delivery-verifier";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;

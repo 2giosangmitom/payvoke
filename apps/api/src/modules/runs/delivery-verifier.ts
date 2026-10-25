@@ -1,6 +1,7 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { hashSnapshot, type Json } from "@payvoke/protocol";
-import { type PrismaClient } from "@payvoke/db";
+import type { Cradle } from "@fastify/awilix";
+import type { PrismaClient } from "@payvoke/db";
 import { recordPaymentDelivery } from "@payvoke/payments/finance";
 import { object } from "./protocol";
 
@@ -57,4 +58,41 @@ export async function verifyStructuredDeliveries(db: PrismaClient) {
     verified++;
   }
   return verified;
+}
+
+// Background loop, started on app ready and stopped on close by the container
+// (asyncInit/asyncDispose). It runs independently of provider report requests;
+// a delivery decision uses the stored immutable result and snapshotted schema.
+export class DeliveryVerifier {
+  private readonly db: Cradle["db"];
+  private readonly log: Cradle["log"];
+  private readonly intervalMs = 3000;
+  private timer: NodeJS.Timeout | undefined;
+  private running = false;
+
+  constructor({ db, log }: Cradle) {
+    this.db = db;
+    this.log = log;
+  }
+
+  start() {
+    this.timer = setInterval(() => void this.tick(), this.intervalMs);
+    this.timer.unref();
+  }
+
+  stop() {
+    clearInterval(this.timer);
+  }
+
+  private async tick() {
+    if (this.running) return;
+    this.running = true;
+    try {
+      await verifyStructuredDeliveries(this.db);
+    } catch (error) {
+      this.log.error({ type: (error as Error).name }, "structured delivery verifier failed");
+    } finally {
+      this.running = false;
+    }
+  }
 }

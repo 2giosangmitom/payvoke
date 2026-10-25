@@ -1,5 +1,6 @@
 import { asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import type { Cradle } from "@fastify/awilix";
+import type { FastifyBaseLogger } from "fastify";
 import type { PrismaClient } from "@payvoke/db";
 import type { Config } from "./config";
 import { createAuth } from "./modules/auth/auth";
@@ -17,11 +18,18 @@ import { PaymentStatusService } from "./modules/payments/payment-status.service"
 import { PaymentsController } from "./modules/payments/payments.controller";
 import { QuoteController } from "./modules/quotes/quote.controller";
 import { QuoteService } from "./modules/quotes/quote.service";
+import { ContinuationService } from "./modules/runs/continuation.service";
+import { DeliveryVerifier } from "./modules/runs/delivery-verifier";
+import { ProviderRunService } from "./modules/runs/provider-run.service";
+import { RunsController } from "./modules/runs/runs.controller";
+import { ThreadController } from "./modules/threads/thread.controller";
+import { ThreadService } from "./modules/threads/thread.service";
 
 declare module "@fastify/awilix" {
   interface Cradle {
     config: Config;
     db: PrismaClient;
+    log: FastifyBaseLogger;
     auth: ReturnType<typeof createAuth>;
     authService: AuthService;
     authController: AuthController;
@@ -37,17 +45,24 @@ declare module "@fastify/awilix" {
     paymentGateway: PaymentGateway;
     paymentStatusService: PaymentStatusService;
     paymentsController: PaymentsController;
+    threadService: ThreadService;
+    threadController: ThreadController;
+    providerRunService: ProviderRunService;
+    continuationService: ContinuationService;
+    deliveryVerifier: DeliveryVerifier;
+    runsController: RunsController;
   }
 }
 
 // One container per app instance: tests build several apps in one process, so
 // the plugin's module-level default container must not be shared. Strict mode
 // rejects a singleton that depends on a shorter-lived registration.
-export function createAppContainer(config: Config, db: PrismaClient) {
+export function createAppContainer(config: Config, db: PrismaClient, log: FastifyBaseLogger) {
   const container = createContainer<Cradle>({ injectionMode: InjectionMode.PROXY, strict: true });
   container.register({
     config: asValue(config),
     db: asValue(db),
+    log: asValue(log),
     auth: asFunction(({ config, db }: Cradle) => createAuth(config, db)).singleton(),
 
     authService: asClass(AuthService).singleton(),
@@ -64,6 +79,16 @@ export function createAppContainer(config: Config, db: PrismaClient) {
     paymentGateway: asClass(PaymentGateway, { asyncInit: "verifyCapabilities" }).singleton(),
     paymentStatusService: asClass(PaymentStatusService).singleton(),
     paymentsController: asClass(PaymentsController).singleton(),
+    threadService: asClass(ThreadService).singleton(),
+    threadController: asClass(ThreadController).singleton(),
+    providerRunService: asClass(ProviderRunService).singleton(),
+    continuationService: asClass(ContinuationService).singleton(),
+    // Background job: started on ready, stopped on close.
+    deliveryVerifier: asClass(DeliveryVerifier, {
+      asyncInit: "start",
+      asyncDispose: "stop",
+    }).singleton(),
+    runsController: asClass(RunsController).singleton(),
   });
   return container;
 }

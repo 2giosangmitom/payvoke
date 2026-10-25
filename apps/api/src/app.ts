@@ -12,7 +12,9 @@ import { catalogRoutes } from "./modules/catalog/catalog.routes";
 import { quoteRoutes } from "./modules/quotes/quote.routes";
 import { paymentRoutes } from "./modules/payments/payments.routes";
 import { providerRoutes } from "./modules/provider/provider.routes";
-import { registerAgui } from "./modules/agui";
+import { openuiRoutes } from "./modules/openui/openui.routes";
+import { runRoutes } from "./modules/runs/runs.routes";
+import { threadRoutes } from "./modules/threads/thread.routes";
 
 export function createApp(config: Config, database?: PrismaClient) {
   if (
@@ -34,7 +36,7 @@ export function createApp(config: Config, database?: PrismaClient) {
     fp(async (instance) => {
       // Services are app-scoped singletons; no per-request scope is disposed.
       await instance.register(fastifyAwilixPlugin, {
-        container: createAppContainer(config, db),
+        container: createAppContainer(config, db, app.log),
         disposeOnClose: true,
         disposeOnResponse: false,
         strictBooleanEnforced: true,
@@ -46,7 +48,9 @@ export function createApp(config: Config, database?: PrismaClient) {
       await instance.register(paymentRoutes);
       await instance.register(providerRoutes);
       await instance.register(catalogRoutes);
-      await registerAgui(instance, db, config.AGUI_CURSOR_RETENTION_SECONDS);
+      await instance.register(threadRoutes);
+      await instance.register(runRoutes);
+      await instance.register(openuiRoutes);
     }),
   );
   return app;

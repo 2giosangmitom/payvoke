@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import { applyOpenUIPatch, openuiCatalog } from "../src/modules/openui/validator";
-import { validateEvent } from "../src/modules/agui/protocol";
+import { validateEvent } from "../src/modules/runs/protocol";
 
 const rejects = (existing: string, patch: unknown, code: string) =>
   assert.throws(() => applyOpenUIPatch(existing, patch), { message: code }, String(patch));
