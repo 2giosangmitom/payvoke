@@ -3,7 +3,6 @@ import {
   AnimatePresence,
   motion,
   useInView,
-  useReducedMotion,
   type MotionProps,
   type UseInViewOptions,
   type Variants,
@@ -43,9 +42,8 @@ export function BlurFade({
   ...props
 }: BlurFadeProps) {
   const ref = useRef(null);
-  const reduceMotion = useReducedMotion();
   const inViewResult = useInView(ref, { once: true, margin: inViewMargin });
-  const isInView = reduceMotion || !inView || inViewResult;
+  const isInView = !inView || inViewResult;
   const defaultVariants: Variants = {
     hidden: {
       [direction === "left" || direction === "right" ? "x" : "y"]:
@@ -71,13 +69,15 @@ export function BlurFade({
     <AnimatePresence>
       <motion.div
         ref={ref}
-        initial={reduceMotion ? false : "hidden"}
+        // Reduced motion is handled by the app's MotionConfig. Branching on it
+        // here would render different markup on the server and the client.
+        initial="hidden"
         animate={isInView ? "visible" : "hidden"}
         exit="hidden"
         variants={combinedVariants}
         transition={{
           delay: 0.04 + delay,
-          duration: reduceMotion ? 0 : duration,
+          duration,
           ease: "easeOut",
           ...(shouldTransitionFilter ? { filter: { duration } } : {}),
         }}

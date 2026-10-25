@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type ComponentPropsWithoutRef, type FC, type ReactNode } from "react";
-import { motion, MotionValue, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { motion, MotionValue, useScroll, useTransform } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
 // Magic UI's TextReveal: words light up one by one as the section scrolls past.
@@ -14,7 +14,6 @@ export interface TextRevealProps extends ComponentPropsWithoutRef<"div"> {
 
 export const TextReveal: FC<TextRevealProps> = ({ children, className, aside }) => {
   const sectionRef = useRef<HTMLDivElement | null>(null);
-  const reduceMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start start", "end end"] });
   const words = children.split(" ");
 
@@ -27,12 +26,7 @@ export const TextReveal: FC<TextRevealProps> = ({ children, className, aside }) 
             {words.map((word, i) => {
               const start = i / words.length;
               return (
-                <Word
-                  key={i}
-                  progress={scrollYProgress}
-                  range={[start, start + 1 / words.length]}
-                  still={Boolean(reduceMotion)}
-                >
+                <Word key={i} progress={scrollYProgress} range={[start, start + 1 / words.length]}>
                   {word}
                 </Word>
               );
@@ -48,17 +42,17 @@ interface WordProps {
   children: ReactNode;
   progress: MotionValue<number>;
   range: [number, number];
-  still: boolean;
 }
 
-const Word: FC<WordProps> = ({ children, progress, range, still }) => {
+const Word: FC<WordProps> = ({ children, progress, range }) => {
   const opacity = useTransform(progress, range, [0, 1]);
   return (
     <span className="relative mr-[0.28em]">
       <span aria-hidden="true">{children}</span>
       <motion.span
-        style={{ opacity: still ? 1 : opacity }}
-        className="absolute inset-0 text-foreground"
+        style={{ opacity }}
+        // A CSS override, not a render-time branch, so SSR markup matches.
+        className="absolute inset-0 text-foreground motion-reduce:[opacity:1!important]"
       >
         {children}
       </motion.span>

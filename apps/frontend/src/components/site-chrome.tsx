@@ -1,7 +1,10 @@
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Menu, X } from "lucide-react";
+import { NetworkAvalancheFuji, TokenUSDC } from "@web3icons/react";
+import { ArrowUp, ArrowUpRight, Menu, X } from "lucide-react";
+import { motion } from "motion/react";
 import { Button } from "@/src/components/ui/button";
+import { RevealGroup, RevealItem, easeOut } from "@/src/components/ui/reveal";
 import { cn } from "@/src/lib/utils";
 import { ThemeToggle } from "./theme-select";
 import { WalletAccess } from "./wallet-access";
@@ -24,7 +27,7 @@ function Brand({ small = false }: { small?: boolean }) {
         aria-hidden="true"
         className={cn("block", small ? "size-6" : "size-7")}
       />
-      <span className="text-[28px] leading-none font-bold tracking-[-0.065em]">
+      <span className="text-[24px] leading-none font-bold tracking-[-0.065em] min-[360px]:text-[28px]">
         payvoke<span className="text-primary">.</span>
       </span>
     </Link>
@@ -45,7 +48,7 @@ export function SiteHeader({ current }: { current: SiteSection }) {
         }
       }}
     >
-      <div className="container-page flex min-h-18 items-center justify-between gap-6">
+      <div className="container-page flex min-h-18 items-center justify-between gap-3 sm:gap-6">
         <Brand />
         <nav aria-label="Main navigation" className="ml-auto hidden items-center gap-6 md:flex">
           {navItems.map((item) => (
@@ -59,7 +62,7 @@ export function SiteHeader({ current }: { current: SiteSection }) {
             </Link>
           ))}
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 min-[360px]:gap-3">
           <ThemeToggle />
           <WalletAccess />
           <Button
@@ -100,33 +103,142 @@ export function SiteHeader({ current }: { current: SiteSection }) {
   );
 }
 
-export function SiteFooter() {
+const footerColumns = [
+  {
+    title: "Product",
+    links: [
+      { to: "/store", label: "Store" },
+      { to: "/chat", label: "Chat" },
+      { to: "/dashboard", label: "Studio" },
+    ],
+  },
+  {
+    title: "Learn",
+    links: [
+      { href: "/#marketplace", label: "What works today" },
+      { href: "/#how-it-works", label: "How a request works" },
+      { href: "/#providers", label: "For builders" },
+    ],
+  },
+] as const;
+
+const footerLink =
+  "group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary";
+
+/** `clearDock` leaves room under the bottom bar for the landing's music card. */
+export function SiteFooter({ clearDock = false }: { clearDock?: boolean }) {
   return (
-    <footer className="border-t border-border bg-background-deep">
-      <div className="container-page flex flex-col justify-between gap-10 py-12 sm:flex-row">
-        <div>
-          <Brand small />
-          <p className="mt-4 max-w-72 text-sm leading-relaxed text-muted-foreground">
-            Apps with slash commands, made by independent developers.
-          </p>
-        </div>
-        <nav
-          aria-label="Footer"
-          className="flex flex-wrap items-start gap-6 text-[13px] text-muted-foreground"
-        >
-          <a href="/#how-it-works" className="hover:text-primary">
-            How it works
-          </a>
-          {navItems.slice(1).map((item) => (
-            <Link key={item.section} to={item.to} className="hover:text-primary">
-              {item.label}
-            </Link>
+    <footer className="relative overflow-hidden border-t border-border bg-background-deep">
+      <div className="container-page grid gap-12 pt-16 pb-12 lg:grid-cols-[1.25fr_1fr] lg:gap-20 lg:pt-20">
+        <RevealGroup stagger={0.08}>
+          <RevealItem as="p" className="mb-4 eyebrow">
+            Start here
+          </RevealItem>
+          <RevealItem
+            as="p"
+            className="max-w-lg text-[clamp(1.75rem,3.2vw,2.6rem)] leading-[1.1] font-medium tracking-[-0.045em] text-balance"
+          >
+            Find an app to call, or publish the one you built.
+          </RevealItem>
+          <RevealItem className="mt-8 flex flex-wrap gap-3">
+            <Button size="lg" render={<Link to="/store" />}>
+              Browse the store <ArrowUpRight />
+            </Button>
+            <Button size="lg" variant="outline" render={<Link to="/dashboard" />}>
+              Open Studio
+            </Button>
+          </RevealItem>
+        </RevealGroup>
+
+        <RevealGroup stagger={0.06} delay={0.1} className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+          {footerColumns.map((column) => (
+            <RevealItem key={column.title} as="div">
+              <h2 className="mb-4 font-mono text-[11px] tracking-widest text-faint uppercase">
+                {column.title}
+              </h2>
+              <ul className="grid gap-3">
+                {column.links.map((link) => (
+                  <li key={link.label}>
+                    {"to" in link ? (
+                      <Link to={link.to} className={footerLink}>
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <a href={link.href} className={footerLink}>
+                        {link.label}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </RevealItem>
           ))}
-        </nav>
+          <RevealItem as="div" className="col-span-2 sm:col-span-1">
+            <h2 className="mb-4 font-mono text-[11px] tracking-widest text-faint uppercase">
+              Network
+            </h2>
+            <ul className="grid gap-3 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2">
+                <NetworkAvalancheFuji size={16} aria-hidden="true" /> Avalanche Fuji
+              </li>
+              <li className="flex items-center gap-2">
+                <TokenUSDC size={16} aria-hidden="true" /> USDC over x402
+              </li>
+              <li className="flex items-center gap-2">
+                <span aria-hidden="true" className="size-1.5 animate-pulse bg-warning" />
+                Paid runs in development
+              </li>
+            </ul>
+          </RevealItem>
+        </RevealGroup>
       </div>
-      <div className="container-page flex flex-col justify-between gap-2 border-t border-border py-6 text-xs leading-relaxed text-faint sm:flex-row">
-        <span>© 2026 Payvoke</span>
-        <span>Avalanche Fuji testnet. Paid runs are in development.</span>
+
+      {/* The wordmark rises out of the bottom edge, one letter at a time. */}
+      <div aria-hidden="true" className="container-page select-none">
+        <motion.div
+          initial="hidden"
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.4 }}
+          variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.05 } } }}
+          className="flex translate-y-[0.14em] justify-between text-[clamp(4.5rem,21vw,19rem)] leading-[0.8] font-bold tracking-[-0.07em] text-transparent [-webkit-text-stroke:1px_var(--color-border-strong)]"
+        >
+          {"payvoke.".split("").map((letter, index) => (
+            <motion.span
+              key={index}
+              variants={{
+                hidden: { y: "60%", opacity: 0 },
+                shown: { y: 0, opacity: 1, transition: { duration: 0.8, ease: easeOut } },
+              }}
+              className={cn(
+                "inline-block",
+                letter === "." && "text-primary [-webkit-text-stroke:0]",
+              )}
+            >
+              {letter}
+            </motion.span>
+          ))}
+        </motion.div>
+      </div>
+
+      <div className="relative border-t border-border bg-background-deep">
+        <div
+          className={cn(
+            "container-page flex flex-col gap-3 py-6 text-xs text-faint sm:flex-row sm:items-center sm:justify-between",
+            clearDock && "pb-24 sm:pb-6 sm:pl-76",
+          )}
+        >
+          <span className="flex items-center gap-2.5">
+            <img src="/logo.svg" alt="" aria-hidden="true" className="size-4" />© 2026 Payvoke
+          </span>
+          <span>Avalanche Fuji testnet. Paid runs are in development.</span>
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="inline-flex items-center gap-1.5 self-start hover:text-primary"
+          >
+            Back to top <ArrowUp size={13} />
+          </button>
+        </div>
       </div>
     </footer>
   );

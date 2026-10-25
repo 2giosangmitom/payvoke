@@ -2,7 +2,6 @@ import { memo } from "react";
 import {
   AnimatePresence,
   motion,
-  useReducedMotion,
   type DOMMotionComponents,
   type MotionProps,
   type Variants,
@@ -339,7 +338,6 @@ const TextAnimateBase = ({
   accessible = true,
   ...props
 }: TextAnimateProps) => {
-  const reduceMotion = useReducedMotion();
   const MotionComponent = motionElements[Component];
 
   let segments: string[] = [];
@@ -408,9 +406,11 @@ const TextAnimateBase = ({
     <AnimatePresence mode="popLayout">
       <MotionComponent
         variants={finalVariants.container as Variants}
-        initial={reduceMotion ? false : "hidden"}
-        whileInView={startOnView && !reduceMotion ? "show" : undefined}
-        animate={startOnView && !reduceMotion ? undefined : "show"}
+        // Reduced motion is handled by the app's MotionConfig; branching on it
+        // here would render different markup on the server and the client.
+        initial="hidden"
+        whileInView={startOnView ? "show" : undefined}
+        animate={startOnView ? undefined : "show"}
         exit="exit"
         className={cn("whitespace-pre-wrap", className)}
         viewport={{ once }}

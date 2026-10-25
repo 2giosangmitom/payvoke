@@ -3,11 +3,17 @@
 import { useEffect, useRef } from "react";
 import { cn } from "cn";
 
-// The field uses the same ordered-dither approach as Omarchy's live hero canvas.
-// The visualizer lives in the same lattice: every column is a spectrum band,
-// mirrored so bass sits at both edges, rising from the floor as a dithered
-// skyline. Bands rise instantly and fall with gravity, like cava.
-// Ink comes from the --field-* tokens, so the canvas follows light and dark mode.
+// The hero field follows Omarchy's pixel lattice: one grid anchored on the
+// hero wordmark slot, every cell dithered through an ordered Bayer matrix,
+// and a spectrum mirrored around the centre so the bass frames the copy and
+// the treble sits in the middle. The particle wordmark is drawn above it by
+// its own canvas, on the same slot.
+//
+// Before the sound is touched the picture runs from the pre-analysed track
+// timeline; once it is on, the live analyser feeds the same picture, so what
+// is drawn is exactly what is playing. Beats lift the glow around the pointer
+// and the drifting sprite, and a press leaves a short ring in the field.
+
 const BAYER = [
   0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28,
   52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 21,
@@ -15,10 +21,51 @@ const BAYER = [
 ];
 
 const NOISE_SIZE = 128;
-/** Tallest the skyline may reach, as a share of the space above the floor. */
-const MAX_SKYLINE_SHARE = 0.55;
+/** Grid cells per unit of noise: how big the drifting blobs read. */
+const CELLS_PER_NOISE = 9;
+/** Cursor reach, in grid cells. */
+const CURSOR_CELLS = 12;
+/** Distance from readable copy at which the pointer glow is fully muted. */
+const HUSH_REACH = 96;
+
+/** How much of the field's height the loudest band may climb. */
+const SPECTRUM_REACH = 0.92;
+/** How dense a column gets, and how much of it wears the main ink. */
+const SPECTRUM_DENSITY = 0.7;
+const SPECTRUM_HEAT = 0.5;
+/** Below this a band is resting and its column shows nothing extra. */
+const SPECTRUM_FLOOR = 0.08;
+/** How much of a band's height a beat adds, and how fast that fades. */
+const BEAT_REACH = 0.8;
+const BEAT_DECAY = 0.84;
+/** How bright the drifting sprite's glow is, against the pointer's. */
+const SPRITE_STRENGTH = 0.7;
+/** The wordmark slot is divided into this many field columns. */
+const LATTICE_COLUMNS = 81;
 
 type Ink = Record<"background" | "dim" | "mid" | "lit" | "hover" | "crest", string>;
+
+const FALLBACK_INK: Ink = {
+  background: "#090f0d",
+  dim: "#1e372c",
+  mid: "#35614d",
+  lit: "#509475",
+  hover: "#84b49e",
+  crest: "#bcd6cb",
+};
+
+function readInk(): Ink {
+  const style = getComputedStyle(document.documentElement);
+  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+  return {
+    background: token("--field-bg", FALLBACK_INK.background),
+    dim: token("--field-dim", FALLBACK_INK.dim),
+    mid: token("--field-mid", FALLBACK_INK.mid),
+    lit: token("--field-lit", FALLBACK_INK.lit),
+    hover: token("--field-hover", FALLBACK_INK.hover),
+    crest: token("--field-crest", FALLBACK_INK.crest),
+  };
+}
 
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -32,6 +79,7 @@ function makeNoise() {
   const random = seededRandom(0x509475);
   let noise = Float32Array.from({ length: NOISE_SIZE * NOISE_SIZE }, random);
 
+  // A couple of box passes turn white noise into soft blobs.
   for (let pass = 0; pass < 2; pass++) {
     const blurred = new Float32Array(noise.length);
     for (let y = 0; y < NOISE_SIZE; y++) {
@@ -79,69 +127,78 @@ function sampleNoise(noise: Float32Array, x: number, y: number) {
   return upper * (1 - sy) + lower * sy;
 }
 
-function readInk(): Ink {
-  const style = getComputedStyle(document.documentElement);
-  const token = (name: string) => style.getPropertyValue(name).trim();
-  return {
-    background: token("--field-bg"),
-    dim: token("--field-dim"),
-    mid: token("--field-mid"),
-    lit: token("--field-lit"),
-    hover: token("--field-hover"),
-    crest: token("--field-crest"),
-  };
-}
+export type FieldSample = { bands: Float32Array; beat: number };
 
 export type HeroPixelFieldProps = {
   className?: string;
-  /** Live spectrum source. Without one the skyline idles as a low, slow wave. */
-  getAnalyser?: () => AnalyserNode | null;
+  /** Live or pre-analysed bands. Without one the field only drifts. */
+  sample?: (now: number) => FieldSample;
 };
 
 /**
  * Fills its positioned parent. A child marked `data-field-anchor` pins the
- * lattice; the skyline stands on the parent's bottom edge.
+ * lattice to the hero wordmark slot.
  */
-export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) {
+export function HeroPixelField({ className, sample }: HeroPixelFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef(getAnalyser);
-  analyserRef.current = getAnalyser;
+  const sampleRef = useRef(sample);
+  sampleRef.current = sample;
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const hero = canvas?.parentElement;
+    const host = canvas?.parentElement;
     const context = canvas?.getContext("2d", { alpha: false });
-    if (!canvas || !hero || !context) return;
+    if (!canvas || !host || !context) return;
 
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
     const noise = makeNoise();
     const random = seededRandom(0x1e372c);
     const jitter = Float32Array.from({ length: 64 * 64 }, random);
     let ink = readInk();
 
+    const anchor = host.querySelector<HTMLElement>("[data-field-anchor]");
+    const quietElements = Array.from(
+      host.querySelectorAll<HTMLElement>("h1, p, a, button, [data-field-anchor]"),
+    );
+
+    // Device-pixel geometry, recomputed on resize. Everything is drawn on whole
+    // device pixels so cell edges stay razor sharp at any DPR.
     let width = 0;
     let height = 0;
+    let pixelRatio = 1;
     let cell = 10;
     let anchorX = 0;
     let anchorY = 0;
+    let anchorW = 0;
     let firstCol = 0;
     let firstRow = 0;
     let columns = 0;
     let rows = 0;
-    let floorRow = 0;
+    let bottomRow = 0;
     let ramp = new Float32Array(0);
-    let levels = new Float32Array(0);
-    let fall = new Float32Array(0);
-    let targets = new Float32Array(0);
-    let spectrum = new Uint8Array(0);
+    // Copy, buttons and the wordmark, in CSS px relative to the hero. Cached
+    // here so the per-frame glow never forces a layout.
+    let quiet: Array<{ l: number; t: number; r: number; b: number }> = [];
+
+    const bandsNow = new Float32Array(32);
+    let beatPulse = 0;
+
+    const pointer = { x: -1e4, y: -1e4 };
+    let pointerStrength = 0;
+    let targetStrength = 0;
+    const sprite = { x: -1e4, y: -1e4, strength: 0 };
+    let ripples: Array<{ x: number; y: number; born: number }> = [];
+
     let frame = 0;
     let lastPaint = -Infinity;
     let inView = true;
 
     const measure = () => {
-      const bounds = hero.getBoundingClientRect();
-      if (bounds.width < 1 || bounds.height < 1) return;
+      const bounds = host.getBoundingClientRect();
+      if (bounds.width < 1 || bounds.height < 1) return false;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      pixelRatio = dpr;
       width = Math.round(bounds.width * dpr);
       height = Math.round(bounds.height * dpr);
       if (canvas.width !== width || canvas.height !== height) {
@@ -149,100 +206,124 @@ export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) 
         canvas.height = height;
       }
 
-      // Keep the lattice attached to the centered wordmark.
-      const slot = hero.querySelector<HTMLElement>("[data-field-anchor]")?.getBoundingClientRect();
-      cell = Math.max(7, Math.min(13, (slot?.width ?? bounds.width * 0.72) / 81)) * dpr;
-      anchorX = slot ? (slot.left - bounds.left) * dpr : width / 2;
-      anchorY = slot ? (slot.top - bounds.top) * dpr : height / 2;
+      quiet = [];
+      for (const el of quietElements) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) continue;
+        quiet.push({
+          l: rect.left - bounds.left,
+          t: rect.top - bounds.top,
+          r: rect.right - bounds.left,
+          b: rect.bottom - bounds.top,
+        });
+      }
+
+      const slot = anchor?.getBoundingClientRect();
+      anchorW = (slot?.width ?? bounds.width * 0.88) * dpr;
+      anchorX = slot ? (slot.left - bounds.left) * dpr : (width - anchorW) / 2;
+      anchorY = slot ? (slot.top - bounds.top) * dpr : height * 0.16;
+
+      // One lattice for the field: the wordmark slot is divided into
+      // LATTICE_COLUMNS columns, and every field cell is one of those columns.
+      // Anchoring the grid to the particle canvas keeps the texture at the same
+      // scale on a phone as on a wide screen.
+      cell = Math.max(3 * dpr, Math.min(13 * dpr, anchorW / LATTICE_COLUMNS));
       firstCol = Math.floor(-anchorX / cell) - 1;
       firstRow = Math.floor(-anchorY / cell) - 1;
       columns = Math.ceil(width / cell) - firstCol + 2;
       rows = Math.ceil(height / cell) - firstRow + 2;
-      floorRow = Math.floor((height - anchorY) / cell) - 1;
-      ramp = new Float32Array(columns * rows);
-      if (levels.length !== columns) {
-        levels = new Float32Array(columns);
-        fall = new Float32Array(columns);
-        targets = new Float32Array(columns);
-      }
+      bottomRow = Math.floor((height - anchorY) / cell) - 1;
 
+      // The field thins out around the middle of the hero, which is where the
+      // wordmark and the copy sit. The pointer's glow is hushed separately, so
+      // the resting field keeps its texture right up to the controls.
+      ramp = new Float32Array(columns * rows);
       for (let r = 0; r < rows; r++) {
         const y = anchorY + (firstRow + r + 0.5) * cell;
-        const ny = (y / height - 0.5) * 2;
-        const topClear = Math.min(1, Math.max(0.24, (y / dpr - 24) / 125));
+        const ny = (y / height) * 2 - 1;
+        const topClear = Math.min(1, Math.max(0.16, (y / dpr - 24) / 130));
         for (let c = 0; c < columns; c++) {
           const x = anchorX + (firstCol + c + 0.5) * cell;
-          const nx = (x / width - 0.5) * 2;
+          const nx = (x / width) * 2 - 1;
           const distance = Math.sqrt(nx * nx + ny * ny * 0.82);
-          const edge = Math.min(1, Math.max(0, (distance - 0.26) / 0.89));
-          ramp[r * columns + c] = (0.12 + 0.88 * edge * edge) * topClear;
+          const eased = Math.min(1, Math.max(0, (distance - 0.42) / 0.85));
+          ramp[r * columns + c] = eased * eased * topClear;
         }
       }
+      return true;
     };
 
-    // One band per column: centre = treble, edges = bass, log-spaced 40 Hz-12 kHz.
-    const updateLevels = (time: number, analyser: AnalyserNode | null) => {
-      if (!columns) return;
-      if (analyser) {
-        if (spectrum.length !== analyser.frequencyBinCount)
-          spectrum = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(spectrum);
+    /** How much glow is allowed at a point (CSS px, relative to the hero). */
+    const strengthAt = (x: number, y: number) => {
+      let nearest = Infinity;
+      for (const rect of quiet) {
+        const dx = Math.max(rect.l - x, 0, x - rect.r);
+        const dy = Math.max(rect.t - y, 0, y - rect.b);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < nearest) nearest = distance;
       }
-      const nyquist = (analyser?.context.sampleRate ?? 48000) / 2;
-      const low = Math.log(40);
-      const high = Math.log(12000);
-      const centre = (columns - 1) / 2;
-      for (let c = 0; c < columns; c++) {
-        const edge = Math.abs(c - centre) / centre; // 0 centre, 1 edges
-        let target: number;
-        if (analyser) {
-          const band = 1 - edge;
-          const step = 1 / centre;
-          const from = Math.exp(low + (high - low) * band);
-          const to = Math.exp(low + (high - low) * Math.min(1, band + step));
-          const start = Math.floor((from / nyquist) * spectrum.length);
-          const end = Math.max(start + 1, Math.ceil((to / nyquist) * spectrum.length));
-          let sum = 0;
-          for (let i = start; i < end; i++) sum += spectrum[i] ?? 0;
-          // Lift the treble a little; raw FFT energy drops off with frequency.
-          const tilt = 0.75 + 0.5 * band;
-          // Edges stand taller, like Omarchy's skyline framing the copy.
-          const frame = 0.7 + 0.55 * edge * edge;
-          target = Math.min(1, Math.pow((sum / (end - start) / 255) * tilt, 1.9) * frame);
-        } else {
-          const wave = sampleNoise(noise, c * 0.13 + time * 0.3, time * 0.1);
-          target = (0.06 + 0.22 * edge * edge) * (0.55 + 0.45 * wave);
-        }
-        targets[c] = target;
-      }
-      // A light blur across neighbours turns single-bin spikes into towers.
-      for (let c = 0; c < columns; c++) {
-        const target =
-          0.15 * (targets[c - 1] ?? targets[c]) +
-          0.7 * targets[c] +
-          0.15 * (targets[c + 1] ?? targets[c]);
-        if (target >= levels[c]) {
-          levels[c] = target;
-          fall[c] = 0;
-        } else {
-          fall[c] += 0.0016;
-          levels[c] = Math.max(target, levels[c] - fall[c]);
-        }
-      }
+      return nearest >= HUSH_REACH ? 1 : (nearest / HUSH_REACH) ** 3;
     };
 
     const draw = (now: number) => {
       if (!width || !height) return;
-      const still = motionQuery.matches;
-      const time = still ? 0 : now / 1000;
+      const still = reducedMotion.matches;
+      const time = still ? 0 : now;
+      const seconds = time / 1000;
+
       context.fillStyle = ink.background;
       context.fillRect(0, 0, width, height);
 
       // A slow wandering light keeps the field alive without pointer input.
-      const spriteX = width * (0.5 + 0.43 * Math.sin(time * 0.62));
-      const spriteY = height * (0.49 + 0.36 * Math.sin(time * 0.39 + 1.4));
-      const reach = 12 * cell;
-      const skylineRows = Math.max(4, (floorRow - firstRow) * MAX_SKYLINE_SHARE);
+      if (still) {
+        sprite.x = width * 0.62;
+        sprite.y = height * 0.4;
+      } else {
+        sprite.x = width * (0.5 + 0.43 * Math.sin(seconds * 0.62));
+        sprite.y = height * (0.49 + 0.36 * Math.sin(seconds * 0.39 + 1.4));
+      }
+      const spriteGoal = still
+        ? 0
+        : strengthAt(sprite.x / pixelRatio, sprite.y / pixelRatio) * SPRITE_STRENGTH;
+      sprite.strength += (spriteGoal - sprite.strength) * 0.08;
+      pointerStrength += (targetStrength - pointerStrength) * 0.3;
+
+      let beatNow = 0;
+      let listening = false;
+      const reader = sampleRef.current;
+      if (reader) {
+        const heard = reader(time);
+        for (let i = 0; i < bandsNow.length; i++) {
+          const target = heard.bands[i] ?? 0;
+          const rise = target > bandsNow[i];
+          bandsNow[i] += (target - bandsNow[i]) * (rise ? 0.7 : 0.14);
+          if (bandsNow[i] > 0.01) listening = true;
+        }
+        beatNow = heard.beat;
+        beatPulse = Math.max(beatPulse * BEAT_DECAY, beatNow);
+        if (beatPulse < 0.005) beatPulse = 0;
+      }
+
+      const reachOf = (level: number) =>
+        CURSOR_CELLS * cell * (0.45 + 0.55 * level) * (1 + BEAT_REACH * beatPulse);
+      const glows: Array<{ x: number; y: number; strength: number; reach: number }> = [];
+      if (pointerStrength > 0.01)
+        glows.push({
+          x: pointer.x,
+          y: pointer.y,
+          strength: pointerStrength,
+          reach: reachOf(pointerStrength),
+        });
+      if (sprite.strength > 0.01)
+        glows.push({
+          x: sprite.x,
+          y: sprite.y,
+          strength: sprite.strength,
+          reach: reachOf(sprite.strength),
+        });
+
+      const lived = ripples.filter((ripple) => now - ripple.born < 720);
+      ripples = lived;
 
       for (let r = 0; r < rows; r++) {
         const row = firstRow + r;
@@ -250,81 +331,146 @@ export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) 
         const y = Math.round(top);
         const h = Math.round(top + cell) - y;
         const cy = top + cell / 2;
-        const fromFloor = floorRow - row;
+        const fromFloor = bottomRow - row;
+
         for (let c = 0; c < columns; c++) {
           const col = firstCol + c;
           const left = anchorX + col * cell;
+          const x = Math.round(left);
+          const w = Math.round(left + cell) - x;
           const cx = left + cell / 2;
-          const shade = ramp[r * columns + c];
 
+          let glowAmount = 0;
+          for (const glow of glows) {
+            const dx = cx - glow.x;
+            const dy = cy - glow.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < glow.reach) {
+              const falloff = 1 - distance / glow.reach;
+              const amount = falloff * falloff * glow.strength;
+              if (amount > glowAmount) glowAmount = amount;
+            }
+          }
+
+          const shade = ramp[r * columns + c];
           let lum = 0;
           if (shade > 0.002) {
-            const u = col / 9;
-            const v = row / 9;
-            const drift =
-              0.6 * sampleNoise(noise, u + time * 0.14, v - time * 0.055) +
-              0.4 * sampleNoise(noise, u * 0.55 - time * 0.08, v * 0.55 + time * 0.06);
-            const flicker =
-              0.5 + 0.5 * Math.sin(time * 1.1 + jitter[(row & 63) * 64 + (col & 63)] * 6.283);
-            lum = shade * (0.3 + 0.52 * drift * drift + 0.18 * flicker) * 0.67;
+            const u = col / CELLS_PER_NOISE;
+            const v = row / CELLS_PER_NOISE;
+            const base =
+              0.6 * sampleNoise(noise, u + seconds * 0.14, v - seconds * 0.055) +
+              0.4 * sampleNoise(noise, u * 0.55 - seconds * 0.08, v * 0.55 + seconds * 0.06);
+            const twinkle =
+              0.5 + 0.5 * Math.sin(seconds * 1.1 + jitter[(row & 63) * 64 + (col & 63)] * 6.283);
+            lum = shade * (0.3 + 0.52 * base * base + 0.18 * twinkle) * 0.62;
           }
 
-          // Skyline: solid near the floor, thinning into a checker toward its top.
-          let tower = 0;
-          const towerRows = levels[c] * skylineRows;
-          if (fromFloor >= 0 && fromFloor < towerRows) {
-            const t = fromFloor / towerRows;
-            tower = 1.05 * Math.pow(1 - t, 1.3);
-            lum = Math.max(lum, tower);
+          lum += glowAmount * 0.6;
+
+          let waveAmount = 0;
+          for (const ripple of lived) {
+            const age = (now - ripple.born) / 720;
+            const radius = age * cell * 14;
+            const dx = cx - ripple.x;
+            const dy = cy - ripple.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const ring = Math.max(0, 1 - Math.abs(distance - radius) / (cell * 2.5));
+            const amount = ring * (1 - age) ** 1.6;
+            if (amount > waveAmount) waveAmount = amount;
+          }
+          if (waveAmount > 0) lum += waveAmount * 1.15;
+
+          let specAmount = 0;
+          if (listening && shade > 0.002 && fromFloor >= 0) {
+            const across = (c + 0.5) / columns;
+            const side = Math.abs(across - 0.5) * 2;
+            const bandPos = (1 - side) * bandsNow.length - 0.5;
+            const b0 = Math.max(0, Math.min(bandsNow.length - 1, Math.floor(bandPos)));
+            const b1 = Math.min(bandsNow.length - 1, b0 + 1);
+            const mixB = Math.max(0, Math.min(1, bandPos - b0));
+            const raw = bandsNow[b0] * (1 - mixB) + bandsNow[b1] * mixB;
+            const level = Math.max(0, (raw - SPECTRUM_FLOOR) / (1 - SPECTRUM_FLOOR));
+            const tall = level * rows * SPECTRUM_REACH;
+            if (level > 0 && fromFloor < tall) {
+              specAmount = level * (1 - fromFloor / tall) ** 0.85;
+              lum += specAmount * SPECTRUM_DENSITY * Math.min(1, shade * 3);
+            }
           }
 
-          const spriteDistance = Math.hypot(cx - spriteX, cy - spriteY);
-          const heat =
-            still || spriteDistance > reach ? 0 : Math.pow(1 - spriteDistance / reach, 2) * 0.65;
-          lum += 0.94 * heat;
-
+          // Pure Bayer would light the same low-index cells everywhere; a fixed
+          // per-cell offset scatters the resting field while the ordered
+          // structure still shows up where luminance is pushed high.
           const threshold =
             0.78 * ((BAYER[(row & 7) * 8 + (col & 7)] + 0.5) / 64) +
             0.22 * jitter[(row & 63) * 64 + (col & 63)];
           if (lum <= threshold) continue;
-          context.fillStyle =
-            heat > 0.58
-              ? ink.crest
-              : heat > 0.34
-                ? ink.hover
-                : heat > 0.17 || tower > 0.85
-                  ? ink.lit
-                  : heat > 0.07 || tower > 0.25
-                    ? ink.mid
-                    : ink.dim;
-          const x = Math.round(left);
-          context.fillRect(x, y, Math.round(left + cell) - x, h);
+
+          const heat = Math.max(glowAmount, waveAmount, specAmount * SPECTRUM_HEAT);
+          context.fillStyle = heat > 0.34 ? ink.lit : heat > 0.1 ? ink.mid : ink.dim;
+          context.fillRect(x, y, w, h);
         }
       }
     };
 
     const animate = (now: number) => {
       frame = 0;
-      if (!inView || document.hidden || motionQuery.matches) return;
-      const analyser = analyserRef.current?.() ?? null;
-      // Live audio paints every frame; the idle field is throttled to ~30 fps.
-      if (analyser || now - lastPaint >= 32) {
+      if (!inView || document.hidden || reducedMotion.matches) return;
+      if (now - lastPaint >= 25) {
         lastPaint = now;
-        updateLevels(now / 1000, analyser);
         draw(now);
       }
       frame = requestAnimationFrame(animate);
     };
 
     const schedule = () => {
-      if (!frame && inView && !document.hidden && !motionQuery.matches) {
+      if (!frame && inView && !document.hidden && !reducedMotion.matches) {
         frame = requestAnimationFrame(animate);
       }
     };
-    const paintStill = () => {
-      updateLevels(0, null);
-      draw(0);
+    const paintStill = () => draw(0);
+
+    const locate = (event: PointerEvent) => {
+      const bounds = host.getBoundingClientRect();
+      return {
+        inside:
+          event.clientX >= bounds.left &&
+          event.clientX <= bounds.right &&
+          event.clientY >= bounds.top &&
+          event.clientY <= bounds.bottom,
+        x: (event.clientX - bounds.left) * (width / Math.max(1, bounds.width)),
+        y: (event.clientY - bounds.top) * (height / Math.max(1, bounds.height)),
+      };
     };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const { inside, x, y } = locate(event);
+      const bounds = host.getBoundingClientRect();
+      targetStrength = inside
+        ? strengthAt(event.clientX - bounds.left, event.clientY - bounds.top)
+        : 0;
+      if (inside) {
+        pointer.x = x;
+        pointer.y = y;
+      }
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (reducedMotion.matches) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('a, button, input, select, textarea, label, [role="button"]')
+      )
+        return;
+      const { inside, x, y } = locate(event);
+      if (!inside) return;
+      ripples = [...ripples.slice(-2), { x, y, born: performance.now() }];
+    };
+
+    const onPointerLeave = () => {
+      targetStrength = 0;
+    };
+
     const visibility = new IntersectionObserver(
       ([entry]) => {
         inView = entry.isIntersecting;
@@ -338,13 +484,15 @@ export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) 
     );
     const resize = new ResizeObserver(() => {
       measure();
-      if (motionQuery.matches) paintStill();
-      else draw(performance.now());
-      schedule();
+      if (reducedMotion.matches) paintStill();
+      else {
+        draw(performance.now());
+        schedule();
+      }
     });
     const theme = new MutationObserver(() => {
       ink = readInk();
-      if (motionQuery.matches) paintStill();
+      if (reducedMotion.matches) paintStill();
       else draw(performance.now());
     });
     const onPageVisibility = () => {
@@ -356,28 +504,34 @@ export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) 
     const onMotionChange = () => {
       cancelAnimationFrame(frame);
       frame = 0;
-      if (motionQuery.matches) paintStill();
+      if (reducedMotion.matches) paintStill();
       else schedule();
     };
 
-    resize.observe(hero);
-    const anchor = hero.querySelector("[data-field-anchor]");
+    resize.observe(host);
     if (anchor) resize.observe(anchor);
-    visibility.observe(hero);
+    visibility.observe(host);
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
+    if (finePointer.matches)
+      window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("pointerleave", onPointerLeave, { passive: true });
     document.addEventListener("visibilitychange", onPageVisibility);
-    motionQuery.addEventListener("change", onMotionChange);
+    reducedMotion.addEventListener("change", onMotionChange);
     measure();
-    paintStill();
-    schedule();
+    if (reducedMotion.matches) paintStill();
+    else schedule();
 
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
       visibility.disconnect();
       theme.disconnect();
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerleave", onPointerLeave);
       document.removeEventListener("visibilitychange", onPageVisibility);
-      motionQuery.removeEventListener("change", onMotionChange);
+      reducedMotion.removeEventListener("change", onMotionChange);
     };
   }, []);
 
