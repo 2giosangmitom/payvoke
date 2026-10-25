@@ -1,6 +1,8 @@
-# S01 · API, slash commands và giao job cho provider
+# S01 · Quy tắc API, slash commands và giao job cho provider
 
-Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cập nhật mô hình app/thread/command revision và streaming 23/10/2026. Chưa có đầy đủ implementation hoặc OpenAPI sinh từ code. MUST/không được chỉ yêu cầu bắt buộc khi nghiệm thu, chưa xác nhận endpoint đã tồn tại. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md). Chat streaming và widget: [S04](04-ag-ui-a2ui-streaming.md).
+Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cập nhật mô hình app/thread/command revision và streaming 23/10/2026. MUST/không được là yêu cầu bắt buộc khi nghiệm thu. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md). Chat streaming và widget: [S04](04-ag-ui-a2ui-streaming.md).
+
+**Nguồn sự thật cho routes:** tài liệu này chỉ mô tả quy tắc nghiệp vụ, quyền, idempotency và state machine. Danh sách route, method, path, request/response body và mã lỗi cụ thể **không được ghi tay ở đây**; đọc trực tiếp từ code trong `apps/backend/src/modules/*` (và OpenAPI sinh từ code khi có). Khi code và tài liệu khác nhau về hình dạng route, code đúng; khi khác nhau về quy tắc nghiệp vụ, đó là lỗi cần sửa một trong hai.
 
 ## 1. Mô hình nghiệp vụ đã chốt
 
@@ -18,30 +20,27 @@ Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cậ
 
 ## 2. Quy ước chung
 
-- Base path `/v1`, HTTPS, JSON UTF-8. Timestamp RFC 3339 ở API nghiệp vụ; các field signed/onchain dùng Unix seconds nguyên được S02 quy định.
+- HTTPS, JSON UTF-8, có version prefix. Timestamp RFC 3339 ở API nghiệp vụ; các field signed/onchain dùng Unix seconds nguyên được S02 quy định.
 - ID là chuỗi opaque, phân biệt hoa/thường, do server cấp trừ `clientRequestId`/`reportId` do client cấp. Không tự trim/đổi case ID. ID của command ổn định qua các revision; definition của command được snapshot trong command revision.
 - Tiền là chuỗi decimal atomic USDC không dấu/chấm, ví dụ `"10000"` = 0,01 USDC. Không dùng float; `feeBps` là integer.
-- `Idempotency-Key` bắt buộc trên thao tác thay đổi nghiệp vụ. Giá trị phải bằng `clientRequestId` nếu body có field này; provider report dùng reportId, ACK dùng eventId. Auth challenge/login/pairing/token exchange có single-use semantics riêng, không replay secret qua idempotency cache. Server lưu theo `(principal, operation, key)` và hash normalized body; khác body cùng key trả `409 IDEMPOTENCY_CONFLICT`.
+- `Idempotency-Key` bắt buộc trên thao tác thay đổi nghiệp vụ. Giá trị phải bằng `clientRequestId` nếu body có field này; provider report dùng reportId, ACK dùng eventId. Auth challenge/login/pairing/token exchange có single-use semantics riêng, không replay secret qua idempotency cache. Server lưu theo `(principal, operation, key)` và hash normalized body; khác body cùng key là conflict.
 - Riêng quote/paid submission tiếp tục có uniqueness theo invocation trong S02, không phụ thuộc TTL của HTTP idempotency cache. Không xóa payment dedupe record khi hết cache.
-- Collection trả `{items,nextCursor}`; `limit` mặc định 20, tối đa 100; cursor opaque và phải thuộc cùng principal/filter. Mọi endpoint đọc kiểm tra ownership, không xem biết ID là đủ quyền.
-- Error body: `{error:{code,message,retryable,requestId,details?}}`. Không echo signature, token hoặc signed URL trong lỗi/log. Input lạ, sai type hoặc additional property không cho phép trả 422; JSON hỏng trả 400.
-- HTTP status: 401 chưa xác thực, 403 không đủ quyền, 404 không thấy/không có quyền đọc tài nguyên của người khác, 409 conflict/state/version, 410 tài nguyên/quote hết hạn rõ ràng, 422 input, 429 rate limit, 503 dependency tạm không khả dụng. Payment pending có xử lý riêng trong S02, không mặc định là unpaid.
-- API request body và payment headers có size limit cấu hình; không đợi tới lúc gửi tx mới phát hiện input không hợp lệ.
+- Collection phân trang bằng cursor opaque thuộc cùng principal/filter, có giới hạn kích thước trang. Mọi thao tác đọc kiểm tra ownership, không xem biết ID là đủ quyền.
+- Không echo signature, token hoặc signed URL trong lỗi/log.
+- Phân loại lỗi: chưa xác thực, không đủ quyền, không thấy/không có quyền đọc tài nguyên của người khác (không phân biệt hai trường hợp), conflict state/version, quote hết hạn, input sai, rate limit, dependency tạm không khả dụng. Payment pending có xử lý riêng trong S02, không mặc định là unpaid.
+- Request body và payment headers có size limit cấu hình; không đợi tới lúc gửi tx mới phát hiện input không hợp lệ.
 
 ## 3. Identity và quyền
 
 ### 3.1 Web đăng nhập bằng ví
 
-| Endpoint                    | Request               | Response/hành vi                                                                                                                                                               |
-| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /v1/auth/siwe/nonce`  | `{}`                  | 200 `{nonce}` + signed browser-binding cookie; nonce lưu/consume bởi Better Auth, TTL 5 phút.                                                                                  |
-| `POST /v1/auth/siwe/verify` | `{message,signature}` | 200 `{token,success,user:{id,walletAddress,chainId}}` + session cookie HttpOnly/Secure; message do client tạo/ký, domain/URI Payvoke, Fuji 43113, issued/expiry tối đa 5 phút. |
-| `POST /v1/auth/sign-out`    | `{}`                  | 200, thu hồi session Better Auth và xóa cookie; không tự revoke grant onchain.                                                                                                 |
-| `GET /v1/me`                | Không body            | Buyer, scopes/roles; không trả khóa hoặc bearer token.                                                                                                                         |
+- Đăng nhập theo SIWE: server cấp nonce một lần (TTL 5 phút) kèm cookie ràng buộc trình duyệt; client tạo và ký message với domain/URI Payvoke, Fuji 43113, issued/expiry tối đa 5 phút; server xác minh rồi cấp session cookie HttpOnly/Secure.
+- Đăng xuất thu hồi session và xóa cookie; không tự revoke grant onchain.
+- Thông tin buyer hiện tại trả buyer, scopes/roles; không trả khóa hoặc bearer token.
 
 Cookie request thay đổi dữ liệu phải kiểm tra Origin/CSRF; CORS allowlist chính xác, không wildcard credentials. MVP hỗ trợ ví EOA đã deploy tài khoản thông thường; hỗ trợ contract wallet cần test ERC-1271 riêng, không giả định mọi SIWE library hỗ trợ. Đăng nhập không cấp quyền debit vault. [R1]
 
-Auth dùng Better Auth 1.7.11 + SIWE plugin + Prisma adapter; viem verify chữ ký EOA. Nonce một lần bị consume cả khi verify thất bại; retry cần nonce mới. Session native lưu token trong bảng auth riêng, cookie được ký; không bật bearer plugin, không dùng session token làm authorization chi tiền. `User.id` là buyer ID; `Account` chỉ là tài khoản provider đăng nhập của Better Auth, địa chỉ ví nằm trong `WalletAddress`. Session TTL 7 ngày, không refresh/cookie cache; `/v1/me` kiểm tra suspension của User và không trả token. API auth cũ không chạy song song; initial migration mới chỉ dành cho DB trống. `GET /v1/auth/get-session` là endpoint session native của Better Auth.
+Auth dùng Better Auth 1.7.11 + SIWE plugin + Prisma adapter; viem verify chữ ký EOA. Nonce một lần bị consume cả khi verify thất bại; retry cần nonce mới. Session native lưu token trong bảng auth riêng, cookie được ký; không bật bearer plugin, không dùng session token làm authorization chi tiền. `User.id` là buyer ID; `Account` chỉ là tài khoản provider đăng nhập của Better Auth, địa chỉ ví nằm trong `WalletAddress`. Session TTL 7 ngày, không refresh/cookie cache; đọc thông tin buyer kiểm tra suspension của User và không trả token. API auth cũ không chạy song song; initial migration mới chỉ dành cho DB trống.
 
 ### 3.2 External buyer client
 
@@ -49,21 +48,13 @@ Scoped bearer token là **quyền gọi API**, không phải quyền chi. Các s
 
 ### 3.3 Provider
 
-API key chỉ cho một app và scopes: `products:write`, `events:read`, `events:ack`, `reports:write`, `files:write`. Secret chỉ hiện lúc cấp, lưu hash ở server, prefix cho nhận dạng; log redact. Web wallet có quyền chủ app tạo/rotate/revoke key qua `/v1/provider/apps/{appId}/keys`.
+API key chỉ cho một app và scopes: `products:write`, `events:read`, `events:ack`, `reports:write`, `files:write`. Secret chỉ hiện lúc cấp, lưu hash ở server, prefix cho nhận dạng; log redact. Chủ app (phiên ví) tạo/rotate/revoke key.
 
-Mỗi app có tối đa **một key active**. Tạo key mới thu hồi key cũ trong cùng transaction; rotate không trả lại secret cũ qua GET. Key không được đổi payout wallet hoặc operator role; thay payout cần chủ app xác thực ví.
+Mỗi app có tối đa **một key active**. Tạo key mới thu hồi key cũ trong cùng transaction; rotate không trả lại secret cũ. Key không được đổi payout wallet hoặc operator role; thay payout cần chủ app xác thực ví.
 
-Wallet-auth management endpoints:
+Chủ app quản lý bằng phiên ví: tạo app (idempotent theo `clientRequestId`), xem/sửa name/description/visibility/payout, cấp/thu hồi key, suspend/activate và archive app.
 
-- `POST /v1/provider/apps {name,description?,visibility,payoutAddress,clientRequestId}` trả 201 app.
-- `GET /v1/provider/apps` và `GET /v1/provider/apps/{appId}` trả app, command, key summary và availability.
-- `PATCH /v1/provider/apps/{appId}` cập nhật name/description/visibility/payout.
-- `POST /v1/provider/apps/{appId}/keys` trả 201 `{keyId,secret,scopes,expiresAt}` một lần.
-- `POST /v1/provider/apps/{appId}/keys/{keyId}/revocations` thu hồi key.
-- `POST /v1/provider/apps/{appId}/suspensions` và `/activations` đổi status.
-- `POST /v1/provider/apps/{appId}/archive` archive app.
-
-Mất response lúc cấp key thì revoke record đó và cấp key mới, không lưu plaintext secret để replay. Không provider key nào tự tạo key quyền lớn hơn. External client authorization/pairing dùng endpoints trong [S03 §5](03-mcp-client.md#5-pairing-wallet-based-nhỏ-nhất-và-thu-hồi).
+Mất response lúc cấp key thì revoke record đó và cấp key mới, không lưu plaintext secret để replay. Không provider key nào tự tạo key quyền lớn hơn. External client authorization/pairing theo [S03 §5](03-mcp-client.md#5-pairing-wallet-based-nhỏ-nhất-và-thu-hồi).
 
 ## 4. Đăng ký app và slash command
 
@@ -73,23 +64,14 @@ Provider có thể dùng Studio hoặc API; cả hai đi qua cùng validation. A
 
 `appId` bất biến về owner. Command id bất biến; mọi thay đổi options, schema, giá, terms hoặc thời hạn tạo revision mới. Quote ghim `commandRevisionId`; không sửa revision đang phục vụ.
 
-| Endpoint                                                      | Body                                                           | Kết quả                                             |
-| ------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------- |
-| `POST /v1/provider/apps`                                      | `{name,description?,visibility,payoutAddress,clientRequestId}` | 201 app.                                            |
-| `PATCH /v1/provider/apps/{appId}`                             | `{name?,description?,visibility?,payoutAddress?}`              | 200 app đã cập nhật.                                |
-| `POST /v1/provider/apps/{appId}/commands`                     | `CommandPayload`                                               | 201 `{commandId,revision}`.                         |
-| `PATCH /v1/provider/apps/{appId}/commands/{commandId}`        | `CommandPayload` + `expectedRevisionId?`                       | 200 revision mới; conflict trả `REVISION_CONFLICT`. |
-| `POST /v1/provider/apps/{appId}/commands/{commandId}/default` | `{}`                                                           | 200 đặt default command.                            |
-| `DELETE /v1/provider/apps/{appId}/commands/{commandId}`       | Không body                                                     | 200 archive command; không xóa revision lịch sử.    |
-| `POST /v1/provider/apps/{appId}/suspensions`                  | `{reason}`                                                     | Dừng quote mới; không xóa nghĩa vụ job cũ.          |
-| `POST /v1/provider/apps/{appId}/activations`                  | `{}`                                                           | Bật lại app; vẫn cần heartbeat để available.        |
-| `POST /v1/provider/apps/{appId}/archive`                      | `{}`                                                           | Archive app; giữ thread và biên nhận.               |
-
-Các endpoint dưới `/provider` yêu cầu key đúng app hoặc phiên owner; key không đọc/ghi app khác. Studio cho owner quản lý mà không cần tạo API key.
+- Sửa command có thể kèm revision mong đợi; lệch revision là conflict, không ghi đè.
+- Mỗi app có một default command. Archive command không xóa revision lịch sử.
+- Suspend dừng quote mới, không xóa nghĩa vụ job cũ. Activate bật lại app nhưng vẫn cần heartbeat để available. Archive giữ thread và biên nhận.
+- Thao tác provider yêu cầu key đúng app hoặc phiên owner; key không đọc/ghi app khác. Studio cho owner quản lý mà không cần tạo API key.
 
 ### 4.2 Command payload
 
-Field bắt buộc: `name,description,options,grossAmount,terms`. Field tùy chọn: `positionalParameter`, `outputSchema`, `expectedRevisionId` khi sửa. Mọi command đều tạo **paid invocation**; không có flag miễn phí hoặc bypass x402.
+Field bắt buộc: `name,description,options,grossAmount,terms`. Field tùy chọn: `positionalParameter`, `outputSchema`, revision mong đợi khi sửa. Mọi command đều tạo **paid invocation**; không có flag miễn phí hoặc bypass x402.
 
 - `name`: không có dấu `/`, regex `^[a-z][a-z0-9_]{0,31}$`; namespace theo app. Cùng `/summarize` ở hai app là hai command khác nhau.
 - Dành riêng `help`, `cancel`, `status` cho UI điều hướng; UI action miễn phí không được biến thành provider invocation.
@@ -97,9 +79,9 @@ Field bắt buộc: `name,description,options,grossAmount,terms`. Field tùy ch�
 - `inputSchema`/`outputSchema`: JSON Schema 2020-12, root object. Schema depth/size/item limits do server cap. Không `$ref` remote, code hoặc regex không kiểm soát.
 - Defaults chỉ áp một lần lúc chuẩn bị quote. Lưu effective arguments và hash chính bản đó; không áp default mới ở paid retry.
 - `positionalParameter` nếu có phải là một string option. Free text được map vào đó; nếu không có, buyer nhập bằng form.
-- `terms`: `{deliverySeconds,reviewSeconds,revisionPolicy,refundPolicy,sideEffects,dataUse}`. `revisionPolicy` phải có `{maxIncluded,description}`.
-- Đề xuất, chưa bắt buộc: `terms.verification.minEvidence` khai báo mức bằng chứng tối thiểu trước khi được giải ngân (`SIGN` hoặc `REC` ở MVP). Ngữ nghĩa ở [M05](../modules/05-artifacts-and-verification.md#mức-bằng-chứng-trước-khi-giải-ngân-đề-xuất); khi bật sẽ tăng `schemaVersion` của TermsSnapshot vì field này đi vào `termsHash`.
-- `grossAmount` dương, atomic USDC, nằm trong cap policy. Policy deployment cần thêm giá sàn so với chi phí gas ước tính (roadmap R02).
+- `terms`: `{deliverySeconds,reviewSeconds,revisionPolicy,refundPolicy,sideEffects,dataUse,verification?}`. `revisionPolicy` phải có `{maxIncluded,description}`.
+- `terms.verification`: `{minEvidence}` với `SIGN` hoặc `REC` ở MVP, là mức bằng chứng tối thiểu trước khi được giải ngân; thiếu thì server điền `SIGN` trước khi lưu revision. Field này đi vào `termsHash` (TermsSnapshot `schemaVersion: 2`). Ngữ nghĩa ở [M05](../modules/05-artifacts-and-verification.md#mức-bằng-chứng-trước-khi-giải-ngân).
+- `grossAmount` dương, atomic USDC, nằm trong cap policy và không thấp hơn `minGrossAmount` của policy đang active (giá sàn so với gas hold + release do Payvoke trả). Dưới sàn thì tạo/sửa command bị từ chối; nếu policy nâng sàn sau khi revision đã đăng, revision đó không nhận quote mới.
 
 Ví dụ command:
 
@@ -138,75 +120,47 @@ Giá và thời gian trong ví dụ là fixture minh họa, không phải policy
 
 ### 5.1 Catalog, thread và star
 
-| Endpoint                                    | Input                               | Output                                                                                                                                                                      |
-| ------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/apps`                              | Query `q?,cursor?,limit?,saved?`    | App `PUBLIC` chưa archive, gồm `ACTIVE`/`SUSPENDED`; item `{id,name,description,visibility,status,availability,commandCount,fromPrice,updatedAt}`. `saved=1` lọc theo star. |
-| `GET /v1/apps/{appId}`                      | Không body                          | App public hoặc app private của owner; command/active revision, giá, terms, availability.                                                                                   |
-| `POST /v1/threads`                          | `{appId,clientRequestId}`           | 201 thread; app phải `ACTIVE` và chưa archive; replay idempotent; không charge.                                                                                             |
-| `GET /v1/threads`                           | Query `q?,archived?,cursor?,limit?` | Thread của buyer, trộn mọi app, gồm app name/availability.                                                                                                                  |
-| `GET /v1/threads/{threadId}`                | Không body                          | Thread, timeline, command/active revision, active quote nếu có.                                                                                                             |
-| `PATCH /v1/threads/{threadId}`              | `{title}`                           | 200 đổi tên.                                                                                                                                                                |
-| `POST /v1/threads/{threadId}/archive`       | `{}`                                | 200 archive; lịch sử vẫn đọc.                                                                                                                                               |
-| `GET /v1/threads/{threadId}/ag-ui/events`   | `Last-Event-ID`/`after` tùy chọn    | Buyer SSE AG-UI theo cursor thread. S04.                                                                                                                                    |
-| `GET /v1/threads/{threadId}/ag-ui/snapshot` | Không body                          | Snapshot messages/surfaces/status và cursor nhất quán. S04.                                                                                                                 |
+- Catalog chỉ gồm app `PUBLIC` chưa archive, cả `ACTIVE` lẫn `SUSPENDED`, kèm availability và giá thấp nhất; có thể lọc theo star. App `PRIVATE` chỉ owner xem được.
+- Tạo thread cần app `ACTIVE` và chưa archive; idempotent theo `clientRequestId`; không charge.
+- Danh sách thread của buyer trộn mọi app. Buyer đổi tên hoặc archive thread; archive vẫn đọc được lịch sử.
+- Buyer đọc sự kiện AG-UI và snapshot của thread theo S04.
 
 Thread khóa app nhưng **không khóa mọi lần gọi vào một revision vĩnh viễn**. Khi command được sửa, quote mới dùng revision hiện hành; invocation cũ luôn dùng revision cũ. Command bị archive không chạy nếu chưa có quote còn hợp lệ.
 
-Store lưu app yêu thích qua `PUT/DELETE /v1/stars/{appId}` và `GET /v1/stars`. Collection không còn trong UI MVP; star vẫn giữ. App suspend giữ star nhưng hiển thị unavailable. App `PRIVATE` không xuất hiện trong catalog của buyer khác.
+Star là danh sách app yêu thích riêng của buyer. Collection không còn trong UI MVP; star vẫn giữ. App suspend giữ star nhưng hiển thị unavailable.
 
 ### 5.2 Chuẩn bị quote và bắt đầu invocation
 
-`POST /v1/quotes`, body:
+Chuẩn bị quote nhận `threadId`, `commandId`, `arguments`, `contextSelection` và `clientRequestId`. Server kiểm tra command thuộc app của thread, access, file đã sẵn sàng, effective args, command revision/availability và giới hạn một invocation đang mở; resolve context từ dữ liệu đã lưu và đóng băng manifest. Chỉ phần buyer chọn được chia sẻ, không mặc định toàn bộ lịch sử.
 
-```json
-{
-  "threadId": "thread_example",
-  "commandId": "command_summarize",
-  "arguments": { "text": "Nội dung cần tóm tắt", "language": "vi", "maxWords": 150 },
-  "contextSelection": { "messageIds": [], "briefVersionId": null, "fileIds": [] },
-  "clientRequestId": "prepare_example"
-}
-```
+Quote trả effective arguments, context manifest, hash, thông tin thanh toán (network, asset, vault, payout, giá, phí), các deadline, quote digest, policy version cùng `inputSnapshot`, `termsSnapshot`, `policySnapshot` và `protocolQuote`. Shape cụ thể đọc từ code.
 
-Server kiểm tra command thuộc app của thread, access, file đã sẵn sàng, effective args, command revision/availability và giới hạn một invocation đang mở; resolve context từ dữ liệu đã lưu và đóng băng manifest. Chỉ phần buyer chọn được chia sẻ, không mặc định toàn bộ lịch sử.
+Tạo quote chưa giữ tiền hoặc giao việc cho provider. Buyer xem input sau khi áp defaults và giá trước khi ký. Quote hết hạn bị từ chối nếu chưa bắt đầu thanh toán. Nếu lần thanh toán trước còn UNKNOWN, hệ thống phải đối soát, không tự tạo quote mới. Chỉ chuẩn bị lượt khác khi đã xác nhận lượt cũ không có hold và không còn khả năng tạo hold hợp lệ theo S02.
 
-201 trả `Quote` gồm:
+Snapshots và `protocolQuote` đúng shape/hash ở S02. Root fields là phần trình bày được suy ra từ snapshot; bất đồng root và snapshot là lỗi, không tự chọn một bên để ký.
 
-```text
-quoteId, invocationId, threadId, appId, commandId, commandRevisionId,
-effectiveArguments, contextManifest, inputHash, termsHash,
-network, asset, vault, providerPayout, grossAmount, feeBps, feeRecipient,
-validUntil, deliveryDeadline, releaseNotBefore, resolveBy, quoteDigest, policyVersion,
-inputSnapshot, termsSnapshot, policySnapshot, protocolQuote
-```
+Submit chỉ nhận `quoteId`, `Idempotency-Key` bằng **invocationId**. Chưa có payment thì trả HTTP 402 + `PAYMENT-REQUIRED`; có signed payload thì đi qua S02. Không nhận args hay giá mới khi submit. Quote thuộc buyer/thread khác bị từ chối trước settle.
 
-Tạo quote chưa giữ tiền hoặc giao việc cho provider. Buyer xem input sau khi áp defaults và giá trước khi ký. Quote hết hạn trả 410 nếu chưa bắt đầu thanh toán. Nếu lần thanh toán trước còn UNKNOWN, hệ thống phải đối soát, không tự tạo quote mới. Chỉ chuẩn bị lượt khác khi đã xác nhận lượt cũ không có hold và không còn khả năng tạo hold hợp lệ theo S02.
-
-`inputSnapshot`, `termsSnapshot`, `policySnapshot` và `protocolQuote` đúng shape/hash ở S02. Root fields là phần trình bày được suy ra từ snapshot; bất đồng root và snapshot trả `QUOTE_INCONSISTENT`, không tự chọn một bên để ký. `/v1/apps/{id}` trả command DTO gồm `id,name,description,revision:{id,options,inputSchema,outputSchema,positionalParameter,grossAmount,terms,deliverySeconds,reviewSeconds}` và collection trả `items,nextCursor` như quy ước chung.
-
-`POST /v1/invocations` body `{quoteId}`, `Idempotency-Key` bằng **invocationId**. Cùng body chưa có payment trả 402 + `PAYMENT-REQUIRED`; cùng body có signed payload đi qua S02. Không nhận args hay giá mới tại endpoint này. Quote thuộc buyer/thread khác trả 404/403 trước settle.
-
-Sau hold xác nhận: 202 + `PAYMENT-RESPONSE`, `Location: /v1/invocations/{invocationId}`, body `{invocationId,threadId,paymentStatus:"HELD",executionStatus:"QUEUED",statusUrl,resultUrl}`. Replay trả cùng logical invocation, không tạo charge/job khác; invocation đã xong có thể trả 200 trạng thái hiện tại.
+Sau hold xác nhận, response mang `PAYMENT-RESPONSE`, vị trí trạng thái invocation, `paymentStatus:"HELD"` và execution status. Replay trả cùng logical invocation, không tạo charge/job khác.
 
 ### 5.3 Theo dõi và tiếp tục trong phạm vi đã trả
 
-| Endpoint                                  | Body                                       | Hành vi                                                                                                                                     |
-| ----------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/invocations/{id}`                | Không body                                 | `{invocationId,threadId,paymentStatus,executionStatus,question?,progress?,delivery?,failure?,nextActions}`; tách trạng thái tiền/công việc. |
-| `GET /v1/invocations/{id}/result`         | Không body                                 | 200 phiên bản đã giao và artifacts; 409 `RESULT_NOT_READY` khi chưa giao; không tự trả bản provider chưa được kiểm tra.                     |
-| `POST /v1/invocations/{id}/answers`       | `{questionId,arguments,clientRequestId}`   | 202, chỉ question đang chờ, validate schema câu hỏi; cùng scope invocation, không giữ thêm tiền.                                            |
-| `POST /v1/invocations/{id}/revisions`     | `{reason,clientRequestId}`                 | 202 trong thời hạn/số lần/phạm vi đã hứa; ngoài phạm vi trả 409 `NEW_INVOCATION_REQUIRED`, không tự charge.                                 |
-| `POST /v1/invocations/{id}/cancellations` | `{reason,clientRequestId}`                 | 202 ghi đề nghị dừng; không khẳng định đã dừng tác động bên ngoài hay đã refund.                                                            |
-| `POST /v1/invocations/{id}/acceptances`   | `{artifactVersion,clientRequestId}`        | 200 ghi buyer đã chấp nhận, không bypass thời điểm payout tối thiểu S02.                                                                    |
-| `POST /v1/invocations/{id}/disputes`      | `{reason,evidenceFileIds,clientRequestId}` | 201 hồ sơ; trả onchain dispute intent/status. Chỉ tranh chấp chain đã xác nhận mới chặn payout onchain.                                     |
-
-**Hiện trạng 25/10/2026:** backend đã có `GET /v1/invocations/{id}`, `/answers`, `/revisions` và `/financial-intents` (unsigned recovery intents cho buyer). Chưa có `/result`, `/cancellations`, `/acceptances`, `/disputes` và toàn bộ §5.4 file; kết quả JSON đã giao hiện đọc qua snapshot AG-UI của thread.
+- Trạng thái invocation tách trạng thái tiền và công việc, kèm question/progress/delivery/failure và hành động kế tiếp. Đọc trạng thái không debit.
+- Kết quả chỉ trả phiên bản đã giao; không tự trả bản provider chưa được kiểm tra.
+- Trả lời chỉ cho question đang chờ, validate theo schema câu hỏi; cùng scope invocation, không giữ thêm tiền.
+- Sửa trong thời hạn/số lần/phạm vi đã hứa; vượt phạm vi yêu cầu invocation mới, không tự charge.
+- Đề nghị hủy chỉ ghi yêu cầu dừng; không khẳng định đã dừng tác động bên ngoài hay đã refund.
+- Chấp nhận kết quả không bypass thời điểm payout tối thiểu S02.
+- Tranh chấp tạo hồ sơ và onchain dispute intent; chỉ tranh chấp chain đã xác nhận mới chặn payout onchain.
 
 Lời nhắn trả lời phải tham chiếu `questionId`; sửa phải tham chiếu invocation và được kiểm tra policy, không dùng arbitrary `free:true`. Câu hỏi render form theo schema; câu trả lời có thể nhập chat rồi map vào parameter string được schema question chỉ định.
 
 ### 5.4 File
 
-`POST /v1/files/uploads {name,contentType,size,clientRequestId,invocationId?}` trả `{fileId,uploadUrl,expiresAt,requiredHeaders}`. invocationId bắt buộc nếu caller là provider key và phải thuộc app đó; buyer upload file đầu vào không được tự gán provider ownership qua field này. `POST /v1/files/{fileId}/completions {checksum,clientRequestId}` xác minh object/size/checksum và đưa vào kiểm tra; chỉ file `READY` được chọn trong quote. `GET /v1/files/{fileId}/download` kiểm tra quyền mỗi lần rồi trả URL ngắn hạn. Không nhận file từ URL Internet tùy ý; không SSRF fetch. Provider upload artifact qua cùng cơ chế với key app và invocation scope; file không tự thành delivered vì upload xong.
+- Upload qua URL ký ngắn hạn: client xin upload, tải lên storage, rồi báo hoàn tất để server xác minh object/size/checksum và đưa vào kiểm tra. Chỉ file `READY` được chọn trong quote.
+- Upload bằng provider key bắt buộc gắn invocation thuộc app đó; buyer upload file đầu vào không được tự gán provider ownership.
+- Download kiểm tra quyền mỗi lần rồi trả URL ngắn hạn. Không nhận file từ URL Internet tùy ý; không SSRF fetch.
+- Provider upload artifact qua cùng cơ chế với key app và invocation scope; file không tự thành delivered vì upload xong.
 
 Storage S3-compatible là phụ thuộc khi bật file; PostgreSQL lưu metadata. Signed URL không nằm trong hash manifest; hash dùng file ID/version/content hash bất biến, không làm quote đổi khi URL hết hạn.
 
@@ -214,11 +168,11 @@ Storage S3-compatible là phụ thuộc khi bật file; PostgreSQL lưu metadata
 
 ### 6.1 Kết nối và phân phối
 
-- `GET /v1/provider/apps/{appId}/events`, `Authorization: Bearer <provider-key>`, `Accept: text/event-stream`; UTF-8 SSE. Chỉ app đúng key, không dùng query parameter cho secret. [R2]
+- Provider nhận event qua SSE UTF-8, xác thực bằng `Authorization: Bearer <provider-key>`. Chỉ app đúng key, không dùng query parameter cho secret. [R2]
 - MVP một active stream lease/app; stream mới thay thế stream cũ qua fencing, không tạo hai execution consumer ngầm. Provider có thể tự phân phối job tới worker của mình. Scale consumer groups là việc sau.
 - `id` là cursor bền vững theo stream app, `event` là event type, `data` JSON một dòng. Heartbeat comment không cần ACK và không là bằng chứng capacity.
 - Reconnect gửi `Last-Event-ID`. Cursor không phải ACK: **mọi event chưa ACK vẫn có thể phát lại**, kể cả đã đi qua cursor. Replay dùng lại `eventId`/`invocationId`, không regenerate job.
-- Cursor hết retention trả 409 `CURSOR_EXPIRED` trước mở stream; provider dùng `GET /v1/provider/apps/{appId}/pending-events` để resync event chưa ACK. Endpoint trả cùng envelope đủ input, không bắt provider lấy lại nội dung job từng cái.
+- Cursor hết retention bị từ chối trước khi mở stream; provider resync event chưa ACK với cùng envelope đủ input, không phải lấy lại nội dung job từng cái.
 - Slow consumer bị disconnect khi vượt bounded buffer; event không bị xóa. Connection timeout/retry/heartbeat/retention/max inflight nằm trong deployment config, không hardcode như bảo đảm delivery.
 
 Ví dụ:
@@ -230,20 +184,16 @@ data: {"type":"invocation.ready","invocationId":"invocation_example","runId":"ru
 
 ```
 
-Envelope luôn chứa eventId/sequence/type qua event field, invocation/thread/command revision và nội dung đã được chọn. Các field `sessionId/productId/productVersion` trong `input` chỉ là tương thích quote document. File lớn chỉ gửi metadata + quyền tải invocation-scoped, refresh bằng endpoint app có kiểm tra scope. Không có payment signature, grant private key, cookie hay dữ liệu workspace chưa chia sẻ.
+Envelope luôn chứa eventId/sequence/type qua event field, invocation/thread/command revision và nội dung đã được chọn. Các field `sessionId/productId/productVersion` trong `input` chỉ là tương thích quote document. File lớn chỉ gửi metadata + quyền tải invocation-scoped. Không có payment signature, grant private key, cookie hay dữ liệu workspace chưa chia sẻ.
 
 Outbox tạo `invocation.ready` sau finalized hold. Event khác: `invocation.answer`, `invocation.revision_requested`, `invocation.cancel_requested`; đều dùng cùng invocation, không charge. Mỗi event có ID và ACK độc lập. Với event bắt đầu chu kỳ thực thi (ready/answer/revision), payload chứa `runId` do Payvoke cấp; replay event giữ nguyên `runId`, continuation/revision có `runId` mới. Xem S04.
 
 ### 6.2 ACK và báo cáo
 
-| Endpoint                                                  | Request          | Kết quả                                                                                                         |
-| --------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/provider/apps/{appId}/events/{eventId}/ack`     | `{invocationId}` | 200 `{eventId,acknowledgedAt}`; idempotent, xác minh event/app/job; ACK sau khi provider đã persist dedupe/job. |
-| `POST /v1/provider/apps/{appId}/invocations/{id}/reports` | `ProviderReport` | 202 nhận report để áp workflow; không đồng nghĩa output đã giao.                                                |
+- ACK idempotent, xác minh event/app/job; provider chỉ ACK sau khi đã persist dedupe/job.
+- Report được nhận để áp workflow; nhận report không đồng nghĩa output đã giao.
 
-**Lệch giữa đặc tả và code (25/10/2026):** implementation hiện ACK theo invocation, `POST /v1/provider/apps/{appId}/invocations/{id}/acks` với body `{eventId?}` (eventId là invocation, answer hoặc revision tương ứng với run). Chưa có `GET .../pending-events`. Trước nghiệm thu T066 phải chọn một hình dạng, cập nhật đặc tả hoặc code cho khớp và có test; không để hai hợp đồng song song.
-
-`ProviderReport` có `{reportId,sequence,type,data}`. `reportId` unique trong app; retry cùng ID phải cùng body. Sequence tăng nghiêm ngặt theo invocation, serialize writer; duplicate hợp lệ trả kết quả cũ, out-of-order trả 409 `REPORT_OUT_OF_ORDER`, report sau terminal trái phép trả 409. Không tin timestamp provider để backdate delivery.
+`ProviderReport` có `{reportId,sequence,type,data}`. `reportId` unique trong app; retry cùng ID phải cùng body. Sequence tăng nghiêm ngặt theo invocation, serialize writer; duplicate hợp lệ trả kết quả cũ, out-of-order là conflict, report sau terminal trái phép là conflict. Không tin timestamp provider để backdate delivery.
 
 Các type/data:
 
@@ -255,7 +205,7 @@ Các type/data:
 - `unknown`: `{reason}` → UNKNOWN; platform điều tra, không tự rerun side effect.
 - `cancelled`: `{reason,sideEffectStatus:"none"}` chỉ khi có cancellation request đang mở và provider xác nhận đã dừng/không gây side effect. Nếu side effect chưa rõ phải báo unknown; nếu đã hoàn tất thì không báo cancelled để xóa trách nhiệm giao hàng.
 
-Transition report bắt buộc: started từ ACKED sang RUNNING; progress chỉ khi RUNNING/WAITING_BUYER và không tự kết thúc; question từ RUNNING sang WAITING_BUYER; result chỉ từ RUNNING sang VERIFYING. Answer được nhận từ WAITING_BUYER tạo continuation event và đưa về QUEUED, sau ACK/started mới RUNNING lại. Revision được chấp nhận từ DELIVERED tạo event QUEUED và yêu cầu artifactVersion mới lớn hơn bản đã giao, không reset report sequence. Failed/unknown chỉ áp dụng trạng thái execution chưa terminal; cancelled cần cancellation request trước terminal. Report trái transition trả 409 `INVALID_STATE`, không âm thầm sửa lịch sử.
+Transition report bắt buộc: started từ ACKED sang RUNNING; progress chỉ khi RUNNING/WAITING_BUYER và không tự kết thúc; question từ RUNNING sang WAITING_BUYER; result chỉ từ RUNNING sang VERIFYING. Answer được nhận từ WAITING_BUYER tạo continuation event và đưa về QUEUED, sau ACK/started mới RUNNING lại. Revision được chấp nhận từ DELIVERED tạo event QUEUED và yêu cầu artifactVersion mới lớn hơn bản đã giao, không reset report sequence. Failed/unknown chỉ áp dụng trạng thái execution chưa terminal; cancelled cần cancellation request trước terminal. Report trái transition là conflict, không âm thầm sửa lịch sử.
 
 Provider không gửi tùy ý `paymentStatus`, không có report `refund`/`payout`. Buyer question/answer miễn phí không cho provider thay command, tăng giá hoặc rút thêm dữ liệu. Context bổ sung cần buyer chọn rõ và audit; thay input tài chính/phạm vi phải chuẩn bị invocation mới.
 
@@ -265,16 +215,16 @@ Payvoke bảo đảm không tạo hai logical ready event cho một invocation v
 
 ### 6.4 Streaming AG-UI / OpenUI (quyết định 23/10/2026)
 
-Provider agent gửi token/chunk và widget qua **NDJSON streaming HTTP request** ở `POST /v1/provider/apps/{appId}/invocations/{id}/ag-ui/streams/{runId}`, sau khi ACK và report `started`. Đây là kênh **nội dung hiển thị**, dùng provider key `reports:write`, sequence/cursor riêng với `ProviderReport.sequence`; `GET .../ag-ui/streams/{runId}/cursor` hỗ trợ resume an toàn. Backend persist và phát bản chiếu AG-UI tới buyer qua SSE/thread stream: provider gửi envelope OpenUI Lang bằng `CUSTOM payvoke.openui`, gateway kiểm tra và chiếu thành buyer `ACTIVITY_SNAPSHOT` (`activityType:"openui-surface"`, `content.source`, `replace:true`) để tương thích hướng render AG-UI/OpenUI. S04 là hợp đồng chi tiết về ID, retry, allowlist events, snapshots, UI actions, version/catalog và xử lý lỗi.
+Provider agent gửi token/chunk và widget qua **NDJSON streaming HTTP request** theo từng run, sau khi ACK và report `started`. Đây là kênh **nội dung hiển thị**, dùng provider key `reports:write`, sequence/cursor riêng với `ProviderReport.sequence`, có cursor để resume an toàn. Backend persist và phát bản chiếu AG-UI tới buyer qua SSE/thread stream: provider gửi envelope OpenUI Lang bằng `CUSTOM payvoke.openui`, gateway kiểm tra và chiếu thành buyer `ACTIVITY_SNAPSHOT` (`activityType:"openui-surface"`, `content.source`, `replace:true`) để tương thích hướng render AG-UI/OpenUI. S04 là hợp đồng chi tiết về ID, retry, allowlist events, snapshots, UI actions, version/catalog và xử lý lỗi.
 
-Provider vẫn dùng HTTP reports `question/result/failed/...` để chuyển state. Kết thúc AG-UI run không xác nhận giao hàng hoặc kích hoạt payment. Không cho AG-UI `TOOL_CALL` hoặc hành động OpenUI bypass quote/x402.
+Provider vẫn dùng reports `question/result/failed/...` để chuyển state. Kết thúc AG-UI run không xác nhận giao hàng hoặc kích hoạt payment. Không cho AG-UI `TOOL_CALL` hoặc hành động OpenUI bypass quote/x402.
 
 ## 7. State và concurrency
 
 Payment status theo S02, execution status: `DRAFT`, `PAYMENT_PENDING`, `QUEUED`, `SENT`, `ACKED`, `RUNNING`, `WAITING_BUYER`, `VERIFYING`, `DELIVERED`, `FAILED`, `UNKNOWN`, `CANCELLED`. CANCELLED chỉ khi đã xác nhận không chạy/đã dừng, không từ click cancel. DELIVERED có thể mở in-scope revision về QUEUED/VERIFYING theo policy nhưng không tạo hold mới.
 
 - Slot active invocation của thread khóa bằng DB constraint/transaction, không mutex trong process. DELIVERED chờ review không cho gửi thêm input tự do vào invocation cũ; tạo lượt mới khi slot đã đóng, revision/dispute vẫn theo invocation cũ.
-- Revision cần chiếm lại execution slot của cùng thread; nếu invocation khác đang chạy, trả 409 `THREAD_BUSY`, không chạy chồng hai invocation trong cùng timeline và không charge để vượt giới hạn. Dispute/read không cần execution slot.
+- Revision cần chiếm lại execution slot của cùng thread; nếu invocation khác đang chạy, trả `THREAD_BUSY`, không chạy chồng hai invocation trong cùng timeline và không charge để vượt giới hạn. Dispute/read không cần execution slot.
 - Quote creation chưa trả phí có thể giữ slot DRAFT hữu hạn; expired chưa submit được giải phóng. Nếu đã nhận signed submission/pending thì chỉ giải phóng sau reconciliation S02.
 - State payment độc lập execution: `FAILED + HELD` là trạng thái có thể có, cần workflow refund. Thread history tồn tại sau revoke hoặc app dừng bán.
 - Thay command revision/app khi quote còn hạn: revision/terms được pin tiếp tục hiệu lực, trừ emergency suspension chặn admission chưa hold; đã hold thì giao theo bản cũ hoặc xử lý hoàn, không đổi provider ngầm.
@@ -295,11 +245,12 @@ Deployment phải có versioned policy: trần/fee bps, quote lifetime, max deli
 8. Question/answer/revision đúng phạm vi không thêm tiền; arbitrary message mới và sửa vượt phạm vi không được lách thành continuation.
 9. Question render form theo schema trong thread; provider result chỉ VERIFYING trước validation.
 10. App suspend/offline chặn quote mới nhưng đọc được thread cũ; provider side effect UNKNOWN không tự retry; cancel không đồng nghĩa refund.
-11. Text và widget OpenUI hiện dần trước report `result`; provider/buyer mất mạng và replay chunk không trùng text/surface. `RUN_FINISHED` chưa giao result; widget action không thể bypass `/answers` hoặc tạo charge (S04).
+11. Text và widget OpenUI hiện dần trước report `result`; provider/buyer mất mạng và replay chunk không trùng text/surface. `RUN_FINISHED` chưa giao result; widget action không thể bypass luồng trả lời question hoặc tạo charge (S04).
+12. Invocation `FAILED` giải phóng slot của thread; revision invocation cũ khi thread đang có invocation khác mở trả `THREAD_BUSY`.
 
 ## Nguồn và phạm vi
 
 - R1: SIWE/EIP-4361: https://eips.ethereum.org/EIPS/eip-4361
 - R2: SSE event format/reconnect: https://html.spec.whatwg.org/multipage/server-sent-events.html
 - JSON Schema: https://json-schema.org/draft/2020-12/json-schema-core.html
-- Các endpoint, scopes, command syntax và lease policy do Payvoke thiết kế; x402/MCP không cung cấp sẵn. Cần sinh và kiểm tra OpenAPI từ implementation theo đặc tả này.
+- Scopes, command syntax và lease policy do Payvoke thiết kế; x402/MCP không cung cấp sẵn. Hình dạng route lấy từ code; OpenAPI nếu có phải được sinh từ implementation, không viết tay.

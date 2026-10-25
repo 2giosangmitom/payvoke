@@ -6,7 +6,7 @@ import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { identifier, object, providerKey, hash, validateEvent } from "./protocol";
 import { verifyStructuredDeliveries } from "./verify";
 import { applyOpenUIPatch, openuiCatalog } from "../openui/validator";
-import { availabilityLabel } from "../apps/schema";
+import { availabilityLabel, threadSlotReleased } from "../apps/schema";
 
 type Params = { appId: string; id: string; runId: string };
 type Row = { cursor: bigint; event: Prisma.JsonValue };
@@ -283,20 +283,8 @@ export async function registerAgui(
             },
           })
         : null;
-      const settlement = active?.invocation?.settlement;
-      const reverted =
-        settlement?.state === "REJECTED" &&
-        settlement.attempt?.state === "REVERTED" &&
-        Boolean(settlement.attempt.finalizedAt);
-      // Mirrors quote admission: an unattempted rejection releases the thread
-      // only after the quote expires; an unresolved attempt keeps it busy.
-      const rejectedWithoutAttempt = settlement?.state === "REJECTED" && !settlement.attempt;
-      const resolved =
-        active?.invocation?.executionStatus === "DELIVERED" ||
-        reverted ||
-        (active &&
-          (!settlement || rejectedWithoutAttempt) &&
-          active.validUntil.getTime() <= Date.now());
+      // Mirrors quote admission.
+      const resolved = Boolean(active) && threadSlotReleased(active);
       const defaultCommand =
         thread.app.commands.find((c) => c.id === thread.app.defaultCommandId) ??
         thread.app.commands[0] ??
@@ -1101,6 +1089,28 @@ export async function registerAgui(
       const runId = randomUUID();
       try {
         const created = await db.$transaction(async (tx) => {
+          // Serialize with quote admission on the thread row. A revision reopens
+          // this invocation, so it may only claim a slot no other invocation holds.
+          const locked = await tx.chatThread.updateMany({
+            where: { id: invocation.quote.threadId },
+            data: { quoteLockVersion: { increment: 1 } },
+          });
+          if (!locked.count) throw app.httpErrors.notFound("THREAD_NOT_FOUND");
+          const thread = await tx.chatThread.findUniqueOrThrow({
+            where: { id: invocation.quote.threadId },
+            select: { activeQuoteId: true },
+          });
+          if (thread.activeQuoteId && thread.activeQuoteId !== invocation.quoteId) {
+            const active = await tx.quote.findUniqueOrThrow({
+              where: { id: thread.activeQuoteId },
+              include: { invocation: { include: { settlement: { include: { attempt: true } } } } },
+            });
+            if (!threadSlotReleased(active)) throw app.httpErrors.conflict("THREAD_BUSY");
+          }
+          await tx.chatThread.update({
+            where: { id: invocation.quote.threadId },
+            data: { activeQuoteId: invocation.quoteId },
+          });
           const revision = await tx.invocationRevision.create({
             data: {
               invocationId: invocation.id,

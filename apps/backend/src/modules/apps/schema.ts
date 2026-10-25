@@ -217,8 +217,38 @@ export function validateTerms(value: unknown): value is Record<string, unknown> 
     text(revision.description, 1000) &&
     text(value.refundPolicy, 2000) &&
     text(value.sideEffects, 2000) &&
-    text(value.dataUse, 2000)
+    text(value.dataUse, 2000) &&
+    (value.verification === undefined ||
+      (record(value.verification) &&
+        Object.keys(value.verification).every((key) => key === "minEvidence") &&
+        minEvidenceLevels.includes(value.verification.minEvidence as MinEvidence)))
   );
+}
+
+// Evidence classes from M05 (RAILS): SELF < SIGN < {REC, WIT} < ATT. REC proves the
+// data arrived and WIT proves the recipient agreed; neither implies the other.
+export const evidenceLevels = ["SIGN", "REC", "WIT"] as const;
+export type EvidenceLevel = (typeof evidenceLevels)[number];
+export const minEvidenceLevels = ["SIGN", "REC"] as const;
+export type MinEvidence = (typeof minEvidenceLevels)[number];
+
+export function evidenceSatisfies(level: string, minimum: string): boolean {
+  if (minimum === "SIGN") return evidenceLevels.includes(level as EvidenceLevel);
+  return level === minimum;
+}
+
+// Terms are stored as signed. Fill the default before the revision is hashed so
+// every quote states the evidence floor that gates release.
+export function normalizeTerms(value: Record<string, unknown>): Record<string, unknown> {
+  return value.verification === undefined
+    ? { ...value, verification: { minEvidence: "SIGN" } }
+    : value;
+}
+
+export function termsMinEvidence(definition: unknown): MinEvidence | null {
+  if (!record(definition) || !record(definition.verification)) return null;
+  const level = definition.verification.minEvidence;
+  return minEvidenceLevels.includes(level as MinEvidence) ? (level as MinEvidence) : null;
 }
 
 export const HEARTBEAT_TTL_MS = 45_000;
@@ -234,6 +264,36 @@ export function isAvailable(app: {
     Boolean(app.lastHeartbeatAt) &&
     Date.now() - app.lastHeartbeatAt!.getTime() < HEARTBEAT_TTL_MS
   );
+}
+
+type SlotQuote = {
+  validUntil: Date;
+  invocation: {
+    executionStatus: string;
+    settlement: {
+      state: string;
+      attempt: { state: string; finalizedAt: Date | null } | null;
+    } | null;
+  } | null;
+};
+
+// A thread holds at most one open invocation. Delivered or failed runs release
+// the slot even while funds stay held. Unresolved transactions outlive quote
+// expiry; a finalized revert proves the attempt consumed its nonce without a
+// hold, and an unattempted rejection releases the slot once the quote expires.
+export function threadSlotReleased(active: SlotQuote | null, now = Date.now()): boolean {
+  if (!active) return true;
+  const status = active.invocation?.executionStatus;
+  if (status === "DELIVERED" || status === "FAILED") return true;
+  const settlement = active.invocation?.settlement;
+  if (
+    settlement?.state === "REJECTED" &&
+    settlement.attempt?.state === "REVERTED" &&
+    settlement.attempt.finalizedAt
+  )
+    return true;
+  const rejectedWithoutAttempt = settlement?.state === "REJECTED" && !settlement.attempt;
+  return (!settlement || rejectedWithoutAttempt) && active.validUntil.getTime() <= now;
 }
 
 export function availabilityLabel(app: {

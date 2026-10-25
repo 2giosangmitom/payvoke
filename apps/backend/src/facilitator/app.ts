@@ -140,6 +140,7 @@ export function createFacilitatorApp(
         policy.maxHoldSeconds <= policy.quoteLifetimeSeconds + policy.resolutionGraceSeconds ||
         policy.maxHoldSeconds > deployment.maxHoldSeconds ||
         policy.resolutionGraceSeconds <= 0 ||
+        !policy.minGrossAmount.greaterThan(0) ||
         getAddress(policy.feeRecipient) === zeroAddress
       ) {
         throw new VaultValidationError("deployment_policy_mismatch", 503);

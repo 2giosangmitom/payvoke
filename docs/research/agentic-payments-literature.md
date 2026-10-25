@@ -14,16 +14,16 @@ Quy ước trạng thái:
 
 Paper chia trách nhiệm facilitator thành hai nhóm: _authorization correctness_ (SR1–SR4) và _execution safety_ (SR5–SR8). Họ thử 15 facilitator x402 lớn (hơn 60K seller, 360K buyer) và tìm thấy 49 vi phạm; mọi facilitator vi phạm ít nhất một quy tắc. Từ đó họ rút ra bốn kiểu tấn công: Free Shopping, Asset Theft, Service Denial, Gas Abuse.
 
-| Quy tắc                                                                         | Payvoke                                                                                                                                                        | Trạng thái                                               |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| SR1 — proof phải khớp requirements server công bố                               | `accepted` so với requirements đã persist và `body.quoteId`; mọi field kinh tế/hash phải khớp ([S02 §5.2](../specs/02-x402-and-vault.md#52-payment-signature)) | Local (PAY-07)                                           |
-| SR2 — chữ ký payer phải xác thực đúng mô hình chữ ký                            | Grant signer ECDSA; không nhận ERC-6492/counterfactual; contract tái tạo digest                                                                                | Local (PAY-02/03)                                        |
-| SR3 — từ chối authorization hết hạn                                             | `validUntil` tuyệt đối, kiểm tra cả ở facilitator lẫn contract                                                                                                 | Local (PAY-05)                                           |
-| SR4 — chỉ báo thành công khi đã settle onchain                                  | Finality gate: receipt + `HoldReserved` + `getHold` ở finalized state; pending không `success:true`                                                            | Local (PAY-09/10)                                        |
-| SR5 — fail fast với payment vô nghĩa kinh tế hoặc không thể settle; idempotency | `grossAmount` dương, nằm trong cap; preview grant/balance + simulation trước khi ký tx; consume-once theo `invocationKey`                                      | Local, nhưng **chưa có giá sàn so với gas**; đề xuất R02 |
-| SR6 — giới hạn gas/phí do sponsor trả                                           | `GAS_MAX_LIMIT`, `GAS_MAX_FEE_PER_GAS`, `GAS_MAX_TRANSACTION_COST`, cửa sổ chi phí (`worker-config.ts`)                                                        | Local (PAY-08); ngân sách AVAX thật chờ T089             |
-| SR7 — settle phải kiểm tra lại, không tin verify trước đó                       | `settle` chạy lại đầy đủ checks của `verify` ([S02 §6.3](../specs/02-x402-and-vault.md#63-private-facilitator))                                                | Local                                                    |
-| SR8 — chỉ settle ngữ nghĩa onchain đã allowlist                                 | Settlement signer chỉ ký `reserveHold` trên đúng vault/network; không nhận calldata tùy ý                                                                      | Local                                                    |
+| Quy tắc                                                                         | Payvoke                                                                                                                                                        | Trạng thái                                         |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| SR1 — proof phải khớp requirements server công bố                               | `accepted` so với requirements đã persist và `body.quoteId`; mọi field kinh tế/hash phải khớp ([S02 §5.2](../specs/02-x402-and-vault.md#52-payment-signature)) | Local (PAY-07)                                     |
+| SR2 — chữ ký payer phải xác thực đúng mô hình chữ ký                            | Grant signer ECDSA; không nhận ERC-6492/counterfactual; contract tái tạo digest                                                                                | Local (PAY-02/03)                                  |
+| SR3 — từ chối authorization hết hạn                                             | `validUntil` tuyệt đối, kiểm tra cả ở facilitator lẫn contract                                                                                                 | Local (PAY-05)                                     |
+| SR4 — chỉ báo thành công khi đã settle onchain                                  | Finality gate: receipt + `HoldReserved` + `getHold` ở finalized state; pending không `success:true`                                                            | Local (PAY-09/10)                                  |
+| SR5 — fail fast với payment vô nghĩa kinh tế hoặc không thể settle; idempotency | `grossAmount` dương, nằm trong cap; preview grant/balance + simulation trước khi ký tx; consume-once theo `invocationKey`                                      | Local (R02: giá sàn `minGrossAmount` trong policy) |
+| SR6 — giới hạn gas/phí do sponsor trả                                           | `GAS_MAX_LIMIT`, `GAS_MAX_FEE_PER_GAS`, `GAS_MAX_TRANSACTION_COST`, cửa sổ chi phí (`worker-config.ts`)                                                        | Local (PAY-08); ngân sách AVAX thật chờ T089       |
+| SR7 — settle phải kiểm tra lại, không tin verify trước đó                       | `settle` chạy lại đầy đủ checks của `verify` ([S02 §6.3](../specs/02-x402-and-vault.md#63-private-facilitator))                                                | Local                                              |
+| SR8 — chỉ settle ngữ nghĩa onchain đã allowlist                                 | Settlement signer chỉ ký `reserveHold` trên đúng vault/network; không nhận calldata tùy ý                                                                      | Local                                              |
 
 Ba hướng giảm thiểu paper đề xuất đều đã là nguyên tắc của S02: (1) ràng buộc verify với settle; (2) coi mọi field client gửi là input thù địch, dùng allowlist và transaction shape cố định; (3) giới hạn chi phí sponsor theo mặc định.
 
@@ -44,14 +44,14 @@ Paper còn chứng minh F5: với dịch vụ có "hidden compute" (thinking tok
 
 Paper coi header payment là một _bearer capability_ có thể bị replay hoặc cache. Sáu biện pháp:
 
-| Biện pháp                                                                 | Payvoke                                                                                                  |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| M1 Typed encoding chuẩn + nonce/timestamp                                 | EIP-712 + JCS; vectors và mutation tests (P). **Local**                                                  |
-| M2 Settlement gắn với facilitator được ủy quyền                           | `reserveHold` chỉ gọi được bởi `RELAYER_ROLE`; header bị lộ cũng không tự settle được. **Local**         |
-| M3 Grant dùng một lần + gắn resource                                      | Consume-once theo invocation; quote thuộc đúng buyer/thread. **Local**                                   |
-| M4 Two-phase: chỉ giao sau reserve hoặc đủ finality                       | Finality gate trước `HELD` và outbox. **Local**                                                          |
-| M5 Response có `Cache-Control: no-store`, cô lập header                   | Quote/payment/auth trả `no-store`. Header không được log. **Local**; cần test proxy/CDN khi deploy (R01) |
-| M6 Chống steering ở lớp discovery (metadata giả, Sybil, prompt injection) | **Một phần**: metadata provider coi là dữ liệu không tin cậy; store chưa có xếp hạng chống Sybil (R06)   |
+| Biện pháp                                                                 | Payvoke                                                                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 Typed encoding chuẩn + nonce/timestamp                                 | EIP-712 + JCS; vectors và mutation tests (P). **Local**                                                                                                 |
+| M2 Settlement gắn với facilitator được ủy quyền                           | `reserveHold` chỉ gọi được bởi `RELAYER_ROLE`; header bị lộ cũng không tự settle được. **Local**                                                        |
+| M3 Grant dùng một lần + gắn resource                                      | Consume-once theo invocation; quote thuộc đúng buyer/thread. **Local**                                                                                  |
+| M4 Two-phase: chỉ giao sau reserve hoặc đủ finality                       | Finality gate trước `HELD` và outbox. **Local**                                                                                                         |
+| M5 Response có `Cache-Control: no-store`, cô lập header                   | Quote/payment/auth trả `no-store`. Header không được log. **Local**, có ca hồi quy trong conformance suite (R01); vẫn cần kiểm tra proxy/CDN khi deploy |
+| M6 Chống steering ở lớp discovery (metadata giả, Sybil, prompt injection) | **Một phần**: metadata provider coi là dữ liệu không tin cậy; store chưa có xếp hạng chống Sybil (R06)                                                  |
 
 ### 1.4 Phân tích hình thức bốn giao thức — [P4] Jiang et al., 2609.00060
 
@@ -71,7 +71,7 @@ Họ mô hình hoá x402, MPP, ACP và AP2 bằng Tamarin (529 lemma), tìm 40 p
 
 Trong x402 thông thường, `resource_url`, `description`, `reason` đi dạng plaintext tới server và facilitator trước khi settle. Paper xây middleware lọc PII (micro-F1 0,894, p99 5,73 ms).
 
-Payvoke: header `PAYMENT-REQUIRED`/`PAYMENT-SIGNATURE` chỉ chứa ID opaque, hash snapshot và `description: "Payvoke invocation"` cố định (`gateway.ts`). Prompt, file và câu trả lời buyer không đi qua header hay facilitator. Cần một test hồi quy bảo đảm điều này không bị phá (R01).
+Payvoke: header `PAYMENT-REQUIRED`/`PAYMENT-SIGNATURE` chỉ chứa ID opaque, hash snapshot và `description: "Payvoke invocation"` cố định (`gateway.ts`). Prompt, file và câu trả lời buyer không đi qua header hay facilitator. Ca hồi quy trong conformance suite (R01, mã `PII`) bảo đảm điều này: header, payload đã ký và log không chứa prompt/PII/signature.
 
 ### 1.6 Đo lường: số settlement không phải adoption — [P6] Ling et al., 2607.12575
 
@@ -97,7 +97,7 @@ SELF ≼ SIGN ≼ {WIT, REC} ≼ ATT ≼ PROOF
 
 (SELF: provider tự báo; SIGN: provider ký; WIT: nhân chứng thứ ba; REC: biên nhận từ hệ thống ngoài không có lợi ích; ATT: attestation TEE; PROOF: chứng minh mật mã.)
 
-Áp dụng cho Payvoke (Đề xuất R03/R04): command revision khai báo mức bằng chứng tối thiểu; M05 ghi nhận mức bằng chứng thực tế cho từng artifact version; finance chỉ release khi mức thực tế ≥ mức tối thiểu. Xem [M05](../modules/05-artifacts-and-verification.md).
+Áp dụng cho Payvoke (R03/R04, **Local**): command revision mang `terms.verification.minEvidence` (mặc định `SIGN`); mỗi quan sát giao hàng lưu mức bằng chứng và Evidence Envelope có hash JCS; finance chỉ release khi mức thực tế thoả mức tối thiểu, và dispute mặc định dùng hash envelope làm `evidenceHash`. `REC` tự động cho file vẫn chờ file verifier. Xem [M05](../modules/05-artifacts-and-verification.md).
 
 ### 2.3 A402 — [P9] Li et al., 2603.01179
 
@@ -132,6 +132,8 @@ Credential ký số gắn chất lượng và chi phí đo được với _đún
 Áp dụng (Đề xuất R05/R06): rating gắn với command revision (schema đã có `ProductRating` theo invocation đã giao); điểm hiển thị là posterior có chiết khấu thay vì trung bình thô; cân nhắc yêu cầu provider đặt cọc USDC trước khi được xếp hạng công khai.
 
 ## 5. Tổng hợp việc cần làm
+
+Trạng thái 25/10/2026: R01–R04 đã có code và test local (chưa phải bằng chứng Fuji); R05–R08 vẫn là đề xuất.
 
 | ID  | Việc                                                                                                   | Nguồn        | Module   |
 | --- | ------------------------------------------------------------------------------------------------------ | ------------ | -------- |

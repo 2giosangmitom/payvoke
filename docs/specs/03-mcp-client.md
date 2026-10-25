@@ -101,15 +101,15 @@ Payvoke dùng giao thức pairing riêng: người dùng đăng nhập ví trên
 
 Chọn CLI pairing do **người dùng trực tiếp chạy ngoài MCP**, không expose `pair`/`authorize`/`approve` tool. Browser không tải khóa riêng về hoặc chuyển khóa cho bridge. Không cần localhost listener/callback URI và tránh thêm bề mặt DNS rebinding. Không dùng copy/paste access token từ chat.
 
-### 5.2. Flow và endpoint bổ sung đề xuất
+### 5.2. Flow pairing đề xuất
 
-Các route dưới đây thuộc buyer-auth plane của S01; không thay đổi routes invocation ở §6. Mọi route HTTPS, origin đã pin. TTL/rate limit/token expiry là cấu hình bắt buộc ở §12.
+Các bước dưới đây thuộc buyer-auth plane của S01; không thay đổi luồng invocation ở §6. Route cụ thể sẽ do code định nghĩa. Mọi request HTTPS, origin đã pin. TTL/rate limit/token expiry là cấu hình bắt buộc ở §12.
 
 1. **CLI tạo identity:** tạo verifier CSPRNG tối thiểu 32 byte, `challenge = BASE64URL(SHA256(verifier))`; verifier chỉ ở memory/keychain local. Tạo spend key local nếu user chọn paid mode; chỉ public key được gửi đi. Browser approval không dùng verifier.
-2. **`POST /v1/client-pairings`** không có owner token, được rate limit. Body `{clientName, challenge, challengeMethod:"S256", requestedScopes, requestedWorkspaceIds, spendSigner?}`. Backend trả `{pairingId,userCode,verificationUri,expiresAt,pollIntervalMs}`. `spendSigner` là địa chỉ EVM 20 byte của key local, không private key. `pairingId` đủ entropy; userCode ngắn để nhập/đối chiếu, không phải credential. Lưu hash code/verifier challenge; giới hạn số lần thử code. Tên client là self-claimed, không trình bày như verified publisher.
-3. **User mở browser thủ công:** CLI hiện origin trusted, code và địa chỉ spendSigner; mở URL cố định qua API hệ điều hành, không dùng shell. Web không nhận access token qua URL. User nhập code trên trang `/clients/pair`, đăng nhập ví theo M01 nếu cần; web gọi `POST /v1/client-pairings/lookup {userCode}` qua cookie + CSRF để nhận pairing metadata, không token. User đối chiếu code/signer với CLI, chọn workspace/scopes/expiry. Chỉ scope con của requested; requestedWorkspaceIds rỗng nghĩa user tự chọn workspace mình sở hữu, không nghĩa tất cả workspace. Nếu requested có IDs, chỉ chọn subset vừa requested vừa thuộc buyer. Trang cảnh báo rủi ro phishing code.
-4. **Web chấp thuận:** `POST /v1/client-pairings/{pairingId}/approval` bằng cookie web session + CSRF + same-origin; body `{decision,scopes,workspaceIds,expiresAt}`. Chỉ POST sau một thao tác user rõ ràng; GET không cấp quyền. `frame-ancestors 'none'`, cookie Secure/HttpOnly/SameSite, không giữ “đã đồng ý mọi client”. Backend gắn owner từ session, không tin owner từ body. Pairing một lần; không sửa public key/challenge sau approval.
-5. **CLI lấy token:** `POST /v1/client-pairings/{pairingId}/exchange` body `{verifier}` qua HTTPS; kiểm tra challenge constant-time, expiry, decision. Pending trả 202 `{status:"PENDING",pollIntervalMs}`; rejected trả 403 `PAIRING_REJECTED`, expired trả 410 `PAIRING_EXPIRED`, consumed trả 409 `PAIRING_CONSUMED`, verifier sai trả 403 không tiết lộ owner/token. Sau approval, backend trả 200 `{clientAuthorizationId,accessToken,expiresAt,owner,scopes,workspaceIds,spendSigner?}`. Exchange phát token duy nhất, atomic; không token ở browser, logs, MCP result hoặc query string. CLI kiểm tra khớp profile/signer trước lưu keychain. Không phát refresh token MVP; hết hạn phải pairing lại. Nếu mất response exchange sau khi đã consume, làm pairing mới; orphan authorization hết hạn hoặc được buyer revoke qua web, không cho replay nhận token.
+2. **Tạo pairing:** không có owner token, được rate limit. CLI gửi tên client, challenge (`S256`), scopes và workspace yêu cầu, `spendSigner` tùy chọn. Backend trả pairing ID, user code, verification URI, expiry và poll interval. `spendSigner` là địa chỉ EVM 20 byte của key local, không private key. `pairingId` đủ entropy; userCode ngắn để nhập/đối chiếu, không phải credential. Lưu hash code/verifier challenge; giới hạn số lần thử code. Tên client là self-claimed, không trình bày như verified publisher.
+3. **User mở browser thủ công:** CLI hiện origin trusted, code và địa chỉ spendSigner; mở URL cố định qua API hệ điều hành, không dùng shell. Web không nhận access token qua URL. User nhập code trên trang pairing của web, đăng nhập ví theo M01 nếu cần; web tra pairing theo user code qua cookie + CSRF để nhận pairing metadata, không token. User đối chiếu code/signer với CLI, chọn workspace/scopes/expiry. Chỉ scope con của requested; requestedWorkspaceIds rỗng nghĩa user tự chọn workspace mình sở hữu, không nghĩa tất cả workspace. Nếu requested có IDs, chỉ chọn subset vừa requested vừa thuộc buyer. Trang cảnh báo rủi ro phishing code.
+4. **Web chấp thuận:** bằng cookie web session + CSRF + same-origin; gửi quyết định, scopes, workspace và expiry. Chỉ gửi sau một thao tác user rõ ràng; GET không cấp quyền. `frame-ancestors 'none'`, cookie Secure/HttpOnly/SameSite, không giữ “đã đồng ý mọi client”. Backend gắn owner từ session, không tin owner từ body. Pairing một lần; không sửa public key/challenge sau approval.
+5. **CLI lấy token:** đổi verifier lấy token qua HTTPS; kiểm tra challenge constant-time, expiry, decision. Pending, rejected, expired, consumed và verifier sai là các kết quả phân biệt; verifier sai không tiết lộ owner/token. Sau approval, backend trả authorization ID, access token, expiry, owner, scopes, workspace và `spendSigner` nếu có. Exchange phát token duy nhất, atomic; không token ở browser, logs, MCP result hoặc query string. CLI kiểm tra khớp profile/signer trước lưu keychain. Không phát refresh token MVP; hết hạn phải pairing lại. Nếu mất response exchange sau khi đã consume, làm pairing mới; orphan authorization hết hạn hoặc được buyer revoke qua web, không cho replay nhận token.
 6. **Đăng ký quyền chi riêng:** user mở trang vault đã xác thực, web hiển thị đúng public key/fingerprint pairing rồi ví chính ký giao dịch đăng ký cap/expiry trên Fuji. Bridge đọc trạng thái grant từ API/RPC trusted và kiểm tra chain/vault/key/owner; không coi approval API là grant onchain. Profile ghi `grantId` đã xác nhận. Token có submit nhưng chưa có grant vẫn không chi được.
 7. **Kết thúc:** xóa verifier, code và pending record local khi thành công/hết hạn. API lưu audit pairing owner/client/public key/scopes/expiry, không lưu secrets. Polling theo server interval có backoff, không polling vô hạn.
 
@@ -123,7 +123,7 @@ Kiểm soát bắt buộc: giới hạn pending pairings theo IP/client, brute-f
 
 ### 5.4. Thu hồi
 
-Đề xuất `GET /v1/client-authorizations` và `POST /v1/client-authorizations/{id}/revocation` trên web-auth plane để user xem thiết bị/scopes/last-used và thu hồi token ngay ở server. CLI logout xóa local token/key reference và yêu cầu revoke token; logout không được báo đã thu hồi onchain nếu chưa có giao dịch.
+Đề xuất trên web-auth plane cho user xem thiết bị/scopes/last-used và thu hồi token ngay ở server. CLI logout xóa local token/key reference và yêu cầu revoke token; logout không được báo đã thu hồi onchain nếu chưa có giao dịch.
 
 Hai nút riêng: **thu hồi API access** và **thu hồi spend grant** bằng ví. UI khuyến nghị cả hai nếu mất thiết bị. API revoke chặn thao tác mới ngay khi kiểm tra request; grant revoke chặn chứng từ chưa settle sau khi giao dịch revoke được xác nhận. Không bảo đảm hủy khoản đang settle/đã HELD trong race. Khoản đã trả vẫn thuộc owner, xem được trên web; không xóa invocation, không tự hoàn tiền, không đổi chủ sở hữu. Dừng local bridge không phải revoke.
 
@@ -137,20 +137,9 @@ Token audience MCP **khác** token buyer API. Không nhận token buyer rồi pa
 
 ### 6.1. Ánh xạ bắt buộc
 
-| Nghiệp vụ          | API                                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| Tìm app            | `GET /v1/apps`                                                                                            |
-| Lấy app            | `GET /v1/apps/{appId}`                                                                                    |
-| Commands           | `GET /v1/apps/{appId}` trả command/active revision                                                        |
-| Tạo thread         | `POST /v1/threads` body `{appId,workspaceId,clientRequestId}`                                             |
-| Chuẩn bị           | `POST /v1/quotes` body `{threadId,commandId,arguments,contextSelection,clientRequestId}`                  |
-| Submit             | `POST /v1/invocations` body `{quoteId}`, header `Idempotency-Key`; retry trả phí thêm `PAYMENT-SIGNATURE` |
-| Trạng thái/kết quả | `GET /v1/invocations/{id}`, `GET /v1/invocations/{id}/result`                                             |
-| Trả lời            | `POST /v1/invocations/{id}/answers` body `{questionId,arguments,clientRequestId}`                         |
-| Sửa trong phạm vi  | `POST /v1/invocations/{id}/revisions` body `{reason,clientRequestId}`                                     |
-| Hủy                | `POST /v1/invocations/{id}/cancellations` body `{reason,clientRequestId}`                                 |
+Bridge chỉ dùng buyer API của S01 cho các nghiệp vụ: tìm app, lấy app cùng command/active revision, tạo thread, chuẩn bị quote, submit invocation (`Idempotency-Key` bằng invocationId; retry trả phí thêm `PAYMENT-SIGNATURE`), đọc trạng thái/kết quả, trả lời question, sửa trong phạm vi và đề nghị hủy.
 
-Query filters/pagination và DTO chi tiết lấy từ spec API/OpenAPI cùng bộ tài liệu, không tự giả định đường `/mcp/run` hoặc `/apps/{id}/execute`. Các field adapter ở §7 là output MCP, không tự thêm chúng vào HTTP body ngoài bảng này.
+Route, filters/pagination và DTO chi tiết lấy từ code backend (hoặc OpenAPI sinh từ code), không ghi tay ở đây và không tự giả định đường `/mcp/run` hoặc `/apps/{id}/execute`. Các field adapter ở §7 là output MCP, không tự thêm chúng vào HTTP body của API.
 
 ### 6.2. Prepare không trả tiền
 
@@ -162,7 +151,7 @@ Quote trả **cả `quoteId` và `invocationId` đã reserve**, snapshot input/c
 
 1. Model gọi `submit_invocation` với quote ID và digest đã thấy. Bridge lấy invocationId từ quote và dùng chính invocationId làm Idempotency-Key theo S01, không cho model chọn một submission identity khác. Bridge tra quote chuẩn bị, owner/profile và approval ngoài model ở §8; thiếu approval trả lỗi, **không ký**.
 2. Bridge kiểm tra policy/grant/balance bằng nguồn trusted; reservation atomic theo `invocationId`. Kiểm tra quote còn hạn, input/context/command revision không đổi. Không tự re-quote nếu hết hạn.
-3. Gọi `POST /v1/invocations {quoteId}` chưa có payment. API trả 402 + `PAYMENT-REQUIRED` cho **chính quote đó**. Auth 401/403 không phải lỗi thanh toán, không xử lý bằng ký tiền.
+3. Gọi submit với `{quoteId}` chưa có payment. API trả 402 + `PAYMENT-REQUIRED` cho **chính quote đó**. Auth 401/403 không phải lỗi thanh toán, không xử lý bằng ký tiền.
 4. Kiểm tra challenge theo scheme Payvoke đã chốt: x402 version/scheme, `eip155:43113`, USDC/vault deployment allowlist, amount gross integer base units, invocation ID, quote digest, buyer, provider, phí/điều khoản, deadline. Mọi thành phần phải khớp quote và typed-data spec M06/M10; không dựng calldata hoặc domain từ mô tả provider. Mismatch → dừng trước ký.
 5. Spend key ký payload chuẩn của custom scheme, bind `grantId` theo spec thanh toán. Retry đúng body và **cùng Idempotency-Key**, thêm `PAYMENT-SIGNATURE`; Authorization API vẫn phải có. x402 signature không thay thế owner auth. SDK generic x402 chỉ dùng nếu đã đăng ký custom signer đúng scheme; không fallback `exact` [S10].
 6. Nhận 202 job sau `HELD` đã xác nhận; trả MCP result ngay có invocation ID/payment status/status hiện tại. Đọc `PAYMENT-RESPONSE` theo spec, nhưng nguồn đối soát cuối là API/onchain; không báo provider chạy chỉ vì client vừa ký.
@@ -226,7 +215,7 @@ Các tool không nhận đối số hạ tầng tùy ý, gồm API/base URL, cal
 - Submit `Idempotency-Key` bắt buộc bằng invocationId của quote; quote đã bind immutable digest/invocation. Contract dùng invocationKey dẫn xuất từ invocationId theo S02. Sai header key bị từ chối trước charge, không tạo execution/payment thứ hai. Chữ ký bind economics, không chỉ bind header key.
 - Trước network send, journal local lưu owner/profile/keys/quote/digest/reserved invocation ID, phase và reservation atomic. Không ghi private key hay payment signature vào plaintext journal. Restart cần ký lại chỉ khi scheme cho phép cùng business invocation; chưa rõ thì read/reconcile trước, không nonce/quote mới.
 - Mất response prepare: retry cùng `clientRequestId` và body để nhận quote cũ. Quote hết hạn thì hiển thị lỗi, user chủ động tạo thao tác mới/approval mới.
-- Mất response submit/settle: đọc `GET /v1/invocations/{reservedId}` trước. Nếu đã HELD/running/terminal, trả trạng thái đó; nếu chưa rõ, giữ reservation và retry đúng `{quoteId}` + key theo API hoặc đợi reconciliation. 404 không chứng minh chắc chắn “chưa giữ tiền”; không tự mua lại sau 404/timeout.
+- Mất response submit/settle: đọc trạng thái invocation đã reserve trước. Nếu đã HELD/running/terminal, trả trạng thái đó; nếu chưa rõ, giữ reservation và retry đúng `{quoteId}` + key theo API hoặc đợi reconciliation. 404 không chứng minh chắc chắn “chưa giữ tiền”; không tự mua lại sau 404/timeout.
 - Hai submit đồng thời qua nhiều process phải dùng lock/reservation local; backend và contract vẫn phải chống trùng vì local lock không đủ bảo vệ toàn hệ thống.
 - 429/5xx/network: GET retry có backoff+jitter, tuân Retry-After; mutation chỉ retry cùng business key/payload, có deadline/attempt cap. 401 cần pairing lại; 403 không tự xin scope rộng hơn; 402 mismatch không retry ký.
 - User gửi lại cùng logical operation sau restart dùng business key đã lưu; JSON-RPC ID mới không tạo giao dịch mới. Nếu user cố tình mua lần mới, phải có prepare/clientRequestId/quote/approval mới.

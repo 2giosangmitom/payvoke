@@ -70,9 +70,9 @@ Object đúng shape sau; null và array rỗng phải explicit, không thay omit
 
 `inputHash = H(JCS(InputSnapshot))`. `commandSchemaHash = H(JCS(approvedInputSchema))`. Messages theo thứ tự timeline/version, files theo fileId byte-order để định nghĩa canonical selection. Chỉ ID/version/content hash, không signed URL hoặc token. Actual input/provider event resolve từ snapshot và kiểm tra content hash; không gửi nội dung khác dưới cùng inputHash.
 
-`TermsSnapshot` gồm `{schemaVersion:1,productId,productVersion,commandId,definition:approvedTerms,deliveryDeadline}`; `termsHash = H(JCS(TermsSnapshot))`.
+`TermsSnapshot` gồm `{schemaVersion:2,productId,productVersion,commandId,definition:approvedTerms,deliveryDeadline}`; `termsHash = H(JCS(TermsSnapshot))`. Version 2 bắt buộc `approvedTerms.verification.minEvidence` (`SIGN` hoặc `REC`), là mức bằng chứng tối thiểu trước khi release ([M05](../modules/05-artifacts-and-verification.md#mức-bằng-chứng-trước-khi-giải-ngân)); client từ chối quote thiếu field này.
 
-`PolicySnapshot` gồm `{schemaVersion:1,policyVersion,feeBps,feeRecipient,quoteLifetimeSeconds,maxHoldSeconds,resolutionGraceSeconds}`; `policyHash = H(JCS(PolicySnapshot))`. Versioned policy lưu bền vững; buyer nhìn được policy/terms trước ký.
+`PolicySnapshot` gồm `{schemaVersion:1,policyVersion,feeBps,feeRecipient,quoteLifetimeSeconds,maxHoldSeconds,resolutionGraceSeconds}`; `policyHash = H(JCS(PolicySnapshot))`. Versioned policy lưu bền vững; buyer nhìn được policy/terms trước ký. Policy deployment còn có `minGrossAmount` (atomic USDC) là giá sàn đã duyệt so với gas hold + release do Payvoke trả; đây là luật admission (tạo command và quote), không nằm trong PolicySnapshot nên không đổi `policyHash`.
 
 API quote phải trả đủ ba snapshot hoặc tham chiếu immutable có thể đọc/xác minh trước ký, không chỉ hash opaque. SDK custom client kiểm tra snapshots, commandId và allowed origin/network/asset/vault.
 
@@ -87,7 +87,7 @@ resolveBy        = releaseNotBefore + resolutionGraceSeconds
 
 Chốt trước ký, không tính lại dựa trên thời điểm retry. Contract yêu cầu `now < validUntil < deliveryDeadline <= releaseNotBefore < resolveBy`, duration không vượt deployment cap. Nếu reviewSeconds=0 thì bằng nhau được ở mốc release; policy nền tảng quyết định có cho phép 0 không.
 
-`releaseNotBefore` là thời điểm sớm nhất được giải ngân. Quyết định nghiệp vụ chỉ được cho phép release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Nếu không đủ thời gian trước resolveBy, chuyển resolver/refund; không kéo dài hold bằng cách sửa chữ ký cũ. Contract kiểm tra deadline/counter; platform phải xác nhận việc giao và khả năng truy cập file.
+`releaseNotBefore` là thời điểm sớm nhất được giải ngân. Quyết định nghiệp vụ chỉ được cho phép release sau `max(releaseNotBefore, actualDeliveredAt + reviewSeconds + khoảng gián đoạn truy cập được xác nhận)`. Release còn cần evidence mới nhất đạt `minEvidence` của TermsSnapshot. Nếu không đủ thời gian hoặc không đủ bằng chứng trước resolveBy, chuyển resolver/refund; không kéo dài hold bằng cách sửa chữ ký cũ. Contract kiểm tra deadline/counter; platform phải xác nhận việc giao và khả năng truy cập file.
 
 ## 4. EIP-712 chính thức của Payvoke v1
 
@@ -148,7 +148,7 @@ Tất cả payment headers là base64 UTF-8 JSON, không raw hex signature. Body
 ```text
 {
   x402Version: 2,
-  resource: {url: canonical /v1/invocations URL, method: "POST"},
+  resource: {url: URL canonical của route submit invocation, method: "POST"},
   accepts: [{
     scheme: "payvoke-vault", network: "eip155:43113",
     asset: fixed USDC, amount: quote.grossAmount, payTo: vault,
@@ -210,9 +210,9 @@ Với upfront, SDK không gọi facilitator verify; check bắt buộc không đ
 
 ### 6.3 Private facilitator
 
-Endpoints `GET /supported`, `POST /verify`, `POST /settle`, chỉ gateway/service credential có quyền; body POST `{x402Version,paymentPayload,paymentRequirements}`. Không bật public arbitrary relay.
+Facilitator cung cấp các thao tác x402 chuẩn supported/verify/settle (route cụ thể đọc từ code); chỉ gateway/service credential có quyền; verify/settle nhận `{x402Version,paymentPayload,paymentRequirements}`. Không bật public arbitrary relay.
 
-`/supported` trả đúng v2/scheme/Fuji; `extra:{vault,schemeVersion:"1"}`, `signers:{"eip155:*":[relayerAddress]}`. Signers là relay gas payer, không buyer/session signer. Gateway fail startup nếu capability mismatch.
+Supported trả đúng v2/scheme/Fuji; `extra:{vault,schemeVersion:"1"}`, `signers:{"eip155:*":[relayerAddress]}`. Signers là relay gas payer, không buyer/session signer. Gateway fail startup nếu capability mismatch.
 
 `verify`: shape/network/asset/vault/version/accepted bindings, quote persisted source, domain/digests, grant/signature, time/caps/balance, simulation. Read-only, không consume nonce/charge.
 
@@ -371,7 +371,7 @@ Bảng dưới ánh xạ các quy tắc, bất biến và biện pháp trong ngh
 | [P1] SR2, [P4] P18         | Xác thực chữ ký đúng signer của grant/epoch          | §4                       | Local                           |
 | [P1] SR3, [P4] P17         | Hết hạn/revoke có hiệu lực trước hold                | §2, §3.3                 | Local                           |
 | [P1] SR4, [P3] M4, [P4] P5 | Chỉ success khi hold đã finalized                    | §5.3, §7                 | Local                           |
-| [P1] SR5                   | Fail fast với payment không settle được/vô nghĩa     | §6.3 bước 4, §8.2        | Local; giá sàn theo gas chưa có |
+| [P1] SR5                   | Fail fast với payment không settle được/vô nghĩa     | §3.2, §6.3 bước 4, §8.2  | Local (giá sàn policy)          |
 | [P1] SR6, [P4] P13         | Trần gas/phí và ngân sách sponsor                    | §6.3                     | Local; ngân sách thật chờ duyệt |
 | [P1] SR7                   | `settle` kiểm tra lại toàn bộ                        | §6.3                     | Local                           |
 | [P1] SR8                   | Chỉ settle calldata đã allowlist                     | §6.3                     | Local                           |
@@ -380,10 +380,10 @@ Bảng dưới ánh xạ các quy tắc, bất biến và biện pháp trong ngh
 | [P2] F3 (I2), [P4] P8      | Không overdraft cap                                  | §2, §8.2                 | Local (không dùng `upto`)       |
 | [P2] F4 (I1, I5)           | Không giao việc trước khi tiền được giữ              | §1 (`upfront`), §7       | Local                           |
 | [P3] M2                    | Chỉ facilitator được ủy quyền mới settle             | §8.1 `RELAYER_ROLE`      | Local                           |
-| [P3] M5, [P4] P16, [P5]    | Không cache/log header; không PII trong metadata     | §5, S01 §2               | Local; thiếu test hồi quy riêng |
+| [P3] M5, [P4] P16, [P5]    | Không cache/log header; không PII trong metadata     | §5, S01 §2               | Local                           |
 | [P4] P4, P6                | Hold/refund/release/reclaim cùng tham chiếu hold     | §8.3, §9                 | Local                           |
 
-Việc tiếp theo (roadmap R01): gom các test hiện có và bổ sung ca còn thiếu thành một conformance suite, mỗi ca đặt tên theo mã quy tắc ở cột "Nguồn", để reviewer chạy lại được từng lớp lỗi. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
+**Conformance suite (R01):** `pnpm --dir apps/backend test:conformance` chạy backend, protocol và vault suites một lần rồi đối chiếu từng mã ở cột "Nguồn" với các ca âm tính trong manifest `apps/backend/test/conformance/rules.ts`. Suite fail nếu một quy tắc không có ca pass, hoặc nếu một ca trong manifest bị đổi tên, skip hay fail. M6 (chống steering ở discovery) được báo là DEFERRED vì thuộc R06, không được tính là pass. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
 
 ## Nguồn
 

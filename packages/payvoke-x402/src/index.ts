@@ -196,7 +196,10 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
   assert(q.validUntil < q.deliveryDeadline && q.deliveryDeadline <= q.releaseNotBefore);
   assert(q.releaseNotBefore < q.resolveBy);
   assert(Number.isSafeInteger(document.productVersion) && document.productVersion > 0);
-  assert(input.schemaVersion === 1 && terms.schemaVersion === 1 && policy.schemaVersion === 1);
+  // TermsSnapshot v2 carries the evidence floor that gates release (M05).
+  assert(input.schemaVersion === 1 && terms.schemaVersion === 2 && policy.schemaVersion === 1);
+  const verification = object(definition.verification);
+  assert(verification.minEvidence === "SIGN" || verification.minEvidence === "REC");
   assert(input.sessionId === document.sessionId);
   assert(
     typeof input.commandSchemaHash === "string" && /^0x[0-9a-f]{64}$/.test(input.commandSchemaHash),

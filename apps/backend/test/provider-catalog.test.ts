@@ -155,6 +155,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       quoteLifetimeSeconds: 60,
       maxHoldSeconds: 10000,
       resolutionGraceSeconds: 60,
+      minGrossAmount: "1000",
     },
   });
   const terms = {
@@ -943,4 +944,222 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     ).statusCode,
     401,
   );
+});
+
+it("releases the thread slot after a failed run and keeps one open invocation per thread", async () => {
+  const cookie = await login(wallet);
+  const web = (method: string, url: string, payload?: Record<string, unknown>) =>
+    app.inject({
+      method: method as "GET",
+      url,
+      headers: { origin, cookie },
+      ...(payload === undefined ? {} : { payload }),
+    });
+  const created = await web("POST", "/v1/provider/apps", {
+    name: "Slots",
+    payoutAddress: wallet.address,
+    clientRequestId: randomUUID(),
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const id = created.json().id;
+  const command = await web("POST", `/v1/provider/apps/${id}/commands`, {
+    name: "summarize",
+    description: "Summarizes text",
+    options: [{ name: "text", type: "STRING", required: true }],
+    positionalParameter: "text",
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["summary"],
+      properties: { summary: { type: "string" } },
+    },
+    grossAmount: "10000",
+    terms: {
+      deliverySeconds: 600,
+      reviewSeconds: 3600,
+      revisionPolicy: { maxIncluded: 1, description: "One in-scope revision" },
+      refundPolicy: "Refund undelivered",
+      sideEffects: "none",
+      dataUse: "This request",
+    },
+  });
+  assert.equal(command.statusCode, 201, command.body);
+  const commandId = command.json().id;
+  await web("POST", `/v1/provider/apps/${id}/commands/${commandId}/default`, {});
+  await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
+  const buyer = await db.walletAddress.findFirstOrThrow({
+    where: { address: { equals: wallet.address, mode: "insensitive" } },
+  });
+  const thread = async (clientRequestId: string) =>
+    (await web("POST", "/v1/threads", { appId: id, clientRequestId })).json().id as string;
+  const quote = (threadId: string, clientRequestId: string) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/quotes",
+      headers: { origin, cookie, "idempotency-key": clientRequestId },
+      payload: {
+        threadId,
+        commandId,
+        arguments: { text: "hello" },
+        contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+        clientRequestId,
+      },
+    });
+  // Finalized holds are test fixtures; the settlement worker creates them in production.
+  const hold = async (
+    quoted: {
+      invocationId: string;
+      quoteId: string;
+      quoteDigest: string;
+      protocolQuote: { invocationKey: string };
+    },
+    executionStatus: "FAILED" | "DELIVERED" | "RUNNING",
+  ) => {
+    await db.invocation.create({
+      data: {
+        id: quoted.invocationId,
+        quoteId: quoted.quoteId,
+        buyerId: buyer.userId,
+        executionStatus,
+      },
+    });
+    await db.settlementOperation.create({
+      data: {
+        invocationId: quoted.invocationId,
+        invocationKey: quoted.protocolQuote.invocationKey,
+        quoteDigest: quoted.quoteDigest,
+        authorizationDigest: `0x${randomBytes(32).toString("hex")}`,
+        recoveredSigner: wallet.address,
+        paymentPayload: {},
+        state: "HELD",
+      },
+    });
+  };
+
+  const failedThread = await thread("slot-failed");
+  const failed = await quote(failedThread, "slot-failed-1");
+  assert.equal(failed.statusCode, 201, failed.body);
+  await hold(failed.json(), "FAILED");
+  assert.equal((await web("GET", `/v1/threads/${failedThread}`)).json().activeQuoteId, null);
+  const retry = await quote(failedThread, "slot-failed-2");
+  assert.equal(retry.statusCode, 201, retry.body);
+
+  const sharedThread = await thread("slot-revision");
+  const delivered = await quote(sharedThread, "slot-revision-1");
+  await hold(delivered.json(), "DELIVERED");
+  const next = await quote(sharedThread, "slot-revision-2");
+  assert.equal(next.statusCode, 201, next.body);
+  await hold(next.json(), "RUNNING");
+  const revision = await web("POST", `/v1/invocations/${delivered.json().invocationId}/revisions`, {
+    reason: "Shorten it",
+    clientRequestId: "slot-revision-busy",
+  });
+  assert.equal(revision.statusCode, 409, revision.body);
+  assert.equal(revision.json().error, "THREAD_BUSY");
+  assert.equal(
+    (await db.invocation.findUniqueOrThrow({ where: { id: delivered.json().invocationId } }))
+      .executionStatus,
+    "DELIVERED",
+  );
+
+  // Once the newer run finishes, the earlier delivery may use its included revision
+  // and becomes the thread's open invocation again.
+  await db.invocation.update({
+    where: { id: next.json().invocationId },
+    data: { executionStatus: "DELIVERED" },
+  });
+  const reopened = await web("POST", `/v1/invocations/${delivered.json().invocationId}/revisions`, {
+    reason: "Shorten it",
+    clientRequestId: "slot-revision-free",
+  });
+  assert.equal(reopened.statusCode, 202, reopened.body);
+  assert.equal(
+    (await web("GET", `/v1/threads/${sharedThread}`)).json().activeQuoteId,
+    delivered.json().quoteId,
+  );
+  assert.equal((await quote(sharedThread, "slot-revision-3")).statusCode, 409);
+});
+
+it("enforces the approved price floor and defaults the evidence floor in signed terms", async () => {
+  const cookie = await login(wallet);
+  const web = (method: string, url: string, payload?: Record<string, unknown>) =>
+    app.inject({
+      method: method as "GET",
+      url,
+      headers: { origin, cookie },
+      ...(payload === undefined ? {} : { payload }),
+    });
+  const created = await web("POST", "/v1/provider/apps", {
+    name: "Floors",
+    payoutAddress: wallet.address,
+    clientRequestId: randomUUID(),
+  });
+  const id = created.json().id;
+  const terms = {
+    deliverySeconds: 600,
+    reviewSeconds: 3600,
+    revisionPolicy: { maxIncluded: 0, description: "No revisions" },
+    refundPolicy: "Refund undelivered",
+    sideEffects: "none",
+    dataUse: "This request",
+  };
+  const command = (grossAmount: string, extra: Record<string, unknown> = {}) =>
+    web("POST", `/v1/provider/apps/${id}/commands`, {
+      name: `cmd_${randomBytes(4).toString("hex")}`,
+      description: "Summarizes text",
+      options: [{ name: "text", type: "STRING", required: true }],
+      positionalParameter: "text",
+      outputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["summary"],
+        properties: { summary: { type: "string" } },
+      },
+      grossAmount,
+      terms: { ...terms, ...extra },
+    });
+  const below = await command("999");
+  assert.equal(below.statusCode, 422, below.body);
+  assert.equal(below.json().error, "PRICE_BELOW_FLOOR");
+  const invalid = await command("1000", { verification: { minEvidence: "SELF" } });
+  assert.equal(invalid.statusCode, 400, invalid.body);
+  const defaulted = await command("1000");
+  assert.equal(defaulted.statusCode, 201, defaulted.body);
+  assert.deepEqual(defaulted.json().revision.terms.verification, { minEvidence: "SIGN" });
+  const receipt = await command("1000", { verification: { minEvidence: "REC" } });
+  assert.deepEqual(receipt.json().revision.terms.verification, { minEvidence: "REC" });
+
+  const commandId = defaulted.json().id;
+  await web("POST", `/v1/provider/apps/${id}/commands/${commandId}/default`, {});
+  await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
+  const thread = (await web("POST", "/v1/threads", { appId: id, clientRequestId: "floor" })).json();
+  const quote = (clientRequestId: string) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/quotes",
+      headers: { origin, cookie, "idempotency-key": clientRequestId },
+      payload: {
+        threadId: thread.id,
+        commandId,
+        arguments: { text: "hello" },
+        contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+        clientRequestId,
+      },
+    });
+  // A floor raised after publication blocks new sales of the cheaper revision.
+  await db.deploymentPolicy.update({
+    where: { version: "test" },
+    data: { minGrossAmount: "5000" },
+  });
+  const blocked = await quote("floor-raised");
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.equal(blocked.json().error, "PRICE_BELOW_FLOOR");
+  await db.deploymentPolicy.update({
+    where: { version: "test" },
+    data: { minGrossAmount: "1000" },
+  });
+  const quoted = await quote("floor-restored");
+  assert.equal(quoted.statusCode, 201, quoted.body);
+  assert.equal(quoted.json().termsSnapshot.schemaVersion, 2);
+  assert.deepEqual(quoted.json().termsSnapshot.definition.verification, { minEvidence: "SIGN" });
 });

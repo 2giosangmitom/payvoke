@@ -135,8 +135,12 @@ artifact's content hash cannot change under the same version, and confirmed
 access interruption cannot decrease under that version.
 
 For controlled local/approved testing only, a trusted operator can supply
-`delivery: {id,invocationId,artifactVersion,outputHash,verifier,accessInterruptionSeconds}`
-in the command input and explicitly enable MANUAL_DELIVERY_ATTESTATION_ENABLED:
+`delivery: {id,invocationId,artifactVersion,outputHash,verifier,accessInterruptionSeconds,evidenceLevel}`
+in the command input and explicitly enable MANUAL_DELIVERY_ATTESTATION_ENABLED.
+`evidenceLevel` is required: `SIGN`, `REC` (independent receipt, e.g. checksum and
+buyer download) or `WIT` (an authorized person confirmed). It must describe what
+was actually observed; it is compared with the quote's signed
+`terms.verification.minEvidence` and REC/WIT do not substitute for each other:
 
 ```sh
 pnpm ops:fuji finance-delivery operations/private/delivery.json
@@ -147,7 +151,11 @@ declare unverified provider output delivered. Manual enablement does not waive
 review timing or approver requirements. Later provider verification must call the
 internal seam only after validating the approved output and actual access.
 
-The business gate requires the latest observation ID pinned in the approval,
+Every observation stores an immutable Evidence Envelope and its JCS hash; a
+buyer dispute intent without an explicit hash references the latest envelope.
+
+The business gate requires the latest observation ID pinned in the approval, an
+evidence level that satisfies the signed `minEvidence` (`evidence_below_minimum`),
 on-time observation, and:
 
 `now >= max(releaseNotBefore, observationTime + reviewSeconds + interruption)`
@@ -168,8 +176,8 @@ or reclaim; no provider consumer is enabled here.
 
 ## Buyer and payout recovery
 
-Authenticated owner can request unsigned dispute/reclaim calldata at
-`POST /v1/invocations/:id/financial-intents`. Returned status is UNSUBMITTED:
+Authenticated owner can request unsigned dispute/reclaim calldata through the
+buyer financial-intents action (route defined in `src/modules/payments`). Returned status is UNSUBMITTED:
 the wallet must simulate/sign/send. An offchain request is not an onchain lock;
 only a finalized DisputeOpened event is projected as DISPUTED. A stale intent may
 revert after a concurrent financial decision; it is never reported as successful

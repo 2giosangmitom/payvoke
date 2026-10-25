@@ -10,6 +10,7 @@ import {
   text,
   validCommandName,
   validateCommandInputSchema,
+  normalizeTerms,
   validateTerms,
 } from "../apps/schema";
 
@@ -167,7 +168,7 @@ export async function registerProvider(app: FastifyInstance, db: PrismaClient) {
     )
       throw app.httpErrors.badRequest("INVALID_TERMS");
     const policy = await db.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
-    const terms = body.terms as Record<string, unknown>;
+    const terms = normalizeTerms(body.terms as Record<string, unknown>);
     if (
       !policy ||
       (terms.deliverySeconds as number) +
@@ -177,6 +178,10 @@ export async function registerProvider(app: FastifyInstance, db: PrismaClient) {
         policy.maxHoldSeconds
     )
       throw app.httpErrors.badRequest("TERMS_EXCEED_POLICY");
+    // Payvoke sponsors hold and release gas; the approved policy floor keeps each
+    // paid call above that cost.
+    if (BigInt(body.grossAmount) < BigInt(policy.minGrossAmount.toFixed(0)))
+      throw app.httpErrors.unprocessableEntity("PRICE_BELOW_FLOOR");
     const duplicate = await db.appCommand.findFirst({
       where: {
         appId,
@@ -191,7 +196,7 @@ export async function registerProvider(app: FastifyInstance, db: PrismaClient) {
       outputSchema: body.outputSchema as Prisma.InputJsonValue | undefined,
       positionalParameter: positional,
       grossAmount: body.grossAmount,
-      terms: body.terms as Prisma.InputJsonValue,
+      terms: terms as Prisma.InputJsonValue,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,
     };

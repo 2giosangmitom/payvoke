@@ -25,7 +25,7 @@ import type { Config } from "../../config";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { parseFinancialJson } from "../../http/json";
 import { gatewayFacilitator, settleGateway } from "../payments/gateway";
-import { isAvailable } from "../apps/schema";
+import { isAvailable, termsMinEvidence, threadSlotReleased } from "../apps/schema";
 
 type PrepareBody = {
   threadId: string;
@@ -148,22 +148,7 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
               where: { id: thread.activeQuoteId },
               include: { invocation: { include: { settlement: { include: { attempt: true } } } } },
             });
-            // Unresolved transactions outlive quote expiry. A finalized revert
-            // proves the attempt consumed its nonce without reserving a hold.
-            const finalizedRevert =
-              active.invocation?.settlement?.state === "REJECTED" &&
-              active.invocation.settlement.attempt?.state === "REVERTED" &&
-              !!active.invocation.settlement.attempt.finalizedAt;
-            const verifiedDelivery = active.invocation?.executionStatus === "DELIVERED";
-            if (
-              !verifiedDelivery &&
-              active.invocation?.settlement &&
-              (active.invocation.settlement.state !== "REJECTED" ||
-                (active.invocation.settlement.attempt && !finalizedRevert))
-            ) {
-              throw app.httpErrors.conflict("THREAD_BUSY");
-            }
-            if (!verifiedDelivery && !finalizedRevert && active.validUntil.getTime() > now * 1000)
+            if (!threadSlotReleased(active, now * 1000))
               throw app.httpErrors.conflict("THREAD_BUSY");
           }
           const product = thread.app;
@@ -188,6 +173,9 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
           if (!policy || getAddress(policy.vault) !== vault) {
             throw app.httpErrors.serviceUnavailable("POLICY_NOT_CONFIGURED");
           }
+          // A floor raised after the revision was published still blocks new sales.
+          if (revision.grossAmount.lessThan(policy.minGrossAmount))
+            throw app.httpErrors.conflict("PRICE_BELOW_FLOOR");
           const effectiveArguments = structuredClone(body.arguments);
           const schema = revision.inputSchema;
           if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
@@ -218,7 +206,8 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
             typeof terms !== "object" ||
             Array.isArray(terms) ||
             terms.deliverySeconds !== revision.deliverySeconds ||
-            terms.reviewSeconds !== revision.reviewSeconds
+            terms.reviewSeconds !== revision.reviewSeconds ||
+            !termsMinEvidence(terms)
           ) {
             throw app.httpErrors.serviceUnavailable("TERMS_INCONSISTENT");
           }
@@ -308,7 +297,7 @@ export async function registerQuotes(app: FastifyInstance, config: Config, db: P
             context: contextManifest,
           };
           const termsSnapshot = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             productId: product.id,
             productVersion: version.number,
             commandId: command.id,

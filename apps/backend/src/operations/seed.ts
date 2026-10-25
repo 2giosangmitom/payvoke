@@ -19,6 +19,8 @@ export type Seed = {
   deliverySeconds: number;
   reviewSeconds: number;
   grossAmount: string;
+  // Approved price floor (atomic USDC) covering sponsored hold + release gas.
+  minGrossAmount: string;
 };
 
 // Fresh isolated database only. No upsert, catalog overwrite, deletion or
@@ -36,6 +38,8 @@ export function localSeedDatabase(value: string) {
 export async function seedCeremony(db: PrismaClient, seed: Seed) {
   if (
     integer(seed.grossAmount) === 0n ||
+    integer(seed.minGrossAmount) === 0n ||
+    integer(seed.grossAmount) < integer(seed.minGrossAmount) ||
     integer(seed.grossAmount) > integer(seed.run.maxAmount) ||
     !Number.isSafeInteger(seed.feeBps) ||
     seed.feeBps < 0 ||
@@ -109,6 +113,7 @@ export async function seedCeremony(db: PrismaClient, seed: Seed) {
           refundPolicy: "Buyer reclaims after resolveBy",
           sideEffects: "none",
           dataUse: "Test data only",
+          verification: { minEvidence: "SIGN" },
         },
       },
     });
@@ -138,6 +143,7 @@ export async function seedCeremony(db: PrismaClient, seed: Seed) {
         quoteLifetimeSeconds: seed.quoteLifetimeSeconds,
         maxHoldSeconds: seed.maxHoldSeconds,
         resolutionGraceSeconds: seed.resolutionGraceSeconds,
+        minGrossAmount: seed.minGrossAmount,
       },
     });
   });

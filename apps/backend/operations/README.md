@@ -127,7 +127,9 @@ The login command prints only buyer identity, never cookies/tokens, and signs ou
 Use the returned buyer ID in `seed.json`, matching `Seed` in
 `src/operations/seed.ts`. Supply the same `run`, fresh `productId`/`policyVersion`,
 approved provider/fee-recipient, feeBps, quoteLifetimeSeconds, maxHoldSeconds,
-resolutionGraceSeconds, deliverySeconds, reviewSeconds and grossAmount.
+resolutionGraceSeconds, deliverySeconds, reviewSeconds, grossAmount and the
+approved `minGrossAmount` price floor (atomic USDC; it must cover sponsored
+hold + release gas and `grossAmount` must not be below it).
 
 ```sh
 # CEREMONY_DATABASE_URL must explicitly name the dedicated loopback DB.
