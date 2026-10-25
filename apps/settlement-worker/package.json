@@ -1,6 +1,10 @@
 {
   "name": "settlement-worker",
   "private": true,
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
   "type": "module",
   "scripts": {
     "dev": "tsx ./src/main.ts",

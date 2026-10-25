@@ -1,5 +1,10 @@
 {
   "name": "api",
+  "files": [
+    "src",
+    "auth.cli.ts",
+    "tsconfig.json"
+  ],
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",

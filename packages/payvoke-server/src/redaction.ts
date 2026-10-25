@@ -1,4 +1,3 @@
-
 export const logRedaction = {
   paths: [
     "req.headers.authorization",

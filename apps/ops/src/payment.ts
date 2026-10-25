@@ -20,6 +20,7 @@ import {
   type PublicClient,
 } from "viem";
 import { deployment, integer, preflight, saveExclusive, type Ceremony } from "./fuji";
+import { isSafeServiceUrl } from "@payvoke/server";
 
 export type PaymentRun = {
   apiOrigin: string;
@@ -37,15 +38,7 @@ export type PaymentRun = {
 export type PreparedPayment = { run: PaymentRun; quote: QuoteDocument; paymentPayload: unknown };
 export function trustedOrigin(value: string) {
   const url = new URL(value);
-  if (
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    url.pathname !== "/" ||
-    (url.protocol !== "https:" &&
-      !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))
-  )
+  if (!isSafeServiceUrl(url) || url.search || url.pathname !== "/")
     throw new Error("Expected HTTPS or loopback origin");
   return url.origin;
 }

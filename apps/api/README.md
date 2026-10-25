@@ -47,7 +47,7 @@ can star apps.
 
 Protected routes use `preHandler: app.requireAccount`. Use existing Fastify
 plugins and TypeBox type inference for application routes. No generic repository
-or DI layers are needed. 
+or DI layers are needed.
 
 `auth.cli.ts` loads the same Better Auth factory as the server, without starting
 Fastify or querying the database. It writes `packages/payvoke-db/prisma/auth.prisma`;
@@ -91,7 +91,6 @@ custom hash) in `session`. Its native SIWE response includes that token;
 authentication requires its signed cookie, not a Payvoke bearer-token plugin.
 Treat auth tables as sensitive. The current-user route never exposes session tokens. Login never
 grants permission to debit the vault; no email/password/social login is enabled.
-
 
 ## Identity and initial migration
 

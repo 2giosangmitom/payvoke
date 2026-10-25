@@ -672,28 +672,48 @@ Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm 
 
 ### Layout repository
 
-| Đường dẫn                    | Vai trò                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `apps/api`                   | API Fastify cho frontend và provider (auth, catalog, quote, x402 gateway, AG-UI)     |
-| `apps/facilitator`           | Facilitator x402 nội bộ, không giữ khóa                                              |
-| `apps/settlement-worker`     | Worker gửi `reserveHold`, giữ khóa relayer                                           |
-| `apps/ops`                   | CLI vận hành Fuji và finance (operator, approver, executor tách env)                 |
-| `packages/payvoke-db`        | Prisma schema, migrations và client dùng chung                                       |
-| `packages/payvoke-payments`  | Domain thanh toán: journal, admission, settlement, finance                           |
-| `packages/payvoke-server`    | Env loader, redaction, cấu hình deployment vault dùng chung cho service              |
-| `packages/payvoke-testkit`   | Fixture test: PGlite, local EVM, vault reader                                        |
-| `tests/payments-e2e`         | Test tích hợp xuyên service và conformance x402                                      |
-| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                                   |
-| `apps/frontend`              | Web UI: store, chat, Studio                                                          |
-| `apps/slide`                 | Slide pitch                                                                          |
-| `docs`                       | Modules, specs, nghiên cứu và roadmap                                                |
-| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                                  |
-| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                         |
-| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                           |
-| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                               |
-| `apps/mcp`                   | Đề xuất: bridge local stdio                                                          |
+| Đường dẫn                    | Vai trò                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `apps/api`                   | API Fastify cho frontend và provider (auth, catalog, quote, x402 gateway, AG-UI) |
+| `apps/facilitator`           | Facilitator x402 nội bộ, không giữ khóa                                          |
+| `apps/settlement-worker`     | Worker gửi `reserveHold`, giữ khóa relayer                                       |
+| `apps/ops`                   | CLI vận hành Fuji và finance (operator, approver, executor tách env)             |
+| `packages/payvoke-db`        | Prisma schema, migrations và client dùng chung                                   |
+| `packages/payvoke-payments`  | Domain thanh toán: journal, admission, settlement, finance                       |
+| `packages/payvoke-server`    | Env loader, redaction, cấu hình deployment vault dùng chung cho service          |
+| `packages/payvoke-testkit`   | Fixture test: PGlite, local EVM, vault reader                                    |
+| `tests/payments-e2e`         | Test tích hợp xuyên service và conformance x402                                  |
+| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                               |
+| `apps/frontend`              | Web UI: store, chat, Studio                                                      |
+| `apps/slide`                 | Slide pitch                                                                      |
+| `docs`                       | Modules, specs, nghiên cứu và roadmap                                            |
+| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                              |
+| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                     |
+| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                       |
+| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                           |
+| `apps/mcp`                   | Đề xuất: bridge local stdio                                                      |
 
 Những đường dẫn đánh dấu đề xuất là layout mục tiêu, chưa tồn tại. Provider fixture sẽ chạy ngoài process Payvoke như provider thật.
+
+### Services và deploy
+
+Backend gồm bốn process deploy riêng. Mỗi process đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
+
+| Service                  | Lệnh local                            | Docker target       | Giữ khóa                               |
+| ------------------------ | ------------------------------------- | ------------------- | -------------------------------------- |
+| `apps/api`               | `pnpm --filter api dev`               | `api`               | Không                                  |
+| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `facilitator`       | Không (chỉ `RELAYER_ADDRESS`)          |
+| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `settlement-worker` | `RELAYER_PRIVATE_KEY`                  |
+| `apps/ops`               | `pnpm --filter ops ops:<role> …`      | Không (chạy tay)    | Mỗi role một file `private/<role>.env` |
+
+Migrations: `pnpm --filter @payvoke/db migrate`, hoặc image target `migrate` (one-shot).
+
+```sh
+docker build --target api -t payvoke-api .          # tương tự: facilitator, settlement-worker, migrate
+docker compose --profile stack up --build            # db + migrate + api + facilitator + worker
+```
+
+Trong compose, facilitator dùng chung network namespace với API nên chỉ nghe trên loopback và không publish port. Deploy tách máy thì facilitator phải đặt sau TLS (`FACILITATOR_URL=https://…`). `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
 
 ### Vai trò của Prisma schema
 

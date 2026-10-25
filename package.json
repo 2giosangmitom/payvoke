@@ -5,7 +5,8 @@
   "scripts": {
     "fmt": "oxfmt",
     "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+    "lint:fix": "oxlint --fix",
+    "postinstall": "pnpm --filter @payvoke/db generate"
   },
   "devDependencies": {
     "oxfmt": "^0.73.0",

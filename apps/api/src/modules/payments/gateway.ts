@@ -17,20 +17,12 @@ import { getAddress } from "viem";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Config } from "../../config";
 import type { PrismaClient } from "@payvoke/db";
-import { parseFinancialJson } from "@payvoke/server";
+import { isSafeServiceUrl, parseFinancialJson } from "@payvoke/server";
 
 export function gatewayFacilitator(app: FastifyInstance, config: Config) {
   if (!config.PAYMENTS_ENABLED) return undefined;
   const url = new URL(config.FACILITATOR_URL!);
-  if (
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    (url.protocol !== "https:" &&
-      !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) ||
-    Buffer.byteLength(config.FACILITATOR_TOKEN!) < 32
-  )
+  if (!isSafeServiceUrl(url) || url.search || Buffer.byteLength(config.FACILITATOR_TOKEN!) < 32)
     throw new Error("Invalid private facilitator configuration");
   const client = new HTTPFacilitatorClient({
     url: url.href.replace(/\/$/, ""),

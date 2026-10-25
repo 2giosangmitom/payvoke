@@ -33,7 +33,8 @@ export function vaultDeployment(config: DeploymentEnv): VaultDeployment {
     throw new VaultValidationError("invalid_facilitator_policy", 503);
   }
   for (const url of [new URL(config.API_ORIGIN), new URL(config.RPC_URL)]) {
-    if (!isSafeServiceUrl(url)) throw new VaultValidationError("insecure_facilitator_transport", 503);
+    if (!isSafeServiceUrl(url))
+      throw new VaultValidationError("insecure_facilitator_transport", 503);
   }
   return {
     chainId: 43113,

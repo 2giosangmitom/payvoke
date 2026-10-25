@@ -1,6 +1,10 @@
 {
   "name": "facilitator",
   "private": true,
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",

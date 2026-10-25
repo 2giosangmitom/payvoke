@@ -76,10 +76,7 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
     const artifact = async (path: string) =>
       JSON.parse(
         await readFile(
-          new URL(
-            `../../payvoke-vault/artifacts/contracts/${path}`,
-            import.meta.url,
-          ),
+          new URL(`../../payvoke-vault/artifacts/contracts/${path}`, import.meta.url),
           "utf8",
         ),
       ) as { abi: Abi; bytecode: Hex; deployedBytecode: Hex };
