@@ -1,0 +1,9 @@
+{
+  "PayvokeVault": {
+    "admin": "0x1DB8731E4F56f213FA7e284515313ff6b0DC1c54",
+    "adminDelay": 3600,
+    "feeCapBps": 1000,
+    "maxQuoteLifetimeSeconds": 600,
+    "maxHoldSeconds": 604800
+  }
+}
