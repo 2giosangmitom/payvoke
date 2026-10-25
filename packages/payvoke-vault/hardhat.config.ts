@@ -26,6 +26,23 @@ export default defineConfig({
       },
     },
   },
+  // Hardhat's built-in Fuji descriptor falls back to the Etherscan v2 API. Point it
+  // at Routescan, which backs testnet.snowtrace.io and needs no real API key.
+  chainDescriptors: {
+    43113: {
+      name: "Avalanche Fuji",
+      blockExplorers: {
+        etherscan: {
+          name: "SnowTrace",
+          url: "https://testnet.snowtrace.io",
+          apiUrl: "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
+        },
+      },
+    },
+  },
+  verify: {
+    etherscan: { apiKey: "routescan" },
+  },
   networks: {
     hardhatMainnet: {
       type: "edr-simulated",
