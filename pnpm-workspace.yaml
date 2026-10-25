@@ -5,7 +5,7 @@ packages:
 
 allowBuilds:
   esbuild: true
-  protobufjs: false
+  protobufjs: true
 
 permissions:
   "@openuidev/lang-core":
@@ -20,9 +20,9 @@ permissions:
     build: true
   "@open-slide/core":
     skills: true
-
   '@tanstack/react-router':
     skills: true
+
 skills:
   dirs:
     - .agents/skills
