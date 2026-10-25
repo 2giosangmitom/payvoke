@@ -31,7 +31,7 @@ facilitator and worker must all use this same database.
 
 ## Private files
 
-Run commands from `apps/backend`. Create `operations/private/` with mode 0700;
+Run commands from `apps/ops`. Create `private/` with mode 0700;
 it is gitignored. Keep signed artifacts, prepared authorizations, private env and
 approval records there or outside the repository. Files are created exclusively
 with mode 0600 and fsynced; existing evidence is never overwritten. Signed bytes
@@ -42,15 +42,25 @@ placeholders with approved values. The zero-filled template is intentionally not
 usable. All gas prices/costs are integer **wei**; USDC amounts are six-decimal
 base-unit integers. Constructor durations are seconds, not timestamps.
 
-Use `DOTENV_CONFIG_PATH` to load a private env file; never put keys in CLI args.
-Operator CLI uses `RPC_URL` and `OPERATOR_PRIVATE_KEY`; buyer HTTP commands use
-`BUYER_PRIVATE_KEY` and `GRANT_PRIVATE_KEY`. None of these belong in evidence.
-The API/facilitator must never receive the relayer key. Do not print the env file.
+Each role loads exactly one private env file through `pnpm ops:<role>`, which
+runs the CLI with `--env-file=private/<role>.env`; never put keys in CLI args.
+Copy the matching `<role>.env.example` into `private/` and fill it there:
+
+| Script         | Env file               | Commands                                                                   |
+| -------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `ops:operator` | `private/operator.env` | preflight, prepare, broadcast, receipt, seed, payment-check, journal-check |
+| `ops:buyer`    | `private/buyer.env`    | login, payment-prepare, payment-submit, payment-poll                       |
+| `ops:approver` | `private/approver.env` | finance-approve                                                            |
+| `ops:executor` | `private/executor.env` | finance-tick                                                               |
+| `ops:service`  | `private/service.env`  | finance-enqueue, finance-status, finance-sync, finance-delivery            |
+
+None of these keys belong in evidence. The API/facilitator must never receive the
+relayer key. Do not print the env file.
 
 ## 1. Read-only preflight and production build
 
 ```sh
-pnpm ops:fuji preflight operations/private/ceremony.json
+pnpm ops:operator preflight private/ceremony.json
 pnpm --dir ../../packages/payvoke-vault compile:production
 ```
 
@@ -70,11 +80,11 @@ An action input is `{ "ceremony": <full ceremony object>, "action": <action> }`.
 The operator explicitly reviews each action, signer, amount and policy.
 
 ```sh
-pnpm ops:fuji prepare operations/private/action.json operations/private/01.signed.json
+pnpm ops:operator prepare private/action.json private/01.signed.json
 # Review the action and printed hash/nonce/gas/maxCostWei. Preparation does NOT send.
 # Only after approval, with FUJI_BROADCAST_ENABLED=true in the private env:
-pnpm ops:fuji broadcast operations/private/01.signed.json <approved-transaction-hash>
-pnpm ops:fuji receipt operations/private/01.signed.json operations/private/01.receipt.json
+pnpm ops:operator broadcast private/01.signed.json <approved-transaction-hash>
+pnpm ops:operator receipt private/01.signed.json private/01.receipt.json
 ```
 
 Each artifact has a single-use `.send.json` marker written **before** network
@@ -113,19 +123,19 @@ fund-transfer command is bundled here.
 Apply existing migrations to the dedicated local DB with Prisma CLI. Start API
 with payments disabled first. Use the real SIWE endpoints, not an inserted session.
 
-Create `run.json` matching `PaymentRun` in `src/operations/payment.ts`:
+Create `run.json` matching `PaymentRun` in `src/payment.ts`:
 `apiOrigin`, `webOrigin`, `vault`, `buyer`, `sessionId`, `commandId`,
 `clientRequestId`, `arguments: {"text":"controlled Fuji test"}`, `grantId`,
 `grantEpoch` (decimal string), `maxAmount` (decimal string). Choose fresh IDs once;
 reuse the same `clientRequestId` if quote preparation is interrupted.
 
 ```sh
-pnpm ops:fuji login operations/private/run.json
+pnpm ops:buyer login private/run.json
 ```
 
 The login command prints only buyer identity, never cookies/tokens, and signs out.
 Use the returned buyer ID in `seed.json`, matching `Seed` in
-`src/operations/seed.ts`. Supply the same `run`, fresh `productId`/`policyVersion`,
+`src/seed.ts`. Supply the same `run`, fresh `productId`/`policyVersion`,
 approved provider/fee-recipient, feeBps, quoteLifetimeSeconds, maxHoldSeconds,
 resolutionGraceSeconds, deliverySeconds, reviewSeconds, grossAmount and the
 approved `minGrossAmount` price floor (atomic USDC; it must cover sponsored
@@ -133,8 +143,8 @@ hold + release gas and `grossAmount` must not be below it).
 
 ```sh
 # CEREMONY_DATABASE_URL must explicitly name the dedicated loopback DB.
-pnpm ops:fuji seed operations/private/seed.json
-pnpm ops:fuji payment-prepare operations/private/run.json operations/private/payment.json
+pnpm ops:operator seed private/seed.json
+pnpm ops:buyer payment-prepare private/run.json private/payment.json
 ```
 
 Seed creates only the minimal catalog/session/policy, in a transaction. It refuses
@@ -147,7 +157,7 @@ it does **not** submit that authorization to the settlement service.
 
 Use deployment evidence for `VAULT_ADDRESS`, `EXPECTED_VAULT_CODE_HASH` and
 `DEPLOYMENT_START_BLOCK`. Configure approved worker budgets from
-`../worker.env.example`. After approval, start the three processes with:
+`../settlement-worker/.env.example`. After approval, start the three processes with:
 
 - API `PAYMENTS_ENABLED=true`, private facilitator URL/token.
 - Facilitator `SETTLEMENT_ENABLED=true`.
@@ -158,8 +168,8 @@ policy and finalized RPC must pass before submission. Keep provider consumers of
 
 ```sh
 # Requires FUJI_BROADCAST_ENABLED=true. Digest is printed by payment-prepare.
-pnpm ops:fuji payment-submit operations/private/payment.json <approved-authorization-digest>
-pnpm ops:fuji payment-poll operations/private/payment.json operations/private/status-01.json
+pnpm ops:buyer payment-submit private/payment.json <approved-authorization-digest>
+pnpm ops:buyer payment-poll private/payment.json private/status-01.json
 ```
 
 Polling is single-shot, read-only, bounded and uses fresh output files. While
@@ -172,8 +182,8 @@ Create `check.json` containing `{ "ceremony": <deployed ceremony>,
 real hash from polling; never manufacture a hash.
 
 ```sh
-pnpm ops:fuji payment-check operations/private/check.json operations/private/chain-proof.json
-pnpm ops:fuji journal-check operations/private/check.json operations/private/journal-proof.json
+pnpm ops:operator payment-check private/check.json private/chain-proof.json
+pnpm ops:operator journal-check private/check.json private/journal-proof.json
 ```
 
 Chain proof verifies exact calldata, sender, event, canonical finalized receipt,

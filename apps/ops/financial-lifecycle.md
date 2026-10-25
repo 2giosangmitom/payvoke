@@ -49,8 +49,8 @@ No operator force-clear/quarantine-release endpoint is provided.
 
 Use private files as in the main ceremony runbook. The command input has:
 
-Use `../finance.env.example` as the disabled-by-default environment template;
-load a private approver or executor copy using DOTENV_CONFIG_PATH.
+Use `approver.env.example`, `executor.env.example` and `service.env.example` as the
+disabled-by-default templates; `pnpm ops:<role>` loads only `private/<role>.env`.
 
 ```text
 {
@@ -87,19 +87,19 @@ required to try another business decision after a finalized failed transaction.
 
 ## Refund/release sequence
 
-Commands below run from `apps/backend`. All database commands explicitly use
+Commands below run from `apps/ops`. All database commands explicitly use
 CEREMONY_DATABASE_URL, restricted to a dedicated loopback `payvoke_fuji_*` DB.
 
 ```sh
 # Separate approver environment. Signing does not broadcast or enqueue.
-pnpm ops:fuji finance-approve operations/private/proposal.json operations/private/approved.json
+pnpm ops:approver finance-approve private/proposal.json private/approved.json
 # Key-free service environment. Validate again and persist immutable approval.
-pnpm ops:fuji finance-enqueue operations/private/approved.json
+pnpm ops:service finance-enqueue private/approved.json
 # Separate executor environment, with both explicit execution flags true.
-pnpm ops:fuji finance-tick operations/private/approved.json
-pnpm ops:fuji finance-status operations/private/approved.json
+pnpm ops:executor finance-tick private/approved.json
+pnpm ops:service finance-status private/approved.json
 # Read-only chain access, durable index update; no signing key needed.
-pnpm ops:fuji finance-sync operations/private/approved.json
+pnpm ops:service finance-sync private/approved.json
 ```
 
 Executor requires `FUJI_BROADCAST_ENABLED=true`, `FINANCE_EXECUTION_ENABLED=true`
@@ -143,7 +143,7 @@ was actually observed; it is compared with the quote's signed
 `terms.verification.minEvidence` and REC/WIT do not substitute for each other:
 
 ```sh
-pnpm ops:fuji finance-delivery operations/private/delivery.json
+pnpm ops:service finance-delivery private/delivery.json
 ```
 
 This command is an **attestation**, not an output validator. Do not use it to

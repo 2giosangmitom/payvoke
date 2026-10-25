@@ -24,14 +24,14 @@ production database, Fuji broadcast or provider dispatch is part of this review.
 
 Test sources (relative to the repository root):
 
-- **Q**: `apps/backend/test/quotes.test.ts` — HTTP/SDK, journal/SQL, settlement
+- **Q**: `tests/payments-e2e/test/quotes.test.ts` — HTTP/SDK, journal/SQL, settlement
   faults; opt-in real local EVM financial lifecycle/crash tests.
 - **V**: `packages/payvoke-vault/contracts/PayvokeVault*.t.sol` and
   `packages/payvoke-vault/test/` — actual vault unit, adversarial, fuzz/invariants.
 - **P**: `packages/payvoke-protocol/test/payment.test.ts` — vectors, mutation,
   canonicalization and compiled finance ABI/event parity.
-- **A**: `apps/backend/test/auth.test.ts` — Better Auth/SIWE/auth boundary.
-- **O**: `apps/backend/test/fuji-operations.test.ts` — controlled CLI artifacts,
+- **A**: `apps/api/test/auth.test.ts` — Better Auth/SIWE/auth boundary.
+- **O**: `apps/ops/test/fuji-operations.test.ts` — controlled CLI artifacts,
   exact-hash single-use sends and isolated EVM cleanup (not real Fuji).
 
 Q runs against PGlite by default or isolated schemas on Docker PostgreSQL.
@@ -44,7 +44,7 @@ result in these tests is published as a Fuji receipt.
 
 | Trace / spec         | Implementation owner                                                           | Executable evidence                                                                                                                                                                                                                                                                                             | Status / remaining gate                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PAY-01; §1, §6.3     | `packages/payvoke-x402/src/chain.ts`, `apps/backend/src/facilitator/`, gateway | Q `uses core to build requirements and rejects incompatible facilitator capabilities`, `refuses facilitator readiness…`; O preflight                                                                                                                                                                            | Local deployment validation; approved Fuji policy/code/roles still blocked                                                                                            |
+| PAY-01; §1, §6.3     | `packages/payvoke-x402/src/chain.ts`, `apps/facilitator/src/`, gateway | Q `uses core to build requirements and rejects incompatible facilitator capabilities`, `refuses facilitator readiness…`; O preflight                                                                                                                                                                            | Local deployment validation; approved Fuji policy/code/roles still blocked                                                                                            |
 | PAY-02; §3–4         | `packages/payvoke-protocol/src/index.ts`, quote service, SDK                   | P vectors/field mutation/JCS; V hash-vector tests; Q `freezes effective defaults…`, `client rejects altered economics…`                                                                                                                                                                                         | Local; nonempty file/message/brief selection is not implemented                                                                                                       |
 | PAY-03; §2, §8.2     | `PayvokeVault.sol` grant/admission                                             | V update/epoch/cap/period/revoke/withdraw ordering tests + stateful invariant; Q actual revoke-after-preview EVM revert                                                                                                                                                                                         | Local chain/SDK; grant UI/global multi-grant explanation not verified                                                                                                 |
 | PAY-04; §8, §8.4     | vault deposit/owner withdrawals                                                | V false-return/frozen/reentrant/fee-on-transfer/donation tests; Q/O EVM deposit and buyer/provider/platform withdrawals                                                                                                                                                                                         | Local; real Fuji USDC/issuer behavior blocked                                                                                                                         |
@@ -61,10 +61,10 @@ result in these tests is published as a Fuji receipt.
 | PAY-15; §8.4, §9     | vault accounting, finalized financial scanner, admission health gate           | V invariant/fuzz; Q insolvency block, unchanged incident on later success, SQL scanner rollback, idempotent projections                                                                                                                                                                                         | Local implemented checks; projections are not independent credit. Not a full external accounting/monitoring system                                                    |
 | PAY-16; §10.8        | approved operator ceremony                                                     | O/Q isolated EVM ceremony and runbooks only                                                                                                                                                                                                                                                                     | **Blocked**: no Fuji deployment/funding/broadcast or real-provider E2E evidence                                                                                       |
 
-Finance implementation: `apps/backend/src/modules/payments/finance.ts`.
-Finalized projection owner: `apps/backend/src/modules/payments/finance-ledger.ts`.
-Buyer status/intents: `apps/backend/src/modules/payments/index.ts`.
-See [financial runbook](../apps/backend/operations/financial-lifecycle.md).
+Finance implementation: `packages/payvoke-payments/src/finance.ts`.
+Finalized projection owner: `packages/payvoke-payments/src/finance-ledger.ts`.
+Buyer status/intents: `apps/api/src/modules/payments/index.ts`.
+See [financial runbook](../apps/ops/financial-lifecycle.md).
 
 ## Local gaps closed in this update
 
@@ -134,9 +134,9 @@ consumer must recheck current hold/deadlines and verified execution state.
 - Finance tests use replacement service instances in one test process; actual
   multi-process kill/restart proof currently exists for settlement, not every
   finance boundary. No exhaustive crash/race or independent audit claim.
-- Research conformance: `pnpm --dir apps/backend test:conformance` checks every
+- Research conformance: `pnpm --dir tests/payments-e2e test:conformance` checks every
   rule in [S02 §11](specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402)
-  against named negative tests (manifest `apps/backend/test/conformance/rules.ts`)
+  against named negative tests (manifest `tests/payments-e2e/test/conformance/rules.ts`)
   and fails on a missing, renamed or skipped case. M6 (discovery steering) is
   reported as deferred to R06. The price floor mechanism (R02) exists; the
   approved Fuji value is still a T089 decision.
@@ -161,13 +161,13 @@ percentages. Scenarios are diagnostics inside one flow test, not ten separate
 test-runner cases.
 
 ```sh
-pnpm --dir apps/backend test
+pnpm -r test
 docker compose up -d --wait test-db
-pnpm --dir apps/backend test:payments:postgres
-PAYMENTS_TEST_POSTGRES=1 pnpm --dir apps/backend test:payments:evm
+pnpm --dir tests/payments-e2e test:payments:postgres
+PAYMENTS_TEST_POSTGRES=1 pnpm --dir tests/payments-e2e test:payments:evm
 pnpm --dir packages/payvoke-protocol test
 pnpm --dir packages/payvoke-vault test
-pnpm --dir apps/backend exec tsc --noEmit
+pnpm -r typecheck
 docker compose stop test-db
 ```
 

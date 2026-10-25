@@ -46,4 +46,4 @@ No preview reserves funds or guarantees future execution. Fuji deployment/E2E
 and provider delivery are not part of the local settlement milestone.
 
 SDK interoperability and signing tests currently run in the backend integration
-suite: `pnpm --dir apps/backend test`. Typecheck: `pnpm --dir packages/payvoke-x402 typecheck`.
+suite: `pnpm --dir tests/payments-e2e test`. Typecheck: `pnpm --dir packages/payvoke-x402 typecheck`.

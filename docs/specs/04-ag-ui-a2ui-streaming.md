@@ -28,7 +28,7 @@ Payvoke outbox ── durable SSE invocation.ready/runId ──> Provider worker
 
 ## 2. Giao thức stream (lõi đã có)
 
-Route, path và shape request/response cụ thể đọc từ code (`apps/backend/src/modules/agui`); phần này chỉ mô tả các kênh và quy tắc.
+Route, path và shape request/response cụ thể đọc từ code (`apps/api/src/modules/agui`); phần này chỉ mô tả các kênh và quy tắc.
 
 - **Provider stream theo run:** provider key `reports:write`; request body là **chunked NDJSON** (`application/x-ndjson`), từng dòng `{streamSequence,event}`. Hỗ trợ kết nối dài, flush từng batch; không phải một request trên mỗi token.
 - **Cursor của run:** provider key `reports:write`; trả sequence đã commit cuối cùng để nối lại sau timeout/crash, không đòi stream cũ còn mở.

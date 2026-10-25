@@ -39,7 +39,7 @@ Thứ tự thực tế lệch roadmap: frontend đã được làm trước gate
 Các vùng hiện có:
 
 - `packages/payvoke-vault`: Solidity, contract tests, deployment, ABI export.
-- `apps/backend`: API và các module domain; entrypoint API tách entrypoint worker giữ khóa.
+- `apps/api`, `apps/facilitator`, `apps/settlement-worker`, `apps/ops`: mỗi process là một app deploy riêng; domain dùng chung nằm ở `packages/payvoke-payments` và `packages/payvoke-db`.
 - `apps/frontend`: web UI (store, chat, Studio).
 - `packages/payvoke-protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; không xây framework đa chain.
 - `packages/payvoke-x402`: adapter client/server/facilitator của scheme `payvoke-vault`.

@@ -8,9 +8,11 @@
     "./seed": "./src/seed.ts"
   },
   "scripts": {
-    "ops:operator": "tsx --env-file=operator.env ./src/cli.ts",
-    "ops:approver": "tsx --env-file=approver.env ./src/cli.ts",
-    "ops:executor": "tsx --env-file=executor.env ./src/cli.ts",
+    "ops:operator": "tsx --env-file=private/operator.env ./src/cli.ts",
+    "ops:buyer": "tsx --env-file=private/buyer.env ./src/cli.ts",
+    "ops:approver": "tsx --env-file=private/approver.env ./src/cli.ts",
+    "ops:executor": "tsx --env-file=private/executor.env ./src/cli.ts",
+    "ops:service": "tsx --env-file=private/service.env ./src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "test:evm": "pnpm --dir ../../packages/payvoke-vault compile && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='Fuji ceremony tooling' test/fuji-operations.test.ts"

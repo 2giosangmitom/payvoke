@@ -383,7 +383,7 @@ Bảng dưới ánh xạ các quy tắc, bất biến và biện pháp trong ngh
 | [P3] M5, [P4] P16, [P5]    | Không cache/log header; không PII trong metadata     | §5, S01 §2               | Local                           |
 | [P4] P4, P6                | Hold/refund/release/reclaim cùng tham chiếu hold     | §8.3, §9                 | Local                           |
 
-**Conformance suite (R01):** `pnpm --dir apps/backend test:conformance` chạy backend, protocol và vault suites một lần rồi đối chiếu từng mã ở cột "Nguồn" với các ca âm tính trong manifest `apps/backend/test/conformance/rules.ts`. Suite fail nếu một quy tắc không có ca pass, hoặc nếu một ca trong manifest bị đổi tên, skip hay fail. M6 (chống steering ở discovery) được báo là DEFERRED vì thuộc R06, không được tính là pass. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
+**Conformance suite (R01):** `pnpm --dir tests/payments-e2e test:conformance` chạy backend, protocol và vault suites một lần rồi đối chiếu từng mã ở cột "Nguồn" với các ca âm tính trong manifest `tests/payments-e2e/test/conformance/rules.ts`. Suite fail nếu một quy tắc không có ca pass, hoặc nếu một ca trong manifest bị đổi tên, skip hay fail. M6 (chống steering ở discovery) được báo là DEFERRED vì thuộc R06, không được tính là pass. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
 
 ## Nguồn
 
