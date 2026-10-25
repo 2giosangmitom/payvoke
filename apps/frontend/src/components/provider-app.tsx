@@ -2,22 +2,40 @@ import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   ArrowUpRight,
   Check,
   Copy,
   KeyRound,
-  LoaderCircle,
+  MessageSquareText,
   Pencil,
   Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Checkbox } from "./ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import { Spinner } from "./ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Textarea } from "./ui/textarea";
+import { CommandCard } from "./command-card";
+import {
+  AppStatus,
+  BackLink,
+  EmptyState,
+  ErrorNotice,
+  FormField,
+  LoadingState,
+  PageHeader,
+  PageShell,
+  SectionHeader,
+  Tag,
+  errorMessage,
+  plural,
+} from "./page-kit";
+import { VisibilityField } from "./visibility-field";
 import { authClient } from "@/src/lib/auth-client";
 import {
   activateProviderApp,
@@ -44,9 +62,9 @@ import {
 } from "@/src/lib/apps";
 import type { CommandOption } from "@/src/lib/paid-chat";
 import { newThread } from "@/src/lib/paid-chat";
+import { cn } from "@/src/lib/utils";
 
 const optionTypes: CommandOption["type"][] = ["STRING", "INTEGER", "NUMBER", "BOOLEAN"];
-const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : "Request failed.");
 
 function blankOption(): CommandOption {
   return { name: "", description: "", type: "STRING", required: false };
@@ -87,21 +105,27 @@ function CommandEditor({
       void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
       onClose();
     },
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   if (!open) return null;
   const validOptions = options.filter((option) => option.name.trim());
   const stringOptions = validOptions.filter((option) => option.type === "STRING");
+  const updateOption = (index: number, patch: Partial<CommandOption>) =>
+    setOptions((current) =>
+      current.map((item, at) => (at === index ? { ...item, ...patch } : item)),
+    );
+
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="command-editor">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{command ? `Edit /${command.name}` : "New slash command"}</DialogTitle>
+          <DialogDescription>
+            Saving creates a new revision. Quotes that were already issued keep the old one.
+          </DialogDescription>
         </DialogHeader>
-        <p className="command-dialog-description">
-          Editing creates a new immutable revision. Quotes already issued keep their revision.
-        </p>
         <form
+          className="grid gap-5"
           onSubmit={(event) => {
             event.preventDefault();
             setError("");
@@ -130,15 +154,14 @@ function CommandEditor({
                 ...(revision ? { expectedRevisionId: revision.id } : {}),
               });
             } catch (cause) {
-              setError(errorText(cause));
+              setError(errorMessage(cause));
             }
           }}
         >
-          <div className="command-editor-grid">
-            <label htmlFor="command-name">
-              Command name
-              <span className="command-input-prefix">
-                <SlashIcon />{" "}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Command name" htmlFor="command-name">
+              <div className="flex items-center border border-input bg-background-deep pl-3 font-mono text-primary focus-within:border-ring">
+                <span aria-hidden="true">/</span>
                 <Input
                   id="command-name"
                   value={name}
@@ -148,22 +171,22 @@ function CommandEditor({
                   pattern="[a-z][a-z0-9_]{0,31}"
                   placeholder="summarize"
                   spellCheck={false}
+                  className="border-0 bg-transparent pl-1 font-mono focus-visible:ring-0"
                 />
-              </span>
-            </label>
-            <label htmlFor="command-price">
-              Price per request (USDC)
+              </div>
+            </FormField>
+            <FormField label="Price per request (USDC)" htmlFor="command-price">
               <Input
                 id="command-price"
                 value={price}
                 onChange={(event) => setPrice(event.target.value)}
                 inputMode="decimal"
                 required
+                className="font-mono"
               />
-            </label>
+            </FormField>
           </div>
-          <label htmlFor="command-description">
-            Description
+          <FormField label="Description" htmlFor="command-description">
             <Textarea
               id="command-description"
               value={description}
@@ -172,56 +195,44 @@ function CommandEditor({
               required
               maxLength={2000}
             />
-          </label>
+          </FormField>
 
-          <fieldset className="command-options">
-            <legend>Arguments</legend>
+          <fieldset className="grid gap-2 border border-border p-4">
+            <legend className="px-1 font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
+              Arguments
+            </legend>
             {options.map((option, index) => (
-              <div className="command-option-row" key={index}>
+              <div
+                key={index}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto_auto]"
+              >
                 <Input
                   aria-label={`Argument ${index + 1} name`}
                   value={option.name}
                   placeholder="text"
                   onChange={(event) =>
-                    setOptions((current) =>
-                      current.map((item, at) =>
-                        at === index
-                          ? { ...item, name: event.target.value.replace(/[^a-zA-Z0-9_]/g, "") }
-                          : item,
-                      ),
-                    )
+                    updateOption(index, { name: event.target.value.replace(/[^a-zA-Z0-9_]/g, "") })
                   }
                   required
+                  className="font-mono"
                 />
-                <select
+                <NativeSelect
                   aria-label={`Argument ${index + 1} type`}
                   value={option.type}
                   onChange={(event) =>
-                    setOptions((current) =>
-                      current.map((item, at) =>
-                        at === index
-                          ? { ...item, type: event.target.value as CommandOption["type"] }
-                          : item,
-                      ),
-                    )
+                    updateOption(index, { type: event.target.value as CommandOption["type"] })
                   }
+                  className="w-full"
                 >
                   {optionTypes.map((type) => (
-                    <option key={type}>{type}</option>
+                    <NativeSelectOption key={type}>{type}</NativeSelectOption>
                   ))}
-                </select>
-                <label className="command-required">
-                  <input
-                    type="checkbox"
+                </NativeSelect>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
                     checked={Boolean(option.required)}
-                    onChange={(event) =>
-                      setOptions((current) =>
-                        current.map((item, at) =>
-                          at === index ? { ...item, required: event.target.checked } : item,
-                        ),
-                      )
-                    }
-                  />{" "}
+                    onCheckedChange={(checked) => updateOption(index, { required: checked })}
+                  />
                   Required
                 </label>
                 <Button
@@ -232,7 +243,7 @@ function CommandEditor({
                   disabled={options.length === 1}
                   onClick={() => setOptions((current) => current.filter((_, at) => at !== index))}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 />
                 </Button>
               </div>
             ))}
@@ -240,31 +251,31 @@ function CommandEditor({
               type="button"
               size="sm"
               variant="outline"
+              className="mt-1 justify-self-start"
               onClick={() => setOptions((current) => [...current, blankOption()])}
             >
-              <Plus size={14} /> Add argument
+              <Plus /> Add argument
             </Button>
           </fieldset>
 
-          <label htmlFor="command-positional">
-            Free text maps to
-            <select
+          <FormField label="Plain text maps to" htmlFor="command-positional">
+            <NativeSelect
               id="command-positional"
               value={positional}
               onChange={(event) => setPositional(event.target.value)}
+              className="w-full"
             >
-              <option value="">No positional argument (form only)</option>
+              <NativeSelectOption value="">Nothing (always open the form)</NativeSelectOption>
               {stringOptions.map((option) => (
-                <option key={option.name} value={option.name}>
+                <NativeSelectOption key={option.name} value={option.name}>
                   {option.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </label>
+            </NativeSelect>
+          </FormField>
 
-          <div className="command-editor-grid">
-            <label htmlFor="command-delivery">
-              Delivery deadline (seconds)
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Delivery deadline (seconds)" htmlFor="command-delivery">
               <Input
                 id="command-delivery"
                 type="number"
@@ -273,9 +284,8 @@ function CommandEditor({
                 onChange={(event) => setDelivery(event.target.value)}
                 required
               />
-            </label>
-            <label htmlFor="command-review">
-              Review window (seconds)
+            </FormField>
+            <FormField label="Review window (seconds)" htmlFor="command-review">
               <Input
                 id="command-review"
                 type="number"
@@ -284,12 +294,8 @@ function CommandEditor({
                 onChange={(event) => setReview(event.target.value)}
                 required
               />
-            </label>
-          </div>
-
-          <div className="command-editor-grid">
-            <label htmlFor="command-refund">
-              Refund policy
+            </FormField>
+            <FormField label="Refund policy" htmlFor="command-refund">
               <Input
                 id="command-refund"
                 value={terms.refundPolicy}
@@ -298,9 +304,8 @@ function CommandEditor({
                 }
                 required
               />
-            </label>
-            <label htmlFor="command-side-effects">
-              Side effects
+            </FormField>
+            <FormField label="Side effects" htmlFor="command-side-effects">
               <Input
                 id="command-side-effects"
                 value={terms.sideEffects}
@@ -309,10 +314,9 @@ function CommandEditor({
                 }
                 required
               />
-            </label>
+            </FormField>
           </div>
-          <label htmlFor="command-data-use">
-            Data use
+          <FormField label="Data use" htmlFor="command-data-use">
             <Input
               id="command-data-use"
               value={terms.dataUse}
@@ -321,10 +325,9 @@ function CommandEditor({
               }
               required
             />
-          </label>
-          <div className="command-editor-grid">
-            <label htmlFor="command-revisions">
-              Included revisions
+          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Included revisions" htmlFor="command-revisions">
               <Input
                 id="command-revisions"
                 type="number"
@@ -340,26 +343,24 @@ function CommandEditor({
                   }))
                 }
               />
-            </label>
-            <label htmlFor="command-revision-description">
-              Revision scope
+            </FormField>
+            <FormField label="Revision scope" htmlFor="command-revision-description">
               <Input
                 id="command-revision-description"
                 value={terms.revisionPolicy.description}
                 onChange={(event) =>
                   setTerms((current) => ({
                     ...current,
-                    revisionPolicy: {
-                      ...current.revisionPolicy,
-                      description: event.target.value,
-                    },
+                    revisionPolicy: { ...current.revisionPolicy, description: event.target.value },
                   }))
                 }
               />
-            </label>
+            </FormField>
           </div>
-          <details className="command-advanced">
-            <summary>Output schema (optional JSON Schema)</summary>
+          <details className="group border border-border">
+            <summary className="px-4 py-3 font-mono text-xs text-muted-foreground group-open:border-b group-open:border-border hover:text-primary">
+              Output schema (optional JSON Schema)
+            </summary>
             <Textarea
               aria-label="Output JSON schema"
               rows={5}
@@ -367,17 +368,14 @@ function CommandEditor({
               onChange={(event) => setOutput(event.target.value)}
               placeholder='{"type":"object","properties":{"summary":{"type":"string"}}}'
               spellCheck={false}
+              className="border-0 font-mono text-xs"
             />
           </details>
-          {error && (
-            <div className="run-error" role="alert">
-              {error}
-            </div>
-          )}
-          <div className="run-payment-actions">
+          {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+          <div className="flex gap-2">
             <Button type="submit" disabled={save.isPending || !name.trim()}>
-              {save.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
-              {command ? "Create revision" : "Create command"}
+              {save.isPending && <Spinner />}
+              {command ? "Save new revision" : "Create command"}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose} disabled={save.isPending}>
               Cancel
@@ -389,71 +387,70 @@ function CommandEditor({
   );
 }
 
-function SlashIcon() {
-  return <span aria-hidden="true">/</span>;
+function PanelIntro({ children }: { children: string }) {
+  return <p className="mb-6 max-w-2xl text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
 function CommandsTab({ app }: { app: ProviderAppDetail }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<ProviderCommand | null | undefined>(undefined);
   const [error, setError] = useState("");
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
+    void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
+  };
   const defaultCommand = useMutation({
     mutationFn: (commandId: string) => setDefaultCommand(app.id, commandId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-    },
-    onError: (cause) => setError(errorText(cause)),
+    onSuccess: refresh,
+    onError: (cause) => setError(errorMessage(cause)),
   });
   const archive = useMutation({
     mutationFn: (commandId: string) => archiveProviderCommand(app.id, commandId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-    },
-    onError: (cause) => setError(errorText(cause)),
+    onSuccess: refresh,
+    onError: (cause) => setError(errorMessage(cause)),
   });
   return (
-    <div className="dashboard-panel">
-      <div className="store-section-head">
-        <div>
-          <p className="workspace-kicker">SLASH COMMANDS</p>
-          <h2>What buyers can call</h2>
-        </div>
-        <Button className="button-primary" onClick={() => setEditing(null)}>
-          <Plus size={15} /> New command
-        </Button>
-      </div>
-      <p className="workspace-panel-description">
-        A command owns stable identity and options. Each save creates a revision. Free text routes
-        to the default command&apos;s positional argument.
-      </p>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
-      {app.commands.length === 0 ? (
-        <div className="store-empty">
-          <h2>No commands yet.</h2>
-          <span>An app needs an active command and a default command before it can be quoted.</span>
-          <Button className="button-primary" onClick={() => setEditing(null)}>
-            Create command
+    <div>
+      <SectionHeader
+        eyebrow="Slash commands"
+        title="What buyers can call"
+        aside={
+          <Button onClick={() => setEditing(null)}>
+            <Plus /> New command
           </Button>
-        </div>
+        }
+      />
+      <PanelIntro>
+        A command keeps its name and options; every save adds a revision. Plain text in a thread
+        goes to the default command&apos;s positional argument.
+      </PanelIntro>
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+      {app.commands.length === 0 ? (
+        <EmptyState
+          title="No commands yet."
+          action={<Button onClick={() => setEditing(null)}>Create command</Button>}
+        >
+          The app needs at least one command, set as default, before it can quote a price.
+        </EmptyState>
       ) : (
-        <div className="provider-command-list">
+        <div className="grid gap-3">
           {app.commands.map((command) => (
-            <article key={command.id} className="provider-command">
-              <div className="provider-command-top">
-                <div>
-                  <div className="store-command-name">
-                    <code>/{command.name}</code>
-                    {command.id === app.defaultCommandId && <span>DEFAULT</span>}
-                  </div>
-                  <p>{command.description}</p>
-                </div>
-                <div className="provider-command-actions">
+            <CommandCard
+              key={command.id}
+              name={command.name}
+              description={command.description}
+              isDefault={command.id === app.defaultCommandId}
+              revision={command.revision}
+              terms={
+                command.revision && [
+                  formatUsdc(command.revision.grossAmount),
+                  plural(command.revision.options.length, "argument"),
+                  `plain text → ${command.revision.positionalParameter || "form only"}`,
+                  `revision ${command.revision.id.slice(0, 8)}`,
+                ]
+              }
+              actions={
+                <>
                   {command.id !== app.defaultCommandId && (
                     <Button
                       size="sm"
@@ -465,41 +462,20 @@ function CommandsTab({ app }: { app: ProviderAppDetail }) {
                     </Button>
                   )}
                   <Button size="sm" variant="outline" onClick={() => setEditing(command)}>
-                    <Pencil size={13} /> Edit
+                    <Pencil /> Edit
                   </Button>
                   <Button
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
                     aria-label={`Archive ${command.name}`}
                     disabled={archive.isPending}
                     onClick={() => archive.mutate(command.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </Button>
-                </div>
-              </div>
-              {command.revision && (
-                <>
-                  <div className="store-command-terms">
-                    <span>{formatUsdc(command.revision.grossAmount)}</span>
-                    <span>{command.revision.options.length} arguments</span>
-                    <span>free text → {command.revision.positionalParameter || "form only"}</span>
-                    <span>revision {command.revision.id.slice(0, 8)}</span>
-                  </div>
-                  <div className="store-command-options">
-                    {command.revision.options.map((option) => (
-                      <span key={option.name}>
-                        {option.name}
-                        <small>
-                          {option.type.toLowerCase()}
-                          {option.required ? " · required" : ""}
-                        </small>
-                      </span>
-                    ))}
-                  </div>
                 </>
-              )}
-            </article>
+              }
+            />
           ))}
         </div>
       )}
@@ -535,89 +511,76 @@ function KeysTab({ app }: { app: ProviderAppDetail }) {
       setCopied(false);
       void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id, "keys"] });
     },
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   const revoke = useMutation({
     mutationFn: (keyId: string) => revokeProviderKey(app.id, keyId),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id, "keys"] }),
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   const active = keys.data?.find((key) => !key.revokedAt && Date.parse(key.expiresAt) > Date.now());
   return (
-    <div className="dashboard-panel">
-      <div className="store-section-head">
-        <div>
-          <p className="workspace-kicker">PROVIDER API KEYS</p>
-          <h2>One active machine key</h2>
-        </div>
-        <Button
-          className="button-primary"
-          onClick={() => (active ? setConfirm(true) : create.mutate())}
-        >
-          {create.isPending ? (
-            <LoaderCircle size={14} className="animate-spin" />
-          ) : active ? (
-            <RotateCcw size={14} />
-          ) : (
-            <KeyRound size={14} />
-          )}
-          {active ? "Rotate key" : "Create key"}
-        </Button>
-      </div>
-      <p className="workspace-panel-description">
-        The worker uses this bearer key for events, reports, and command writes. Rotating revokes
-        the previous key immediately. The secret is shown once and never stored in the browser
-        cache.
-      </p>
+    <div>
+      <SectionHeader
+        eyebrow="Provider API keys"
+        title="One active key for your worker"
+        aside={
+          <Button onClick={() => (active ? setConfirm(true) : create.mutate())}>
+            {create.isPending ? <Spinner /> : active ? <RotateCcw /> : <KeyRound />}
+            {active ? "Rotate key" : "Create key"}
+          </Button>
+        }
+      />
+      <PanelIntro>
+        Your worker sends this bearer key with events, reports and command writes. Rotating revokes
+        the old key right away. The secret is shown once and is never cached in the browser.
+      </PanelIntro>
       {secret && (
-        <div className="provider-secret" role="status">
-          <div>
-            <strong>Copy this key now. It will not be shown again.</strong>
-            <code>{secret}</code>
+        <div
+          role="status"
+          className="mb-6 grid gap-4 border border-primary bg-primary-soft p-5 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+        >
+          <div className="min-w-0">
+            <strong className="text-sm">Copy this key now. You won&apos;t see it again.</strong>
+            <code className="mt-2 block font-mono text-xs break-all">{secret}</code>
           </div>
           <Button
             variant="outline"
-            onClick={() => {
-              void navigator.clipboard.writeText(secret).then(() => setCopied(true));
-            }}
+            onClick={() => void navigator.clipboard.writeText(secret).then(() => setCopied(true))}
           >
-            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy key"}
+            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy key"}
           </Button>
           <Button variant="ghost" onClick={() => setSecret("")}>
             Dismiss
           </Button>
         </div>
       )}
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
       {keys.isPending ? (
-        <div className="store-loading">
-          <LoaderCircle size={16} className="animate-spin" /> Loading keys…
-        </div>
+        <LoadingState>Loading keys…</LoadingState>
       ) : (keys.data ?? []).length === 0 ? (
-        <div className="store-empty">
-          <h2>No keys yet.</h2>
-          <span>Create one when the provider worker is ready to connect.</span>
-        </div>
+        <EmptyState title="No keys yet.">
+          Create one when your worker is ready to connect.
+        </EmptyState>
       ) : (
-        <div className="provider-key-list">
+        <div className="grid border-t border-border">
           {keys.data?.map((key) => {
             const revoked = Boolean(key.revokedAt);
             const expired = Date.parse(key.expiresAt) <= Date.now();
             return (
               <article
                 key={key.id}
-                className={revoked || expired ? "provider-key is-off" : "provider-key"}
+                className={cn(
+                  "flex flex-col justify-between gap-3 border-b border-border py-4 sm:flex-row sm:items-center",
+                  (revoked || expired) && "opacity-55",
+                )}
               >
-                <div>
-                  <code>{key.prefix}…</code>
-                  <span>{key.scopes.join(" · ")}</span>
+                <div className="grid gap-1">
+                  <code className="font-mono text-sm">{key.prefix}…</code>
+                  <span className="font-mono text-[10px] text-faint">{key.scopes.join(" · ")}</span>
                 </div>
-                <div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>
                     {revoked ? "Revoked" : expired ? "Expired" : "Active"} · expires{" "}
                     {new Date(key.expiresAt).toLocaleString()}
@@ -639,18 +602,17 @@ function KeysTab({ app }: { app: ProviderAppDetail }) {
         </div>
       )}
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent className="thread-rename-dialog">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Rotate the active key?</DialogTitle>
+            <DialogDescription>
+              The current key stops working immediately. Put the new secret in your worker&apos;s
+              deployment before it reconnects.
+            </DialogDescription>
           </DialogHeader>
-          <p className="command-dialog-description">
-            The current worker key will stop working immediately. Update the provider deployment
-            with the new secret before it reconnects.
-          </p>
-          <div className="run-payment-actions">
+          <div className="flex gap-2">
             <Button disabled={create.isPending} onClick={() => create.mutate()}>
-              {create.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null} Rotate
-              key
+              {create.isPending && <Spinner />} Rotate key
             </Button>
             <Button variant="ghost" onClick={() => setConfirm(false)}>
               Cancel
@@ -659,6 +621,29 @@ function KeysTab({ app }: { app: ProviderAppDetail }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function DangerRow({
+  eyebrow,
+  title,
+  children,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  children: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col justify-between gap-4 border-t border-border py-6 sm:flex-row sm:items-center">
+      <div className="max-w-xl">
+        <p className="mb-2 eyebrow">{eyebrow}</p>
+        <h3 className="text-lg font-medium">{title}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{children}</p>
+      </div>
+      {action}
+    </section>
   );
 }
 
@@ -682,7 +667,7 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
       void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
       void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
     },
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   const status = useMutation({
     mutationFn: () =>
@@ -692,34 +677,29 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
       void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
       void queryClient.invalidateQueries({ queryKey: ["store"] });
     },
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   const archive = useMutation({
     mutationFn: () => archiveProviderApp(app.id),
     onSuccess: () => void navigate({ to: "/dashboard" }),
-    onError: (cause) => setError(errorText(cause)),
+    onError: (cause) => setError(errorMessage(cause)),
   });
   return (
-    <div className="dashboard-panel">
-      <div className="store-section-head">
-        <div>
-          <p className="workspace-kicker">APP SETTINGS</p>
-          <h2>Public face, private controls</h2>
-        </div>
-        <span className={`store-status is-${app.availability.toLowerCase()}`}>
-          <i aria-hidden="true" /> {app.availability.toLowerCase()}
-        </span>
-      </div>
+    <div>
+      <SectionHeader
+        eyebrow="App settings"
+        title="Listing and payout"
+        aside={<AppStatus availability={app.availability} />}
+      />
       <form
-        className="provider-settings"
+        className="grid max-w-2xl gap-5"
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
           save.mutate();
         }}
       >
-        <label htmlFor="settings-name">
-          App name
+        <FormField label="App name" htmlFor="settings-name">
           <Input
             id="settings-name"
             value={name}
@@ -727,9 +707,8 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
             required
             maxLength={80}
           />
-        </label>
-        <label htmlFor="settings-description">
-          Description
+        </FormField>
+        <FormField label="Description" htmlFor="settings-description">
           <Textarea
             id="settings-description"
             rows={3}
@@ -737,89 +716,62 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
             onChange={(event) => setDescription(event.target.value)}
             maxLength={2000}
           />
-        </label>
-        <label htmlFor="settings-payout">
-          Payout address
+        </FormField>
+        <FormField label="Payout address" htmlFor="settings-payout">
           <Input
             id="settings-payout"
             value={payout}
             onChange={(event) => setPayout(event.target.value)}
             required
             spellCheck={false}
+            className="font-mono"
           />
-        </label>
-        <fieldset className="dashboard-choice">
-          <legend>Store visibility</legend>
-          <label>
-            <input
-              type="radio"
-              name="settings-visibility"
-              checked={visibility === "PUBLIC"}
-              onChange={() => setVisibility("PUBLIC")}
-            />
-            <span>
-              <strong>Public</strong>
-              <small>Listed in the store.</small>
-            </span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="settings-visibility"
-              checked={visibility === "PRIVATE"}
-              onChange={() => setVisibility("PRIVATE")}
-            />
-            <span>
-              <strong>Private</strong>
-              <small>Owner-only, never listed.</small>
-            </span>
-          </label>
-        </fieldset>
-        <Button type="submit" className="button-primary" disabled={save.isPending}>
-          {save.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null} Save
-          settings
+        </FormField>
+        <VisibilityField
+          value={visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE"}
+          onChange={setVisibility}
+          descriptions={{ PUBLIC: "Listed in the store.", PRIVATE: "Only you can open it." }}
+        />
+        <Button type="submit" size="lg" className="justify-self-start" disabled={save.isPending}>
+          {save.isPending && <Spinner />} Save settings
         </Button>
       </form>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
-      <section className="provider-danger">
-        <div>
-          <p className="workspace-kicker">PRESENCE</p>
-          <h3>{app.status === "ACTIVE" ? "Suspend this app" : "Reactivate this app"}</h3>
-          <p>
-            {app.status === "ACTIVE"
-              ? "Suspending blocks new threads and quotes. Existing threads stay readable."
-              : "Reactivating restores the store listing and new quotes once the heartbeat returns."}
-          </p>
-        </div>
-        <Button variant="outline" disabled={status.isPending} onClick={() => status.mutate()}>
-          {status.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
-          {app.status === "ACTIVE" ? "Suspend app" : "Activate app"}
-        </Button>
-      </section>
-      <section className="provider-danger">
-        <div>
-          <p className="workspace-kicker">ARCHIVE</p>
-          <h3>Remove this app from your control room</h3>
-          <p>
-            Archiving keeps historical threads and paid receipts, but blocks new quotes and removes
-            the app from the store.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          disabled={archive.isPending}
-          onClick={() => {
-            if (window.confirm("Archive this app? Existing threads remain readable."))
-              archive.mutate();
-          }}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+      <div className="mt-12">
+        <DangerRow
+          eyebrow="Availability"
+          title={app.status === "ACTIVE" ? "Suspend this app" : "Reactivate this app"}
+          action={
+            <Button variant="outline" disabled={status.isPending} onClick={() => status.mutate()}>
+              {status.isPending && <Spinner />}
+              {app.status === "ACTIVE" ? "Suspend app" : "Activate app"}
+            </Button>
+          }
         >
-          <Trash2 size={14} /> Archive app
-        </Button>
-      </section>
+          {app.status === "ACTIVE"
+            ? "Suspending stops new threads and quotes. Existing threads stay readable."
+            : "Reactivating brings back the store listing, and quotes resume once the worker checks in."}
+        </DangerRow>
+        <DangerRow
+          eyebrow="Archive"
+          title="Archive this app"
+          action={
+            <Button
+              variant="destructive"
+              disabled={archive.isPending}
+              onClick={() => {
+                if (window.confirm("Archive this app? Existing threads remain readable."))
+                  archive.mutate();
+              }}
+            >
+              <Trash2 /> Archive app
+            </Button>
+          }
+        >
+          Threads and paid receipts are kept, but the app leaves the store and can&apos;t take new
+          requests.
+        </DangerRow>
+      </div>
     </div>
   );
 }
@@ -842,89 +794,107 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   });
   if (!session)
     return (
-      <main className="dashboard-shell dashboard-gate">
-        <div>
-          <h1>Sign in to manage this app.</h1>
-          <p>Provider controls are scoped to the wallet that owns the app.</p>
-        </div>
-        <Link to="/dashboard">Back to Studio</Link>
-      </main>
+      <PageShell>
+        <PageHeader
+          eyebrow="Studio"
+          title="Sign in to manage this app."
+          description="App controls belong to the wallet that owns the app."
+          actions={
+            <Button variant="outline" render={<Link to="/dashboard" />}>
+              Back to Studio
+            </Button>
+          }
+        />
+      </PageShell>
     );
   if (app.isPending)
     return (
-      <main className="dashboard-shell store-detail-state">
-        <LoaderCircle className="animate-spin" /> Loading app…
-      </main>
+      <PageShell>
+        <LoadingState className="pt-20">Loading app…</LoadingState>
+      </PageShell>
     );
   if (app.isError || !app.data)
     return (
-      <main className="dashboard-shell store-detail-state" role="alert">
-        {app.error ? errorText(app.error) : "App not found."}
+      <PageShell className="pt-16">
+        <ErrorNotice>{app.error ? errorMessage(app.error) : "App not found."}</ErrorNotice>
         <Button render={<Link to="/dashboard" />} variant="outline">
           Back to Studio
         </Button>
-      </main>
+      </PageShell>
     );
   const data = app.data;
   return (
-    <main className="dashboard-shell dashboard-app-shell">
-      <Link to="/dashboard" className="store-back">
-        <ArrowLeft size={15} /> Studio
-      </Link>
-      <header className="dashboard-app-head">
-        <div>
-          <p className="workspace-kicker">APP / {data.id.slice(0, 8)}</p>
-          <h1>{data.name}</h1>
-          <p>{data.description || "No description yet."}</p>
-          <div className="store-detail-tags">
-            <span className={`store-status is-${data.availability.toLowerCase()}`}>
-              <i aria-hidden="true" /> {data.availability.toLowerCase()}
+    <PageShell>
+      <BackLink to="/dashboard">Studio</BackLink>
+      <PageHeader
+        className="pt-8 lg:pt-10"
+        eyebrow={`App / ${data.id.slice(0, 8)}`}
+        title={data.name}
+        description={
+          <>
+            {data.description || "No description yet."}
+            <span className="mt-5 flex flex-wrap gap-2">
+              <AppStatus availability={data.availability} />
+              <Tag>{data.visibility.toLowerCase()}</Tag>
+              <Tag>{plural(data.commands.length, "command")}</Tag>
+              <Tag>
+                heartbeat{" "}
+                {data.lastHeartbeatAt
+                  ? new Date(data.lastHeartbeatAt).toLocaleTimeString()
+                  : "never"}
+              </Tag>
             </span>
-            <span>{data.visibility.toLowerCase()}</span>
-            <span>{data.commands.length} commands</span>
-            <span>
-              heartbeat{" "}
-              {data.lastHeartbeatAt ? new Date(data.lastHeartbeatAt).toLocaleTimeString() : "never"}
-            </span>
-          </div>
-        </div>
-        <div className="dashboard-app-head-actions">
-          <Button
-            className="button-primary"
-            disabled={opening || data.availability !== "AVAILABLE"}
-            onClick={() => {
-              setOpening(true);
-              setError("");
-              void newThread(data.id)
-                .then((thread) =>
-                  navigate({ to: "/chat/$threadId", params: { threadId: thread.id } }),
-                )
-                .catch((cause) => setError(errorText(cause)))
-                .finally(() => setOpening(false));
-            }}
-          >
-            {opening ? <LoaderCircle size={14} className="animate-spin" /> : null} Open chat
-          </Button>
-          {data.visibility === "PUBLIC" && publicApp.data && (
+          </>
+        }
+        actions={
+          <>
             <Button
-              variant="outline"
-              render={<Link to="/store/$appId" params={{ appId: data.id }} />}
+              size="lg"
+              disabled={opening || data.availability !== "AVAILABLE"}
+              onClick={() => {
+                setOpening(true);
+                setError("");
+                void newThread(data.id)
+                  .then((thread) =>
+                    navigate({ to: "/chat/$threadId", params: { threadId: thread.id } }),
+                  )
+                  .catch((cause) => setError(errorMessage(cause)))
+                  .finally(() => setOpening(false));
+              }}
             >
-              Store page <ArrowUpRight size={14} />
+              {opening ? <Spinner /> : <MessageSquareText />} Open a thread
             </Button>
-          )}
-        </div>
-      </header>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
-      <Tabs defaultValue="commands" className="dashboard-tabs">
-        <TabsList>
-          <TabsTrigger value="commands">Commands</TabsTrigger>
-          <TabsTrigger value="keys">API keys</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+            {data.visibility === "PUBLIC" && publicApp.data && (
+              <Button
+                size="lg"
+                variant="outline"
+                render={<Link to="/store/$appId" params={{ appId: data.id }} />}
+              >
+                Store page <ArrowUpRight />
+              </Button>
+            )}
+          </>
+        }
+      />
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+      <Tabs defaultValue="commands" className="mt-8 gap-8">
+        <TabsList
+          variant="line"
+          className="h-auto w-full justify-start gap-6 border-b border-border p-0"
+        >
+          {[
+            ["commands", "Commands"],
+            ["keys", "API keys"],
+            ["settings", "Settings"],
+          ].map(([value, label]) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="flex-none px-0 pb-3 text-[15px] after:bottom-[-1px] after:bg-primary data-active:text-foreground"
+            >
+              {label}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="commands">
           <CommandsTab app={data} />
@@ -936,6 +906,6 @@ export function ProviderAppPage({ appId }: { appId: string }) {
           <SettingsTab app={data} />
         </TabsContent>
       </Tabs>
-    </main>
+    </PageShell>
   );
 }

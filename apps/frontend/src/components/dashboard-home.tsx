@@ -1,11 +1,27 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, LoaderCircle, Plus, Radio } from "lucide-react";
+import { ArrowUpRight, Plus, Radio, X } from "lucide-react";
 import { useConnection } from "wagmi";
+import { BlurFade } from "./ui/blur-fade";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
+import {
+  AppStatus,
+  EmptyState,
+  ErrorNotice,
+  FormField,
+  LoadingState,
+  PageHeader,
+  PageShell,
+  SectionHeader,
+  Tag,
+  errorMessage,
+  plural,
+} from "./page-kit";
+import { VisibilityField } from "./visibility-field";
 import { WalletAccess } from "./wallet-access";
 import { authClient } from "@/src/lib/auth-client";
 import { createProviderApp, listProviderApps } from "@/src/lib/apps";
@@ -42,195 +58,176 @@ export function DashboardHome() {
       setError("");
       void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not create app."),
+    onError: (cause) => setError(errorMessage(cause, "Could not create app.")),
   });
 
   if (!session)
     return (
-      <main className="dashboard-shell dashboard-gate">
-        <div>
-          <p className="workspace-kicker">STUDIO / PROVIDER CONTROL</p>
-          <h1>Operate the app behind the thread.</h1>
-          <p>
-            Sign in with the wallet that owns an app to manage its commands, API keys, heartbeat
-            presence, and visibility in the public store.
-          </p>
-        </div>
-        <WalletAccess label="Sign in to Studio" />
-      </main>
+      <PageShell>
+        <PageHeader
+          eyebrow="Studio"
+          title="Run the app behind the thread."
+          description="Sign in with the wallet that owns your apps to manage their commands, API keys, worker status and store listing."
+          actions={<WalletAccess variant="hero" label="Sign in to Studio" />}
+        />
+      </PageShell>
     );
 
   const items = (apps.data ?? []).filter((app) => !app.archivedAt);
   return (
-    <main className="dashboard-shell">
-      <header className="dashboard-hero">
-        <div>
-          <p className="workspace-kicker">STUDIO / PROVIDER CONTROL</p>
-          <h1>Your apps, commands, keys.</h1>
-          <p>
-            One app is one chat surface. Providers expose slash commands, rotate a single active API
-            key, and keep the thread list on the buyer side.
-          </p>
-        </div>
-        <Button className="button-primary" onClick={() => setOpen((value) => !value)}>
-          <Plus size={16} /> New app
-        </Button>
-      </header>
+    <PageShell>
+      <PageHeader
+        eyebrow="Studio"
+        title="Your apps"
+        description="Each app is one chat surface. You define its slash commands, keep one active API key for its worker, and decide whether it's listed in the store."
+        actions={
+          <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+            <Plus /> New app
+          </Button>
+        }
+      />
 
       {open && (
-        <section className="dashboard-create" aria-labelledby="create-app-title">
-          <header>
-            <div>
-              <p className="workspace-kicker">NEW APP</p>
-              <h2 id="create-app-title">Publish a chat surface</h2>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Close
-            </Button>
-          </header>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!(payout || address)) {
-                setError("Connect a wallet or enter a payout address.");
-                return;
-              }
-              create.mutate();
-            }}
+        <BlurFade>
+          <section
+            aria-labelledby="create-app-title"
+            className="mt-8 border border-border-strong bg-card p-6 sm:p-8"
           >
-            <label htmlFor="app-name">
-              App name
-              <Input
-                id="app-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                maxLength={80}
-                placeholder="Summarizer"
-              />
-            </label>
-            <label htmlFor="app-description">
-              Description
-              <Textarea
-                id="app-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={3}
-                maxLength={2000}
-                placeholder="What this app does and when to use it."
-              />
-            </label>
-            <label htmlFor="app-payout">
-              Payout address
-              <Input
-                id="app-payout"
-                value={payout || address || ""}
-                onChange={(event) => setPayout(event.target.value)}
-                required
-                placeholder="0x…"
-                spellCheck={false}
-              />
-            </label>
-            <fieldset className="dashboard-choice">
-              <legend>Store visibility</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="visibility"
-                  checked={visibility === "PUBLIC"}
-                  onChange={() => setVisibility("PUBLIC")}
-                />
-                <span>
-                  <strong>Public</strong>
-                  <small>Listed in the store for anyone to chat.</small>
-                </span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="visibility"
-                  checked={visibility === "PRIVATE"}
-                  onChange={() => setVisibility("PRIVATE")}
-                />
-                <span>
-                  <strong>Private</strong>
-                  <small>Only you can open it; never listed publicly.</small>
-                </span>
-              </label>
-            </fieldset>
-            {error && (
-              <div className="run-error" role="alert">
-                {error}
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <p className="mb-2 eyebrow">New app</p>
+                <h2 id="create-app-title" className="text-2xl font-medium tracking-[-0.03em]">
+                  Create an app
+                </h2>
               </div>
-            )}
-            <Button type="submit" disabled={create.isPending || !name.trim()}>
-              {create.isPending ? <LoaderCircle className="animate-spin" /> : null} Create app
-            </Button>
-          </form>
-        </section>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close"
+                onClick={() => setOpen(false)}
+              >
+                <X />
+              </Button>
+            </div>
+            <form
+              className="grid max-w-2xl gap-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!(payout || address)) {
+                  setError("Connect a wallet or enter a payout address.");
+                  return;
+                }
+                create.mutate();
+              }}
+            >
+              <FormField label="App name" htmlFor="app-name">
+                <Input
+                  id="app-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                  maxLength={80}
+                  placeholder="Summarizer"
+                />
+              </FormField>
+              <FormField label="Description" htmlFor="app-description">
+                <Textarea
+                  id="app-description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="What the app does and when someone would use it."
+                />
+              </FormField>
+              <FormField label="Payout address" htmlFor="app-payout">
+                <Input
+                  id="app-payout"
+                  value={payout || address || ""}
+                  onChange={(event) => setPayout(event.target.value)}
+                  required
+                  placeholder="0x…"
+                  spellCheck={false}
+                  className="font-mono"
+                />
+              </FormField>
+              <VisibilityField
+                value={visibility}
+                onChange={setVisibility}
+                descriptions={{
+                  PUBLIC: "Listed in the store. Anyone can open a thread.",
+                  PRIVATE: "Only you can open it. Never listed.",
+                }}
+              />
+              {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+              <Button
+                type="submit"
+                size="lg"
+                className="justify-self-start"
+                disabled={create.isPending || !name.trim()}
+              >
+                {create.isPending && <Spinner />} Create app
+              </Button>
+            </form>
+          </section>
+        </BlurFade>
       )}
 
-      <section className="dashboard-apps" aria-labelledby="apps-title">
-        <div className="store-section-head">
-          <div>
-            <p className="workspace-kicker">OWNED APPS</p>
-            <h2 id="apps-title">Control room</h2>
-          </div>
-          <span>
-            {items.length} app{items.length === 1 ? "" : "s"}
-          </span>
-        </div>
+      <section aria-labelledby="apps-title" className="mt-12">
+        <SectionHeader
+          id="apps-title"
+          eyebrow="Owned apps"
+          title="Apps you run"
+          aside={plural(items.length, "app")}
+        />
         {apps.isPending ? (
-          <div className="store-loading">
-            <LoaderCircle className="animate-spin" size={18} /> Loading apps…
-          </div>
+          <LoadingState>Loading apps…</LoadingState>
         ) : apps.isError ? (
-          <div className="run-error" role="alert">
-            {apps.error instanceof Error ? apps.error.message : "Could not load apps."}
-            <Button size="sm" onClick={() => void apps.refetch()}>
-              Retry
-            </Button>
-          </div>
+          <ErrorNotice onRetry={() => void apps.refetch()}>
+            {errorMessage(apps.error, "Could not load apps.")}
+          </ErrorNotice>
         ) : items.length === 0 ? (
-          <div className="store-empty">
-            <p>NO APPS YET</p>
-            <h2>Create the first app.</h2>
-            <span>
-              Then add a default command, rotate an API key, and start the provider worker.
-            </span>
-            <Button className="button-primary" onClick={() => setOpen(true)}>
-              Create app
-            </Button>
-          </div>
+          <EmptyState
+            eyebrow="No apps yet"
+            title="Create your first app."
+            action={<Button onClick={() => setOpen(true)}>Create app</Button>}
+          >
+            After that: add a default command, create an API key, and start your worker.
+          </EmptyState>
         ) : (
-          <div className="dashboard-app-list">
-            {items.map((app) => (
-              <Link
-                key={app.id}
-                to="/dashboard/apps/$appId"
-                params={{ appId: app.id }}
-                className="dashboard-app-row"
-              >
-                <div>
-                  <span className={`store-status is-${app.availability.toLowerCase()}`}>
-                    <i aria-hidden="true" />
-                    {app.availability === "AVAILABLE" ? "Online" : app.availability.toLowerCase()}
-                  </span>
-                  <h3>{app.name}</h3>
-                  <p>{app.description || "No description yet."}</p>
-                </div>
-                <div className="dashboard-app-meta">
-                  <span>{app.visibility.toLowerCase()}</span>
-                  <span>
-                    <Radio size={12} /> {app.status.toLowerCase()}
-                  </span>
-                  <ArrowUpRight size={16} />
-                </div>
-              </Link>
+          <div className="grid border-t border-border">
+            {items.map((app, index) => (
+              <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
+                <Link
+                  to="/dashboard/apps/$appId"
+                  params={{ appId: app.id }}
+                  className="group flex flex-col justify-between gap-4 border-b border-border py-6 transition-colors hover:bg-card sm:flex-row sm:items-center sm:px-4"
+                >
+                  <div className="min-w-0">
+                    <AppStatus availability={app.availability} />
+                    <h3 className="mt-3 text-xl font-medium tracking-[-0.03em] break-words group-hover:text-primary">
+                      {app.name}
+                    </h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {app.description || "No description yet."}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Tag>{app.visibility.toLowerCase()}</Tag>
+                    <Tag>
+                      <Radio className="size-3" /> {app.status.toLowerCase()}
+                    </Tag>
+                    <ArrowUpRight
+                      size={18}
+                      className="ml-2 text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                    />
+                  </div>
+                </Link>
+              </BlurFade>
             ))}
           </div>
         )}
       </section>
-    </main>
+    </PageShell>
   );
 }

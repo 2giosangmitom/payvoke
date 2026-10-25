@@ -1,8 +1,24 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUpRight, LoaderCircle, Star } from "lucide-react";
+import { ArrowUpRight, MessageSquareText, Star } from "lucide-react";
+import { BlurFade } from "./ui/blur-fade";
 import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
+import { CommandCard } from "./command-card";
+import {
+  AppStatus,
+  BackLink,
+  EmptyState,
+  ErrorNotice,
+  LoadingState,
+  PageHeader,
+  PageShell,
+  SectionHeader,
+  Tag,
+  errorMessage,
+  plural,
+} from "./page-kit";
 import { WalletAccess } from "./wallet-access";
 import { authClient } from "@/src/lib/auth-client";
 import { formatUsdc, getStoreApp, getStars, starApp, unstarApp } from "@/src/lib/apps";
@@ -29,7 +45,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
   const save = useMutation({
     mutationFn: () => (starred ? unstarApp(appId) : starApp(appId)),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["stars"] }),
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not save."),
+    onError: (cause) => setError(errorMessage(cause, "Could not save.")),
   });
 
   async function openChat() {
@@ -40,7 +56,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
       const thread = await newThread(appId);
       await navigate({ to: "/chat/$threadId", params: { threadId: thread.id } });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not open a thread.");
+      setError(errorMessage(cause, "Could not open a thread."));
     } finally {
       setOpening(false);
     }
@@ -48,149 +64,125 @@ export function StoreAppDetail({ appId }: { appId: string }) {
 
   if (detail.isPending)
     return (
-      <main className="store-shell store-detail-state">
-        <LoaderCircle className="animate-spin" /> Loading app…
-      </main>
+      <PageShell>
+        <LoadingState className="pt-20">Loading app…</LoadingState>
+      </PageShell>
     );
   if (detail.isError || !detail.data)
     return (
-      <main className="store-shell store-detail-state" role="alert">
-        <p>{detail.error instanceof Error ? detail.error.message : "App not found."}</p>
+      <PageShell className="pt-16">
+        <ErrorNotice>{errorMessage(detail.error, "App not found.")}</ErrorNotice>
         <Button render={<Link to="/store" />} variant="outline">
           Back to store
         </Button>
-      </main>
+      </PageShell>
     );
   const app = detail.data;
   const offline = app.availability !== "AVAILABLE";
   const suspended = app.availability === "SUSPENDED";
 
   return (
-    <main className="store-shell">
-      <Link to="/store" className="store-back">
-        <ArrowLeft size={15} /> Store
-      </Link>
-      <header className="store-detail-hero">
-        <div className="store-detail-title">
-          <p className="workspace-kicker">
-            {app.visibility === "PRIVATE" ? "PRIVATE APP" : "PUBLIC APP"} / {app.id.slice(0, 8)}
-          </p>
-          <h1>{app.name}</h1>
-          <p>{app.description || "No description yet."}</p>
-          <div className="store-detail-tags">
-            <span className={`store-status is-${app.availability.toLowerCase()}`}>
-              <i aria-hidden="true" />{" "}
-              {app.availability === "AVAILABLE"
-                ? "Online"
-                : app.availability === "SUSPENDED"
-                  ? "Suspended"
-                  : "Offline"}
+    <PageShell>
+      <BackLink to="/store">Store</BackLink>
+      <PageHeader
+        className="pt-8 lg:pt-10"
+        eyebrow={`${app.visibility === "PRIVATE" ? "Private app" : "Public app"} / ${app.id.slice(0, 8)}`}
+        title={app.name}
+        description={
+          <>
+            {app.description || "No description yet."}
+            <span className="mt-5 flex flex-wrap gap-2">
+              <AppStatus availability={app.availability} />
+              <Tag>{app.visibility === "PUBLIC" ? "Public" : "Private"}</Tag>
+              <Tag>{plural(app.commands.length, "slash command")}</Tag>
             </span>
-            <span>{app.visibility === "PUBLIC" ? "Public app" : "Private app"}</span>
-            <span>
-              {app.commands.length} slash command{app.commands.length === 1 ? "" : "s"}
-            </span>
-          </div>
-        </div>
-        <aside className="store-detail-actions">
-          <Button
-            className="button-primary"
-            disabled={opening || offline || !session}
-            onClick={() => void openChat()}
-          >
-            {opening ? <LoaderCircle className="animate-spin" /> : null}
-            {suspended
-              ? "App suspended"
-              : offline
-                ? "App offline"
-                : session
-                  ? "Open chat"
-                  : "Sign in to chat"}
-          </Button>
-          {!session && <WalletAccess />}
-          <Button
-            variant="outline"
-            disabled={!session || save.isPending}
-            onClick={() => save.mutate()}
-          >
-            <Star size={15} fill={starred ? "currentColor" : "none"} />{" "}
-            {starred ? "Saved" : "Save app"}
-          </Button>
-          <p>
-            {suspended
-              ? "This app is suspended by its owner. Existing threads stay readable, but new quotes are blocked."
-              : offline
-                ? "New quotes are blocked until the provider heartbeat returns. Existing threads stay readable."
-                : "A quote appears in the chat composer. Nothing is charged until you authorize it."}
-          </p>
-        </aside>
-      </header>
+          </>
+        }
+        actions={
+          <aside className="grid w-full gap-3 border border-border bg-card p-5 lg:w-80">
+            <Button
+              size="lg"
+              disabled={opening || offline || !session}
+              onClick={() => void openChat()}
+            >
+              {opening ? <Spinner /> : <MessageSquareText />}
+              {suspended
+                ? "App suspended"
+                : offline
+                  ? "App offline"
+                  : session
+                    ? "Open a thread"
+                    : "Sign in to chat"}
+            </Button>
+            {!session && <WalletAccess variant="secondary" />}
+            <Button
+              variant="outline"
+              size="lg"
+              disabled={!session || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              <Star fill={starred ? "currentColor" : "none"} /> {starred ? "Saved" : "Save app"}
+            </Button>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {suspended
+                ? "The owner has suspended this app. Old threads stay readable, but it can't take new requests."
+                : offline
+                  ? "The app's worker isn't responding, so new requests are paused. Old threads stay readable."
+                  : "You'll see a quote in the composer first. Nothing is charged until you approve it."}
+            </p>
+          </aside>
+        }
+      />
 
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
 
-      <section className="store-commands" aria-labelledby="commands-title">
-        <div className="store-section-head">
-          <div>
-            <p className="workspace-kicker">SLASH COMMANDS</p>
-            <h2 id="commands-title">What this app can do</h2>
-          </div>
-          <span>Free text maps to the default command.</span>
-        </div>
+      <section aria-labelledby="commands-title" className="mt-14">
+        <SectionHeader
+          id="commands-title"
+          eyebrow="Slash commands"
+          title="What this app can do"
+          aside="Plain text goes to the default command."
+        />
         {app.commands.length === 0 ? (
-          <div className="store-empty">
-            <h2>No commands yet.</h2>
-            <span>This app has no active command revision, so it cannot be quoted.</span>
-          </div>
+          <EmptyState title="No commands yet.">
+            This app has no active command, so it can't quote a price yet.
+          </EmptyState>
         ) : (
-          <div className="store-command-list">
-            {app.commands.map((command) => (
-              <article key={command.id} className="store-command">
-                <div className="store-command-name">
-                  <code>/{command.name}</code>
-                  {command.id === app.defaultCommandId && <span>DEFAULT</span>}
-                </div>
-                <p>{command.description}</p>
-                {command.revision ? (
-                  <>
-                    <div className="store-command-terms">
-                      <span>{formatUsdc(command.revision.grossAmount)}</span>
-                      <span>delivery ≤ {command.revision.deliverySeconds}s</span>
-                      <span>review {command.revision.reviewSeconds}s</span>
-                    </div>
-                    <div className="store-command-options">
-                      {command.revision.options.map((option) => (
-                        <span key={option.name}>
-                          {option.name}
-                          <small>
-                            {option.type.toLowerCase()}
-                            {option.required ? " · required" : ""}
-                          </small>
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <span className="store-command-empty">No active revision.</span>
-                )}
-              </article>
+          <div className="grid gap-3">
+            {app.commands.map((command, index) => (
+              <BlurFade key={command.id} inView delay={Math.min(index, 6) * 0.04}>
+                <CommandCard
+                  name={command.name}
+                  description={command.description}
+                  isDefault={command.id === app.defaultCommandId}
+                  revision={command.revision}
+                  terms={
+                    command.revision && [
+                      formatUsdc(command.revision.grossAmount),
+                      `delivery ≤ ${command.revision.deliverySeconds}s`,
+                      `review ${command.revision.reviewSeconds}s`,
+                    ]
+                  }
+                />
+              </BlurFade>
             ))}
           </div>
         )}
       </section>
 
-      <section className="store-detail-note">
-        <p>
-          Payvoke apps share one thread list. Commands are called with <code>/name</code> inside the
-          composer; free text uses this app&apos;s default command.
+      <section className="mt-14 flex flex-col justify-between gap-4 border-t border-border pt-8 sm:flex-row sm:items-center">
+        <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+          All your threads live in one list, whatever app they belong to. Type{" "}
+          <code className="font-mono text-primary">/name</code> in the composer to call a command;
+          plain text goes to this app&apos;s default command.
         </p>
-        <Link to="/chat" className="text-link">
-          Browse your threads <ArrowUpRight size={15} />
+        <Link
+          to="/chat"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+        >
+          Your threads <ArrowUpRight size={15} />
         </Link>
       </section>
-    </main>
+    </PageShell>
   );
 }

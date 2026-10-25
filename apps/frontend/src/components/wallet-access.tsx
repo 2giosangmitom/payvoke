@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/src/components/ui/dialog";
 import { authClient } from "@/src/lib/auth-client";
+import { cn } from "@/src/lib/utils";
 
 export const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 
@@ -134,14 +135,9 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
   return (
     <>
       <Button
-        size="lg"
-        className={
-          variant === "hero"
-            ? "wallet-cta wallet-cta-hero"
-            : variant === "secondary"
-              ? "wallet-cta wallet-cta-secondary"
-              : "wallet-cta"
-        }
+        size={variant === "header" ? "sm" : "lg"}
+        variant={variant === "secondary" ? "outline" : "default"}
+        className={cn(variant === "header" && "h-10 px-3 max-sm:w-10 max-sm:px-0")}
         onClick={() => {
           setError("");
           setOpen(true);
@@ -149,12 +145,17 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
         aria-label={sessionMatches && address ? `Account ${address}` : buttonLabel}
       >
         {sessionMatches && address ? (
-          <span className="online-dot" aria-hidden="true" />
+          <span aria-hidden="true" className="size-1.5 bg-current" />
         ) : (
-          <Wallet size={16} strokeWidth={1.7} />
+          <Wallet strokeWidth={1.7} />
         )}
-        {buttonLabel}
-        {variant === "hero" ? <ArrowRight size={16} /> : <ChevronDown size={14} />}
+        {/* The header button shrinks to its icon on phones; aria-label keeps the name. */}
+        <span className={cn(variant === "header" && "max-sm:hidden")}>{buttonLabel}</span>
+        {variant === "hero" ? (
+          <ArrowRight />
+        ) : (
+          <ChevronDown className={cn(variant === "header" && "max-sm:hidden")} />
+        )}
       </Button>
 
       <Dialog
@@ -166,29 +167,29 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
           }
         }}
       >
-        <DialogContent className="wallet-dialog" showCloseButton={!pending}>
-          <DialogHeader className="wallet-dialog-header">
-            <div className="dialog-symbol">
+        <DialogContent className="gap-5 sm:max-w-md" showCloseButton={!pending}>
+          <DialogHeader className="gap-3">
+            <div className="grid size-11 place-items-center border border-border-strong bg-background-deep text-primary">
               <Wallet size={20} strokeWidth={1.5} />
             </div>
-            <DialogTitle className="wallet-title">
+            <DialogTitle className="text-2xl">
               {sessionMatches ? "Your account" : "Sign in with Ethereum"}
             </DialogTitle>
-            <DialogDescription className="wallet-subtitle">
+            <DialogDescription className="leading-relaxed">
               {sessionMatches
-                ? "Your wallet is authenticated on Payvoke."
-                : "Connect a wallet and sign a message to continue. No transaction or gas fee is required."}
+                ? "This wallet is signed in to Payvoke."
+                : "Connect a wallet and sign a message. There is no transaction and no gas fee."}
             </DialogDescription>
           </DialogHeader>
 
           {!isConnected ? (
-            <div className="wallet-options">
+            <div className="grid gap-2">
               {connectors.map((connector) => (
                 <button
                   key={connector.uid}
                   type="button"
-                  className="wallet-option"
                   disabled={pending}
+                  className="flex items-center gap-3 border border-border bg-background-deep px-4 py-3 text-left text-sm font-medium transition-colors hover:border-primary disabled:opacity-50"
                   onClick={async () => {
                     setError("");
                     try {
@@ -198,7 +199,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                     }
                   }}
                 >
-                  <span className="wallet-option-icon">
+                  <span className="grid size-8 place-items-center">
                     {/metamask/i.test(connector.name) ? (
                       <WalletMetamask size={26} />
                     ) : /rabby/i.test(connector.name) ? (
@@ -207,70 +208,70 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                       <Wallet size={23} strokeWidth={1.5} />
                     )}
                   </span>
-                  <span>{connector.name}</span>
+                  <span className="flex-1">{connector.name}</span>
                   {isConnecting ? (
                     <LoaderCircle size={17} className="animate-spin" />
                   ) : (
-                    <ArrowRight size={17} />
+                    <ArrowRight size={17} className="text-primary" />
                   )}
                 </button>
               ))}
               {connectors.length === 0 && (
-                <p className="wallet-help">
-                  No injected wallet detected. Install an Ethereum wallet extension to continue.
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  No browser wallet found. Install an Ethereum wallet extension to continue.
                 </p>
               )}
             </div>
           ) : (
-            <div className="wallet-connected">
-              <div className="account-row">
-                <span className="account-avatar">
-                  <Wallet size={20} />
+            <div className="grid gap-3">
+              <div className="flex items-center gap-3 border border-border bg-background-deep p-3.5">
+                <span className="grid size-9 place-items-center bg-primary-soft text-primary">
+                  <Wallet size={18} />
                 </span>
-                <div>
-                  <span className="account-label">Connected wallet</span>
-                  <strong>{address && shortAddress(address)}</strong>
+                <div className="grid flex-1 gap-0.5">
+                  <span className="font-mono text-[10px] tracking-wider text-faint uppercase">
+                    Connected wallet
+                  </span>
+                  <strong className="font-mono text-sm font-medium">
+                    {address && shortAddress(address)}
+                  </strong>
                 </div>
                 <Check size={17} className="text-primary" />
               </div>
-              <div className="chain-row">
-                <NetworkAvalancheFuji size={22} />
-                <span>Avalanche Fuji</span>
-                <span className={correctChain ? "chain-ok" : "chain-wrong"}>
+              <div className="flex items-center gap-2.5 border border-border px-3.5 py-2.5 text-sm">
+                <NetworkAvalancheFuji size={20} />
+                <span className="flex-1">Avalanche Fuji</span>
+                <span
+                  className={cn(
+                    "font-mono text-[10px] tracking-wider uppercase",
+                    correctChain ? "text-primary" : "text-warning",
+                  )}
+                >
                   {correctChain ? "Connected" : "Switch required"}
                 </span>
               </div>
               {sessionMatches ? (
                 <>
-                  <div className="wallet-success">
-                    <ShieldCheck size={17} /> Signed in securely
-                  </div>
+                  <p className="flex items-center gap-2 text-sm text-primary">
+                    <ShieldCheck size={16} /> Signed in
+                  </p>
                   <Button
-                    className="dialog-action"
+                    size="lg"
                     onClick={() => {
                       setOpen(false);
                       void navigate({ to: "/dashboard" });
                     }}
                   >
-                    Open Studio <ArrowRight size={16} />
+                    Open Studio <ArrowRight />
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="dialog-outline"
-                    disabled={pending}
-                    onClick={logOut}
-                  >
-                    {busy === "logout" ? (
-                      <LoaderCircle size={16} className="animate-spin" />
-                    ) : (
-                      <LogOut size={16} />
-                    )}{" "}
-                    Sign out & disconnect
+                  <Button size="lg" variant="outline" disabled={pending} onClick={logOut}>
+                    {busy === "logout" ? <LoaderCircle className="animate-spin" /> : <LogOut />}
+                    Sign out and disconnect
                   </Button>
                 </>
               ) : !correctChain ? (
                 <Button
-                  className="dialog-action"
+                  size="lg"
                   disabled={pending}
                   onClick={async () => {
                     setError("");
@@ -282,31 +283,24 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                   }}
                 >
                   {isSwitching ? (
-                    <LoaderCircle size={16} className="animate-spin" />
+                    <LoaderCircle className="animate-spin" />
                   ) : (
                     <NetworkAvalancheFuji size={19} />
                   )}
                   Switch to Avalanche Fuji
                 </Button>
               ) : (
-                <Button
-                  className="dialog-action"
-                  disabled={pending || sessionLoading}
-                  onClick={signIn}
-                >
-                  {busy === "sign" ? (
-                    <LoaderCircle size={17} className="animate-spin" />
-                  ) : (
-                    <ShieldCheck size={17} />
-                  )}
-                  {busy === "sign" ? "Awaiting signature…" : "Sign in with Ethereum"}
-                  {busy !== "sign" && <ArrowRight size={17} />}
+                <Button size="lg" disabled={pending || sessionLoading} onClick={signIn}>
+                  {busy === "sign" ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
+                  {busy === "sign" ? "Waiting for signature…" : "Sign in with Ethereum"}
+                  {busy !== "sign" && <ArrowRight />}
                 </Button>
               )}
               {!sessionMatches && (
-                <button
-                  type="button"
-                  className="wallet-disconnect"
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="justify-self-center text-muted-foreground"
                   disabled={pending}
                   onClick={async () => {
                     await disconnectAsync();
@@ -314,20 +308,23 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                   }}
                 >
                   Use a different wallet
-                </button>
+                </Button>
               )}
             </div>
           )}
 
           {error && (
-            <p className="wallet-error" role="alert">
-              <X size={15} />
+            <p
+              role="alert"
+              className="flex items-start gap-2 bg-destructive-soft px-3.5 py-3 text-sm text-destructive"
+            >
+              <X size={15} className="mt-0.5 shrink-0" />
               {error}
             </p>
           )}
-          <div className="wallet-dialog-foot">
-            <ShieldCheck size={14} /> Sign a message to verify your wallet. No gas fee.
-          </div>
+          <p className="flex items-center gap-2 border-t border-border pt-4 font-mono text-[10px] tracking-wide text-faint">
+            <ShieldCheck size={13} /> Signing only proves you own the wallet. No gas.
+          </p>
         </DialogContent>
       </Dialog>
     </>

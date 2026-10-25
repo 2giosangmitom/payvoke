@@ -1,8 +1,12 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
-import { LoaderCircle, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Spinner } from "./ui/spinner";
+import { ErrorNotice } from "./page-kit";
+import { cn } from "@/src/lib/utils";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
@@ -144,14 +148,12 @@ export function QuestionForm({
   }
 
   return (
-    <form
-      className={compact ? "run-question is-compact" : "run-question"}
-      onSubmit={(event) => void submit(event)}
-    >
-      {!compact && <p>{question.prompt}</p>}
-      {compact && <p className="run-question-prompt">{question.prompt}</p>}
+    <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
+      <p className={cn("leading-relaxed whitespace-pre-wrap", compact && "text-sm")}>
+        {question.prompt}
+      </p>
       {raw ? (
-        <div className="run-question-field">
+        <div className="grid gap-1.5">
           <Label htmlFor={`${prefix}-json`}>Answer (JSON object)</Label>
           <Textarea
             id={`${prefix}-json`}
@@ -159,31 +161,32 @@ export function QuestionForm({
             onChange={(event) => setJson(event.target.value)}
             rows={4}
             spellCheck={false}
+            className="font-mono text-xs"
           />
         </div>
       ) : (
         fields.map((field) => (
-          <div className="run-question-field" key={field.name}>
+          <div className="grid gap-1.5" key={field.name}>
             {field.kind === "boolean" ? (
-              <label className="run-question-check">
-                <input
-                  type="checkbox"
+              <label className="flex items-center gap-2.5 text-sm">
+                <Checkbox
                   checked={values[field.name] === true}
-                  onChange={(event) =>
-                    setValues((current) => ({ ...current, [field.name]: event.target.checked }))
+                  onCheckedChange={(checked) =>
+                    setValues((current) => ({ ...current, [field.name]: checked }))
                   }
-                />{" "}
+                />
                 {field.label}
               </label>
             ) : (
               <>
                 <Label htmlFor={`${prefix}-${field.name}`}>
                   {field.label}
-                  {field.required ? " *" : ""}
+                  {field.required && <span className="text-primary">*</span>}
                 </Label>
                 {field.kind === "enum" ? (
                   <NativeSelect
                     id={`${prefix}-${field.name}`}
+                    className="w-full"
                     value={String(values[field.name] ?? "")}
                     onChange={(event) =>
                       setValues((current) => ({ ...current, [field.name]: event.target.value }))
@@ -214,17 +217,15 @@ export function QuestionForm({
           </div>
         ))
       )}
-      <div className="run-question-actions">
+      <div className="flex flex-wrap items-center gap-2.5">
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? <LoaderCircle className="animate-spin" /> : <Send />} Send answer
+          {busy ? <Spinner /> : <Send />} Send answer
         </Button>
-        <small>Answers continue this invocation without another charge.</small>
+        <small className="font-mono text-[11px] text-faint">
+          Answering doesn&apos;t cost anything extra.
+        </small>
       </div>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
     </form>
   );
 }

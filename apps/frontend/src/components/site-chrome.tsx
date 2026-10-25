@@ -1,110 +1,99 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
-import { WalletAccess } from "./wallet-access";
+import { cn } from "@/src/lib/utils";
 import { ThemeToggle } from "./theme-select";
+import { WalletAccess } from "./wallet-access";
 
-type SiteSection = "home" | "store" | "chat" | "dashboard";
+export type SiteSection = "home" | "store" | "chat" | "dashboard";
 
-function Mark({ small = false }: { small?: boolean }) {
+const navItems = [
+  { section: "home", to: "/", label: "Home" },
+  { section: "store", to: "/store", label: "Store" },
+  { section: "chat", to: "/chat", label: "Chat" },
+  { section: "dashboard", to: "/dashboard", label: "Studio" },
+] as const;
+
+function Brand({ small = false }: { small?: boolean }) {
   return (
-    <img
-      className={small ? "brand-mark brand-mark-small" : "brand-mark"}
-      src="/logo.svg"
-      alt=""
-      aria-hidden="true"
-    />
+    <Link to="/" className="inline-flex shrink-0 items-center gap-2.5" aria-label="Payvoke home">
+      <img
+        src="/logo.svg"
+        alt=""
+        aria-hidden="true"
+        className={cn("block", small ? "size-6" : "size-7")}
+      />
+      <span className="text-[28px] leading-none font-bold tracking-[-0.065em]">
+        payvoke<span className="text-primary">.</span>
+      </span>
+    </Link>
   );
 }
 
-export function SiteHeader({
-  current,
-  showWallet = true,
-}: {
-  current: SiteSection;
-  showWallet?: boolean;
-}) {
+export function SiteHeader({ current }: { current: SiteSection }) {
   const [menu, setMenu] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
   return (
     <header
-      className="site-header"
+      className="relative z-20 border-b border-border bg-background"
       onKeyDown={(event) => {
         if (event.key === "Escape" && menu) {
           setMenu(false);
-          event.currentTarget.querySelector<HTMLButtonElement>(".mobile-menu-toggle")?.focus();
+          toggleRef.current?.focus();
         }
       }}
     >
-      <div className="header-inner page-container">
-        <Link to="/" className="brand" aria-label="Payvoke home">
-          <Mark />
-          <span className="brand-word">
-            payvoke<span className="brand-period">.</span>
-          </span>
-        </Link>
-        <nav className="desktop-nav" aria-label="Main navigation">
-          <Link to="/" aria-current={current === "home" ? "page" : undefined}>
-            Home
-          </Link>
-          <Link to="/store" aria-current={current === "store" ? "page" : undefined}>
-            Store
-          </Link>
-          <Link to="/chat" aria-current={current === "chat" ? "page" : undefined}>
-            Chat
-          </Link>
-          <Link to="/dashboard" aria-current={current === "dashboard" ? "page" : undefined}>
-            Studio
-          </Link>
+      <div className="container-page flex min-h-18 items-center justify-between gap-6">
+        <Brand />
+        <nav aria-label="Main navigation" className="ml-auto hidden items-center gap-6 md:flex">
+          {navItems.map((item) => (
+            <Link
+              key={item.section}
+              to={item.to}
+              aria-current={current === item.section ? "page" : undefined}
+              className="text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-primary aria-[current=page]:text-primary aria-[current=page]:underline aria-[current=page]:underline-offset-[6px]"
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
-        <div className="header-actions">
+        <div className="flex items-center gap-3">
           <ThemeToggle />
-          {showWallet && <WalletAccess />}
+          <WalletAccess />
           <Button
-            className="mobile-menu-toggle"
+            ref={toggleRef}
             type="button"
             variant="outline"
             size="icon"
+            className="md:hidden"
             aria-label={menu ? "Close menu" : "Open menu"}
             aria-expanded={menu}
             aria-controls="site-mobile-nav"
             onClick={() => setMenu(!menu)}
           >
-            {menu ? <X size={23} /> : <Menu size={23} />}
+            {menu ? <X className="size-5" /> : <Menu className="size-5" />}
           </Button>
         </div>
       </div>
       {menu && (
-        <nav className="mobile-nav" id="site-mobile-nav" aria-label="Mobile navigation">
-          <Link
-            to="/"
-            onClick={() => setMenu(false)}
-            aria-current={current === "home" ? "page" : undefined}
-          >
-            Home <ArrowUpRight size={15} />
-          </Link>
-          <Link
-            to="/store"
-            onClick={() => setMenu(false)}
-            aria-current={current === "store" ? "page" : undefined}
-          >
-            Store <ArrowUpRight size={15} />
-          </Link>
-          <Link
-            to="/chat"
-            onClick={() => setMenu(false)}
-            aria-current={current === "chat" ? "page" : undefined}
-          >
-            Chat <ArrowUpRight size={15} />
-          </Link>
-          <Link
-            to="/dashboard"
-            onClick={() => setMenu(false)}
-            aria-current={current === "dashboard" ? "page" : undefined}
-          >
-            Studio <ArrowUpRight size={15} />
-          </Link>
+        <nav
+          id="site-mobile-nav"
+          aria-label="Mobile navigation"
+          className="absolute inset-x-0 top-full z-30 border-b border-border bg-background shadow-float animate-in fade-in-0 slide-in-from-top-2 md:hidden"
+        >
+          {navItems.map((item) => (
+            <Link
+              key={item.section}
+              to={item.to}
+              onClick={() => setMenu(false)}
+              aria-current={current === item.section ? "page" : undefined}
+              className="container-page flex items-center justify-between border-b border-border py-4 text-base font-medium last:border-b-0 aria-[current=page]:text-primary"
+            >
+              {item.label} <ArrowUpRight size={15} />
+            </Link>
+          ))}
         </nav>
       )}
     </header>
@@ -113,25 +102,29 @@ export function SiteHeader({
 
 export function SiteFooter() {
   return (
-    <footer className="site-footer">
-      <div className="page-container footer-top">
+    <footer className="border-t border-border bg-background-deep">
+      <div className="container-page flex flex-col justify-between gap-10 py-12 sm:flex-row">
         <div>
-          <Link to="/" className="brand">
-            <Mark small />
-            <span className="brand-word">
-              payvoke<span className="brand-period">.</span>
-            </span>
-          </Link>
-          <p>A place for the apps you build and the ones you need.</p>
+          <Brand small />
+          <p className="mt-4 max-w-72 text-sm leading-relaxed text-muted-foreground">
+            Apps with slash commands, made by independent developers.
+          </p>
         </div>
-        <div className="footer-links">
-          <a href="/#overview">Overview</a>
-          <Link to="/store">Store</Link>
-          <Link to="/chat">Chat</Link>
-          <Link to="/dashboard">Studio</Link>
-        </div>
+        <nav
+          aria-label="Footer"
+          className="flex flex-wrap items-start gap-6 text-[13px] text-muted-foreground"
+        >
+          <a href="/#how-it-works" className="hover:text-primary">
+            How it works
+          </a>
+          {navItems.slice(1).map((item) => (
+            <Link key={item.section} to={item.to} className="hover:text-primary">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
       </div>
-      <div className="page-container footer-bottom">
+      <div className="container-page flex flex-col justify-between gap-2 border-t border-border py-6 text-xs leading-relaxed text-faint sm:flex-row">
         <span>© 2026 Payvoke</span>
         <span>Avalanche Fuji testnet. Paid runs are in development.</span>
       </div>

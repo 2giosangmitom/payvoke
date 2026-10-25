@@ -3,7 +3,7 @@ import { ProviderAppPage } from "@/src/components/provider-app";
 
 export const Route = createFileRoute("/_market/dashboard/apps/$appId")({
   component: ProviderAppRoute,
-  head: () => ({ meta: [{ title: "App controls — Payvoke" }] }),
+  head: () => ({ meta: [{ title: "App controls · Payvoke" }] }),
 });
 
 function ProviderAppRoute() {

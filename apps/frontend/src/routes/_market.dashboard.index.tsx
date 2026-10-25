@@ -5,7 +5,7 @@ export const Route = createFileRoute("/_market/dashboard/")({
   component: DashboardPage,
   head: () => ({
     meta: [
-      { title: "Studio — Payvoke" },
+      { title: "Studio · Payvoke" },
       {
         name: "description",
         content: "Manage Payvoke apps, slash commands, visibility, and keys.",

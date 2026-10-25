@@ -5,7 +5,7 @@ export const Route = createFileRoute("/_market/store/")({
   component: StorePage,
   head: () => ({
     meta: [
-      { title: "Store — Payvoke" },
+      { title: "Store · Payvoke" },
       {
         name: "description",
         content: "Discover public Payvoke apps, their slash commands, and per-request prices.",

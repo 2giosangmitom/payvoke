@@ -1,9 +1,20 @@
 import { useDeferredValue, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, LoaderCircle, Search } from "lucide-react";
+import { ArrowUpRight, Search } from "lucide-react";
+import { BlurFade } from "./ui/blur-fade";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
+import {
+  AppStatus,
+  EmptyState,
+  ErrorNotice,
+  Eyebrow,
+  LoadingState,
+  errorMessage,
+  plural,
+} from "./page-kit";
 import { WalletAccess } from "./wallet-access";
 import { authClient } from "@/src/lib/auth-client";
 import { listProviderApps, listStoreApps } from "@/src/lib/apps";
@@ -68,114 +79,107 @@ export function NewThread() {
     },
     onSuccess: (thread) =>
       void navigate({ to: "/chat/$threadId", params: { threadId: thread.id } }),
-    onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : "Could not start a thread."),
+    onError: (cause) => setError(errorMessage(cause, "Could not start a thread.")),
     onSettled: () => setBusy(""),
   });
 
   return (
-    <main className="new-thread-shell">
-      <header className="store-hero new-thread-hero">
-        <div>
-          <p className="workspace-kicker">NEW THREAD / ONE INBOX</p>
-          <h1>
-            Pick an app.
-            <br />
-            Keep the conversation.
+    <main className="overflow-y-auto px-5 py-10 sm:px-10 lg:px-14">
+      <BlurFade>
+        <header className="max-w-2xl">
+          <Eyebrow className="mb-4">New thread</Eyebrow>
+          <h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.05em]">
+            Which app do you want to talk to?
           </h1>
-        </div>
-        <p>
-          Threads from every app live in one list. Specific apps expose slash commands; free text is
-          routed to each app&apos;s default command.
-        </p>
-      </header>
-      <div className="store-controls">
-        <label className="store-search">
-          <Search size={16} aria-hidden="true" />
-          <span className="sr-only">Search apps to chat with</span>
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search apps"
-          />
-        </label>
-      </div>
+          <p className="mt-4 leading-7 text-muted-foreground">
+            Threads from every app share one list. Type{" "}
+            <code className="font-mono text-primary">/</code> in a thread to pick a command; plain
+            text goes to the app&apos;s default command.
+          </p>
+        </header>
+      </BlurFade>
+      <label className="relative mt-8 block max-w-2xl">
+        <Search
+          size={16}
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
+        />
+        <span className="sr-only">Search apps to chat with</span>
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search apps"
+          className="h-11 pl-10"
+        />
+      </label>
       {!session && (
-        <section className="new-thread-signin">
+        <section className="mt-6 flex max-w-2xl flex-col justify-between gap-4 border border-border-strong bg-background-deep p-5 sm:flex-row sm:items-center">
           <div>
-            <p className="workspace-kicker">SIGN IN REQUIRED</p>
-            <h2>Threads belong to your wallet.</h2>
-            <span>Connect an Avalanche Fuji wallet to open a paid chat thread.</span>
+            <Eyebrow className="mb-2">Sign in required</Eyebrow>
+            <h2 className="text-lg font-medium">Threads belong to your wallet.</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Connect an Avalanche Fuji wallet to open a thread.
+            </p>
           </div>
           <WalletAccess />
         </section>
       )}
-      {publicApps.isPending || (Boolean(session) && owned.isPending) ? (
-        <div className="store-loading">
-          <LoaderCircle className="animate-spin" size={18} /> Loading apps…
-        </div>
-      ) : publicApps.isError ? (
-        <div className="run-error" role="alert">
-          {publicApps.error instanceof Error ? publicApps.error.message : "Could not load apps."}
-          <Button size="sm" onClick={() => void publicApps.refetch()}>
-            Retry
-          </Button>
-        </div>
-      ) : apps.length === 0 ? (
-        <div className="store-empty">
-          <p>NO APPS FOUND</p>
-          <h2>Your next thread starts in the store.</h2>
-          <span>
-            Public apps appear here as soon as their provider publishes an active command.
-          </span>
-          <Button render={<a href="/store" />} className="button-primary">
-            Browse the store
-          </Button>
-        </div>
-      ) : (
-        <section className="new-thread-list" aria-label="Apps">
-          {apps.map((app) => {
-            const available = app.availability === "AVAILABLE";
-            return (
-              <article key={app.id} className="new-thread-app">
-                <div>
-                  <span className={`store-status is-${app.availability.toLowerCase()}`}>
-                    <i aria-hidden="true" /> {available ? "Online" : app.availability.toLowerCase()}
-                  </span>
-                  <h2>{app.name}</h2>
-                  <p>{app.description || "No description yet."}</p>
-                </div>
-                <div className="new-thread-app-actions">
-                  <span>
-                    {app.commandCount !== undefined
-                      ? `${app.commandCount} command${app.commandCount === 1 ? "" : "s"}`
-                      : app.visibility === "PRIVATE"
-                        ? "Private app"
-                        : "Public app"}
-                  </span>
-                  <Button
-                    variant="outline"
-                    disabled={!session || !available || busy === app.id}
-                    onClick={() => start.mutate(app.id)}
-                  >
-                    {busy === app.id ? (
-                      <LoaderCircle size={14} className="animate-spin" />
-                    ) : (
-                      <ArrowUpRight size={14} />
-                    )}
-                    {available ? "Start thread" : "Offline"}
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      )}
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      <div className="mt-8">
+        {publicApps.isPending || (Boolean(session) && owned.isPending) ? (
+          <LoadingState>Loading apps…</LoadingState>
+        ) : publicApps.isError ? (
+          <ErrorNotice onRetry={() => void publicApps.refetch()}>
+            {errorMessage(publicApps.error, "Could not load apps.")}
+          </ErrorNotice>
+        ) : apps.length === 0 ? (
+          <EmptyState
+            eyebrow="No apps found"
+            title="Nothing to chat with yet."
+            action={<Button render={<Link to="/store" />}>Browse the store</Button>}
+          >
+            Public apps appear here once their owner publishes a command.
+          </EmptyState>
+        ) : (
+          <section aria-label="Apps" className="grid gap-3 xl:grid-cols-2">
+            {apps.map((app, index) => {
+              const available = app.availability === "AVAILABLE";
+              return (
+                <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
+                  <article className="flex h-full flex-col justify-between gap-5 border border-border bg-background p-5 transition-colors hover:border-border-strong">
+                    <div className="min-w-0">
+                      <AppStatus availability={app.availability} />
+                      <h2 className="mt-3 text-lg font-medium tracking-[-0.02em] break-words">
+                        {app.name}
+                      </h2>
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {app.description || "No description yet."}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-[11px] text-faint">
+                        {app.commandCount !== undefined
+                          ? plural(app.commandCount, "command")
+                          : app.visibility === "PRIVATE"
+                            ? "Private app"
+                            : "Public app"}
+                      </span>
+                      <Button
+                        variant="outline"
+                        disabled={!session || !available || busy === app.id}
+                        onClick={() => start.mutate(app.id)}
+                      >
+                        {busy === app.id ? <Spinner /> : <ArrowUpRight />}
+                        {available ? "Start thread" : "Offline"}
+                      </Button>
+                    </div>
+                  </article>
+                </BlurFade>
+              );
+            })}
+          </section>
+        )}
+        {error && <ErrorNotice>{error}</ErrorNotice>}
+      </div>
     </main>
   );
 }

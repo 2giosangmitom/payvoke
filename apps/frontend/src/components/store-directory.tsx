@@ -1,9 +1,23 @@
 import { useDeferredValue, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, LoaderCircle, Search, Star } from "lucide-react";
+import { ArrowUpRight, Search, Star } from "lucide-react";
+import { BlurFade } from "./ui/blur-fade";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
+import { Toggle } from "./ui/toggle";
+import {
+  AppStatus,
+  EmptyState,
+  ErrorNotice,
+  LoadingState,
+  PageHeader,
+  PageShell,
+  errorMessage,
+  plural,
+} from "./page-kit";
+import { cn } from "@/src/lib/utils";
 import { authClient } from "@/src/lib/auth-client";
 import {
   formatUsdc,
@@ -14,16 +28,6 @@ import {
   type StoreApp,
 } from "@/src/lib/apps";
 
-function Availability({ status }: { status: StoreApp["availability"] }) {
-  const label =
-    status === "AVAILABLE" ? "Online" : status === "SUSPENDED" ? "Suspended" : "Offline";
-  return (
-    <span className={`store-status is-${status.toLowerCase()}`}>
-      <i aria-hidden="true" /> {label}
-    </span>
-  );
-}
-
 function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; canSave: boolean }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
@@ -33,44 +37,55 @@ function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; c
       void queryClient.invalidateQueries({ queryKey: ["stars"] });
       void queryClient.invalidateQueries({ queryKey: ["store"] });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not save."),
+    onError: (cause) => setError(errorMessage(cause, "Could not save.")),
   });
   return (
-    <article className="store-card">
-      <div className="store-card-top">
-        <Availability status={app.availability} />
-        <button
-          type="button"
-          className={starred ? "store-star is-saved" : "store-star"}
+    <article className="group relative flex min-h-64 flex-col border border-border bg-card transition-[border-color,translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-float">
+      <div className="flex items-center justify-between gap-3 px-5 pt-5">
+        <AppStatus availability={app.availability} />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn("relative z-10 text-faint", starred && "text-primary")}
           aria-label={starred ? `Remove ${app.name} from saved` : `Save ${app.name}`}
           aria-pressed={starred}
           disabled={!canSave || toggle.isPending}
           title={canSave ? undefined : "Sign in to save apps"}
           onClick={() => toggle.mutate()}
         >
-          <Star size={16} fill={starred ? "currentColor" : "none"} />
-        </button>
+          <Star fill={starred ? "currentColor" : "none"} />
+        </Button>
       </div>
-      <Link to="/store/$appId" params={{ appId: app.id }} className="store-card-body">
-        <h2>{app.name}</h2>
-        <p>{app.description || "A Payvoke app with slash commands and a shared thread."}</p>
-      </Link>
-      <div className="store-card-meta">
-        <span>
-          {app.commandCount} command{app.commandCount === 1 ? "" : "s"}
+      <div className="flex-1 px-5 pt-4 pb-6">
+        <h2 className="text-xl font-medium tracking-[-0.03em] break-words">
+          <Link
+            to="/store/$appId"
+            params={{ appId: app.id }}
+            className="after:absolute after:inset-0 group-hover:text-primary"
+          >
+            {app.name}
+          </Link>
+        </h2>
+        <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+          {app.description || "No description yet."}
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 font-mono text-[11px] text-faint">
+        <span>{plural(app.commandCount, "command")}</span>
+        <span className="text-primary">
+          {app.fromPrice ? `from ${formatUsdc(app.fromPrice)}` : "No price yet"}
         </span>
-        <span>{app.fromPrice ? `from ${formatUsdc(app.fromPrice)}` : "No price yet"}</span>
+        <ArrowUpRight
+          size={15}
+          aria-hidden="true"
+          className="text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+        />
       </div>
-      <div className="store-card-foot">
-        <Link to="/store/$appId" params={{ appId: app.id }} className="store-open">
-          Inspect <ArrowUpRight size={14} />
-        </Link>
-        {error && (
-          <span className="store-card-error" role="alert">
-            {error}
-          </span>
-        )}
-      </div>
+      {error && (
+        <p role="alert" className="relative z-10 px-5 pb-3 text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </article>
   );
 }
@@ -98,98 +113,91 @@ export function StoreDirectory() {
   const items = apps.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <main className="store-shell">
-      <header className="store-hero">
-        <div>
-          <p className="workspace-kicker">PUBLIC APPS / SHARED CHAT</p>
-          <h1>
-            One conversation.
-            <br />
-            Every app you need.
-          </h1>
-        </div>
-        <p>
-          Apps publish slash commands into one shared chat. Pick an app, open a thread, and pay per
-          request only when you authorize a quote.
-        </p>
-      </header>
-      <div className="store-controls">
-        <label className="store-search">
-          <Search size={16} aria-hidden="true" />
+    <PageShell>
+      <PageHeader
+        eyebrow="Store"
+        title="Apps you can call from a chat thread"
+        description="Each app publishes slash commands with a fixed price. Open a thread with one and you pay per request, only after you approve the quote."
+      />
+      <div className="sticky top-0 z-10 -mx-1 flex flex-col gap-3 bg-background/90 px-1 py-4 backdrop-blur sm:flex-row sm:items-center">
+        <label className="relative flex-1">
+          <Search
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
+          />
           <span className="sr-only">Search apps</span>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search apps, commands, or what you need done"
+            placeholder="Search by app name or what you need done"
+            className="h-11 pl-10"
           />
         </label>
-        <div className="store-controls-meta">
+        <div className="flex items-center justify-between gap-4 sm:justify-end">
           {canSave && (
-            <button
-              type="button"
-              className={savedOnly ? "store-saved-filter is-active" : "store-saved-filter"}
-              aria-pressed={savedOnly}
-              onClick={() => setSavedOnly((value) => !value)}
+            <Toggle
+              variant="outline"
+              pressed={savedOnly}
+              onPressedChange={setSavedOnly}
+              className="h-11 px-3.5 font-mono text-xs data-pressed:border-primary data-pressed:text-primary"
             >
-              <Star size={13} fill={savedOnly ? "currentColor" : "none"} /> Saved
-            </button>
+              <Star fill={savedOnly ? "currentColor" : "none"} /> Saved
+            </Toggle>
           )}
-          <span className="store-count">
-            {apps.isPending ? "Loading…" : `${items.length} app${items.length === 1 ? "" : "s"}`}
+          <span className="font-mono text-xs text-faint" aria-live="polite">
+            {apps.isPending ? "Loading…" : plural(items.length, "app")}
           </span>
         </div>
       </div>
 
       {apps.isError && (
-        <div className="run-error" role="alert">
-          {apps.error instanceof Error ? apps.error.message : "Could not load the store."}{" "}
-          <Button size="sm" onClick={() => void apps.refetch()}>
-            Retry
-          </Button>
-        </div>
+        <ErrorNotice onRetry={() => void apps.refetch()}>
+          {errorMessage(apps.error, "Could not load the store.")}
+        </ErrorNotice>
       )}
       {apps.isPending ? (
-        <div className="store-loading">
-          <LoaderCircle className="animate-spin" size={18} /> Reading the store…
-        </div>
+        <LoadingState>Loading apps…</LoadingState>
       ) : items.length === 0 ? (
-        <div className="store-empty">
-          <p>{savedOnly ? "SAVED APPS" : "NO PUBLIC APPS YET"}</p>
-          <h2>{savedOnly ? "No saved apps yet." : "Nothing matched that request."}</h2>
-          <span>
-            {savedOnly
-              ? "Star an app to keep it in this list."
-              : "Try a broader search, or open Studio to publish the first app."}
-          </span>
-          {savedOnly ? (
-            <Button variant="outline" onClick={() => setSavedOnly(false)}>
-              Show all apps
-            </Button>
-          ) : (
-            <Button render={<Link to="/dashboard" />} className="button-primary">
-              Open Studio
-            </Button>
-          )}
-        </div>
+        <EmptyState
+          className="mt-4"
+          eyebrow={savedOnly ? "Saved apps" : "No matches"}
+          title={savedOnly ? "You haven't saved any apps." : "Nothing matched that search."}
+          action={
+            savedOnly ? (
+              <Button variant="outline" onClick={() => setSavedOnly(false)}>
+                Show all apps
+              </Button>
+            ) : (
+              <Button render={<Link to="/dashboard" />}>Publish an app in Studio</Button>
+            )
+          }
+        >
+          {savedOnly
+            ? "Star an app and it shows up here."
+            : "Try fewer words, or publish the first app yourself."}
+        </EmptyState>
       ) : (
-        <section className="store-grid" aria-label="Public apps">
-          {items.map((app) => (
-            <AppCard key={app.id} app={app} starred={saved.has(app.id)} canSave={canSave} />
+        <section aria-label="Public apps" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((app, index) => (
+            <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
+              <AppCard app={app} starred={saved.has(app.id)} canSave={canSave} />
+            </BlurFade>
           ))}
         </section>
       )}
       {apps.hasNextPage && (
-        <div className="store-more">
+        <div className="mt-10 flex justify-center">
           <Button
             variant="outline"
+            size="lg"
             disabled={apps.isFetchingNextPage}
             onClick={() => void apps.fetchNextPage()}
           >
-            {apps.isFetchingNextPage ? <LoaderCircle className="animate-spin" /> : null} Load more
-            apps
+            {apps.isFetchingNextPage && <Spinner />} Load more apps
           </Button>
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }

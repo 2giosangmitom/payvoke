@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, LoaderCircle, Pencil, Plus, Search } from "lucide-react";
+import { Archive, Pencil, Plus, Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
+import { Eyebrow, FormField, StatusDot, errorMessage } from "./page-kit";
+import { cn } from "@/src/lib/utils";
 import { authClient } from "@/src/lib/auth-client";
 import { archiveThread, getThreads, renameThread, type ThreadSummary } from "@/src/lib/paid-chat";
 
@@ -22,24 +25,45 @@ function ThreadRow({
   busy: boolean;
 }) {
   return (
-    <div className={active ? "thread-row is-active" : "thread-row"}>
-      <Link to="/chat/$threadId" params={{ threadId: thread.id }} className="thread-row-link">
-        <span className="thread-row-title">{thread.title || thread.app.name}</span>
-        <small>
-          <i
-            className={`thread-dot is-${thread.app.availability.toLowerCase()}`}
-            aria-hidden="true"
-          />
+    <div
+      className={cn(
+        "group relative flex min-w-0 items-center border border-transparent transition-colors hover:border-border-strong hover:bg-card",
+        active && "border-border-strong bg-card",
+      )}
+    >
+      <Link
+        to="/chat/$threadId"
+        params={{ threadId: thread.id }}
+        aria-current={active ? "page" : undefined}
+        className="grid min-w-0 flex-1 gap-1 py-2.5 pr-2 pl-3"
+      >
+        <span className="truncate text-[13px] font-semibold">
+          {thread.title || thread.app.name}
+        </span>
+        <small className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[10px] text-faint">
+          <StatusDot availability={thread.app.availability} />
           {thread.app.name}
         </small>
       </Link>
-      <div className="thread-row-actions">
-        <button type="button" aria-label="Rename thread" onClick={onRename} disabled={busy}>
-          <Pencil size={13} />
-        </button>
-        <button type="button" aria-label="Archive thread" onClick={onArchive} disabled={busy}>
-          {busy ? <LoaderCircle size={13} className="animate-spin" /> : <Archive size={13} />}
-        </button>
+      <div className="flex shrink-0 pr-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Rename thread"
+          onClick={onRename}
+          disabled={busy}
+        >
+          <Pencil />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Archive thread"
+          onClick={onArchive}
+          disabled={busy}
+        >
+          {busy ? <Spinner className="size-3" /> : <Archive />}
+        </Button>
       </div>
     </div>
   );
@@ -66,7 +90,7 @@ export function ThreadSidebar() {
       setRenaming(null);
       void queryClient.invalidateQueries({ queryKey: ["threads"] });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Rename failed."),
+    onError: (cause) => setError(errorMessage(cause, "Rename failed.")),
   });
   const archive = useMutation({
     mutationFn: archiveThread,
@@ -74,40 +98,52 @@ export function ThreadSidebar() {
       await queryClient.invalidateQueries({ queryKey: ["threads"] });
       if (pathname === `/chat/${id}`) await navigate({ to: "/chat" });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Archive failed."),
+    onError: (cause) => setError(errorMessage(cause, "Archive failed.")),
   });
 
+  const note = "flex items-center gap-2 py-2 text-xs leading-relaxed text-faint";
   return (
-    <aside className="thread-sidebar" aria-label="Threads">
-      <div className="thread-sidebar-head">
-        <p className="workspace-kicker">THREADS</p>
-        <Button render={<Link to="/chat" />} className="thread-new" variant="outline">
-          <Plus size={15} /> New
+    <aside
+      aria-label="Threads"
+      className="flex max-h-[45dvh] min-h-0 flex-col border border-border bg-background-deep p-3.5 md:max-h-none"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Eyebrow>Threads</Eyebrow>
+        <Button render={<Link to="/chat" />} variant="outline" size="sm">
+          <Plus /> New
         </Button>
       </div>
-      <label className="thread-search">
-        <Search size={14} aria-hidden="true" />
+      <label className="relative mt-4 mb-3 block">
+        <Search
+          size={14}
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
+        />
         <span className="sr-only">Search threads</span>
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search threads"
+          className="h-9 bg-background pl-8"
         />
       </label>
       {!session ? (
-        <p className="thread-sidebar-note">Sign in to keep threads across apps.</p>
+        <p className={note}>Sign in to keep your threads across apps.</p>
       ) : threads.isPending ? (
-        <p className="thread-sidebar-note">
-          <LoaderCircle size={14} className="animate-spin" /> Loading threads…
+        <p className={note}>
+          <Spinner className="size-3.5" /> Loading threads…
         </p>
       ) : threads.isError ? (
-        <p className="thread-sidebar-note" role="alert">
-          {threads.error instanceof Error ? threads.error.message : "Could not load threads."}
+        <p className={cn(note, "text-destructive")} role="alert">
+          {errorMessage(threads.error, "Could not load threads.")}
         </p>
       ) : (threads.data?.items.length ?? 0) === 0 ? (
-        <p className="thread-sidebar-note">No threads yet. Pick an app on the store shelf.</p>
+        <p className={note}>No threads yet. Pick an app from the store to start one.</p>
       ) : (
-        <nav className="thread-list" aria-label="Your threads">
+        <nav
+          aria-label="Your threads"
+          className="-mx-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-1"
+        >
           {threads.data?.items.map((thread) => (
             <ThreadRow
               key={thread.id}
@@ -128,38 +164,44 @@ export function ThreadSidebar() {
         </nav>
       )}
       {session && (
-        <div className="thread-sidebar-foot">
-          <Link to="/store">Browse store</Link>
-          <Link to="/dashboard">Manage apps</Link>
+        <div className="mt-auto flex flex-wrap gap-x-4 gap-y-2 border-t border-border pt-4 font-mono text-[10px] text-faint">
+          <Link to="/store" className="hover:text-primary">
+            Browse store
+          </Link>
+          <Link to="/dashboard" className="hover:text-primary">
+            Manage apps
+          </Link>
         </div>
       )}
       {error && (
-        <p className="thread-sidebar-note is-error" role="alert">
+        <p className={cn(note, "text-destructive")} role="alert">
           {error}
         </p>
       )}
       <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
-        <DialogContent className="thread-rename-dialog">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename thread</DialogTitle>
           </DialogHeader>
           <form
+            className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault();
               if (renaming) rename.mutate({ id: renaming.id, next: title });
             }}
           >
-            <label htmlFor="thread-title">Thread title</label>
-            <Input
-              id="thread-title"
-              value={title}
-              maxLength={160}
-              required
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <div className="thread-dialog-actions">
+            <FormField label="Thread title" htmlFor="thread-title">
+              <Input
+                id="thread-title"
+                value={title}
+                maxLength={160}
+                required
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </FormField>
+            <div className="flex gap-2">
               <Button type="submit" disabled={rename.isPending || !title.trim()}>
-                {rename.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
+                {rename.isPending && <Spinner />}
                 Save
               </Button>
               <Button type="button" variant="ghost" onClick={() => setRenaming(null)}>

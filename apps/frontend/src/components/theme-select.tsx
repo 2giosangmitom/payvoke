@@ -7,9 +7,7 @@ import { applyTheme, readTheme, themeStorageKey } from "@/src/lib/theme";
 
 export function ThemeToggle() {
   useEffect(() => {
-    const sync = () => {
-      applyTheme(readTheme());
-    };
+    const sync = () => applyTheme(readTheme());
     sync();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     window.addEventListener("storage", sync);
@@ -35,13 +33,19 @@ export function ThemeToggle() {
       type="button"
       variant="ghost"
       size="icon"
-      className="theme-toggle"
+      className="relative hover:text-primary"
       onClick={toggle}
       aria-label="Toggle light and dark mode"
       title="Toggle light and dark mode"
     >
-      <Sun className="theme-sun-icon" size={19} aria-hidden="true" />
-      <Moon className="theme-moon-icon" size={19} aria-hidden="true" />
+      <Sun
+        aria-hidden="true"
+        className="absolute size-[19px] transition-[opacity,rotate,scale] duration-200 dark:scale-75 dark:rotate-90 dark:opacity-0"
+      />
+      <Moon
+        aria-hidden="true"
+        className="absolute size-[19px] scale-75 rotate-90 opacity-0 transition-[opacity,rotate,scale] duration-200 dark:scale-100 dark:rotate-0 dark:opacity-100"
+      />
     </Button>
   );
 }

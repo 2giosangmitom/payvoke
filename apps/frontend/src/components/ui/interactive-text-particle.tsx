@@ -13,18 +13,24 @@ type Particle = {
 
 export interface ParticleTextEffectProps {
   text?: string;
+  /** Gradient stops. Defaults to the --field-* tokens, so it follows the theme. */
   colors?: string[];
   className?: string;
   animationForce?: number;
   particleDensity?: number;
 }
 
-const jadeRamp = ["509475", "84b49e", "bcd6cb", "f7e8b2", "35614d"];
+const fieldRamp = ["--field-lit", "--field-hover", "--field-crest", "--field-hover", "--field-mid"];
+
+function themeColors() {
+  const style = getComputedStyle(document.documentElement);
+  return fieldRamp.map((name) => style.getPropertyValue(name).trim());
+}
 
 /** A container-sized canvas: safe during server render and quiet when reduced motion is requested. */
 export function ParticleTextEffect({
   text = "PAYVOKE",
-  colors = jadeRamp,
+  colors,
   className = "",
   animationForce = 80,
   particleDensity = 4,
@@ -114,18 +120,16 @@ export function ParticleTextEffect({
       if (!sampler) return;
 
       let fontSize = Math.min(height * 0.76, 225);
-      sampler.font = `800 ${fontSize}px "Geist Variable", sans-serif`;
+      sampler.font = `800 ${fontSize}px "Geist", sans-serif`;
       fontSize *= Math.min(1, (width * 0.9) / Math.max(1, sampler.measureText(text).width));
-      sampler.font = `800 ${fontSize}px "Geist Variable", sans-serif`;
+      sampler.font = `800 ${fontSize}px "Geist", sans-serif`;
       sampler.textAlign = "center";
       sampler.textBaseline = "middle";
 
+      const stops = colors ?? themeColors();
       const gradient = sampler.createLinearGradient(0, 0, width, height);
-      colors.forEach((value, index) => {
-        gradient.addColorStop(
-          index / Math.max(1, colors.length - 1),
-          `#${value.replace(/^#/, "")}`,
-        );
+      stops.forEach((value, index) => {
+        gradient.addColorStop(index / Math.max(1, stops.length - 1), value);
       });
       sampler.fillStyle = gradient;
       sampler.fillText(text, width / 2, height / 2);
@@ -148,6 +152,8 @@ export function ParticleTextEffect({
         }
       }
       particles = next;
+      // Lets the parent hide its static fallback once the canvas has the wordmark.
+      container.dataset.ready = "true";
       draw();
     }
 
@@ -178,6 +184,9 @@ export function ParticleTextEffect({
 
     const observer = new ResizeObserver(rebuild);
     observer.observe(container);
+    const theme = new MutationObserver(rebuild);
+    if (!colors)
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerleave", leave);
     reducedMotion.addEventListener("change", motionChanged);
@@ -188,6 +197,7 @@ export function ParticleTextEffect({
 
     return () => {
       observer.disconnect();
+      theme.disconnect();
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerleave", leave);
       reducedMotion.removeEventListener("change", motionChanged);

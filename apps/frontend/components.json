@@ -23,6 +23,7 @@
   "menuAccent": "subtle",
   "registries": {
     "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json",
-    "@react-bits": "https://reactbits.dev/r/{name}.json"
+    "@react-bits": "https://reactbits.dev/r/{name}.json",
+    "@magicui": "https://magicui.design/r/{name}.json"
   }
 }

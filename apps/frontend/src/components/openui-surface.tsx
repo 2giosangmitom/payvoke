@@ -13,7 +13,9 @@ import {
   type ComponentName,
   type ComponentProps,
 } from "@payvoke/openui-components";
+import { ChatWidget } from "./chat-widget";
 import { QuestionForm } from "./question-form";
+import { cn } from "@/src/lib/utils";
 import type { ChatQuestion } from "@/src/lib/paid-chat";
 
 // OpenUI Lang is host-rendered declarative data. Every component below is a
@@ -31,47 +33,65 @@ const label = (value: unknown) =>
     ? String(value)
     : "";
 
+const widgetCard = "border border-border p-4";
+const widgetTitle = "mb-2.5 font-semibold";
+
 const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } = {
   Stack: ({ props, renderNode }) => (
-    <div className="run-widget-stack" data-direction={props.direction ?? "vertical"}>
+    <div
+      className={cn(
+        "grid min-w-0 gap-3",
+        props.direction === "horizontal" && "flex flex-wrap *:min-w-0 *:flex-[1_1_11rem]",
+      )}
+    >
       {renderNode(props.children)}
     </div>
   ),
   Text: ({ props }) =>
     props.variant === "heading" ? (
-      <h3 className="run-widget-text" data-variant="heading">
-        {props.value}
-      </h3>
+      <h3 className="leading-relaxed font-semibold whitespace-pre-wrap">{props.value}</h3>
     ) : (
-      <p className="run-widget-text" data-variant={props.variant ?? "body"}>
+      <p
+        className={cn(
+          "leading-relaxed whitespace-pre-wrap",
+          props.variant === "caption" && "text-xs text-faint",
+        )}
+      >
         {props.value}
       </p>
     ),
   Card: ({ props, renderNode }) => (
-    <section className="run-widget-card">
-      <h3>{props.title}</h3>
-      {props.description && <p>{props.description}</p>}
-      {props.children && renderNode(props.children)}
+    <section className={widgetCard}>
+      <h3 className={widgetTitle}>{props.title}</h3>
+      {props.description && (
+        <p className="leading-relaxed whitespace-pre-wrap text-muted-foreground">
+          {props.description}
+        </p>
+      )}
+      {props.children && <div className="mt-3">{renderNode(props.children)}</div>}
     </section>
   ),
   Metric: ({ props }) => (
-    <div className="run-widget-metric">
-      <small>{props.label}</small>
-      <strong>{label(props.value)}</strong>
-      {props.unit && <span>{props.unit}</span>}
+    <div className="flex items-baseline gap-2.5">
+      <small className="text-faint">{props.label}</small>
+      <strong className="font-mono text-3xl font-semibold">{label(props.value)}</strong>
+      {props.unit && <span className="text-faint">{props.unit}</span>}
     </div>
   ),
   Table: ({ props }) => {
     const columns = props.columns
       .slice(0, 12)
       .map((column) => (typeof column === "string" ? { key: column, label: column } : column));
+    const cell = "border border-border p-2.5 text-left";
     return (
-      <div className="run-widget-overflow">
-        <table>
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse text-xs">
           <thead>
             <tr>
               {columns.map((column) => (
-                <th key={column.key}>{column.label}</th>
+                <th key={column.key} className={cn(cell, "font-mono font-medium text-faint")}>
+                  {column.label}
+                </th>
               ))}
             </tr>
           </thead>
@@ -79,7 +99,7 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
             {props.rows.slice(0, 100).map((row, index) => (
               <tr key={index}>
                 {columns.map((column) => (
-                  <td key={column.key}>
+                  <td key={column.key} className={cell}>
                     {label(Object.hasOwn(row, column.key) ? row[column.key] : undefined)}
                   </td>
                 ))}
@@ -94,12 +114,18 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
     const points = props.points.slice(0, 20);
     const max = Math.max(1, ...points.map((point) => Math.max(0, point.value)));
     return (
-      <div className="run-widget-chart" role="img" aria-label={props.title || "Bar chart"}>
+      <div className="grid gap-2" role="img" aria-label={props.title || "Bar chart"}>
         {points.map((point, index) => (
-          <div key={index}>
-            <span>{point.label}</span>
-            <i style={{ width: `${(Math.max(0, point.value) / max) * 100}%` }} />
-            <strong>{point.value}</strong>
+          <div
+            key={index}
+            className="grid grid-cols-[6.25rem_minmax(0,1fr)_3.5rem] items-center gap-2.5 font-mono text-xs"
+          >
+            <span className="truncate">{point.label}</span>
+            <i
+              className="block h-3 bg-primary transition-[width] duration-500"
+              style={{ width: `${(Math.max(0, point.value) / max) * 100}%` }}
+            />
+            <strong className="text-right font-medium">{point.value}</strong>
           </div>
         ))}
       </div>
@@ -116,14 +142,14 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
     );
     if (!question)
       return (
-        <div className="run-widget-card">
-          <h3>{title}</h3>
-          <p>This question is no longer open.</p>
+        <div className={widgetCard}>
+          <h3 className={widgetTitle}>{title}</h3>
+          <p className="text-muted-foreground">This question is no longer open.</p>
         </div>
       );
     return (
-      <div className="run-widget-card">
-        <h3>{title}</h3>
+      <div className={widgetCard}>
+        <h3 className={widgetTitle}>{title}</h3>
         {onAnswer ? (
           <QuestionForm
             question={question}
@@ -132,8 +158,8 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
           />
         ) : (
           <>
-            <p>{question.prompt}</p>
-            <small>Answering is unavailable in this view.</small>
+            <p className="leading-relaxed">{question.prompt}</p>
+            <small className="text-faint">You can't answer from this view.</small>
           </>
         )}
       </div>
@@ -187,13 +213,10 @@ export function OpenUISurface({
   );
   if (typeof source !== "string" || !source.trim()) return null;
   return (
-    <section className="run-widget" aria-label="App widget">
-      <header>
-        APP WIDGET <span>OpenUI Lang</span>
-      </header>
+    <ChatWidget label="App widget" meta="OpenUI Lang" aria-label="App widget">
       <SurfaceContext.Provider value={context}>
         <Renderer response={source} library={openuiLibrary} />
       </SurfaceContext.Provider>
-    </section>
+    </ChatWidget>
   );
 }

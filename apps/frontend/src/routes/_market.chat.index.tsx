@@ -5,7 +5,7 @@ export const Route = createFileRoute("/_market/chat/")({
   component: NewThreadPage,
   head: () => ({
     meta: [
-      { title: "Chat — Payvoke" },
+      { title: "Chat · Payvoke" },
       { name: "description", content: "One thread list for every Payvoke app." },
     ],
   }),

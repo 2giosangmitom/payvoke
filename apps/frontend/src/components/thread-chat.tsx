@@ -9,28 +9,26 @@ import {
   ThreadPrimitive,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import {
-  CircleDollarSign,
-  LoaderCircle,
-  Radio,
-  RefreshCcw,
-  Send,
-  ShieldCheck,
-  Slash,
-  X,
-} from "lucide-react";
+import { CircleDollarSign, Radio, RefreshCcw, Send, ShieldCheck, Slash, X } from "lucide-react";
 import { useConnection, usePublicClient, useSignTypedData } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
 import { isHex, type Address, type Hex } from "viem";
 import type { QuoteDocument } from "@payvoke/x402";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { ErrorNotice, Eyebrow, FormField, LoadingState, plural } from "./page-kit";
+import { ChatWidget } from "./chat-widget";
 import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
 import { QuestionForm } from "./question-form";
 import { apiOrigin } from "@/src/lib/api";
 import { formatUsdc } from "@/src/lib/apps";
+import { cn } from "@/src/lib/utils";
 import {
   answerQuestion,
   checkGrant,
@@ -52,6 +50,12 @@ type ChatMessage = { id: string; role: "user" | "assistant"; text: string; compl
 type Surface = ChatSnapshot["surfaces"][number];
 const readableError = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Request failed.";
+const requiredMark = (
+  <span aria-hidden="true" className="text-primary">
+    {" "}
+    *
+  </span>
+);
 const answerText = (values: Record<string, unknown>) => {
   const entries = Object.values(values);
   return entries.length === 1 && typeof entries[0] === "string"
@@ -226,16 +230,18 @@ function useStream(threadId: string) {
 
 function BuyerMessage() {
   return (
-    <MessagePrimitive.Root className="run-message is-user">
-      <span className="run-message-label">YOU</span>
+    <MessagePrimitive.Root className="max-w-[85%] self-end border border-border bg-primary-soft px-5 py-4 text-sm leading-relaxed break-words whitespace-pre-wrap animate-in fade-in-0 slide-in-from-bottom-2">
+      <span className="mb-2 block font-mono text-[10px] tracking-widest text-faint">YOU</span>
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
 }
 function AssistantReply() {
   return (
-    <MessagePrimitive.Root className="run-message is-assistant">
-      <span className="run-message-label">APP · LIVE OUTPUT</span>
+    <MessagePrimitive.Root className="max-w-[85%] self-start border border-border bg-background-deep px-5 py-4 text-sm leading-relaxed break-words whitespace-pre-wrap animate-in fade-in-0 slide-in-from-bottom-2">
+      <span className="mb-2 block font-mono text-[10px] tracking-widest text-faint">
+        APP · LIVE OUTPUT
+      </span>
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
@@ -269,19 +275,20 @@ function RevisionControl({ invocationId, remaining }: { invocationId: string; re
     }
   }
   return (
-    <form className="run-revision" onSubmit={(event) => void submit(event)}>
-      <label htmlFor={`revision-${invocationId}`}>What should change?</label>
-      <Textarea
-        id={`revision-${invocationId}`}
-        rows={2}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-        required
-        maxLength={2000}
-      />
-      <div className="run-payment-actions">
+    <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
+      <FormField label="What should change?" htmlFor={`revision-${invocationId}`}>
+        <Textarea
+          id={`revision-${invocationId}`}
+          rows={2}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          required
+          maxLength={2000}
+        />
+      </FormField>
+      <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? <LoaderCircle className="animate-spin" /> : null} Request revision
+          {busy && <Spinner />} Request revision
         </Button>
         <Button
           type="button"
@@ -293,11 +300,7 @@ function RevisionControl({ invocationId, remaining }: { invocationId: string; re
           Cancel
         </Button>
       </div>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
     </form>
   );
 }
@@ -314,22 +317,28 @@ function OptionField({
   const id = `command-option-${option.name}`;
   if (option.type === "BOOLEAN")
     return (
-      <label className="run-question-check" htmlFor={id}>
-        <input
+      <label className="flex items-center gap-2.5 text-sm" htmlFor={id}>
+        <Checkbox
           id={id}
-          type="checkbox"
           checked={Boolean(value)}
-          onChange={(event) => onChange(event.target.checked)}
+          onCheckedChange={(checked) => onChange(checked)}
         />
-        {option.name} {option.required && <span aria-hidden="true">*</span>}
+        {option.name}
+        {option.required && requiredMark}
       </label>
     );
+  const label = (
+    <>
+      {option.name}
+      {option.required && requiredMark}
+    </>
+  );
   if (option.choices?.length)
     return (
-      <label htmlFor={id}>
-        {option.name} {option.required && <span aria-hidden="true">*</span>}
-        <select
+      <FormField label={label} htmlFor={id}>
+        <NativeSelect
           id={id}
+          className="w-full"
           value={String(value ?? "")}
           required={option.required}
           onChange={(event) => {
@@ -339,18 +348,17 @@ function OptionField({
             onChange(choice ?? raw);
           }}
         >
-          <option value="">Choose…</option>
+          <NativeSelectOption value="">Choose…</NativeSelectOption>
           {option.choices.map((choice) => (
-            <option key={String(choice)} value={String(choice)}>
+            <NativeSelectOption key={String(choice)} value={String(choice)}>
               {String(choice)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-      </label>
+        </NativeSelect>
+      </FormField>
     );
   return (
-    <label htmlFor={id}>
-      {option.name} {option.required && <span aria-hidden="true">*</span>}
+    <FormField label={label} htmlFor={id}>
       <Input
         id={id}
         type={option.type === "STRING" ? "text" : "number"}
@@ -369,7 +377,7 @@ function OptionField({
           )
         }
       />
-    </label>
+    </FormField>
   );
 }
 
@@ -404,15 +412,18 @@ function CommandDialog({
   const revision = command.revision;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="command-dialog">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            <code>/{command.name}</code>
+            <code className="font-mono text-primary">/{command.name}</code>
           </DialogTitle>
+          <DialogDescription>{command.description}</DialogDescription>
         </DialogHeader>
-        <p className="command-dialog-description">{command.description}</p>
-        <p className="command-dialog-price">{formatUsdc(revision.grossAmount)} per request</p>
+        <p className="font-mono text-xs text-primary">
+          {formatUsdc(revision.grossAmount)} per request
+        </p>
         <form
+          className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
             setBusy(true);
@@ -434,14 +445,10 @@ function CommandDialog({
               onChange={(value) => setValues((current) => ({ ...current, [option.name]: value }))}
             />
           ))}
-          {error && (
-            <div className="run-error" role="alert">
-              {error}
-            </div>
-          )}
-          <div className="run-payment-actions">
+          {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+          <div className="flex gap-2">
             <Button type="submit" disabled={busy}>
-              {busy ? <LoaderCircle className="animate-spin" /> : null} Prepare quote
+              {busy && <Spinner />} Get a quote
             </Button>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
@@ -481,34 +488,47 @@ function QuoteCard({
   const [grantId, setGrantId] = useState("");
   const [error, setError] = useState("");
   return (
-    <section className="composer-quote" aria-label="Quote awaiting authorization">
-      <div className="composer-quote-head">
-        <div className="composer-quote-icon">
-          <CircleDollarSign size={18} />
+    <section
+      aria-label="Quote awaiting authorization"
+      className="mb-3 grid gap-3 border border-primary bg-primary-soft p-4 animate-in fade-in-0 slide-in-from-bottom-2"
+    >
+      <div className="flex items-center gap-3">
+        <div className="grid size-8 place-items-center border border-primary text-primary">
+          <CircleDollarSign size={17} />
         </div>
-        <div>
-          <strong>{formatUsdc(quote.grossAmount)}</strong>
-          <span>
+        <div className="grid min-w-0 gap-0.5">
+          <strong className="font-mono text-lg font-semibold tracking-tight">
+            {formatUsdc(quote.grossAmount)}
+          </strong>
+          <span className="font-mono text-[10px] text-faint">
             Expires {new Date(quote.validUntil * 1000).toLocaleTimeString()} · Avalanche Fuji
           </span>
         </div>
-        <button type="button" onClick={onHide} aria-label="Hide quote">
-          <X size={15} />
-        </button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="ml-auto"
+          onClick={onHide}
+          aria-label="Hide quote"
+        >
+          <X />
+        </Button>
       </div>
-      <p>
-        The vault reserves this amount before the app receives your request. Delivery stays
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        The vault holds this amount before the app gets your request. The delivery counts as
         unverified until Payvoke checks it.
       </p>
-      <label htmlFor="chat-grant">Delegated grant ID (bytes32)</label>
-      <Input
-        id="chat-grant"
-        value={grantId}
-        onChange={(event) => setGrantId(event.target.value)}
-        placeholder="0x…"
-        autoComplete="off"
-      />
-      <div className="run-payment-actions">
+      <FormField label="Delegated grant ID (bytes32)" htmlFor="chat-grant">
+        <Input
+          id="chat-grant"
+          value={grantId}
+          onChange={(event) => setGrantId(event.target.value)}
+          placeholder="0x…"
+          autoComplete="off"
+          className="bg-background font-mono"
+        />
+      </FormField>
+      <div className="flex flex-wrap gap-2">
         <Button
           disabled={busy}
           onClick={() => {
@@ -516,17 +536,13 @@ function QuoteCard({
             void onAuthorize(grantId).catch((cause) => setError(readableError(cause)));
           }}
         >
-          <ShieldCheck size={15} /> {busy ? "Authorizing…" : "Authorize in wallet"}
+          <ShieldCheck /> {busy ? "Authorizing…" : "Authorize in wallet"}
         </Button>
         <Button variant="outline" onClick={onHide} disabled={busy}>
           Hide
         </Button>
       </div>
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
     </section>
   );
 }
@@ -716,86 +732,96 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     : (stream.snapshot.data?.invocations.at(0)?.executionStatus ?? "READY");
 
   if (thread.isPending || stream.snapshot.isPending)
-    return (
-      <div className="run-state">
-        <LoaderCircle className="animate-spin" /> Opening thread…
-      </div>
-    );
+    return <LoadingState className="px-8">Opening thread…</LoadingState>;
   if (thread.isError || stream.snapshot.isError || !thread.data)
     return (
-      <div className="run-state" role="alert">
-        {readableError(thread.error || stream.snapshot.error)}{" "}
-        <Button
-          onClick={() => {
+      <div className="p-6">
+        <ErrorNotice
+          onRetry={() => {
             void thread.refetch();
             void stream.refresh();
           }}
         >
-          Retry
-        </Button>
+          {readableError(thread.error || stream.snapshot.error)}
+        </ErrorNotice>
       </div>
     );
 
   const data = thread.data;
   const offline = data.app.availability !== "AVAILABLE";
+  const banner =
+    "border-b border-border bg-background-deep px-6 py-2.5 font-mono text-[11px] leading-relaxed text-warning";
   return (
-    <div className="run-stage thread-stage">
-      <div className="run-stage-top">
-        <div>
-          <p>THREAD / {threadId.slice(0, 8)}</p>
-          <h2>{data.title || data.app.name}</h2>
-          <span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-5 border-b border-border px-5 py-4 sm:px-7">
+        <div className="min-w-0">
+          <Eyebrow className="text-faint">THREAD / {threadId.slice(0, 8)}</Eyebrow>
+          <h2 className="mt-1.5 truncate text-[clamp(1.15rem,2vw,1.6rem)] font-medium tracking-[-0.025em]">
+            {data.title || data.app.name}
+          </h2>
+          <span className="text-xs text-faint">
             {data.app.name} · {selected ? `/${selected.name}` : "no command"} ·{" "}
-            {data.commands.length} slash command
-            {data.commands.length === 1 ? "" : "s"}
+            {plural(data.commands.length, "slash command")}
           </span>
         </div>
-        <div className="run-status">
-          <span>
-            <Radio size={13} /> {stream.connection}
+        <div className="flex shrink-0 flex-col items-end gap-2 font-mono text-[10px] uppercase">
+          <span
+            className={cn(
+              "flex items-center gap-1.5 text-primary",
+              stream.connection !== "connected" && "text-warning",
+            )}
+          >
+            <Radio size={12} className={cn(stream.connection === "connected" && "animate-pulse")} />
+            {stream.connection}
           </span>
-          <span>{status}</span>
+          <Badge variant="outline">{status}</Badge>
         </div>
       </div>
 
       {offline && (
-        <div className="thread-banner" role="status">
+        <div className={banner} role="status">
           {data.app.status === "ARCHIVED"
-            ? "This app has been archived. New quotes are blocked; previous messages and results remain readable."
+            ? "This app is archived. It can't take new requests; earlier messages and results stay readable."
             : data.app.availability === "SUSPENDED"
-              ? "This app is suspended by its owner. New quotes are blocked; previous messages and results remain readable."
-              : "This app is offline. New quotes are blocked until its provider heartbeat returns. Previous messages and results remain readable."}
+              ? "The owner has suspended this app. It can't take new requests; earlier messages and results stay readable."
+              : "This app is offline until its worker checks in again. Earlier messages and results stay readable."}
         </div>
       )}
       {data.archivedAt && (
-        <div className="thread-banner" role="status">
-          This thread is archived. Unarchive support is coming; start a new thread to continue.
+        <div className={banner} role="status">
+          This thread is archived. Start a new thread to keep going.
         </div>
       )}
 
       <AssistantRuntimeProvider runtime={runtime}>
-        <ThreadPrimitive.Root className="run-thread">
-          <ThreadPrimitive.Viewport className="run-thread-viewport">
+        <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
+          <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-5 py-7 sm:px-[clamp(1.25rem,4vw,3.75rem)]">
             <ThreadPrimitive.Empty>
-              <div className="run-empty">
-                <p>01 / START A CONVERSATION</p>
-                <h3>Ask {data.app.name} anything.</h3>
-                <span>
-                  Type free text to use <code>/{selected?.name ?? "default"}</code>, or type{" "}
-                  <code>/</code> to pick another command. Every request gets an explicit quote.
-                </span>
-                <div className="thread-command-chips">
+              <div className="my-auto py-14">
+                <Eyebrow className="text-faint">01 / Start a conversation</Eyebrow>
+                <h3 className="mt-5 max-w-md text-[clamp(1.8rem,4vw,3rem)] leading-[1.07] font-medium tracking-[-0.05em]">
+                  Ask {data.app.name} something.
+                </h3>
+                <p className="mt-5 max-w-md leading-7 text-muted-foreground">
+                  Plain text goes to{" "}
+                  <code className="font-mono text-primary">/{selected?.name ?? "default"}</code>.
+                  Type <code className="font-mono text-primary">/</code> to pick another command.
+                  You see a quote before every request.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-2">
                   {commands.slice(0, 5).map((command) => (
-                    <button
+                    <Button
                       key={command.id}
-                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="bg-background-deep font-mono text-primary hover:border-primary"
                       onClick={() => {
                         setDialogText("");
                         setDialogCommand(command);
                       }}
                     >
                       /{command.name}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -815,15 +841,17 @@ export function ThreadChat({ threadId }: { threadId: string }) {
             {openQuestions
               .filter((question) => !widgetQuestionIds.has(question.questionId))
               .map((question) => (
-                <section key={question.id} className="run-widget" aria-label="Provider question">
-                  <header>
-                    APP QUESTION <span>{question.invocationId.slice(0, 8)}</span>
-                  </header>
+                <ChatWidget
+                  key={question.id}
+                  label="App question"
+                  meta={question.invocationId.slice(0, 8)}
+                  aria-label="Provider question"
+                >
                   <QuestionForm
                     question={question}
                     onSubmit={(values) => answer(question, values)}
                   />
-                </section>
+                </ChatWidget>
               ))}
             {stream.snapshot.data?.invocations
               .filter((inv) => inv.executionStatus === "DELIVERED" && inv.output !== null)
@@ -833,33 +861,38 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 ).length;
                 const remaining = Math.max(0, (data.revisionPolicy?.maxIncluded ?? 0) - used);
                 return (
-                  <section
+                  <ChatWidget
                     key={inv.id}
-                    className="run-widget"
+                    label="Verified output"
+                    meta={inv.id.slice(0, 8)}
                     aria-label="Verified structured result"
                   >
-                    <header>
-                      VERIFIED OUTPUT <span>{inv.id.slice(0, 8)}</span>
-                    </header>
-                    <pre className="run-result-json">{JSON.stringify(inv.output, null, 2)}</pre>
+                    <pre className="max-h-105 overflow-auto font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+                      {JSON.stringify(inv.output, null, 2)}
+                    </pre>
                     {remaining > 0 && (
                       <RevisionControl invocationId={inv.id} remaining={remaining} />
                     )}
-                  </section>
+                  </ChatWidget>
                 );
               })}
-            <ThreadPrimitive.ViewportFooter className="run-viewport-footer" />
+            <ThreadPrimitive.ViewportFooter className="sticky bottom-0" />
           </ThreadPrimitive.Viewport>
 
-          <div className="run-composer-wrap">
+          <div className="relative shrink-0 border-t border-border bg-card px-4 pt-2.5 pb-3.5 sm:px-6">
             {slashQuery !== null && suggestions.length > 0 && (
-              <div className="slash-popover" role="listbox" aria-label="Slash commands">
+              <div
+                role="listbox"
+                aria-label="Slash commands"
+                className="absolute inset-x-4 bottom-[calc(100%-4px)] z-20 grid max-h-68 overflow-y-auto border border-border-strong bg-background-deep shadow-float animate-in fade-in-0 slide-in-from-bottom-1 sm:inset-x-6"
+              >
                 {suggestions.map((command) => (
                   <button
                     key={command.id}
                     type="button"
                     role="option"
                     aria-selected={command.id === selected?.id}
+                    className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-3.5 py-2.5 text-left text-muted-foreground last:border-b-0 hover:bg-card aria-selected:bg-card"
                     onClick={() => {
                       setSelectedCommandId(command.id);
                       setComposerText("");
@@ -867,9 +900,11 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                       setDialogCommand(command);
                     }}
                   >
-                    <code>/{command.name}</code>
-                    <span>{command.description}</span>
-                    <small>{formatUsdc(command.revision?.grossAmount)}</small>
+                    <code className="font-mono text-xs text-primary">/{command.name}</code>
+                    <span className="truncate text-xs">{command.description}</span>
+                    <small className="font-mono text-[10px] text-faint">
+                      {formatUsdc(command.revision?.grossAmount)}
+                    </small>
                   </button>
                 ))}
               </div>
@@ -883,23 +918,24 @@ export function ThreadChat({ threadId }: { threadId: string }) {
               />
             )}
             {pendingQuote && quoteHidden && (
-              <button
-                type="button"
-                className="composer-quote-restore"
+              <Button
+                variant="outline"
+                size="sm"
+                className="mb-2 bg-background-deep font-mono text-primary"
                 onClick={() => setQuoteHidden(false)}
               >
-                <CircleDollarSign size={15} /> Review pending quote ·{" "}
-                {formatUsdc(pendingQuote.grossAmount)}
-              </button>
+                <CircleDollarSign /> Review pending quote · {formatUsdc(pendingQuote.grossAmount)}
+              </Button>
             )}
-            <div className="composer-toolbar">
-              <div className="composer-command-picker">
-                <Slash size={13} />
+            <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
+              <label className="inline-flex min-w-0 items-center gap-1.5">
+                <Slash size={12} />
                 <span>Command</span>
                 <select
                   aria-label="Selected command"
                   value={selected?.id ?? ""}
                   onChange={(event) => setSelectedCommandId(event.target.value)}
+                  className="bg-transparent px-0.5 py-1 text-[11px] text-foreground"
                 >
                   {commands.map((command) => (
                     <option key={command.id} value={command.id}>
@@ -907,25 +943,30 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     </option>
                   ))}
                 </select>
-              </div>
-              <span className="composer-hint">
+              </label>
+              <span className="hidden truncate sm:inline">
                 {selected?.revision?.positionalParameter
-                  ? `Free text → ${selected.revision.positionalParameter}`
-                  : "Command options open in a form"}
+                  ? `Plain text → ${selected.revision.positionalParameter}`
+                  : "Options open in a form"}
               </span>
-              <span>{selected ? formatUsdc(selected.revision?.grossAmount) : ""}</span>
+              <span className="ml-auto text-primary">
+                {selected ? formatUsdc(selected.revision?.grossAmount) : ""}
+              </span>
             </div>
-            <ComposerPrimitive.Root className="run-composer">
+            <ComposerPrimitive.Root className="flex items-end gap-3 pt-2">
               <ComposerPrimitive.Input
-                className="run-composer-input"
                 rows={2}
                 placeholder={
-                  offline ? "App unavailable — history is read-only" : `Message ${data.app.name}…`
+                  offline ? "App unavailable. History is read-only." : `Message ${data.app.name}…`
                 }
                 aria-label="Message the app"
                 onChange={(event) => setComposerText(event.currentTarget.value)}
+                className="min-w-0 flex-1 resize-none border border-border bg-background px-3.5 py-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
               />
-              <ComposerPrimitive.Send className="run-send" aria-label="Prepare quote">
+              <ComposerPrimitive.Send
+                aria-label="Get a quote"
+                className="grid size-12 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+              >
                 <Send size={18} />
               </ComposerPrimitive.Send>
             </ComposerPrimitive.Root>
@@ -934,25 +975,21 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       </AssistantRuntimeProvider>
 
       {busy === "quoting" && (
-        <p className="run-live-note">
-          <LoaderCircle className="animate-spin" size={14} /> Preparing immutable quote…
+        <p className="flex items-center gap-2 px-6 py-2 font-mono text-xs text-muted-foreground">
+          <Spinner className="size-3.5" /> Preparing quote…
         </p>
       )}
-      {error && (
-        <div className="run-error" role="alert">
-          {error}
-        </div>
-      )}
-      <footer className="run-stage-footer">
+      {error && <ErrorNotice className="mx-6 my-3 w-auto">{error}</ErrorNotice>}
+      <footer className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border px-5 py-1.5 font-mono text-[10px] text-faint sm:px-6">
         <span>AG-UI STREAM / OPENUI LANG</span>
-        <span>{stream.snapshot.data?.invocations.length ?? 0} paid invocations</span>
+        <span>{plural(stream.snapshot.data?.invocations.length ?? 0, "paid invocation")}</span>
         <Button
           variant="ghost"
           size="xs"
           onClick={() => void stream.refresh()}
           aria-label="Refresh thread status"
         >
-          <RefreshCcw size={13} /> Refresh
+          <RefreshCcw /> Refresh
         </Button>
       </footer>
 

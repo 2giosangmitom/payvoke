@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { cn } from "cn";
 
 // The field uses the same ordered-dither approach as Omarchy's live hero canvas.
-// Colors and grid placement are adapted to Payvoke's Osaka Jade theme and wordmark.
+// The visualizer lives in the same lattice: every column is a spectrum band,
+// mirrored so bass sits at both edges, rising from the floor as a dithered
+// skyline. Bands rise instantly and fall with gravity, like cava.
+// Ink comes from the --field-* tokens, so the canvas follows light and dark mode.
 const BAYER = [
   0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28,
   52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 21,
@@ -11,6 +15,10 @@ const BAYER = [
 ];
 
 const NOISE_SIZE = 128;
+/** Tallest the skyline may reach, as a share of the space above the floor. */
+const MAX_SKYLINE_SHARE = 0.55;
+
+type Ink = Record<"background" | "dim" | "mid" | "lit" | "hover" | "crest", string>;
 
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -71,12 +79,37 @@ function sampleNoise(noise: Float32Array, x: number, y: number) {
   return upper * (1 - sy) + lower * sy;
 }
 
-export function HeroPixelField() {
+function readInk(): Ink {
+  const style = getComputedStyle(document.documentElement);
+  const token = (name: string) => style.getPropertyValue(name).trim();
+  return {
+    background: token("--field-bg"),
+    dim: token("--field-dim"),
+    mid: token("--field-mid"),
+    lit: token("--field-lit"),
+    hover: token("--field-hover"),
+    crest: token("--field-crest"),
+  };
+}
+
+export type HeroPixelFieldProps = {
+  className?: string;
+  /** Live spectrum source. Without one the skyline idles as a low, slow wave. */
+  getAnalyser?: () => AnalyserNode | null;
+};
+
+/**
+ * Fills its positioned parent. A child marked `data-field-anchor` pins the
+ * lattice; the skyline stands on the parent's bottom edge.
+ */
+export function HeroPixelField({ className, getAnalyser }: HeroPixelFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const analyserRef = useRef(getAnalyser);
+  analyserRef.current = getAnalyser;
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const hero = canvas?.closest<HTMLElement>(".hero");
+    const hero = canvas?.parentElement;
     const context = canvas?.getContext("2d", { alpha: false });
     if (!canvas || !hero || !context) return;
 
@@ -84,22 +117,10 @@ export function HeroPixelField() {
     const noise = makeNoise();
     const random = seededRandom(0x1e372c);
     const jitter = Float32Array.from({ length: 64 * 64 }, random);
-    // The hero keeps its dark jade palette even when the rest of the site is in light mode.
-    const palette = getComputedStyle(hero);
-    const token = (name: string, fallback: string) =>
-      palette.getPropertyValue(name).trim() || fallback;
-    const ink = {
-      background: token("--t-field-bg", "#090f0d"),
-      dim: token("--t-field-dim", "#1e372c"),
-      mid: token("--t-field-mid", "#35614d"),
-      lit: token("--t-field-lit", "#509475"),
-      hover: token("--t-field-hover", "#84b49e"),
-      crest: token("--t-field-crest", "#bcd6cb"),
-    };
+    let ink = readInk();
 
     let width = 0;
     let height = 0;
-    let dpr = 1;
     let cell = 10;
     let anchorX = 0;
     let anchorY = 0;
@@ -107,14 +128,20 @@ export function HeroPixelField() {
     let firstRow = 0;
     let columns = 0;
     let rows = 0;
+    let floorRow = 0;
     let ramp = new Float32Array(0);
+    let levels = new Float32Array(0);
+    let fall = new Float32Array(0);
+    let targets = new Float32Array(0);
+    let spectrum = new Uint8Array(0);
     let frame = 0;
     let lastPaint = -Infinity;
     let inView = true;
+
     const measure = () => {
       const bounds = hero.getBoundingClientRect();
       if (bounds.width < 1 || bounds.height < 1) return;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = Math.round(bounds.width * dpr);
       height = Math.round(bounds.height * dpr);
       if (canvas.width !== width || canvas.height !== height) {
@@ -122,9 +149,8 @@ export function HeroPixelField() {
         canvas.height = height;
       }
 
-      // Keep the field's lattice attached to the centered PAYVOKE wordmark.
-      const wordmark = hero.querySelector<HTMLElement>(".particle-wordmark");
-      const slot = wordmark?.getBoundingClientRect();
+      // Keep the lattice attached to the centered wordmark.
+      const slot = hero.querySelector<HTMLElement>("[data-field-anchor]")?.getBoundingClientRect();
       cell = Math.max(7, Math.min(13, (slot?.width ?? bounds.width * 0.72) / 81)) * dpr;
       anchorX = slot ? (slot.left - bounds.left) * dpr : width / 2;
       anchorY = slot ? (slot.top - bounds.top) * dpr : height / 2;
@@ -132,7 +158,13 @@ export function HeroPixelField() {
       firstRow = Math.floor(-anchorY / cell) - 1;
       columns = Math.ceil(width / cell) - firstCol + 2;
       rows = Math.ceil(height / cell) - firstRow + 2;
+      floorRow = Math.floor((height - anchorY) / cell) - 1;
       ramp = new Float32Array(columns * rows);
+      if (levels.length !== columns) {
+        levels = new Float32Array(columns);
+        fall = new Float32Array(columns);
+        targets = new Float32Array(columns);
+      }
 
       for (let r = 0; r < rows; r++) {
         const y = anchorY + (firstRow + r + 0.5) * cell;
@@ -148,9 +180,61 @@ export function HeroPixelField() {
       }
     };
 
+    // One band per column: centre = treble, edges = bass, log-spaced 40 Hz-12 kHz.
+    const updateLevels = (time: number, analyser: AnalyserNode | null) => {
+      if (!columns) return;
+      if (analyser) {
+        if (spectrum.length !== analyser.frequencyBinCount)
+          spectrum = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(spectrum);
+      }
+      const nyquist = (analyser?.context.sampleRate ?? 48000) / 2;
+      const low = Math.log(40);
+      const high = Math.log(12000);
+      const centre = (columns - 1) / 2;
+      for (let c = 0; c < columns; c++) {
+        const edge = Math.abs(c - centre) / centre; // 0 centre, 1 edges
+        let target: number;
+        if (analyser) {
+          const band = 1 - edge;
+          const step = 1 / centre;
+          const from = Math.exp(low + (high - low) * band);
+          const to = Math.exp(low + (high - low) * Math.min(1, band + step));
+          const start = Math.floor((from / nyquist) * spectrum.length);
+          const end = Math.max(start + 1, Math.ceil((to / nyquist) * spectrum.length));
+          let sum = 0;
+          for (let i = start; i < end; i++) sum += spectrum[i] ?? 0;
+          // Lift the treble a little; raw FFT energy drops off with frequency.
+          const tilt = 0.75 + 0.5 * band;
+          // Edges stand taller, like Omarchy's skyline framing the copy.
+          const frame = 0.7 + 0.55 * edge * edge;
+          target = Math.min(1, Math.pow((sum / (end - start) / 255) * tilt, 1.9) * frame);
+        } else {
+          const wave = sampleNoise(noise, c * 0.13 + time * 0.3, time * 0.1);
+          target = (0.06 + 0.22 * edge * edge) * (0.55 + 0.45 * wave);
+        }
+        targets[c] = target;
+      }
+      // A light blur across neighbours turns single-bin spikes into towers.
+      for (let c = 0; c < columns; c++) {
+        const target =
+          0.15 * (targets[c - 1] ?? targets[c]) +
+          0.7 * targets[c] +
+          0.15 * (targets[c + 1] ?? targets[c]);
+        if (target >= levels[c]) {
+          levels[c] = target;
+          fall[c] = 0;
+        } else {
+          fall[c] += 0.0016;
+          levels[c] = Math.max(target, levels[c] - fall[c]);
+        }
+      }
+    };
+
     const draw = (now: number) => {
       if (!width || !height) return;
-      const time = motionQuery.matches ? 0 : now / 1000;
+      const still = motionQuery.matches;
+      const time = still ? 0 : now / 1000;
       context.fillStyle = ink.background;
       context.fillRect(0, 0, width, height);
 
@@ -158,6 +242,7 @@ export function HeroPixelField() {
       const spriteX = width * (0.5 + 0.43 * Math.sin(time * 0.62));
       const spriteY = height * (0.49 + 0.36 * Math.sin(time * 0.39 + 1.4));
       const reach = 12 * cell;
+      const skylineRows = Math.max(4, (floorRow - firstRow) * MAX_SKYLINE_SHARE);
 
       for (let r = 0; r < rows; r++) {
         const row = firstRow + r;
@@ -165,6 +250,7 @@ export function HeroPixelField() {
         const y = Math.round(top);
         const h = Math.round(top + cell) - y;
         const cy = top + cell / 2;
+        const fromFloor = floorRow - row;
         for (let c = 0; c < columns; c++) {
           const col = firstCol + c;
           const left = anchorX + col * cell;
@@ -183,12 +269,18 @@ export function HeroPixelField() {
             lum = shade * (0.3 + 0.52 * drift * drift + 0.18 * flicker) * 0.67;
           }
 
+          // Skyline: solid near the floor, thinning into a checker toward its top.
+          let tower = 0;
+          const towerRows = levels[c] * skylineRows;
+          if (fromFloor >= 0 && fromFloor < towerRows) {
+            const t = fromFloor / towerRows;
+            tower = 1.05 * Math.pow(1 - t, 1.3);
+            lum = Math.max(lum, tower);
+          }
+
           const spriteDistance = Math.hypot(cx - spriteX, cy - spriteY);
-          const spriteGlow =
-            motionQuery.matches || spriteDistance > reach
-              ? 0
-              : Math.pow(1 - spriteDistance / reach, 2) * 0.65;
-          const heat = spriteGlow;
+          const heat =
+            still || spriteDistance > reach ? 0 : Math.pow(1 - spriteDistance / reach, 2) * 0.65;
           lum += 0.94 * heat;
 
           const threshold =
@@ -200,9 +292,9 @@ export function HeroPixelField() {
               ? ink.crest
               : heat > 0.34
                 ? ink.hover
-                : heat > 0.17
+                : heat > 0.17 || tower > 0.85
                   ? ink.lit
-                  : heat > 0.07
+                  : heat > 0.07 || tower > 0.25
                     ? ink.mid
                     : ink.dim;
           const x = Math.round(left);
@@ -214,8 +306,11 @@ export function HeroPixelField() {
     const animate = (now: number) => {
       frame = 0;
       if (!inView || document.hidden || motionQuery.matches) return;
-      if (now - lastPaint >= 32) {
+      const analyser = analyserRef.current?.() ?? null;
+      // Live audio paints every frame; the idle field is throttled to ~30 fps.
+      if (analyser || now - lastPaint >= 32) {
         lastPaint = now;
+        updateLevels(now / 1000, analyser);
         draw(now);
       }
       frame = requestAnimationFrame(animate);
@@ -225,6 +320,10 @@ export function HeroPixelField() {
       if (!frame && inView && !document.hidden && !motionQuery.matches) {
         frame = requestAnimationFrame(animate);
       }
+    };
+    const paintStill = () => {
+      updateLevels(0, null);
+      draw(0);
     };
     const visibility = new IntersectionObserver(
       ([entry]) => {
@@ -239,8 +338,14 @@ export function HeroPixelField() {
     );
     const resize = new ResizeObserver(() => {
       measure();
-      draw(motionQuery.matches ? 0 : performance.now());
+      if (motionQuery.matches) paintStill();
+      else draw(performance.now());
       schedule();
+    });
+    const theme = new MutationObserver(() => {
+      ink = readInk();
+      if (motionQuery.matches) paintStill();
+      else draw(performance.now());
     });
     const onPageVisibility = () => {
       if (document.hidden) {
@@ -251,28 +356,36 @@ export function HeroPixelField() {
     const onMotionChange = () => {
       cancelAnimationFrame(frame);
       frame = 0;
-      if (motionQuery.matches) draw(0);
+      if (motionQuery.matches) paintStill();
       else schedule();
     };
 
     resize.observe(hero);
-    const wordmark = hero.querySelector(".particle-wordmark");
-    if (wordmark) resize.observe(wordmark);
+    const anchor = hero.querySelector("[data-field-anchor]");
+    if (anchor) resize.observe(anchor);
     visibility.observe(hero);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
     document.addEventListener("visibilitychange", onPageVisibility);
     motionQuery.addEventListener("change", onMotionChange);
     measure();
-    draw(0);
+    paintStill();
     schedule();
 
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
       visibility.disconnect();
+      theme.disconnect();
       document.removeEventListener("visibilitychange", onPageVisibility);
       motionQuery.removeEventListener("change", onMotionChange);
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="hero-pixel-canvas" aria-hidden="true" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className={cn("pointer-events-none absolute inset-0 block size-full", className)}
+      aria-hidden="true"
+    />
+  );
 }

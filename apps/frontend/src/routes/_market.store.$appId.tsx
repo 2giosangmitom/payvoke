@@ -5,7 +5,7 @@ export const Route = createFileRoute("/_market/store/$appId")({
   component: AppDetailPage,
   head: () => ({
     meta: [
-      { title: "App — Payvoke" },
+      { title: "App · Payvoke" },
       {
         name: "description",
         content: "Inspect a Payvoke app, its commands, and open a paid chat thread.",
