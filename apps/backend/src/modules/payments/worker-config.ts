@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { deploymentEnv, loadEnv } from "@payvoke/server";
-import { validateGasPolicy } from "./worker";
+import { validateGasPolicy } from "@payvoke/payments/worker";
 
 const schema = Type.Object({
   EXECUTION_ENABLED: Type.Boolean({ default: false }),

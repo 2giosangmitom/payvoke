@@ -4,7 +4,7 @@ import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { VaultChain } from "@payvoke/x402/chain";
 import { getAddress } from "viem";
 import type { PrismaClient } from "@payvoke/db";
-import { createPaymentValidator, readPersistedPayment } from "../../facilitator/validation";
+import { createPaymentValidator, readPersistedPayment } from "./validation";
 import { SettlementJournal } from "./journal";
 
 export function createSettlementService(db: PrismaClient, chain: VaultChain, resourceUrl: string) {

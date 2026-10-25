@@ -30,7 +30,7 @@ import {
   evidenceSatisfies,
   termsMinEvidence,
   type EvidenceLevel,
-} from "../apps/schema";
+} from "./evidence";
 import { databaseTime, type GasPolicy } from "./journal";
 import { validateGasPolicy } from "./worker";
 import { financialDeployment, financialJson, readFinalizedHold } from "./finance-ledger";

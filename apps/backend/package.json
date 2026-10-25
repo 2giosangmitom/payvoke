@@ -28,6 +28,7 @@
     "@openuidev/lang-core": "^1.0.1",
     "@payvoke/db": "workspace:*",
     "@payvoke/openui-components": "workspace:*",
+    "@payvoke/payments": "workspace:*",
     "@payvoke/protocol": "workspace:*",
     "@payvoke/server": "workspace:*",
     "@payvoke/x402": "workspace:*",

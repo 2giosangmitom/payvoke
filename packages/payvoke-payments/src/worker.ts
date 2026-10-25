@@ -12,7 +12,7 @@ import type { VaultChain } from "@payvoke/x402/chain";
 import type { SettlementChain } from "@payvoke/x402/settlement";
 import { encodeFunctionData, getAddress, type Hex, type LocalAccount } from "viem";
 import type { PrismaClient } from "@payvoke/db";
-import { createPaymentValidator } from "../../facilitator/validation";
+import { createPaymentValidator } from "./validation";
 import { SettlementError, SettlementJournal, type GasPolicy } from "./journal";
 
 export function validateGasPolicy(policy: GasPolicy) {

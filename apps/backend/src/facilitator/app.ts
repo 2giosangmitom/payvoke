@@ -12,9 +12,9 @@ import { logRedaction, parseFinancialJson, vaultDeployment } from "@payvoke/serv
 import { createDatabase, type PrismaClient } from "@payvoke/db";
 import { VaultChain } from "@payvoke/x402/chain";
 import type { FacilitatorConfig } from "./config";
-import { createPaymentValidator } from "./validation";
-import { createSettlementService } from "../modules/payments/settlement";
-import { SettlementError } from "../modules/payments/journal";
+import { createPaymentValidator } from "@payvoke/payments/validation";
+import { createSettlementService } from "@payvoke/payments/settlement";
+import { SettlementError } from "@payvoke/payments/journal";
 
 type PaymentBody = {
   x402Version: 2;

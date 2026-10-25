@@ -25,7 +25,8 @@ import type { Config } from "../../config";
 import { Prisma, type PrismaClient } from "@payvoke/db";
 import { parseFinancialJson } from "@payvoke/server";
 import { gatewayFacilitator, settleGateway } from "../payments/gateway";
-import { isAvailable, termsMinEvidence, threadSlotReleased } from "../apps/schema";
+import { termsMinEvidence } from "@payvoke/payments/evidence";
+import { isAvailable, threadSlotReleased } from "../apps/schema";
 
 type PrepareBody = {
   threadId: string;

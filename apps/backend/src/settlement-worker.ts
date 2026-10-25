@@ -7,10 +7,10 @@ import { VaultChain } from "@payvoke/x402/chain";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { createDatabase } from "@payvoke/db";
 import { vaultDeployment } from "@payvoke/server";
-import { SettlementWorker } from "./modules/payments/worker";
+import { SettlementWorker } from "@payvoke/payments/worker";
 import { loadWorkerConfig, workerGasPolicy } from "./modules/payments/worker-config";
-import { scanFinalizedHolds } from "./modules/payments/scanner";
-import { scanFinancialLifecycle } from "./modules/payments/finance-ledger";
+import { scanFinalizedHolds } from "@payvoke/payments/scanner";
+import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
 
 let db: ReturnType<typeof createDatabase> | undefined;
 try {

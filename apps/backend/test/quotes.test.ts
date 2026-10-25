@@ -49,14 +49,14 @@ import { logRedaction } from "@payvoke/server";
 import fastify from "fastify";
 import { Writable } from "node:stream";
 import { PrismaClient, migrationsDirectory } from "@payvoke/db";
-import { SettlementJournal } from "../src/modules/payments/journal";
+import { SettlementJournal } from "@payvoke/payments/journal";
 import { createFacilitatorApp } from "../src/facilitator/app";
 import { loadFacilitatorConfig } from "../src/facilitator/config";
 import { code, matchingHold, mockVault } from "./fixtures/vault-reader";
 import { mockSettlement } from "./fixtures/settlement-reader";
-import { SettlementWorker } from "../src/modules/payments/worker";
-import { createSettlementService } from "../src/modules/payments/settlement";
-import { scanFinalizedHolds } from "../src/modules/payments/scanner";
+import { SettlementWorker } from "@payvoke/payments/worker";
+import { createSettlementService } from "@payvoke/payments/settlement";
+import { scanFinalizedHolds } from "@payvoke/payments/scanner";
 import { localEvm } from "./fixtures/local-evm";
 import {
   paymentSession,
@@ -81,8 +81,8 @@ import {
   recordPaymentDelivery,
   type FinanceApproval,
   type WireDecision,
-} from "../src/modules/payments/finance";
-import { scanFinancialLifecycle } from "../src/modules/payments/finance-ledger";
+} from "@payvoke/payments/finance";
+import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
 import { vaultFinanceAbi } from "@payvoke/protocol";
 
 describe("quotes, x402 and isolated settlement", () => {

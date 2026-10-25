@@ -31,12 +31,12 @@ import {
   parseDecision,
   recordPaymentDelivery,
   type FinanceApproval,
-} from "../modules/payments/finance";
-import { scanFinancialLifecycle } from "../modules/payments/finance-ledger";
+} from "@payvoke/payments/finance";
+import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { hashDecision, paymentTypes, vaultDomain } from "@payvoke/protocol";
 import type { Address } from "viem";
-import type { GasPolicy } from "../modules/payments/journal";
+import type { GasPolicy } from "@payvoke/payments/journal";
 
 type FinanceRun = {
   ceremony: Ceremony;

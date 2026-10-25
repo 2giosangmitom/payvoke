@@ -6,7 +6,7 @@ import { VaultChain } from "@payvoke/x402/chain";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { ASSET } from "@payvoke/x402";
 import { PrismaClient } from "@payvoke/db";
-import { SettlementWorker } from "../../src/modules/payments/worker";
+import { SettlementWorker } from "@payvoke/payments/worker";
 
 const [schema, rpc, vault, codeHash, key] = process.argv.slice(2);
 if (

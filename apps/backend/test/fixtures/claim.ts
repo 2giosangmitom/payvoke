@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@payvoke/db";
-import { SettlementJournal } from "../../src/modules/payments/journal";
+import { SettlementJournal } from "@payvoke/payments/journal";
 
 const [schema, invocationId, owner] = process.argv.slice(2);
 if (!/^payment_test_[a-f0-9]{32}$/.test(schema ?? "") || !invocationId || !owner) {

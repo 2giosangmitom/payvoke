@@ -1,7 +1,7 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { hashSnapshot, type Json } from "@payvoke/protocol";
 import { type PrismaClient } from "@payvoke/db";
-import { recordPaymentDelivery } from "../payments/finance";
+import { recordPaymentDelivery } from "@payvoke/payments/finance";
 import { object } from "./protocol";
 
 // Trusted host-side verification for inline JSON results. File results require

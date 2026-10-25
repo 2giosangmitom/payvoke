@@ -1,4 +1,5 @@
 import Ajv2020 from "ajv/dist/2020.js";
+import { minEvidenceLevels, type MinEvidence } from "@payvoke/payments/evidence";
 
 export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN"] as const;
 export type CommandOptionType = (typeof COMMAND_OPTION_TYPES)[number];
@@ -225,30 +226,12 @@ export function validateTerms(value: unknown): value is Record<string, unknown> 
   );
 }
 
-// Evidence classes from M05 (RAILS): SELF < SIGN < {REC, WIT} < ATT. REC proves the
-// data arrived and WIT proves the recipient agreed; neither implies the other.
-export const evidenceLevels = ["SIGN", "REC", "WIT"] as const;
-export type EvidenceLevel = (typeof evidenceLevels)[number];
-export const minEvidenceLevels = ["SIGN", "REC"] as const;
-export type MinEvidence = (typeof minEvidenceLevels)[number];
-
-export function evidenceSatisfies(level: string, minimum: string): boolean {
-  if (minimum === "SIGN") return evidenceLevels.includes(level as EvidenceLevel);
-  return level === minimum;
-}
-
 // Terms are stored as signed. Fill the default before the revision is hashed so
 // every quote states the evidence floor that gates release.
 export function normalizeTerms(value: Record<string, unknown>): Record<string, unknown> {
   return value.verification === undefined
     ? { ...value, verification: { minEvidence: "SIGN" } }
     : value;
-}
-
-export function termsMinEvidence(definition: unknown): MinEvidence | null {
-  if (!record(definition) || !record(definition.verification)) return null;
-  const level = definition.verification.minEvidence;
-  return minEvidenceLevels.includes(level as MinEvidence) ? (level as MinEvidence) : null;
 }
 
 export const HEARTBEAT_TTL_MS = 45_000;
