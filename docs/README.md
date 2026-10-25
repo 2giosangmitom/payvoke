@@ -8,9 +8,11 @@ Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đ�
 
 [Roadmap từ đầu đến cuối](roadmap.md) chia thành 130 task trong 10 giai đoạn. Gate backend-ready yêu cầu luồng headless, recovery và tài chính trên Fuji được kiểm chứng trước khi làm frontend.
 
-[Baseline T001](baseline.md) ghi hiện trạng code, runtime, lệnh kiểm tra và kết quả thực tế; database cloud Neon đang chờ URL, Docker local là tùy chọn.
+[Baseline T001](baseline.md) ghi trạng thái ngày 20/10/2026 (lịch sử); hiện trạng mới nhất ở [roadmap §2](roadmap.md#2-mốc-hiện-tại-và-layout-mục-tiêu) và [payment-acceptance](payment-acceptance.md).
 
 [Mapping kiểm thử T002, bổ sung S04](test-mapping.md) nối yêu cầu S01–S04 với ca kiểm thử, test surface và task/milestone nghiệm thu; AG-UI/OpenUI đã có một phần suite, các nhóm còn lại vẫn là thiết kế.
+
+[Nghiên cứu agentic payments](research/agentic-payments-literature.md) đối chiếu thiết kế với 13 paper về bảo mật x402, verify-then-pay, reputation và quyết định phía buyer; các đề xuất thành task R01–R08 trong roadmap.
 
 ## Luồng chính
 

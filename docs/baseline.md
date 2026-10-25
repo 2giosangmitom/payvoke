@@ -1,5 +1,7 @@
 # T001 — Baseline repo Payvoke
 
+> Tài liệu lịch sử: ghi trạng thái ngày 20/10/2026 (Counter sample, backend skeleton, backend `tsc` fail). Không dùng làm báo cáo hiện trạng. Hiện trạng ngày 25/10/2026 nằm ở [roadmap §2](roadmap.md#2-mốc-hiện-tại-và-layout-mục-tiêu) và [payment-acceptance](payment-acceptance.md).
+
 ## Mốc và phạm vi
 
 - Khảo sát ngày 20/10/2026 (UTC), trên commit `d14bd98c6854284f195d3b6be9be7007f9ae51ac`.

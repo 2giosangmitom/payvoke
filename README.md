@@ -27,6 +27,7 @@ Provider tự vận hành app. Payvoke cung cấp store, thread chat, quản lý
 - [17. Roadmap triển khai](#17-roadmap-triển-khai)
 - [18. Quyết định còn mở và ranh giới MVP](#18-quyết-định-còn-mở-và-ranh-giới-mvp)
 - [Tài liệu chi tiết](#tài-liệu-chi-tiết)
+- [Tài liệu tham khảo và lời cảm ơn](#tài-liệu-tham-khảo-và-lời-cảm-ơn)
 
 ## 1. Payvoke giải quyết bài toán gì?
 
@@ -44,27 +45,28 @@ Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao k�
 
 ## 2. Trạng thái hiện tại
 
+Kiểm tra lại ngày 25/10/2026 trên commit `a7b97ec`.
+
 Hiện tại đã có:
 
-- Tổng quan sản phẩm và mười module chức năng.
-- Bốn đặc tả chi tiết về API/provider, x402/vault, MCP và AG-UI/OpenUI.
-- Bộ thuật ngữ nghiệp vụ.
-- Fixture EIP-712 đã kiểm tra hashing/chữ ký bằng TypeScript với viem.
-- Roadmap 130 task trong mười giai đoạn.
-- Prisma schema cho App, command revision, thread và quote; đã qua `prisma validate` và ba migration mới cho AG-UI stream/continuation cùng `20261023020000_apps_and_threads`.
+- Tổng quan sản phẩm, mười module chức năng, bốn đặc tả (API/provider, x402/vault, MCP, AG-UI/OpenUI) và bộ thuật ngữ.
+- `PayvokeVault.sol` với 82 test pass (71 Solidity gồm adversarial, fuzz và invariant; 11 Node.js) và Ignition module.
+- `packages/payvoke-protocol` (EIP-712, JCS, snapshots; 8 test vectors/ABI), `packages/payvoke-x402` (adapter client/server/facilitator của scheme `payvoke-vault`) và `packages/openui-components` (catalog widget).
+- Backend Fastify: đăng nhập SIWE, store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance (refund/release/reclaim), provider SSE/ACK/report, AG-UI/OpenUI stream, question/answer và revision. 10 migration Prisma; 109 test pass, 6 skip (case EVM/PostgreSQL cần cờ riêng); typecheck đầy đủ pass.
+- Frontend: store, chat, Studio, renderer OpenUI và ký thanh toán; typecheck và build pass.
+- Đối chiếu thiết kế với 13 nghiên cứu về x402 và agentic payments ([chi tiết](docs/research/agentic-payments-literature.md)).
 
 Chưa có:
 
+- Deployment vault trên Fuji và bằng chứng end-to-end trên Fuji.
+- API file, dispute, acceptance, cancellation, `/result` và `pending-events`; route ACK hiện lệch S01 (xem [S01 §6.2](docs/specs/01-api-and-provider-protocol.md#62-ack-và-báo-cáo)).
+- Verifier cho file artifact và cơ chế mức bằng chứng trước khi giải ngân (đề xuất R03/R04).
+- OpenAPI sinh từ code, CI, cấu hình deploy backend/worker; frontend chưa có script `test` và browser E2E.
+- MCP bridge (`apps/mcp`) và `packages/payvoke-client`.
 - Migration production không phá huỷ; migration hiện tại được phép reset vì chưa release.
-- PayvokeVault hoàn chỉnh; package vault hiện là Hardhat sample.
-- Đầy đủ API nghiệp vụ và bằng chứng end-to-end; backend đã có store, thread, command, quote và AG-UI/OpenUI, nhưng chưa phủ hết file, dispute và vận hành.
-- Frontend hoàn chỉnh; store, chat và Studio đã nối API, còn thiếu kiểm thử trình duyệt, thanh toán thật và các trạng thái biên.
-- MCP bridge hoàn chỉnh.
-- Bằng chứng luồng end-to-end của thiết kế này trên Fuji.
+- Policy đã duyệt cho phí, deadline, giá sàn so với gas, ngân sách AVAX và chủ sở hữu key/role.
 
-Backend và frontend nay có luồng thử nghiệm provider → AG-UI/OpenUI → buyer trên mô hình app/thread/command, kiểm chứng JSON delivery, question/answer continuation và revision trong phạm vi policy. Các test HTTP/PGlite và frontend build hiện có không thay thế bằng chứng thanh toán và giao hàng end-to-end qua ví/Fuji; chưa nên coi marketplace đủ điều kiện phát hành.
-
-Một số câu trong roadmap được viết trước khi hoàn thiện Prisma nên còn mô tả schema chưa có domain models; đó là trạng thái cũ. Có schema không đồng nghĩa task database đã hoàn tất migration, integration hoặc nghiệm thu.
+Có thể demo trên local/staging: Hardhat node chain ID 43113 + PostgreSQL + backend, facilitator, settlement worker + frontend. Chưa nên coi marketplace đủ điều kiện phát hành trên Fuji cho đến khi qua các gate T092/T129 của roadmap.
 
 ## 3. App, command và thread
 
@@ -268,6 +270,10 @@ Paid submit dùng `Idempotency-Key` bằng `invocationId`; endpoint này không 
 Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter dự kiến tích hợp ở Fastify `preHandler`; dùng stock middleware settle ở `onRequest` có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
 
 Pending có thể vẫn trả HTTP 402 kèm transaction receipt. Client phải đọc trạng thái và reconcile, không coi mọi 402 là chưa trả tiền. Không tự fallback sang scheme `exact`, chain khác hoặc public facilitator.
+
+### Đối chiếu với nghiên cứu bảo mật x402
+
+Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Còn thiếu giá sàn so với gas và một conformance suite đặt tên theo từng quy tắc. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
 
 ## 8. PayvokeVault và vòng đời tiền
 
@@ -573,6 +579,8 @@ Sau terminal release, không thể refund từ chính hold đã đóng. Bồi ho
 
 Buyer đánh giá invocation đã trả tiền và được giao. Đánh giá gắn với phiên bản sản phẩm, sửa có lịch sử. Mẫu quảng cáo provider không được trình bày như đánh giá buyer.
 
+Vì Payvoke trả gas cho giao dịch giữ tiền, số invocation có thể bị làm giả rẻ như đã thấy trên x402 công khai. Store nên hiển thị số buyer độc lập đã xác minh và rating theo command revision thay cho số giao dịch thô; giải ngân nên dựa trên mức bằng chứng tối thiểu mà command đã khai báo. Đây là đề xuất, xem [M05](docs/modules/05-artifacts-and-verification.md) và [M09](docs/modules/09-reputation-and-operations.md).
+
 Operator có thể dừng bán, revoke key lộ và xử lý sự cố theo quyền. Mọi hành động cần audit: ai làm, lý do, thời điểm và điều kiện mở lại. Provider offline không làm biến mất job đã trả; outcome chưa rõ phải điều tra trước khi phát lại.
 
 ## 14. MCP cho ứng dụng AI
@@ -596,7 +604,7 @@ Bridge chạy trên máy buyer, giữ khóa local, làm MCP server đối với 
 - `search_apps`
 - `get_app`
 - `list_commands`
-- `create_session`
+- `create_thread`
 - `prepare_invocation`
 - `submit_invocation`
 - `get_invocation`
@@ -673,17 +681,20 @@ Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm 
 
 ### Layout repository
 
-| Đường dẫn                   | Vai trò                                                      |
-| --------------------------- | ------------------------------------------------------------ |
-| `apps/backend`              | API, Prisma schema và các worker nghiệp vụ dự kiến           |
-| `packages/payvoke-vault`    | Solidity, tests, deployment và ABI                           |
-| `apps/frontend`             | Web UI                                                       |
-| `docs`                      | Modules, specs, nghiên cứu và roadmap                        |
-| `packages/payvoke-protocol` | Đề xuất: schemas, snapshots, typed data và codecs dùng chung |
-| `packages/payvoke-client`   | Đề xuất: client x402 dùng lại cho headless/browser/MCP       |
-| `apps/mcp`                  | Đề xuất: bridge local stdio                                  |
+| Đường dẫn                    | Vai trò                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `apps/backend`               | API, Prisma schema, facilitator, settlement worker, finance và công cụ vận hành Fuji |
+| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                                   |
+| `apps/frontend`              | Web UI: store, chat, Studio                                                          |
+| `apps/slide`                 | Slide pitch                                                                          |
+| `docs`                       | Modules, specs, nghiên cứu và roadmap                                                |
+| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                                  |
+| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                         |
+| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                           |
+| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                               |
+| `apps/mcp`                   | Đề xuất: bridge local stdio                                                          |
 
-Những đường dẫn đánh dấu đề xuất là layout mục tiêu, không có nghĩa package đã tồn tại. Provider fixture sẽ chạy ngoài process Payvoke như provider thật.
+Những đường dẫn đánh dấu đề xuất là layout mục tiêu, chưa tồn tại. Provider fixture sẽ chạy ngoài process Payvoke như provider thật.
 
 ### Vai trò của Prisma schema
 
@@ -738,7 +749,7 @@ M01–M10 chia theo chức năng sản phẩm; M0–M9 trong roadmap chia theo g
 
 ## 17. Roadmap triển khai
 
-[Roadmap](docs/roadmap.md) chia 130 task theo dependency và acceptance criteria:
+[Roadmap](docs/roadmap.md) chia 130 task theo dependency và acceptance criteria, cộng 8 task R01–R08 bổ sung từ nghiên cứu ([§17](docs/roadmap.md#17-bổ-sung-từ-nghiên-cứu-25102026)):
 
 | Giai đoạn | Mục tiêu                            |
 | --------- | ----------------------------------- |
@@ -791,7 +802,31 @@ Ngoài phạm vi hiện tại:
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
 - [S04 — AG-UI chat streaming và OpenUI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
 - [Prisma schema](apps/backend/prisma/schema.prisma).
-- [Roadmap 130 task](docs/roadmap.md).
+- [Roadmap 130 task + R01–R08](docs/roadmap.md).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).
+- [Nghiên cứu agentic payments áp dụng cho Payvoke](docs/research/agentic-payments-literature.md).
+- [Ma trận bằng chứng thanh toán](docs/payment-acceptance.md).
 
 README là bản giải thích tổng thể. S01–S04 là đặc tả triển khai chi tiết; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Không coi endpoint/ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
+
+## Tài liệu tham khảo và lời cảm ơn
+
+Thiết kế bảo mật thanh toán, cơ chế bằng chứng giao hàng và chỉ số uy tín của Payvoke được rà soát và bổ sung dựa trên các nghiên cứu dưới đây. Chúng tôi chân thành cảm ơn các tác giả đã công bố công trình của mình, đặc biệt những nhóm đã công khai phương pháp, dữ liệu, công cụ và báo cáo có trách nhiệm các lỗ hổng cho bên bị ảnh hưởng. Những công trình này giúp hệ sinh thái agentic payments an toàn hơn và giúp Payvoke kiểm tra thiết kế của mình bằng những bằng chứng cụ thể thay vì giả định.
+
+Payvoke chỉ dùng các nghiên cứu này làm checklist và định hướng thiết kế; mọi sai sót khi diễn giải hoặc áp dụng thuộc về chúng tôi, không thuộc về tác giả. Cách từng paper được áp dụng nằm ở [nghiên cứu agentic payments](docs/research/agentic-payments-literature.md).
+
+| Paper                                                                                                                                                    | Tác giả                                                                                  | Áp dụng tại            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------- |
+| [When HTTP 402 Meets the Blockchain: Risks on Emerging x402 Payments](https://arxiv.org/abs/2607.19545) (arXiv:2607.19545)                               | Qinying Wang, Yong Yang, Yuan Chen, Shouling Ji, Mathias Payer                           | M06, S02 §11           |
+| [Free-Riding the Agentic Web: A Systematic Security Analysis of x402 Payments](https://arxiv.org/abs/2605.30998) (arXiv:2605.30998)                      | Shengchen Ling, Yihang Huang, Yuefeng Du, Yuan Chen, Yajin Zhou, Lei Wu, Cong Wang       | M03, M06, S02 §11      |
+| [Five Attacks on x402 Agentic Payment Protocol](https://arxiv.org/abs/2605.11781) (arXiv:2605.11781)                                                     | Zelin Li, Qin Wang, Zhipeng Wang                                                         | M06, M09, M10, S02 §11 |
+| [A Formal Analysis of Agent Payment Protocols](https://arxiv.org/abs/2609.00060) (arXiv:2609.00060)                                                      | Ke Jiang, Mohan Yu, Yuan Chang, Mohit Kumar Jangid, Jianyu Niu, Cong Wang, Yinqian Zhang | S02 §11                |
+| [Hardening x402: PII-Safe Agentic Payments via Pre-Execution Metadata Filtering](https://arxiv.org/abs/2604.11430) (arXiv:2604.11430)                    | Vladimir Stantchev                                                                       | M06, S02 §11           |
+| [How Agentic Is Agentic Commerce? A Population-Scale Measurement of x402 Adoption and Authenticity](https://arxiv.org/abs/2607.12575) (arXiv:2607.12575) | Shengchen Ling, Yajin Zhou, Lei Wu, Cong Wang                                            | M09                    |
+| [TessPay: Verify-then-Pay Infrastructure for Trusted Agentic Commerce](https://arxiv.org/abs/2602.00213) (arXiv:2602.00213)                              | Mehul Goenka, Tejas Pathak, Siddharth Asthana                                            | M05                    |
+| [RAILS: Verification-Native Clearing for Agentic Commerce](https://arxiv.org/abs/2606.08790) (arXiv:2606.08790)                                          | Adrian de Valois-Franklin, Alex Bogdan                                                   | M05, S01 §4.2          |
+| [A402: Binding Cryptocurrency Payments to Service Execution for Agentic Commerce](https://arxiv.org/abs/2603.01179) (arXiv:2603.01179)                   | Yue Li, Lei Wang, Kaixuan Wang, Zhiqiang Yang, Ke Wang, Zhi Guan, Jianbo Gao             | M10                    |
+| [402Pilot: An x402 Decision Layer for Autonomous Agent Micropayments](https://arxiv.org/abs/2608.01341) (arXiv:2608.01341)                               | Yin Li, Yanbo He, Boo-Ho Yang, Rav Lawana, Ziyue Li, Wei Zeng, Jing Tang, Fugee Tsung    | M08, S03 §8            |
+| [Agentic Commerce Bench: Measuring Fraud Detection for Agents That Spend Money](https://arxiv.org/abs/2609.35886) (arXiv:2609.35886)                     | Ankit Srivastava, Debjyoti Paul                                                          | M09                    |
+| [Whispers of Wealth: A Systematic Red-Teaming Study of the Agent Payments Protocol (AP2)](https://arxiv.org/abs/2601.22569) (arXiv:2601.22569)           | Tanusree Debi, Wentian Zhu, Pranjol Sen Gupta                                            | M08, S03 §8            |
+| [LEGIT: Credentialing Protocol for Trustworthy AI Agent Marketplaces](https://arxiv.org/abs/2609.21325) (arXiv:2609.21325)                               | Steve Drew, Jiayu Zhou                                                                   | M09                    |

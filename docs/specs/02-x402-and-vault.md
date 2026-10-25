@@ -1,6 +1,6 @@
 # S02 · Scheme x402 và interface PayvokeVault
 
-Trạng thái: đặc tả Payvoke v1 để triển khai, 19/10/2026. Scheme do Payvoke thiết kế, chưa được Foundation chuẩn hóa; chưa có deployment vault. [S01](01-api-and-provider-protocol.md) định nghĩa HTTP nghiệp vụ; [nghiên cứu kiến trúc](../research/x402-integration-architecture.md) giải thích đánh đổi và SDK revision. Khi nghiên cứu cũ khác S02, triển khai MVP theo S02.
+Trạng thái: đặc tả Payvoke v1 để triển khai, 19/10/2026; cập nhật hiện trạng 25/10/2026. Scheme do Payvoke thiết kế, chưa được Foundation chuẩn hóa. Đã có `PayvokeVault.sol`, package protocol/x402, facilitator và settlement worker với test local (xem [payment-acceptance](../payment-acceptance.md)); **chưa có deployment vault trên Fuji**. [S01](01-api-and-provider-protocol.md) định nghĩa HTTP nghiệp vụ; [nghiên cứu kiến trúc](../research/x402-integration-architecture.md) giải thích đánh đổi và SDK revision. Khi nghiên cứu cũ khác S02, triển khai MVP theo S02.
 
 ## 1. Phạm vi và cấu hình cố định
 
@@ -236,7 +236,7 @@ At-most-once debit là bất biến contract; một logical job là uniqueness D
 
 ## 8. Interface contract đề xuất
 
-Tên dưới đây là ABI mục tiêu, chưa có contract. Solidity struct types ở §4 phải dùng chung, không đổi field order để tiết kiệm gas mà không tăng scheme/domain version.
+Tên dưới đây là ABI mục tiêu; `packages/payvoke-vault/contracts/PayvokeVault.sol` hiện thực interface này và được kiểm tra parity ABI/selector trong `packages/payvoke-protocol/test/payment.test.ts`. Nếu code và đặc tả lệch nhau, sửa một trong hai kèm test, không âm thầm chấp nhận. Solidity struct types ở §4 phải dùng chung, không đổi field order để tiết kiệm gas mà không tăng scheme/domain version.
 
 ```solidity
 function deposit(uint256 amount) external;
@@ -346,7 +346,7 @@ Custom error codes mục tiêu: `InvalidAsset`, `InvalidSignature`, `GrantExpire
 
 Fixture máy đọc tại [fixtures/x402-v1.json](fixtures/x402-v1.json), được tính bằng viem đang cài trong workspace. Private key fixture là Hardhat key công khai, **không được dùng cho tài sản thật**. Fixture quote dùng input `{}` và terms/policy marker chỉ để kiểm thử hashing, không pass API/business schema; không coi là quote có thể bán.
 
-Tests phải xác minh quoteDigest, authorizationDigest, recovered session signer và signature đúng fixture; Solidity hashQuote/hashAuthorization phải bằng TS. Đã chạy tính hash/sign bằng viem trong lúc viết tài liệu; chưa chạy Solidity vì chưa có vault implementation.
+Tests phải xác minh quoteDigest, authorizationDigest, recovered session signer và signature đúng fixture; Solidity hashQuote/hashAuthorization phải bằng TS. Hash/sign đã được tính bằng viem khi viết tài liệu; nay test vault (`PayvokeVault.ts`, "matches the exact published vector…") và test protocol xác nhận Solidity `hashQuote`/`hashAuthorization` khớp fixture.
 
 Mutation tests: chain/vault/version/provider/amount/fee/input/terms/session/product/command/deadline/grantEpoch thay một trường thì fail consent hoặc mismatch. Ngoài ra:
 
@@ -360,6 +360,30 @@ Mutation tests: chain/vault/version/provider/amount/fee/input/terms/session/prod
 8. Fuji end-to-end với test USDC, receipt/event/finalized read và balance delta; công bố địa chỉ/roles/ABI/txHashes trước demo.
 
 Deployment policy chưa chọn con số kinh tế: fee bps/cap, quote lifetime, max durations, resolution grace và gas budgets phải được chủ dự án duyệt và version hóa. Contract tests dùng fixture policy ngắn để test thời gian; không biến chúng thành production defaults.
+
+## 11. Đối chiếu nghiên cứu bảo mật x402
+
+Bảng dưới ánh xạ các quy tắc, bất biến và biện pháp trong nghiên cứu x402 năm 2026 vào yêu cầu của S02. Ký hiệu nguồn theo [danh mục paper](../research/agentic-payments-literature.md#danh-mục-paper): [P1] 2607.19545, [P2] 2605.30998, [P3] 2605.11781, [P4] 2609.00060, [P5] 2604.11430. Cột "Trạng thái" dùng cùng nghĩa với [payment-acceptance](../payment-acceptance.md).
+
+| Nguồn                      | Yêu cầu                                              | Mục S02 chịu trách nhiệm | Trạng thái                      |
+| -------------------------- | ---------------------------------------------------- | ------------------------ | ------------------------------- |
+| [P1] SR1, [P4] P1/P9       | Payload khớp requirements đã persist, encoding chuẩn | §5.1–5.2, §3.1 (JCS)     | Local                           |
+| [P1] SR2, [P4] P18         | Xác thực chữ ký đúng signer của grant/epoch          | §4                       | Local                           |
+| [P1] SR3, [P4] P17         | Hết hạn/revoke có hiệu lực trước hold                | §2, §3.3                 | Local                           |
+| [P1] SR4, [P3] M4, [P4] P5 | Chỉ success khi hold đã finalized                    | §5.3, §7                 | Local                           |
+| [P1] SR5                   | Fail fast với payment không settle được/vô nghĩa     | §6.3 bước 4, §8.2        | Local; giá sàn theo gas chưa có |
+| [P1] SR6, [P4] P13         | Trần gas/phí và ngân sách sponsor                    | §6.3                     | Local; ngân sách thật chờ duyệt |
+| [P1] SR7                   | `settle` kiểm tra lại toàn bộ                        | §6.3                     | Local                           |
+| [P1] SR8                   | Chỉ settle calldata đã allowlist                     | §6.3                     | Local                           |
+| [P2] F1 (I3), [P3] M3      | Chữ ký gắn đúng invocation/resource                  | §3.1, §4                 | Local                           |
+| [P2] F2 (I4), [P4] P3      | Một authorization, một hold                          | §4, §6.3 bước 1–3, §9    | Local                           |
+| [P2] F3 (I2), [P4] P8      | Không overdraft cap                                  | §2, §8.2                 | Local (không dùng `upto`)       |
+| [P2] F4 (I1, I5)           | Không giao việc trước khi tiền được giữ              | §1 (`upfront`), §7       | Local                           |
+| [P3] M2                    | Chỉ facilitator được ủy quyền mới settle             | §8.1 `RELAYER_ROLE`      | Local                           |
+| [P3] M5, [P4] P16, [P5]    | Không cache/log header; không PII trong metadata     | §5, S01 §2               | Local; thiếu test hồi quy riêng |
+| [P4] P4, P6                | Hold/refund/release/reclaim cùng tham chiếu hold     | §8.3, §9                 | Local                           |
+
+Việc tiếp theo (roadmap R01): gom các test hiện có và bổ sung ca còn thiếu thành một conformance suite, mỗi ca đặt tên theo mã quy tắc ở cột "Nguồn", để reviewer chạy lại được từng lớp lỗi. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
 
 ## Nguồn
 

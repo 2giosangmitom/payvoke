@@ -26,14 +26,24 @@ Nền tảng → contract → backend/API → x402 và recovery → provider/job
 
 ## 2. Mốc hiện tại và layout mục tiêu
 
-Hiện backend là Fastify skeleton; Prisma đã có 64 models và 40 enums, validate thành công nhưng chưa có migrations hoặc DB integration. Vault là Hardhat Counter sample; frontend là skeleton React/TanStack. Đặc tả và một fixture EIP-712 đã có, nhưng chưa thay thế implementation tests. Xem [baseline T001](baseline.md) để biết các checks pass/fail và giới hạn bằng chứng.
+**Hiện trạng 25/10/2026** (kiểm tra lại trên commit `a7b97ec`):
 
-Giữ các vùng hiện có:
+- Backend Fastify có auth SIWE (Better Auth), catalog/store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance, AG-UI/OpenUI stream và công cụ vận hành Fuji. 10 migration Prisma; `pnpm --dir apps/backend test` 109 pass, 6 skip (EVM/PostgreSQL cần cờ riêng). `tsc --noEmit` đầy đủ đã pass; lỗi `thread-stream` ghi ở baseline không còn.
+- `PayvokeVault.sol` đã thay Counter sample: 82 test pass (71 Solidity gồm adversarial/fuzz/invariant, 11 Node.js) và Ignition module.
+- `packages/payvoke-protocol` (8 test vectors/ABI), `packages/payvoke-x402`, `packages/openui-components` đã tồn tại.
+- Frontend có store, chat, Studio, renderer OpenUI và ký thanh toán; build pass; 4 test renderer chạy được bằng tsx nhưng chưa có script `test`.
+- Chưa có: deployment Fuji, endpoint file/dispute/acceptance/cancellation/pending-events, OpenAPI sinh từ code, CI, Dockerfile/cấu hình deploy backend, `apps/mcp`, `packages/payvoke-client`. `oxfmt --check` còn lỗi format ở một số file.
+
+Thứ tự thực tế lệch roadmap: frontend đã được làm trước gate T092. Điều này không làm các gate cũ mất hiệu lực; T092/T109 vẫn phải có bằng chứng trước khi coi là đạt. Checkbox bên dưới chưa được đánh dấu vì chưa đối chiếu đủ acceptance từng task; khi đánh dấu phải kèm commit và lệnh kiểm tra như §1. [Baseline T001](baseline.md) giữ trạng thái ngày 20/10 để làm lịch sử.
+
+Các vùng hiện có:
 
 - `packages/payvoke-vault`: Solidity, contract tests, deployment, ABI export.
 - `apps/backend`: API và các module domain; entrypoint API tách entrypoint worker giữ khóa.
-- `apps/frontend`: giao diện chỉ bắt đầu sau gate backend T092.
-- Đề xuất `packages/payvoke-protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; tạo ở T009, không xây framework đa chain.
+- `apps/frontend`: web UI (store, chat, Studio).
+- `packages/payvoke-protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; không xây framework đa chain.
+- `packages/payvoke-x402`: adapter client/server/facilitator của scheme `payvoke-vault`.
+- `packages/openui-components`: catalog OpenUI dùng chung backend/frontend.
 - Đề xuất `packages/payvoke-client`: phần client ký/gửi x402 dùng lại cho headless/browser/MCP; bắt đầu hẹp ở T016, không chứa UI hay khóa hardcode.
 - Đề xuất `apps/mcp`: local stdio bridge, chỉ bắt đầu sau core buyer API; không là server custody từ xa.
 - Provider fixture chạy ngoài tiến trình Payvoke, giao tiếp qua HTTP/SSE như provider thật; không chạy code provider trong backend.
@@ -245,7 +255,7 @@ Tên package mới là layout triển khai đề xuất; chốt exports khi làm
 | [ ] T111 | T110, T003                   | Trusted local profile và OS keychain adapter cho token/spend key; permission/egress limits.             | Không secure storage thì tắt paid mode; tools không nhận origin/token/private key/calldata tùy ý.          |
 | [ ] T112 | T047, T048, T108, T111       | CLI pairing/verifier/poll exchange/logout và đọc grant của đúng signer/owner.                           | Hết hạn/rejected/consumed đúng semantics; token API và onchain grant thu hồi độc lập.                      |
 | [ ] T113 | T110, T112, T043, T076       | Read tools search/get/list commands/get invocation/get result.                                          | Owner/workspace isolation, pagination/schema, untrusted output; không auto fetch file/URL.                 |
-| [ ] T114 | T044, T052, T113             | create_session/prepare_invocation tools và persist reserved IDs/digest.                                 | Same key trả cùng phiên/quote; command/session mismatch fail; prepare không signer/charge.                 |
+| [ ] T114 | T044, T052, T113             | create_thread/prepare_invocation tools và persist reserved IDs/digest.                                  | Same key trả cùng phiên/quote; command/session mismatch fail; prepare không signer/charge.                 |
 | [ ] T115 | T111, T114                   | Trusted CLI approve-quote ngoài model và standing policy local có version/caps.                         | `confirmed:true`/prompt injection không tạo consent; approval bind đúng quote/digest/owner/policy/expiry.  |
 | [ ] T116 | T016, T060, T061, T112, T115 | submit_invocation qua custom x402 và trả job handle ngay sau HELD.                                      | Cùng API/scheme/Idempotency-Key từ invocationId; không chuyển key lên platform hoặc fallback exact.        |
 | [ ] T117 | T068, T070, T071, T116       | answer/revise/cancel tools, async polling và transport cancellation semantics.                          | Continuation không trả phí; đóng host/cancel JSON-RPC không tự cancel/refund job.                          |
@@ -337,3 +347,18 @@ Số trong fixture chỉ là dữ liệu test. T089 phải có cấu hình cụ 
 Thực hiện T001 → T003 → T004 → T005 → T006, đồng thời hoàn thành mapping T002 trước gate M0. Sau đó làm T007/T008 và các schemas T009–T012.
 
 Task triển khai đầu tiên nên giao theo dạng: “Làm T001/T003 trong phạm vi hiện có; báo các commands/config còn thiếu; không thêm tính năng frontend và không tự thay đổi policy kinh tế.” Mỗi lần tiếp theo chọn task có dependency đã DONE, kèm acceptance test trong bảng.
+
+## 17. Bổ sung từ nghiên cứu (25/10/2026)
+
+Các task dưới đây rút từ [nghiên cứu agentic payments](research/agentic-payments-literature.md). Chúng không đổi gate hiện có; mỗi task vẫn theo Definition of Done ở §1. R03/R04 thay đổi TermsSnapshot nên phải tăng `schemaVersion` và cập nhật vectors.
+
+| Task    | Phụ thuộc        | Việc làm / đầu ra                                                                                                                                                                                      | Nghiệm thu                                                                                                          |
+| ------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| [ ] R01 | T055, T060, T064 | Conformance suite x402: mỗi ca đặt tên theo SR1–SR8, F1–F4, M1–M6 ([S02 §11](specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402)); gồm test header/log không chứa prompt, PII, signature. | Một lệnh chạy toàn bộ suite; mỗi quy tắc có ít nhất một ca âm tính; thiếu ca nào thì suite báo rõ, không pass ngầm. |
+| [ ] R02 | T086, T089       | Policy giá sàn mỗi command so với chi phí gas ước tính của hold + release; quote dưới sàn bị từ chối khi đăng command.                                                                                 | Giá dưới sàn trả 422 khi tạo revision; con số sàn nằm trong policy đã duyệt, không hardcode.                        |
+| [ ] R03 | T042, T069       | `terms.verification.minEvidence` trong command revision; lưu mức bằng chứng và Evidence Envelope cho mỗi artifact version ([M05](modules/05-artifacts-and-verification.md)).                           | Revision mới khi đổi mức; envelope hash ổn định với cùng output; TermsSnapshot vectors cập nhật.                    |
+| [ ] R04 | R03, T082        | Finance chỉ tạo quyết định release khi mức bằng chứng đạt `minEvidence`; dispute dùng hash envelope làm `evidenceHash`.                                                                                | Artifact chỉ có `SELF` không release được; thiếu bằng chứng trước `resolveBy` đi nhánh resolver/refund.             |
+| [ ] R05 | T076, T097       | Chỉ số store: buyer độc lập đã xác minh, rating posterior có chiết khấu theo command revision ([M09](modules/09-reputation-and-operations.md)).                                                        | Giao dịch từ ví owner/payout của app không tăng chỉ số; nhiều invocation từ một ví chỉ tính một buyer.              |
+| [ ] R06 | R05              | Xếp hạng store chống Sybil/steering; đánh giá phương án provider deposit (cần quyết định kinh tế của chủ dự án).                                                                                       | Thứ tự không phụ thuộc văn bản provider tự viết; có tài liệu quyết định về deposit trước khi bật.                   |
+| [ ] R07 | T113, T096       | Gợi ý app theo ngân sách cho MCP/store (tư vấn), dùng rating đã xác minh, giá và hạn mức grant còn lại.                                                                                                | Gợi ý không tạo quote, không ký và không bỏ qua approve-quote; injection trong mô tả app không đổi thứ tự gợi ý.    |
+| [ ] R08 | T080, T083, T086 | Tín hiệu tự động cho dispute/incident (tỷ lệ FAILED/UNKNOWN, revision, dispute theo app); ngưỡng chuyển operator.                                                                                      | Tín hiệu không tự refund/khoá payout; dưới ngưỡng không tạo việc thủ công; có audit khi operator dùng tín hiệu.     |

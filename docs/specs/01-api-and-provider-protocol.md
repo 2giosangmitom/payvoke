@@ -98,7 +98,8 @@ Field bắt buộc: `name,description,options,grossAmount,terms`. Field tùy ch�
 - Defaults chỉ áp một lần lúc chuẩn bị quote. Lưu effective arguments và hash chính bản đó; không áp default mới ở paid retry.
 - `positionalParameter` nếu có phải là một string option. Free text được map vào đó; nếu không có, buyer nhập bằng form.
 - `terms`: `{deliverySeconds,reviewSeconds,revisionPolicy,refundPolicy,sideEffects,dataUse}`. `revisionPolicy` phải có `{maxIncluded,description}`.
-- `grossAmount` dương, atomic USDC, nằm trong cap policy.
+- Đề xuất, chưa bắt buộc: `terms.verification.minEvidence` khai báo mức bằng chứng tối thiểu trước khi được giải ngân (`SIGN` hoặc `REC` ở MVP). Ngữ nghĩa ở [M05](../modules/05-artifacts-and-verification.md#mức-bằng-chứng-trước-khi-giải-ngân-đề-xuất); khi bật sẽ tăng `schemaVersion` của TermsSnapshot vì field này đi vào `termsHash`.
+- `grossAmount` dương, atomic USDC, nằm trong cap policy. Policy deployment cần thêm giá sàn so với chi phí gas ước tính (roadmap R02).
 
 Ví dụ command:
 
@@ -199,6 +200,8 @@ Sau hold xác nhận: 202 + `PAYMENT-RESPONSE`, `Location: /v1/invocations/{invo
 | `POST /v1/invocations/{id}/acceptances`   | `{artifactVersion,clientRequestId}`        | 200 ghi buyer đã chấp nhận, không bypass thời điểm payout tối thiểu S02.                                                                    |
 | `POST /v1/invocations/{id}/disputes`      | `{reason,evidenceFileIds,clientRequestId}` | 201 hồ sơ; trả onchain dispute intent/status. Chỉ tranh chấp chain đã xác nhận mới chặn payout onchain.                                     |
 
+**Hiện trạng 25/10/2026:** backend đã có `GET /v1/invocations/{id}`, `/answers`, `/revisions` và `/financial-intents` (unsigned recovery intents cho buyer). Chưa có `/result`, `/cancellations`, `/acceptances`, `/disputes` và toàn bộ §5.4 file; kết quả JSON đã giao hiện đọc qua snapshot AG-UI của thread.
+
 Lời nhắn trả lời phải tham chiếu `questionId`; sửa phải tham chiếu invocation và được kiểm tra policy, không dùng arbitrary `free:true`. Câu hỏi render form theo schema; câu trả lời có thể nhập chat rồi map vào parameter string được schema question chỉ định.
 
 ### 5.4 File
@@ -237,6 +240,8 @@ Outbox tạo `invocation.ready` sau finalized hold. Event khác: `invocation.ans
 | --------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/provider/apps/{appId}/events/{eventId}/ack`     | `{invocationId}` | 200 `{eventId,acknowledgedAt}`; idempotent, xác minh event/app/job; ACK sau khi provider đã persist dedupe/job. |
 | `POST /v1/provider/apps/{appId}/invocations/{id}/reports` | `ProviderReport` | 202 nhận report để áp workflow; không đồng nghĩa output đã giao.                                                |
+
+**Lệch giữa đặc tả và code (25/10/2026):** implementation hiện ACK theo invocation, `POST /v1/provider/apps/{appId}/invocations/{id}/acks` với body `{eventId?}` (eventId là invocation, answer hoặc revision tương ứng với run). Chưa có `GET .../pending-events`. Trước nghiệm thu T066 phải chọn một hình dạng, cập nhật đặc tả hoặc code cho khớp và có test; không để hai hợp đồng song song.
 
 `ProviderReport` có `{reportId,sequence,type,data}`. `reportId` unique trong app; retry cùng ID phải cùng body. Sequence tăng nghiêm ngặt theo invocation, serialize writer; duplicate hợp lệ trả kết quả cũ, out-of-order trả 409 `REPORT_OUT_OF_ORDER`, report sau terminal trái phép trả 409. Không tin timestamp provider để backdate delivery.
 

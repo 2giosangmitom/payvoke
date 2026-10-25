@@ -13,3 +13,9 @@ Buyer cấp hoặc thay đổi giới hạn chi onchain qua ví trên web. Sau �
 Buyer có thể chuẩn bị trên client rồi xem kết quả ở cả hai nơi. Gửi lại cùng thao tác không thu thêm tiền hoặc phát thêm event. Client có thể hiển thị kết quả dạng form và file qua quyền tải riêng. Nếu không hỗ trợ một bước bắt buộc, client chuyển buyer về web.
 
 Thu hồi quyền chặn thao tác mới từ client, không xóa tin nhắn, khoản đã trả hoặc quyền hoàn. Payvoke lưu lịch sử client nào đã thao tác trên tài khoản.
+
+## Gợi ý theo ngân sách và prompt injection
+
+Red-team AP2 [P12] cho thấy mandate có chữ ký chỉ bảo đảm _thực thi_ đúng; nội dung mô tả sản phẩm vẫn thao túng được _quyết định_ của agent (100% thành công trong thử nghiệm xếp hạng). Điều này củng cố hai quy tắc đã có của S03: approval chi tiền nằm ngoài model, và mô tả command/output provider là dữ liệu không tin cậy. Bridge không chuyển mô tả app thành chỉ dẫn cho model, và không xếp hạng app theo văn bản provider tự viết.
+
+402Pilot [P10] đề xuất một lớp quyết định phía buyer chọn provider dưới áp lực ngân sách ví. Payvoke có thể thêm tính năng tương tự ở dạng **tư vấn** (R07): khi buyer hoặc AI host tìm app, bridge/store trả kèm gợi ý dựa trên rating đã xác minh, giá command và hạn mức grant còn lại trong kỳ. Gợi ý không được tự tạo quote, tự ký hoặc thay bước approve-quote ngoài model. Chi tiết: [nghiên cứu agentic payments](../research/agentic-payments-literature.md#3-phía-buyer-ra-quyết-định-gian-lận-prompt-injection).

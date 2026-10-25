@@ -241,7 +241,7 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 ### MCP-06 — Prepare không trả phí, snapshots không đổi
 
 - Nguồn: S03 §6.2–6.3, §9.
-- Chứng minh: create_session/prepare persist reserved IDs/digest, không signer/settle/dispatch. Không ngầm upload filesystem/host chat/toàn workspace, tool không chọn messages. Mất prepare response retry same key/body cùng quote; khác payload conflict, quote expired không auto-requote. Đổi version/context sau chuẩn bị không tự ký snapshot mới.
+- Chứng minh: create_thread/prepare persist reserved IDs/digest, không signer/settle/dispatch. Không ngầm upload filesystem/host chat/toàn workspace, tool không chọn messages. Mất prepare response retry same key/body cùng quote; khác payload conflict, quote expired không auto-requote. Đổi version/context sau chuẩn bị không tự ký snapshot mới.
 - Surface/gate: MCP T114/T119 (M8), API-07/API-08 ở M4; integrated T120/T121.
 
 ### MCP-07 — Consent ngoài model và policy gate
