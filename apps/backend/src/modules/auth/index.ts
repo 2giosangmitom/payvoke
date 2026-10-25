@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { fromNodeHeaders } from "better-auth/node";
 import type { Config } from "../../config";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { createAuth } from "./auth";
 
 type AuthIdentity = { id: string; walletAddress: string };

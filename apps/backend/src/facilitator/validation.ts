@@ -11,7 +11,7 @@ import {
   type QuoteDocument,
 } from "@payvoke/x402";
 import { VaultValidationError, type AdmissionObservation } from "@payvoke/x402/facilitator";
-import type { PrismaClient } from "../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import type { VaultChain } from "@payvoke/x402/chain";
 
 export async function readPersistedPayment(

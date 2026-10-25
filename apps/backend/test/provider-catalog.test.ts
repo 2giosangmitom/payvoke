@@ -12,7 +12,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaClient, migrationsDirectory } from "@payvoke/db";
 import { verifyStructuredDeliveries } from "../src/modules/agui/verify";
 
 const origin = "https://app.payvoke.test";
@@ -35,7 +35,7 @@ before(async () => {
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${schema}"`);
-    const dir = new URL("../prisma/migrations/", import.meta.url);
+    const dir = migrationsDirectory;
     for (const migration of (await readdir(dir, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)

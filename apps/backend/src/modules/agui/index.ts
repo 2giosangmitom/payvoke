@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import Ajv2020 from "ajv/dist/2020.js";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { Prisma, type PrismaClient } from "../../generated/prisma/client";
+import { Prisma, type PrismaClient } from "@payvoke/db";
 import { identifier, object, providerKey, hash, validateEvent } from "./protocol";
 import { verifyStructuredDeliveries } from "./verify";
 import { applyOpenUIPatch, openuiCatalog } from "../openui/validator";

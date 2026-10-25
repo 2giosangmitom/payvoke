@@ -44,10 +44,11 @@ import {
   type QuoteDocument,
 } from "@payvoke/x402";
 import { createApp } from "../src/app";
-import { loadConfig, logRedaction } from "../src/config";
+import { loadConfig } from "../src/config";
+import { logRedaction } from "@payvoke/server";
 import fastify from "fastify";
 import { Writable } from "node:stream";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaClient, migrationsDirectory } from "@payvoke/db";
 import { SettlementJournal } from "../src/modules/payments/journal";
 import { createFacilitatorApp } from "../src/facilitator/app";
 import { loadFacilitatorConfig } from "../src/facilitator/config";
@@ -132,7 +133,7 @@ describe("quotes, x402 and isolated settlement", () => {
     });
     pool.setMaxListeners(50);
     await pool.query(`CREATE SCHEMA "${schema}"`);
-    const directory = new URL("../prisma/migrations/", import.meta.url);
+    const directory = migrationsDirectory;
     for (const entry of (await readdir(directory, { withFileTypes: true }))
       .filter((v) => v.isDirectory())
       .sort((a, b) => a.name.localeCompare(b.name))) {

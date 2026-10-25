@@ -12,7 +12,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaClient, migrationsDirectory } from "@payvoke/db";
 
 describe("Better Auth SIWE / Prisma + Fastify", () => {
   const wallet = privateKeyToAccount(generatePrivateKey());
@@ -56,7 +56,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     const client = await pool.connect();
     try {
       await client.query(`SET search_path TO "${schema}"`);
-      const directory = new URL("../prisma/migrations/", import.meta.url);
+      const directory = migrationsDirectory;
       const migrations = (await readdir(directory, { withFileTypes: true }))
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)

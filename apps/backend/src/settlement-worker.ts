@@ -5,8 +5,8 @@ import { createPublicClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { VaultChain } from "@payvoke/x402/chain";
 import { SettlementChain } from "@payvoke/x402/settlement";
-import { createDatabase } from "./database/client";
-import { facilitatorDeployment } from "./facilitator/config";
+import { createDatabase } from "@payvoke/db";
+import { vaultDeployment } from "@payvoke/server";
 import { SettlementWorker } from "./modules/payments/worker";
 import { loadWorkerConfig, workerGasPolicy } from "./modules/payments/worker-config";
 import { scanFinalizedHolds } from "./modules/payments/scanner";
@@ -17,7 +17,7 @@ try {
   const config = loadWorkerConfig();
   if (!config.EXECUTION_ENABLED) throw new Error("Worker execution is disabled");
   const budget = workerGasPolicy(config);
-  const deployment = facilitatorDeployment(config);
+  const deployment = vaultDeployment(config);
   if (!/^0x[0-9a-fA-F]{64}$/.test(config.RELAYER_PRIVATE_KEY))
     throw new Error("Invalid signer configuration");
   const signer = privateKeyToAccount(config.RELAYER_PRIVATE_KEY as Hex);

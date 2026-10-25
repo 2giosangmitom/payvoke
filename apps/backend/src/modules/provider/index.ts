@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getAddress, isAddress } from "viem";
-import type { Prisma, PrismaClient } from "../../generated/prisma/client";
+import type { Prisma, PrismaClient } from "@payvoke/db";
 import {
   availabilityLabel,
   commandPositional,

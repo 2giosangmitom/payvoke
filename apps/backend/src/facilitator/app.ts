@@ -8,12 +8,10 @@ import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { NETWORK, SCHEME } from "@payvoke/x402";
 import { VaultFacilitatorScheme, VaultValidationError } from "@payvoke/x402/facilitator";
 import { createPublicClient, getAddress, http, zeroAddress } from "viem";
-import { logRedaction } from "../config";
-import { createDatabase } from "../database/client";
-import type { PrismaClient } from "../generated/prisma/client";
-import { parseFinancialJson } from "../http/json";
+import { logRedaction, parseFinancialJson, vaultDeployment } from "@payvoke/server";
+import { createDatabase, type PrismaClient } from "@payvoke/db";
 import { VaultChain } from "@payvoke/x402/chain";
-import { facilitatorDeployment, type FacilitatorConfig } from "./config";
+import type { FacilitatorConfig } from "./config";
 import { createPaymentValidator } from "./validation";
 import { createSettlementService } from "../modules/payments/settlement";
 import { SettlementError } from "../modules/payments/journal";
@@ -59,7 +57,7 @@ export function createFacilitatorApp(
 ) {
   if (Buffer.byteLength(config.FACILITATOR_TOKEN) < 32)
     throw new VaultValidationError("invalid_facilitator_policy", 503);
-  const deployment = facilitatorDeployment(config);
+  const deployment = vaultDeployment(config);
   const db = database ?? createDatabase(config.DATABASE_URL);
   const chain =
     reader ??

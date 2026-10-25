@@ -1,18 +1,11 @@
-import envSchema from "env-schema";
 import { Type, type Static } from "typebox";
+import { deploymentEnv, loadEnv } from "@payvoke/server";
 import { validateGasPolicy } from "./worker";
 
 const schema = Type.Object({
   EXECUTION_ENABLED: Type.Boolean({ default: false }),
   DATABASE_URL: Type.String(),
-  RPC_URL: Type.String(),
-  API_ORIGIN: Type.String(),
-  VAULT_ADDRESS: Type.String(),
-  RELAYER_ADDRESS: Type.String(),
-  EXPECTED_VAULT_CODE_HASH: Type.String(),
-  VAULT_FEE_CAP_BPS: Type.Integer(),
-  VAULT_MAX_QUOTE_LIFETIME_SECONDS: Type.Integer(),
-  VAULT_MAX_HOLD_SECONDS: Type.Integer(),
+  ...deploymentEnv,
   RELAYER_PRIVATE_KEY: Type.String(),
   DEPLOYMENT_START_BLOCK: Type.String(),
   GAS_MAX_LIMIT: Type.String(),
@@ -25,7 +18,7 @@ const schema = Type.Object({
 });
 export type WorkerConfig = Static<typeof schema>;
 export function loadWorkerConfig(source: NodeJS.ProcessEnv = process.env) {
-  return envSchema<WorkerConfig>({ schema, data: source, env: false });
+  return loadEnv(schema, source);
 }
 export function workerGasPolicy(config: WorkerConfig) {
   const integer = (s: string) => {

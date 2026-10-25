@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { VaultChain } from "@payvoke/x402/chain";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { ASSET } from "@payvoke/x402";
-import { PrismaClient } from "../../src/generated/prisma/client";
+import { PrismaClient } from "@payvoke/db";
 import { SettlementWorker } from "../../src/modules/payments/worker";
 
 const [schema, rpc, vault, codeHash, key] = process.argv.slice(2);

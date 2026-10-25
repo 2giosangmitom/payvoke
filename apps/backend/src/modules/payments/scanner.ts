@@ -1,7 +1,7 @@
 import { holdReservedEvent } from "@payvoke/protocol";
 import type { SettlementChain } from "@payvoke/x402/settlement";
 import { VaultValidationError } from "@payvoke/x402/facilitator";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 
 // Finalized logs are recovery wakeups, never standalone successful receipts.
 export async function scanFinalizedHolds(

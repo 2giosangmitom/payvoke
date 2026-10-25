@@ -24,7 +24,8 @@ import {
   type PreparedPayment,
 } from "./payment";
 import { journalEvidence, localSeedDatabase, seedCeremony, type Seed } from "./seed";
-import { createDatabase } from "../database/client";
+import { createDatabase } from "@payvoke/db";
+import { isSafeServiceUrl } from "@payvoke/server";
 import {
   FinanceService,
   parseDecision,
@@ -74,14 +75,7 @@ try {
     ].includes(command)
   ) {
     const rpc = new URL(process.env.RPC_URL ?? "");
-    if (
-      rpc.username ||
-      rpc.password ||
-      rpc.hash ||
-      (rpc.protocol !== "https:" &&
-        !(rpc.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(rpc.hostname)))
-    )
-      throw new Error("Unsafe RPC URL");
+    if (!isSafeServiceUrl(rpc)) throw new Error("Unsafe RPC URL");
     const client = createPublicClient({
       transport: http(rpc.href, { timeout: 10000, retryCount: 0 }),
     });

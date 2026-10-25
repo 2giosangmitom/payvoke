@@ -3,7 +3,7 @@ import { NETWORK } from "@payvoke/x402";
 import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { VaultChain } from "@payvoke/x402/chain";
 import { getAddress } from "viem";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { createPaymentValidator, readPersistedPayment } from "../../facilitator/validation";
 import { SettlementJournal } from "./journal";
 

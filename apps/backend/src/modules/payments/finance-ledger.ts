@@ -3,7 +3,7 @@ import { readQuote, type QuoteDocument } from "@payvoke/x402";
 import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { SettlementChain } from "@payvoke/x402/settlement";
 import { erc20Abi, getAddress, zeroAddress, type Hex } from "viem";
-import { Prisma, type PrismaClient } from "../../generated/prisma/client";
+import { Prisma, type PrismaClient } from "@payvoke/db";
 
 export function financialJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value, (_, v) => (typeof v === "bigint" ? v.toString() : v)));

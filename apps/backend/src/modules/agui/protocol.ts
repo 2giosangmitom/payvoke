@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { checkOpenUIPatch } from "../openui/validator";
 
 export function object(value: unknown): value is Record<string, unknown> {

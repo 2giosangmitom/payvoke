@@ -16,8 +16,8 @@ import {
 import { getAddress } from "viem";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Config } from "../../config";
-import type { PrismaClient } from "../../generated/prisma/client";
-import { parseFinancialJson } from "../../http/json";
+import type { PrismaClient } from "@payvoke/db";
+import { parseFinancialJson } from "@payvoke/server";
 
 export function gatewayFacilitator(app: FastifyInstance, config: Config) {
   if (!config.PAYMENTS_ENABLED) return undefined;

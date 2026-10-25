@@ -1,7 +1,8 @@
 import fastify, { LogController } from "fastify";
 import fp from "fastify-plugin";
-import { type Config, logRedaction } from "./config";
-import { createDatabase } from "./database/client";
+import { logRedaction } from "@payvoke/server";
+import type { Config } from "./config";
+import { createDatabase, type PrismaClient } from "@payvoke/db";
 import { registerAuth } from "./modules/auth";
 import { registerQuotes } from "./modules/quotes";
 import { registerPaymentStatus } from "./modules/payments";
@@ -9,7 +10,6 @@ import { registerProvider } from "./modules/provider";
 import { registerCatalog } from "./modules/catalog";
 import { registerAgui } from "./modules/agui";
 import { registerHttp } from "./plugins/http";
-import type { PrismaClient } from "./generated/prisma/client";
 
 export function createApp(config: Config, database?: PrismaClient) {
   if (

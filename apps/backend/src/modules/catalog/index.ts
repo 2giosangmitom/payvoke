@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { availabilityLabel, isAvailable } from "../apps/schema";
 
 const commandInclude = { activeRevision: true } as const;

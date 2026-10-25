@@ -1,5 +1,5 @@
 import { getAddress } from "viem";
-import type { PrismaClient } from "../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { integer } from "./fuji";
 import type { PaymentRun } from "./payment";
 import type { PreparedPayment } from "./payment";

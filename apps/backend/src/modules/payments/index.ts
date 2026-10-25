@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { vaultFinanceAbi } from "@payvoke/protocol";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
 import type { QuoteDocument } from "@payvoke/x402";

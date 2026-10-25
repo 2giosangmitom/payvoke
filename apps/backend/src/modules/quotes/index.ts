@@ -22,8 +22,8 @@ import {
 } from "@payvoke/x402";
 import { getAddress, type Address } from "viem";
 import type { Config } from "../../config";
-import { Prisma, type PrismaClient } from "../../generated/prisma/client";
-import { parseFinancialJson } from "../../http/json";
+import { Prisma, type PrismaClient } from "@payvoke/db";
+import { parseFinancialJson } from "@payvoke/server";
 import { gatewayFacilitator, settleGateway } from "../payments/gateway";
 import { isAvailable, termsMinEvidence, threadSlotReleased } from "../apps/schema";
 

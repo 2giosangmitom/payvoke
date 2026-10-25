@@ -11,7 +11,7 @@ import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { VaultChain } from "@payvoke/x402/chain";
 import type { SettlementChain } from "@payvoke/x402/settlement";
 import { encodeFunctionData, getAddress, type Hex, type LocalAccount } from "viem";
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient } from "@payvoke/db";
 import { createPaymentValidator } from "../../facilitator/validation";
 import { SettlementError, SettlementJournal, type GasPolicy } from "./journal";
 

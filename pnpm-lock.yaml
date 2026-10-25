@@ -211,24 +211,21 @@ importers:
       '@openuidev/lang-core':
         specifier: ^1.0.1
         version: 1.0.1(@modelcontextprotocol/sdk@1.32.2(supports-color@7.2.0)(zod@4.6.7))(zod@4.6.7)
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
       '@payvoke/openui-components':
         specifier: workspace:*
         version: link:../../packages/openui-components
       '@payvoke/protocol':
         specifier: workspace:*
         version: link:../../packages/payvoke-protocol
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
       '@payvoke/x402':
         specifier: workspace:*
         version: link:../../packages/payvoke-x402
-      '@prisma/adapter-pg':
-        specifier: ^7.10.1
-        version: 7.10.1
-      '@prisma/client':
-        specifier: ^7.10.1
-        version: 7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2)
-      '@types/pg':
-        specifier: ^8.23.1
-        version: 8.23.1
       '@x402/core':
         specifier: 2.28.0
         version: 2.28.0
@@ -244,24 +241,12 @@ importers:
       dotenv:
         specifier: ^18.0.9
         version: 18.0.9
-      env-schema:
-        specifier: ^8.0.1
-        version: 8.0.1
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
       fastify-plugin:
         specifier: ^6.0.1
         version: 6.0.1
-      jsonc-parser:
-        specifier: 3.3.1
-        version: 3.3.1
-      pg:
-        specifier: ^8.23.1
-        version: 8.23.1
-      prisma:
-        specifier: ^7.10.1
-        version: 7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
       typebox:
         specifier: ^1.4.3
         version: 1.4.3
@@ -278,6 +263,9 @@ importers:
       '@electric-sql/pglite-socket':
         specifier: 0.1.3
         version: 0.1.3(@electric-sql/pglite@0.4.3)
+      '@prisma/adapter-pg':
+        specifier: ^7.10.1
+        version: 7.10.1
       '@types/bun':
         specifier: ^1.4.4
         version: 1.4.4
@@ -287,6 +275,12 @@ importers:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -435,6 +429,34 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/payvoke-db:
+    dependencies:
+      '@prisma/adapter-pg':
+        specifier: ^7.10.1
+        version: 7.10.1
+      '@prisma/client':
+        specifier: ^7.10.1
+        version: 7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2)
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      prisma:
+        specifier: ^7.10.1
+        version: 7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/payvoke-protocol:
     dependencies:
       abitype:
@@ -456,6 +478,34 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+
+  packages/payvoke-server:
+    dependencies:
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../payvoke-protocol
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../payvoke-x402
+      env-schema:
+        specifier: ^8.0.1
+        version: 8.0.1
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
+      typebox:
+        specifier: ^1.4.3
+        version: 1.4.3
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   packages/payvoke-vault:
     dependencies:

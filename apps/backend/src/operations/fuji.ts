@@ -18,7 +18,7 @@ import {
 } from "viem";
 import { ASSET } from "@payvoke/x402";
 import { VaultChain, type VaultDeployment } from "@payvoke/x402/chain";
-import { parseFinancialJson } from "../http/json";
+import { parseFinancialJson } from "@payvoke/server";
 
 export const operationsAbi = parseAbi([
   "function grantRole(bytes32 role,address account)",
