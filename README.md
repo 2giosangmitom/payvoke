@@ -47,7 +47,7 @@ Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao k�
 Hiện tại đã có:
 
 - Tổng quan sản phẩm và mười module chức năng.
-- Bốn đặc tả chi tiết về API/provider, x402/vault, MCP và AG-UI/A2UI.
+- Bốn đặc tả chi tiết về API/provider, x402/vault, MCP và AG-UI/OpenUI.
 - Bộ thuật ngữ nghiệp vụ.
 - Fixture EIP-712 đã kiểm tra hashing/chữ ký bằng TypeScript với viem.
 - Roadmap 130 task trong mười giai đoạn.
@@ -57,12 +57,12 @@ Chưa có:
 
 - Migration production không phá huỷ; migration hiện tại được phép reset vì chưa release.
 - PayvokeVault hoàn chỉnh; package vault hiện là Hardhat sample.
-- Đầy đủ API nghiệp vụ và bằng chứng end-to-end; backend đã có store, thread, command, quote và AG-UI/A2UI, nhưng chưa phủ hết file, dispute và vận hành.
+- Đầy đủ API nghiệp vụ và bằng chứng end-to-end; backend đã có store, thread, command, quote và AG-UI/OpenUI, nhưng chưa phủ hết file, dispute và vận hành.
 - Frontend hoàn chỉnh; store, chat và Studio đã nối API, còn thiếu kiểm thử trình duyệt, thanh toán thật và các trạng thái biên.
 - MCP bridge hoàn chỉnh.
 - Bằng chứng luồng end-to-end của thiết kế này trên Fuji.
 
-Backend và frontend nay có luồng thử nghiệm provider → AG-UI/A2UI → buyer trên mô hình app/thread/command, kiểm chứng JSON delivery, question/answer continuation và revision trong phạm vi policy. Các test HTTP/PGlite và frontend build hiện có không thay thế bằng chứng thanh toán và giao hàng end-to-end qua ví/Fuji; chưa nên coi marketplace đủ điều kiện phát hành.
+Backend và frontend nay có luồng thử nghiệm provider → AG-UI/OpenUI → buyer trên mô hình app/thread/command, kiểm chứng JSON delivery, question/answer continuation và revision trong phạm vi policy. Các test HTTP/PGlite và frontend build hiện có không thay thế bằng chứng thanh toán và giao hàng end-to-end qua ví/Fuji; chưa nên coi marketplace đủ điều kiện phát hành.
 
 Một số câu trong roadmap được viết trước khi hoàn thiện Prisma nên còn mô tả schema chưa có domain models; đó là trạng thái cũ. Có schema không đồng nghĩa task database đã hoàn tất migration, integration hoặc nghiệm thu.
 
@@ -74,7 +74,7 @@ Payvoke không còn tách Agent và Tool. Mỗi đơn vị được bán là m�
 | ------------------ | -------------------------------------------------------------- |
 | Giao diện          | Một thread chat dùng chung assistant-ui                        |
 | Cách gọi           | Slash command hoặc free text map vào command đang chọn/default |
-| Hỏi lại buyer      | Câu hỏi có schema và widget A2UI trong thread                  |
+| Hỏi lại buyer      | Câu hỏi có schema và widget OpenUI trong thread                |
 | Kết quả            | Timeline, verified output và lịch sử invocation                |
 | Công nghệ thực thi | Không áp đặt engine; có thể dùng LLM hoặc không                |
 
@@ -101,7 +101,7 @@ Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevis
 
 App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Availability suy ra từ trạng thái `ACTIVE`, có default command và heartbeat trong 45 giây gần nhất.
 
-**Chuẩn UI đã chọn (23/10/2026):** chat dùng **assistant-ui** với **AG-UI** để hiển thị token/chunk LLM tăng dần, cùng event stream mang widget **A2UI v0.9.1** từ catalog Payvoke. Provider gửi `CUSTOM payvoke.a2ui` vào gateway; buyer nhận `ACTIVITY_SNAPSHOT a2ui-surface` chứa `a2ui_operations`, có replay/snapshot. Result đang stream là preview; `DELIVERED` chỉ đến sau verification. Không tích hợp MCP Apps. Xem [S04](docs/specs/04-ag-ui-a2ui-streaming.md).
+**Chuẩn UI đã chọn (23/10/2026; widget chuyển sang OpenUI Lang 25/10/2026):** chat dùng **assistant-ui** với **AG-UI** để hiển thị token/chunk LLM tăng dần, cùng event stream mang widget **OpenUI Lang** từ catalog Payvoke. Provider gửi `CUSTOM payvoke.openui` vào gateway; buyer nhận `ACTIVITY_SNAPSHOT openui-surface` chứa chương trình OpenUI Lang đầy đủ, có replay/snapshot. Result đang stream là preview; `DELIVERED` chỉ đến sau verification. Không tích hợp MCP Apps. Xem [S04](docs/specs/04-ag-ui-a2ui-streaming.md).
 
 ## 4. Các khái niệm cốt lõi
 
@@ -119,7 +119,7 @@ Mỗi lần sửa schema, giá hoặc điều khoản tạo một `AppCommandRev
 
 ### Thread (hội thoại)
 
-Một thread gắn cố định với một buyer và đúng một app. Thread chứa prompt, câu trả lời, câu hỏi, revision, widget A2UI và lịch sử invocation.
+Một thread gắn cố định với một buyer và đúng một app. Thread chứa prompt, câu trả lời, câu hỏi, revision, widget OpenUI và lịch sử invocation.
 
 Danh sách thread trộn mọi app, giống hộp thư hội thoại. Buyer có thể đổi tên hoặc archive thread; archive không xoá lịch sử thanh toán. Mỗi thread chỉ có tối đa một invocation đang xử lý tại một thời điểm, kể cả khi đang chờ buyer, kiểm tra kết quả hoặc chưa rõ kết quả thực thi.
 
@@ -419,7 +419,7 @@ terms:
   dataUse
 ```
 
-Web và API dùng cùng validation; không bắt buộc manifest file. Provider app, key, store catalog, heartbeat availability, ready/ACK/report, AG-UI streaming, A2UI projection, question/answer continuation và revision trong phạm vi policy đã có đường đi thử nghiệm. OpenAPI, file artifacts, lease/fencing nhiều writer và nghiệm thu Fuji end-to-end vẫn chưa hoàn tất.
+Web và API dùng cùng validation; không bắt buộc manifest file. Provider app, key, store catalog, heartbeat availability, ready/ACK/report, AG-UI streaming, OpenUI projection, question/answer continuation và revision trong phạm vi policy đã có đường đi thử nghiệm. OpenAPI, file artifacts, lease/fencing nhiều writer và nghiệm thu Fuji end-to-end vẫn chưa hoàn tất.
 
 Input/output dùng subset JSON Schema 2020-12 có giới hạn. Không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần lúc chuẩn bị quote rồi đóng băng.
 
@@ -789,7 +789,7 @@ Ngoài phạm vi hiện tại:
 - [S01 — API và provider protocol](docs/specs/01-api-and-provider-protocol.md).
 - [S02 — x402 và PayvokeVault](docs/specs/02-x402-and-vault.md).
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
-- [S04 — AG-UI chat streaming và A2UI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
+- [S04 — AG-UI chat streaming và OpenUI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
 - [Prisma schema](apps/backend/prisma/schema.prisma).
 - [Roadmap 130 task](docs/roadmap.md).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).

@@ -4,13 +4,13 @@ Payvoke kết nối buyer với provider tự vận hành app AI. Buyer nạp US
 
 Người dùng đăng nhập bằng ví trên Avalanche Fuji C-Chain, blockchain duy nhất được hỗ trợ. Mỗi thread gắn cố định một app. Mọi app dùng chung chat/composer, danh sách thread và slash commands; app không bắt buộc dùng LLM. Provider đăng ký command có options/schema qua Studio hoặc API; free text map vào command đang chọn/default, còn command không có tham số vị trí mở form trong thread.
 
-Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đã triển khai. [Đặc tả triển khai](specs/README.md) quy định API/provider event, scheme x402/vault, MCP local và AG-UI/A2UI; [GLOSSARY](../GLOSSARY.md) định nghĩa thuật ngữ. Chat stream text theo AG-UI, widget A2UI được render từ catalog Payvoke; không tích hợp MCP Apps.
+Trang này mô tả thiết kế chức năng, chưa xác nhận tính năng đã triển khai. [Đặc tả triển khai](specs/README.md) quy định API/provider event, scheme x402/vault, MCP local và AG-UI/OpenUI; [GLOSSARY](../GLOSSARY.md) định nghĩa thuật ngữ. Chat stream text theo AG-UI, widget OpenUI được render từ catalog Payvoke; không tích hợp MCP Apps.
 
 [Roadmap từ đầu đến cuối](roadmap.md) chia thành 130 task trong 10 giai đoạn. Gate backend-ready yêu cầu luồng headless, recovery và tài chính trên Fuji được kiểm chứng trước khi làm frontend.
 
 [Baseline T001](baseline.md) ghi hiện trạng code, runtime, lệnh kiểm tra và kết quả thực tế; database cloud Neon đang chờ URL, Docker local là tùy chọn.
 
-[Mapping kiểm thử T002, bổ sung S04](test-mapping.md) nối yêu cầu S01–S04 với ca kiểm thử, test surface và task/milestone nghiệm thu; AG-UI/A2UI đã có một phần suite, các nhóm còn lại vẫn là thiết kế.
+[Mapping kiểm thử T002, bổ sung S04](test-mapping.md) nối yêu cầu S01–S04 với ca kiểm thử, test surface và task/milestone nghiệm thu; AG-UI/OpenUI đã có một phần suite, các nhóm còn lại vẫn là thiết kế.
 
 ## Luồng chính
 

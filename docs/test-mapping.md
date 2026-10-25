@@ -7,9 +7,9 @@
 Bằng chứng implementation/test payment hiện tại: [Payment acceptance — S01/S02](payment-acceptance.md)
 (22/10/2026). Tài liệu bên dưới là thiết kế ban đầu, không phải trạng thái nghiệm thu hiện tại.
 
-Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md); bổ sung [S04 AG-UI/A2UI](specs/04-ag-ui-a2ui-streaming.md) ngày 23/10/2026. Mốc lập: 20/10/2026, sau [baseline T001](baseline.md).
+Nguồn yêu cầu: [S01 API/provider](specs/01-api-and-provider-protocol.md), [S02 x402/vault](specs/02-x402-and-vault.md), [S03 MCP](specs/03-mcp-client.md); bổ sung [S04 AG-UI/OpenUI](specs/04-ag-ui-a2ui-streaming.md) ngày 23/10/2026. Mốc lập: 20/10/2026, sau [baseline T001](baseline.md).
 
-Đây là thiết kế kiểm thử; phần lớn suites bên dưới **chưa được triển khai**. Ngoại lệ đã có bằng chứng pass là API-13 (AG-UI/A2UI) ở mức HTTP/PGlite và renderer React, chưa phải browser/FLOW/Fuji. T002 không tạo framework, fixtures nghiệp vụ hoặc tests thực thi. Các ID `API-*`, `PAY-*`, `MCP-*`, `SYS-*` là ID truy vết của tài liệu này, không phải mã lỗi hoặc ID do đặc tả cấp. Khi triển khai, tham chiếu ID trong test/PR và ghi bằng chứng nghiệm thu dưới task tương ứng ở roadmap; không coi mapping này là bảng tiến độ tests.
+Đây là thiết kế kiểm thử; phần lớn suites bên dưới **chưa được triển khai**. Ngoại lệ đã có bằng chứng pass là API-13 (AG-UI/OpenUI) ở mức HTTP/PGlite và renderer React, chưa phải browser/FLOW/Fuji. T002 không tạo framework, fixtures nghiệp vụ hoặc tests thực thi. Các ID `API-*`, `PAY-*`, `MCP-*`, `SYS-*` là ID truy vết của tài liệu này, không phải mã lỗi hoặc ID do đặc tả cấp. Khi triển khai, tham chiếu ID trong test/PR và ghi bằng chứng nghiệm thu dưới task tương ứng ở roadmap; không coi mapping này là bảng tiến độ tests.
 
 Mỗi mục ghi nguồn, ca hợp lệ/ca phải chặn, test surface và task chịu trách nhiệm. Task là chủ sở hữu công việc, không phải người được giao. Mốc đầu tiên chứng minh từng lớp không thay thế gate tích hợp sau đó.
 
@@ -101,12 +101,12 @@ Không ấn định tên test runner/CLI mới trong T002. T006/T008/T123 sẽ c
 - Chứng minh: upload intent/completion xác minh size/type/checksum và buyer/app/invocation; quarantine/not READY không được quote/deliver. Download/refresh kiểm tra scope mỗi lần, URL ngắn hạn không vào hash/log; đổi URL không đổi quote. Không SSRF fetch URL tùy ý. File không đọc được không DELIVERED, giữ artifact versions cho revision/dispute và điều chỉnh review theo outage có bằng chứng.
 - Surface/gate: HTTP + storage integration/FLOW T072–T074/T078/T079 (M5); finance T082 (M6); WEB T103/T109 (M7).
 
-### API-13 — AG-UI LLM streaming và A2UI widgets (bổ sung 23/10/2026)
+### API-13 — AG-UI LLM streaming và OpenUI widgets (bổ sung 23/10/2026)
 
 - Nguồn: S01 §1, §5.1, §6.4, §9(11); S04 §1–5.
-- Chứng minh: provider nhận runId ổn định theo dispatch/ACK, stream `TEXT_MESSAGE_START/CONTENT/END` với streamSequence riêng, A2UI `CUSTOM payvoke.a2ui` theo catalog. Buyer thấy text tăng dần **trước report result**, renderer cập nhật component/data model mà không reload. Chỉ report `result` đi vào VERIFYING, chỉ M05 chuyển DELIVERED; UI events không charge/refund/release.
-- Ca phải chặn: giả system role, tool call, HTML/JS, unknown component/catalog, out-of-order/duplicate khác payload, stale run, người mua/app khác, action sai questionId. Provider mất kết nối lấy committed cursor và replay; buyer refresh/snapshot/SSE Last-Event-ID hay expired cursor không mất hoặc nhân đôi chữ/widget. A2UI không thay composer; fallback typed result hoạt động nếu không có surface.
-- Surface/gate: HTTP/FLOW T067.a/T075/T076.a/T078/T079 (M5); WEB T098.a/T103.a/T109 (M7); OPS T124 (M9). Đã có test HTTP/PGlite stream text/A2UI/cursor/ownership/delivery, question→answer continuation, revision theo policy, cursor expiry, SSE loopback và renderer React/QuestionForm. Chưa có browser wallet E2E, provider fixture ngoài tiến trình, file verification hay load/soak. Mapping không có nghĩa toàn bộ gate đã pass.
+- Chứng minh: provider nhận runId ổn định theo dispatch/ACK, stream `TEXT_MESSAGE_START/CONTENT/END` với streamSequence riêng, OpenUI `CUSTOM payvoke.openui` theo catalog. Buyer thấy text tăng dần **trước report result**, renderer cập nhật component/data model mà không reload. Chỉ report `result` đi vào VERIFYING, chỉ M05 chuyển DELIVERED; UI events không charge/refund/release.
+- Ca phải chặn: giả system role, tool call, HTML/JS, unknown component/catalog, out-of-order/duplicate khác payload, stale run, người mua/app khác, action sai questionId. Provider mất kết nối lấy committed cursor và replay; buyer refresh/snapshot/SSE Last-Event-ID hay expired cursor không mất hoặc nhân đôi chữ/widget. OpenUI không thay composer; fallback typed result hoạt động nếu không có surface.
+- Surface/gate: HTTP/FLOW T067.a/T075/T076.a/T078/T079 (M5); WEB T098.a/T103.a/T109 (M7); OPS T124 (M9). Đã có test HTTP/PGlite stream text/OpenUI/cursor/ownership/delivery, question→answer continuation, revision theo policy, cursor expiry, SSE loopback và renderer React/QuestionForm. Chưa có browser wallet E2E, provider fixture ngoài tiến trình, file verification hay load/soak. Mapping không có nghĩa toàn bộ gate đã pass.
 
 ## 2. S02 — Chữ ký, tiền và recovery
 
@@ -314,9 +314,9 @@ Các chỉ mục dưới đây truy ngược tới mục ở trên để tránh 
 10. API-11, PAY-14.
 11. API-13, API-10, PAY-06.
 
-### S04 §5 — AG-UI/A2UI streaming
+### S04 §5 — AG-UI/OpenUI streaming
 
-1. API-13, API-09 (buyer `ACTIVITY_SNAPSHOT a2ui-surface` với `content.a2ui_operations` tích lũy).
+1. API-13, API-09 (buyer `ACTIVITY_SNAPSHOT openui-surface` với `content.source` tích lũy).
 2. API-13, API-11, SYS-01.
 3. API-13, API-10, PAY-06.
 4. API-13, API-05, SYS-02.

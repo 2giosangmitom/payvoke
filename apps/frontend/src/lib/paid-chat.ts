@@ -69,13 +69,15 @@ export type ThreadDetail = {
   revisionPolicy: RevisionPolicy | null;
   commands: ThreadCommand[];
 };
+// Whole OpenUI Lang program for one surface; each snapshot replaces the last.
+export type OpenUISurfaceContent = { source: string; invocationId?: string; surfaceId?: string };
 export type AguiEvent = {
   type: string;
   messageId?: string;
   role?: string;
   delta?: string;
   activityType?: string;
-  content?: { a2ui_operations?: unknown[]; invocationId?: string; surfaceId?: string };
+  content?: OpenUISurfaceContent;
   message?: string;
 };
 export type ChatQuestion = {
@@ -105,10 +107,7 @@ export type ChatRevision = {
 export type ChatSnapshot = {
   cursor: string;
   messages: { messageId: string; invocationId: string; content: string; complete: boolean }[];
-  surfaces: {
-    messageId: string;
-    content: { a2ui_operations: unknown[]; invocationId?: string; surfaceId?: string };
-  }[];
+  surfaces: { messageId: string; content: OpenUISurfaceContent }[];
   invocations: { id: string; executionStatus: string; output: unknown | null }[];
   prompts: { quoteId: string; invocationId: string; text: string; paid: boolean }[];
   questions: ChatQuestion[];

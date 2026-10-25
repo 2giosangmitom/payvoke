@@ -451,43 +451,21 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const stream = `${task}/ag-ui/streams/${runId}`;
   const emit = (sequence: number, event: unknown) =>
     JSON.stringify({ streamSequence: sequence, event }) + "\n";
-  const a2ui = (value: unknown) => ({ type: "CUSTOM", name: "payvoke.a2ui", value });
+  const openui = (source: string) => ({
+    type: "CUSTOM",
+    name: "payvoke.openui",
+    value: { surfaceId: surface, source },
+  });
   const surface = "result";
   const ndjson = [
     emit(1, { type: "TEXT_MESSAGE_START", messageId: "answer", role: "assistant" }),
     emit(2, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer", delta: "Xin " }),
-    emit(
-      3,
-      a2ui({
-        version: "v0.9.1",
-        createSurface: { surfaceId: surface, catalogId: "https://payvoke.dev/a2ui/catalog/v1" },
-      }),
-    ),
-    emit(
-      4,
-      a2ui({
-        version: "v0.9.1",
-        updateComponents: {
-          surfaceId: surface,
-          components: [{ id: "root", component: "Text", text: { path: "/summary" } }],
-        },
-      }),
-    ),
-    emit(
-      5,
-      a2ui({
-        version: "v0.9.1",
-        updateDataModel: { surfaceId: surface, path: "/summary", value: "Draft" },
-      }),
-    ),
+    // The root streams first; its children resolve as later statements arrive.
+    emit(3, openui("root = Stack([summary, score])")),
+    emit(4, openui('summary = Text("Draft")')),
+    emit(5, openui('score = Metric("Score", 90, "/100")')),
     emit(6, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer", delta: "chào" }),
-    emit(
-      7,
-      a2ui({
-        version: "v0.9.1",
-        updateDataModel: { surfaceId: surface, path: "/summary", value: "Final" },
-      }),
-    ),
+    emit(7, openui('summary = Text("Final")')),
     emit(8, { type: "TEXT_MESSAGE_END", messageId: "answer" }),
   ].join("");
   const beforeStream = (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`)).json().cursor;
@@ -542,16 +520,16 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       "RUNNING",
     );
     // The provider upload is still open while the buyer has already received
-    // the first LLM delta. Complete the same HTTP stream with A2UI updates.
+    // the first LLM delta. Complete the same HTTP stream with OpenUI updates.
     finishUpload();
     finishUpload = () => {};
     streamed = await upload;
     const endTimeout = AbortSignal.timeout(4000);
-    while (!received.includes("a2ui-surface")) {
+    while (!received.includes('summary = Text(\\"Final\\")')) {
       const next = await Promise.race([
         reader.read(),
         new Promise<never>((_, reject) =>
-          endTimeout.addEventListener("abort", () => reject(new Error("SSE_A2UI_TIMEOUT")), {
+          endTimeout.addEventListener("abort", () => reject(new Error("SSE_OPENUI_TIMEOUT")), {
             once: true,
           }),
         ),
@@ -559,11 +537,11 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       assert.equal(next.done, false);
       received += new TextDecoder().decode(next.value);
     }
-    assert.match(received, /a2ui_operations/);
+    assert.match(received, /openui-surface/);
     // Surface activity IDs are namespaced by run exactly once, so replays and
-    // repeated data-model updates target the same widget.
-    assert.ok(received.includes(`${runId}-a2ui-${surface}`));
-    // This live browser connection received LLM text and A2UI before the
+    // redefined statements target the same widget.
+    assert.ok(received.includes(`${runId}-openui-${surface}`));
+    // This live browser connection received LLM text and OpenUI before the
     // provider could submit its final result report.
     assert.equal(
       (await db.invocation.findUniqueOrThrow({ where: { id: quoted.invocationId } }))
@@ -621,47 +599,41 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     ).statusCode,
     400,
   );
-  assert.equal(
-    (
-      await postWorker(
-        stream,
-        emit(
-          9,
-          a2ui({
-            version: "v0.9.1",
-            updateDataModel: { surfaceId: surface, path: "/summary", value: "<script>x</script>" },
-          }),
-        ),
-        worker,
-        "application/x-ndjson",
-      )
-    ).statusCode,
-    400,
-  );
-  assert.equal(
-    (
-      await postWorker(
-        stream,
-        emit(
-          9,
-          a2ui({
-            version: "v0.9.1",
-            updateDataModel: { surfaceId: surface, path: "/__proto__/polluted", value: true },
-          }),
-        ),
-        worker,
-        "application/x-ndjson",
-      )
-    ).statusCode,
-    400,
-  );
+  // Markup, unknown components, tool calls and partial statements never reach
+  // the buyer, and a rejected patch does not consume its sequence.
+  for (const [source, code] of [
+    ['summary = Text("<script>x</script>")', "UNSAFE_OPENUI_VALUE"],
+    ['summary = Text("https://evil.example")', "UNSAFE_OPENUI_VALUE"],
+    ['summary = Iframe("x")', "UNKNOWN_OPENUI_COMPONENT"],
+    ['users = Query("list_users", {})', "UNSAFE_OPENUI_VALUE"],
+    ['score = Metric("Score")', "INVALID_OPENUI"],
+    ['summary = Text("unterminated', "INVALID_OPENUI"],
+  ]) {
+    const rejected = await postWorker(
+      stream,
+      emit(9, openui(source)),
+      worker,
+      "application/x-ndjson",
+    );
+    assert.equal(rejected.statusCode, 400, source);
+    assert.match(rejected.body, new RegExp(code), source);
+  }
   const snapshot = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(snapshot.statusCode, 200, snapshot.body);
   assert.equal(snapshot.json().messages[0].content, "Xin chào");
   assert.equal(
-    snapshot.json().surfaces[0].content.a2ui_operations.at(-1).updateDataModel.value,
-    "Final",
+    snapshot.json().surfaces[0].content.source,
+    [
+      "root = Stack([summary, score])",
+      'summary = Text("Draft")',
+      'score = Metric("Score", 90, "/100")',
+      'summary = Text("Final")',
+    ].join("\n"),
   );
+  assert.equal(snapshot.json().surfaces[0].content.invocationId, quoted.invocationId);
+  const openuiCatalog = (await web("GET", "/v1/openui/catalog")).json();
+  assert.equal(openuiCatalog.root, "Stack");
+  assert.match(openuiCatalog.prompt, /Metric\(label: string/);
   const streamedToBuyer = await web("GET", `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`);
   assert.equal(streamedToBuyer.statusCode, 200, streamedToBuyer.body);
   assert.match(streamedToBuyer.body, /event: ag-ui/);

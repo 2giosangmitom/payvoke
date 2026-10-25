@@ -28,7 +28,7 @@ Bản bất biến của command tại một thời điểm, chứa options, JSO
 Command nhận free text khi buyer không gõ slash command. Free text được map vào tham số vị trí của default command; nếu default command không có tham số vị trí, UI mở form arguments.
 
 **Thread (hội thoại)**:
-Không gian chat gắn cố định với một buyer và đúng một app. Thread chứa tin nhắn, câu hỏi, revision, widget A2UI và lịch sử invocation. Danh sách thread trộn mọi app và hỗ trợ đổi tên/archive.
+Không gian chat gắn cố định với một buyer và đúng một app. Thread chứa tin nhắn, câu hỏi, revision, widget OpenUI và lịch sử invocation. Danh sách thread trộn mọi app và hỗ trợ đổi tên/archive.
 _Avoid_: Dùng “phiên sử dụng”, “session” hoặc “phiên” để đồng thời chỉ đăng nhập, quyền chi và hội thoại.
 
 **Availability**:
@@ -82,8 +82,8 @@ Phần quote được ký/đưa vào thanh toán, giữ các field dây cũ như
 **AG-UI**:
 Giao thức event cho stream hội thoại giữa provider và UI buyer. Payvoke dùng để phát text tăng dần, trạng thái chạy và widget.
 
-**A2UI**:
-Đặc tả giao diện khai báo bằng JSON. Provider gửi envelope A2UI; Payvoke validate theo catalog rồi chiếu thành surface trong thread. A2UI không cấp quyền thực thi hoặc thanh toán.
+**OpenUI Lang**:
+Ngôn ngữ giao diện khai báo theo dòng (`identifier = Component(...)`), thay OpenUI từ 25/10/2026. Provider stream các statement hoàn chỉnh trong `CUSTOM payvoke.openui`; Payvoke kiểm tra bằng parser `@openuidev/lang-core` theo catalog `packages/openui-components` rồi chiếu thành surface trong thread. OpenUI Lang không cấp quyền thực thi, gọi tool hoặc thanh toán.
 
 **Continuation**:
 Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏi hoặc yêu cầu revision. Continuation dùng runId mới nhưng không tạo quote/hold mới.

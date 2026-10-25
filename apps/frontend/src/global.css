@@ -2675,6 +2675,26 @@ textarea::placeholder {
   margin: 0;
   line-height: 1.6;
 }
+.run-widget-text[data-variant="heading"] {
+  font-weight: 600;
+}
+.run-widget-text[data-variant="caption"] {
+  font-size: 12px;
+  color: var(--t-text-muted);
+}
+.run-widget-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.run-widget-stack[data-direction="horizontal"] {
+  display: flex;
+  flex-wrap: wrap;
+}
+.run-widget-stack[data-direction="horizontal"] > * {
+  flex: 1 1 180px;
+  min-width: 0;
+}
 .run-widget-metric {
   display: flex;
   gap: 9px;

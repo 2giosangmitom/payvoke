@@ -2,11 +2,13 @@
 
 ## Overview
 
-Omarchy presents a Linux desktop through a terminal-inspired visual language: a deep forest-green canvas, warm cream text, muted jade actions, square controls, and a large pixel wordmark. The interface combines the precision of **JetBrains Mono** for body copy and controls with **Geist** for headings. Product screenshots and interactive showcases supply the richness; the surrounding interface stays restrained.
+Omarchy presents a Linux desktop through a terminal-inspired visual language: a forest-green canvas (deep in dark mode, pale in daylight), cream or deep-green text, muted jade actions, square controls, and a large pixel wordmark. The interface combines the precision of **JetBrains Mono** for body copy and controls with **Geist** for headings. Product screenshots and interactive showcases supply the richness; the surrounding interface stays restrained.
 
 The signature is the **pixel lattice**. The hero and header share a cell geometry derived from an 81-column wordmark, allowing decorative pixels and interface elements to align. The other defining rule is equally explicit: every named corner-radius token, from extra-small through 4XL, resolves to **0px**. Even components whose classes say `rounded-lg` or `rounded-xl` render square.
 
 This specification uses **Osaka Jade**: muted jade `#509475` on forest green `#111c18`, with warm cream `#f7e8b2` primary text and olive-tinted secondary text. Activate it with `data-theme="osaka-jade"` on the theme root. The upstream CSS defaults to Tokyo Night; Osaka Jade is the selected palette for this document. Preserve semantic color roles throughout the interface.
+
+Osaka Jade ships in **two modes over one set of semantic roles**: the dark palette extracted from upstream, and a daylight variant implemented in this repository. Both are documented under **Colors**; the switching mechanism is covered in **Theme behavior**.
 
 **Key characteristics:**
 
@@ -16,19 +18,20 @@ This specification uses **Osaka Jade**: muted jade `#509475` on forest green `#1
 - Thin borders and outline-like shadows separate surfaces.
 - Wide screenshot rails coexist with narrower prose columns.
 - Theme switching changes the complete palette, including illustration colors and contrast treatments.
+- A single semantic role set serves both modes: light and dark swap token values, never role names.
 - Focus indicators, reduced-motion behavior, and mobile reflow are part of the implementation.
 
 Sources: [shared styles](https://github.com/omacom/omarchy-site/blob/master/src/styles.css), [site header](https://github.com/omacom/omarchy-site/blob/master/src/components/SiteHeader.tsx).
 
 ### Scope and notation
 
-Extracted from the current `master` source on 2026-10-22. This describes the Osaka Jade palette and shared site implementation, not the Omarchy operating system UI or archived HTML styling. Sources are linked by section; `master` links can change. No browser-rendered visual audit was performed.
+Extracted from the upstream `master` source on 2026-10-22. The daylight palette and mode-switching details were added on 2026-10-25 from this repository's frontend (`apps/frontend`). This describes the Osaka Jade palette and shared site implementation, not the Omarchy operating system UI or archived HTML styling. Sources are linked by section; `master` links can change. No browser-rendered visual audit was performed.
 
 Names such as `{colors.canvas}` are documentation aliases introduced here, not token names exported by the project. The tables map them to actual CSS variables. Pixel conversions assume a 16px root size. Recommendations are explicitly distinguished from source measurements.
 
 ## Colors
 
-### Selected palette: Osaka Jade
+### Selected palette: Osaka Jade (dark)
 
 | Documentation token | Source variable | Value | Role |
 |---|---|---|---|
@@ -45,6 +48,36 @@ Names such as `{colors.canvas}` are documentation aliases introduced here, not t
 | `{colors.primary-soft}` | `--t-brand-soft` | `#5094751f` | Translucent accent tint, approximately 12% opacity |
 | `{colors.on-primary}` | `--t-brand-ink` | `#0c0e10` | Text on filled primary controls |
 | `{colors.selection}` | `--t-selection` | `#32473b` | Selected text background |
+
+### Light palette: Osaka Jade daylight
+
+The implemented frontend is **light-first**: `:root` carries the daylight values and `[data-mode="dark"]` overrides them. Roles are identical to the dark palette; only the values change. Canonical source: [`apps/frontend/src/global.css`](apps/frontend/src/global.css).
+
+| Documentation token | Source variable | Light value | Role |
+|---|---|---|---|
+| `{colors.canvas}` | `--t-bg` | `#f4f7f5` | Page background |
+| `{colors.canvas-deep}` | `--t-bg-deep` | `#eaf0ec` | Recessed media, code, and inert fills |
+| `{colors.surface}` | `--t-surface` | `#fcfdfc` | Cards, popovers, dialogs |
+| `{colors.surface-raised}` | `--t-surface-2` | `#e2ebe5` | Hover states, secondary controls, inline code |
+| `{colors.hairline}` | `--t-border-subtle` | `#d3dfd7` | Quiet dividers and table borders |
+| `{colors.border-strong}` | `--t-border-strong` | `#81968a` | Input and outline-button edges |
+| `{colors.ink}` | `--t-text` | `#182e24` | Primary text |
+| `{colors.body}` | `--t-text-secondary` | `#465d50` | Descriptions and reading text |
+| `{colors.muted}` | `--t-text-muted` | `#536b5d` | Captions, metadata, placeholders |
+| `{colors.primary}` | `--t-brand` | `#286346` | Primary actions, focus outlines, accents |
+| `{colors.primary-hover}` | `--t-brand-hover` | `#205339` | Filled-primary hover |
+| `{colors.primary-soft}` | `--t-brand-soft` | `#dcebe1` | Opaque accent tint |
+| `{colors.on-primary}` | `--t-brand-ink` | `#f8fbf9` | Text on filled primary controls |
+| `{colors.selection}` | `--t-brand` + `--t-brand-ink` | `#286346` / `#f8fbf9` | Selected text background and text |
+| `{colors.warning}` | `--t-warning` | `#7c500b` | Caution text |
+| `{colors.error-surface}` | `--t-error-bg` | `#fbe9e7` | Inline error backgrounds |
+| `{colors.destructive}` | `--destructive` | `#a52b35` | Destructive text and borders |
+| `{colors.overlay}` | `--t-overlay` | `#14291fc0` | Dialog backdrop, forest-tinted |
+| `{colors.shadow}` | `--t-shadow` | `0 20px 60px #183a2420` | Floating layers only |
+
+Unlike the dark theme's translucent `#5094751f`, daylight `--t-brand-soft` is an **opaque** tint, so it composites predictably over both `--t-bg` and `--t-surface`. The daylight palette also introduces roles the upstream table does not name: `--t-brand-hover`, `--t-warning`, `--t-error-bg`, `--t-overlay`, and `--t-shadow`.
+
+Measured contrast against `#f4f7f5` (computed from these values, not browser-audited): ink 13.4:1, body 6.6:1, muted 5.4:1, primary 6.6:1; on-primary against primary 6.8:1; warning 6.5:1; destructive against the error surface 6.0:1. `--t-border-strong` is 2.9:1 and is a decorative edge, not a text or icon color — rely on the brand focus ring for non-text affordances.
 
 ### Supporting accents
 
@@ -65,9 +98,13 @@ The destructive role explicitly uses the red value. Focus rings use the current 
 
 The hero has its own tonal ramp: background `#090f0d`, dim `#1e372c`, mid `#35614d`, lit `#509475`, hover `#84b49e`, and crest `#bcd6cb`. These are `--t-field-*` variables, separate from ordinary content surfaces. Do not flatten this ramp into a single green.
 
+In the implemented frontend the hero field is **pinned dark in both modes**: `.landing .hero` re-declares the full ramp and hard-codes `color: #f1f2df` over `#090f0d`. Daylight only redefines `--t-field-hover` and `--t-field-crest` to `#286346`, which the hero's local declarations override, so the ramp never lightens. Preserve that contrast behavior unless a daylight field is deliberately designed.
+
 ### Theme behavior
 
-Osaka Jade supplies the complete dark palette through `[data-theme='osaka-jade']`, including `color-scheme: dark`. Use the selected theme's values for every surface, border, text role, selection state, and pixel-field shade.
+Two layers matter here: the upstream theme system this document was extracted from, and the frontend implementation in `apps/frontend`.
+
+**Upstream.** Osaka Jade supplies the complete dark palette through `[data-theme='osaka-jade']`, including `color-scheme: dark`. Use the selected theme's values for every surface, border, text role, selection state, and pixel-field shade.
 
 The header has specialized rendering colors:
 
@@ -82,7 +119,11 @@ The header has specialized rendering colors:
 
 The scrollbar thumb is `rgb(255 255 255 / 0.14)`. One upstream exception remains: `.dark-scope` pins the explore galaxy to Tokyo Night values even when Osaka Jade is selected. Preserve that exception for an exact reproduction; overriding it with Osaka Jade would be an intentional adaptation.
 
-Source for all color values and theme mappings: [shared palette definitions](https://github.com/omacom/omarchy-site/blob/master/src/styles.css).
+**Implemented frontend.** Mode is a light/dark switch over the same roles, not a second theme. `data-mode="light"` (or no attribute) resolves to the daylight table; `data-mode="dark"` resolves to the dark table. `global.css` defines daylight on `:root`, dark on `[data-mode="dark"]`, and repeats the dark values inside `@media (prefers-color-scheme: dark)` for `:root:not([data-mode])`. Preferences are `system | light | dark` (the toggle writes `light`/`dark`), persisted under the `payvoke-theme` storage key. `themeScript` in [`apps/frontend/src/lib/theme.ts`](apps/frontend/src/lib/theme.ts) sets the mode before first paint to avoid a flash, and `meta[name="theme-color"]` follows the mode (`#f4f7f5` light, `#111c18` dark). The header sun/moon button is the only control; it keeps an accessible label and swaps icons via CSS rather than relying on color alone.
+
+**Implementation deltas.** The frontend's dark values are not identical to the upstream table above: `--t-text` is `#f1f2df` (not `#f7e8b2`), `--t-brand` is `#8cbea2` (not `#509475`), `--t-brand-soft` is opaque `#253e30`, and the `--t-selection` and `--t-hdr-*` families are absent — `::selection` uses `--t-brand` with `--t-brand-ink`. Treat this document's dark table as the upstream palette and these values as the current implementation of the same roles; reconcile them before claiming exact parity.
+
+Source for all color values and theme mappings: [shared palette definitions](https://github.com/omacom/omarchy-site/blob/master/src/styles.css), plus [`apps/frontend/src/global.css`](apps/frontend/src/global.css) and [`apps/frontend/src/lib/theme.ts`](apps/frontend/src/lib/theme.ts) for the implemented modes.
 
 ## Typography
 
@@ -176,7 +217,9 @@ Sources: [shared geometry and responsive CSS](https://github.com/omacom/omarchy-
 | Image outline | `1px solid rgb(255 255 255 / 0.1)`, offset `-1px` | Screenshot edge definition |
 | Focus outline | `2px solid var(--t-brand)`, offset `2px` | Keyboard interaction |
 
-Osaka Jade elevation is effectively an outline, without a floating drop shadow. Use the theme’s resting and hover rings to separate surfaces; do not import the shallow drop shadows used by upstream light themes.
+Osaka Jade elevation is primarily an outline, without a floating drop shadow. Use the theme’s resting and hover rings to separate surfaces; do not import the shallow drop shadows used by upstream light themes.
+
+Implementation note: the daylight palette adds `--t-shadow` (`0 20px 60px #183a2420`; `0 20px 60px #030b0750` in dark) for genuinely floating layers only — the music card, the wallet dialog, and the mobile navigation. Those layers still carry a 1px `--t-border-strong` edge, so the shadow reads as ambient depth rather than the primary separator. Do not apply it to inline cards or prose surfaces.
 
 The shared stacking scale is navigation 100, dropdown 200, modal 300, tooltip 400. The mobile navigation uses a darkened backdrop and blur. Decorative hero effects belong to a dedicated field rather than a generic gradient applied to every surface.
 
@@ -322,12 +365,16 @@ Sources: [interaction styles](https://github.com/omacom/omarchy-site/blob/master
 - Use real desktop imagery with restrained outlines and consistent aspect ratios.
 - Preserve visible keyboard focus, selectable commands, and reduced-motion behavior.
 - Treat the pixel wordmark and its cell geometry as the signature visual element.
+- Switch modes by swapping token values under `data-mode`; keep the same role names in both palettes.
+- Honor `prefers-color-scheme` when no explicit preference is stored, and set the mode before first paint.
 
 ### Don't
 
 - Do not turn the system into pill buttons, rounded cards, or circular portraits by default.
 - Do not substitute Tokyo Night’s bright lime and lavender for Osaka Jade’s muted jade and warm cream.
 - Do not put heavy floating shadows on Osaka Jade cards.
+- Do not mix daylight surfaces with dark-theme text, brand, or tint values — each palette column is internally consistent.
+- Do not brighten the hero pixel field when the page is in daylight mode; it is intentionally pinned dark.
 - Do not replace every mono paragraph with a generic sans-serif body font.
 - Do not stretch a long terminal command beyond the mobile viewport.
 - Do not invent pricing cards, commerce widgets, or status meanings and describe them as extracted components.

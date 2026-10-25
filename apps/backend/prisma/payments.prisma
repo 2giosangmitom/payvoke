@@ -142,7 +142,7 @@ model ProviderRun {
   updatedAt       DateTime @updatedAt
   invocation      Invocation @relation("InvocationRuns", fields: [invocationId], references: [id], onDelete: Restrict)
   activeFor       Invocation? @relation("ActiveRun")
-  surfaces        AguiSurface[]
+  surfaces        OpenUISurface[]
   reports         ProviderReport[]
 
   @@index([invocationId, updatedAt])
@@ -178,15 +178,17 @@ model AguiStreamEvent {
   @@map("agui_stream_events")
 }
 
-model AguiSurface {
+// Accumulated OpenUI Lang program for one provider surface. Patches append
+// complete statements; the gateway re-validates the whole program each time.
+model OpenUISurface {
   runId String
   surfaceId String
-  operations Json
+  source String
   updatedAt DateTime @updatedAt
   run ProviderRun @relation(fields: [runId], references: [runId], onDelete: Restrict)
 
   @@id([runId, surfaceId])
-  @@map("agui_surfaces")
+  @@map("openui_surfaces")
 }
 
 // A provider question closes the current run with RUN_FINISHED but keeps the

@@ -27,7 +27,7 @@ App offline không nhận quote mới nhưng thread cũ vẫn đọc được, k
 
 Payvoke lưu người gửi, thứ tự, nội dung, command revision và invocation liên quan cho mỗi tin nhắn. Nội dung có thể là văn bản, dữ liệu có cấu trúc hoặc tham chiếu file. Báo cáo provider gửi lại không tạo tin trùng. Tiến độ tạm thời được lưu riêng với kết quả cuối đã được M05 kiểm tra. Tải lại trang phải khôi phục đúng lịch sử, không tạo lần chạy mới.
 
-**Chat stream theo [S04](../specs/04-ag-ui-a2ui-streaming.md):** frontend nhận `TEXT_MESSAGE_START/CONTENT/END` qua AG-UI SSE và render chữ tăng dần trong thread. Widget A2UI được frontend nhận dưới dạng `ACTIVITY_SNAPSHOT` (`activityType:"a2ui-surface"`, `content.a2ui_operations`) để chèn/cập nhật card, bảng, chart hoặc question form theo catalog được duyệt. Mất kết nối phải khôi phục snapshot và cursor, không nhân đôi delta hoặc gửi lại lời nhắn tính phí. Streaming chỉ là bản xem trước; chat còn hiển thị trạng thái VERIFYING/DELIVERED từ API nghiệp vụ.
+**Chat stream theo [S04](../specs/04-ag-ui-a2ui-streaming.md):** frontend nhận `TEXT_MESSAGE_START/CONTENT/END` qua AG-UI SSE và render chữ tăng dần trong thread. Widget OpenUI được frontend nhận dưới dạng `ACTIVITY_SNAPSHOT` (`activityType:"openui-surface"`, `content.source`) để chèn/cập nhật card, bảng, chart hoặc question form theo catalog được duyệt. Mất kết nối phải khôi phục snapshot và cursor, không nhân đôi delta hoặc gửi lại lời nhắn tính phí. Streaming chỉ là bản xem trước; chat còn hiển thị trạng thái VERIFYING/DELIVERED từ API nghiệp vụ.
 
 ## File và quyền chia sẻ
 

@@ -1,0 +1,17 @@
+{
+  "name": "@payvoke/openui-components",
+  "private": true,
+  "type": "module",
+  "description": "Payvoke OpenUI Lang component catalog shared by backend validation and the frontend renderer",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

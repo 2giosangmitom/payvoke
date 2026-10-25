@@ -9,7 +9,7 @@ Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cậ
 - App có nhiều `AppCommand`; mỗi command có `id` ổn định và một `AppCommandRevision` đang active. Sửa definition tạo revision mới, không sửa revision đã dùng cho quote.
 - Free text map vào tham số vị trí của command đang chọn/default. Gõ `/` mở danh sách command của chính app. Command không có tham số vị trí mở form arguments. Backend chỉ nhận `commandId + arguments`, không thực thi raw slash text.
 - App có thể `PUBLIC` (xuất hiện trong store) hoặc `PRIVATE` (chỉ owner thấy/chat). Availability suy ra từ `status = ACTIVE`, có default command và heartbeat trong 45 giây gần nhất; provider không tự đặt cờ available.
-- Chat nhận **AG-UI text events** và widget **A2UI v0.9.1** trong cùng stream. Payload đang stream là preview; chỉ kết quả qua verification mới được giao. Hợp đồng bổ sung tại S04.
+- Chat nhận **AG-UI text events** và widget **OpenUI Lang** trong cùng stream. Payload đang stream là preview; chỉ kết quả qua verification mới được giao. Hợp đồng bổ sung tại S04.
 - Một thread chỉ có **một invocation đang thực thi/chờ xử lý** ở MVP; `WAITING_BUYER`/`VERIFYING`/`UNKNOWN` vẫn chiếm slot. `DELIVERED`/`FAILED`/`CANCELLED` giải phóng execution slot dù tiền có thể còn HELD chờ review/refund. Gửi thêm lời nhắn không có question/revision context không tự được xem là trả lời miễn phí.
 - Mỗi invocation mới có một command revision, quote, bộ input bất biến và khoản giữ tiền riêng. Provider hỏi lại, buyer trả lời đúng question hoặc sửa trong phạm vi policy không tạo quote/charge mới.
 - Payvoke tính tiền theo invocation, không theo tin nhắn hoặc token. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng.
@@ -245,7 +245,7 @@ Các type/data:
 - `started`: `{}` → RUNNING.
 - `progress`: `{message,percent?}`; percent integer 0–100, không phải kết quả cuối.
 - `question`: `{questionId,prompt,inputSchema,chatTextParameter?}` → WAITING_BUYER; chỉ một question mở; schema giới hạn như command, không xin private key/payment hoặc đổi mục tiêu. UI render `QuestionForm` trong thread; câu trả lời có thể nhập chat nếu schema chỉ định `chatTextParameter`.
-- `result`: `{artifactVersion,output,files:[],presentation?}` → VERIFYING. `presentation` nếu có là `{format:"a2ui",specVersion:"v0.9.1",catalogId,surfaceIds:[]}` tham chiếu các surface đã persist trong run và được validate theo catalog/version S04; không cho provider nhét HTML/JS hoặc tạo surface chưa lưu qua report. Không thay `output` hoặc làm kết quả tự được giao. Output validate approved outputSchema; file thuộc app/invocation đã READY. M05 kiểm tra rồi mới DELIVERED.
+- `result`: `{artifactVersion,output,files:[],presentation?}` → VERIFYING. `presentation` nếu có là `{format:"openui-lang",specVersion:"1.0",surfaceIds:[]}` tham chiếu các surface đã persist trong run và được validate theo catalog/version S04; không cho provider nhét HTML/JS hoặc tạo surface chưa lưu qua report. Không thay `output` hoặc làm kết quả tự được giao. Output validate approved outputSchema; file thuộc app/invocation đã READY. M05 kiểm tra rồi mới DELIVERED.
 - `failed`: `{code,message,sideEffectStatus:"none"|"completed"|"unknown"}` → FAILED hoặc UNKNOWN theo bằng chứng; không tự refund.
 - `unknown`: `{reason}` → UNKNOWN; platform điều tra, không tự rerun side effect.
 - `cancelled`: `{reason,sideEffectStatus:"none"}` chỉ khi có cancellation request đang mở và provider xác nhận đã dừng/không gây side effect. Nếu side effect chưa rõ phải báo unknown; nếu đã hoàn tất thì không báo cancelled để xóa trách nhiệm giao hàng.
@@ -258,11 +258,11 @@ Provider không gửi tùy ý `paymentStatus`, không có report `refund`/`payou
 
 Payvoke bảo đảm không tạo hai logical ready event cho một invocation và vault không debit hai lần. SSE là at-least-once; provider MUST persist dedupe **trước ACK**, truyền invocation ID làm idempotency key cho side effect nếu nơi nhận hỗ trợ. Crash sau side effect nhưng trước ghi nhận không được diễn giải là chưa chạy. Không tự chuyển job đã ACK sang provider/app khác.
 
-### 6.4 Streaming AG-UI / A2UI (quyết định 23/10/2026)
+### 6.4 Streaming AG-UI / OpenUI (quyết định 23/10/2026)
 
-Provider agent gửi token/chunk và widget qua **NDJSON streaming HTTP request** ở `POST /v1/provider/apps/{appId}/invocations/{id}/ag-ui/streams/{runId}`, sau khi ACK và report `started`. Đây là kênh **nội dung hiển thị**, dùng provider key `reports:write`, sequence/cursor riêng với `ProviderReport.sequence`; `GET .../ag-ui/streams/{runId}/cursor` hỗ trợ resume an toàn. Backend persist và phát bản chiếu AG-UI tới buyer qua SSE/thread stream: provider gửi envelope A2UI v0.9.1 bằng `CUSTOM payvoke.a2ui`, gateway kiểm tra và chiếu thành buyer `ACTIVITY_SNAPSHOT` (`activityType:"a2ui-surface"`, `content.a2ui_operations`, `replace:true`) để tương thích hướng render AG-UI/A2UI. S04 là hợp đồng chi tiết về ID, retry, allowlist events, snapshots, UI actions, version/catalog và xử lý lỗi.
+Provider agent gửi token/chunk và widget qua **NDJSON streaming HTTP request** ở `POST /v1/provider/apps/{appId}/invocations/{id}/ag-ui/streams/{runId}`, sau khi ACK và report `started`. Đây là kênh **nội dung hiển thị**, dùng provider key `reports:write`, sequence/cursor riêng với `ProviderReport.sequence`; `GET .../ag-ui/streams/{runId}/cursor` hỗ trợ resume an toàn. Backend persist và phát bản chiếu AG-UI tới buyer qua SSE/thread stream: provider gửi envelope OpenUI Lang bằng `CUSTOM payvoke.openui`, gateway kiểm tra và chiếu thành buyer `ACTIVITY_SNAPSHOT` (`activityType:"openui-surface"`, `content.source`, `replace:true`) để tương thích hướng render AG-UI/OpenUI. S04 là hợp đồng chi tiết về ID, retry, allowlist events, snapshots, UI actions, version/catalog và xử lý lỗi.
 
-Provider vẫn dùng HTTP reports `question/result/failed/...` để chuyển state. Kết thúc AG-UI run không xác nhận giao hàng hoặc kích hoạt payment. Không cho AG-UI `TOOL_CALL` hoặc hành động A2UI bypass quote/x402.
+Provider vẫn dùng HTTP reports `question/result/failed/...` để chuyển state. Kết thúc AG-UI run không xác nhận giao hàng hoặc kích hoạt payment. Không cho AG-UI `TOOL_CALL` hoặc hành động OpenUI bypass quote/x402.
 
 ## 7. State và concurrency
 
@@ -290,7 +290,7 @@ Deployment phải có versioned policy: trần/fee bps, quote lifetime, max deli
 8. Question/answer/revision đúng phạm vi không thêm tiền; arbitrary message mới và sửa vượt phạm vi không được lách thành continuation.
 9. Question render form theo schema trong thread; provider result chỉ VERIFYING trước validation.
 10. App suspend/offline chặn quote mới nhưng đọc được thread cũ; provider side effect UNKNOWN không tự retry; cancel không đồng nghĩa refund.
-11. Text và widget A2UI hiện dần trước report `result`; provider/buyer mất mạng và replay chunk không trùng text/surface. `RUN_FINISHED` chưa giao result; widget action không thể bypass `/answers` hoặc tạo charge (S04).
+11. Text và widget OpenUI hiện dần trước report `result`; provider/buyer mất mạng và replay chunk không trùng text/surface. `RUN_FINISHED` chưa giao result; widget action không thể bypass `/answers` hoặc tạo charge (S04).
 
 ## Nguồn và phạm vi
 

@@ -27,7 +27,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { A2uiSurface } from "./a2ui-surface";
+import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
 import { QuestionForm } from "./question-form";
 import { apiOrigin } from "@/src/lib/api";
 import { formatUsdc } from "@/src/lib/apps";
@@ -160,30 +160,17 @@ function useStream(threadId: string) {
         );
       } else if (
         item.type === "ACTIVITY_SNAPSHOT" &&
-        item.activityType === "a2ui-surface" &&
+        item.activityType === "openui-surface" &&
         item.messageId &&
-        item.content?.a2ui_operations
+        typeof item.content?.source === "string"
       ) {
-        const operations = item.content.a2ui_operations;
-        setSurfaces((current) => {
-          const without = current.filter((s) => s.messageId !== item.messageId);
-          return operations.some(
-            (operation) =>
-              !!operation && typeof operation === "object" && "deleteSurface" in operation,
-          )
-            ? without
-            : [
-                ...without,
-                {
-                  messageId: item.messageId!,
-                  content: {
-                    a2ui_operations: operations,
-                    invocationId: item.content?.invocationId,
-                    surfaceId: item.content?.surfaceId,
-                  },
-                },
-              ];
-        });
+        const surface = { messageId: item.messageId, content: item.content };
+        // Replace in place so a surface keeps its position while it streams.
+        setSurfaces((current) =>
+          current.some((s) => s.messageId === surface.messageId)
+            ? current.map((s) => (s.messageId === surface.messageId ? surface : s))
+            : [...current, surface],
+        );
       }
       if (["RUN_FINISHED", "RUN_ERROR", "RUN_STARTED"].includes(item.type)) {
         void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "snapshot"] });
@@ -715,20 +702,8 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   const openQuestions = questions.filter((question) => question.status === "OPEN");
   const widgetQuestionIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const surface of stream.surfaces) {
-      for (const operation of surface.content.a2ui_operations) {
-        if (!operation || typeof operation !== "object") continue;
-        const components = (operation as { updateComponents?: { components?: unknown } })
-          .updateComponents?.components;
-        if (!Array.isArray(components)) continue;
-        for (const component of components) {
-          if (!component || typeof component !== "object") continue;
-          const value = component as { component?: unknown; questionId?: unknown };
-          if (value.component === "QuestionForm" && typeof value.questionId === "string")
-            ids.add(value.questionId);
-        }
-      }
-    }
+    for (const surface of stream.surfaces)
+      for (const id of surfaceQuestionIds(surface.content.source)) ids.add(id);
     return ids;
   }, [stream.surfaces]);
 
@@ -829,9 +804,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
               components={{ UserMessage: BuyerMessage, AssistantMessage: AssistantReply }}
             />
             {stream.surfaces.map((surface) => (
-              <A2uiSurface
+              <OpenUISurface
                 key={surface.messageId}
-                operations={surface.content.a2ui_operations}
+                source={surface.content.source}
                 questions={questions}
                 invocationId={surface.content.invocationId}
                 onAnswer={answer}
@@ -969,7 +944,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
         </div>
       )}
       <footer className="run-stage-footer">
-        <span>AG-UI STREAM / A2UI 0.9.1</span>
+        <span>AG-UI STREAM / OPENUI LANG</span>
         <span>{stream.snapshot.data?.invocations.length ?? 0} paid invocations</span>
         <Button
           variant="ghost"

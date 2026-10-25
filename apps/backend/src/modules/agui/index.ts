@@ -5,6 +5,7 @@ import { StringDecoder } from "node:string_decoder";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { identifier, object, providerKey, hash, validateEvent } from "./protocol";
 import { verifyStructuredDeliveries } from "./verify";
+import { applyOpenUIPatch, openuiCatalog } from "../openui/validator";
 import { availabilityLabel } from "../apps/schema";
 
 type Params = { appId: string; id: string; runId: string };
@@ -67,7 +68,7 @@ async function sse(
   }
 }
 
-// A2UI ingress is a display-only projection. Question metadata is validated
+// OpenUI ingress is a display-only projection. Question metadata is validated
 // separately because it becomes the schema for a buyer answer.
 function questionPayload(value: unknown) {
   if (!object(value)) throw new Error("INVALID_QUESTION");
@@ -479,6 +480,10 @@ export async function registerAgui(
     );
   }
 
+  // Provider LLMs need the exact component signatures the gateway accepts.
+  const catalog = openuiCatalog();
+  app.get("/v1/openui/catalog", async () => catalog);
+
   const base = "/v1/provider/apps/:appId";
   async function heartbeat(appId: string) {
     await db.app
@@ -792,12 +797,12 @@ export async function registerAgui(
         let messageId = run.activeMessageId;
         const pending = new Map<number, string>();
         const surfaces = new Map(
-          (await tx.aguiSurface.findMany({ where: { runId: run.runId } })).map((surface) => [
+          (await tx.openUISurface.findMany({ where: { runId: run.runId } })).map((surface) => [
             surface.surfaceId,
-            surface.operations as unknown[],
+            surface.source,
           ]),
         );
-        const touched = new Map<string, unknown[] | null>();
+        const touched = new Set<string>();
         const rows: {
           invocationId: string;
           threadId: string;
@@ -830,42 +835,24 @@ export async function registerAgui(
             if (messageId !== event.messageId) throw app.httpErrors.conflict("MESSAGE_NOT_OPEN");
             if (event.type === "TEXT_MESSAGE_END") messageId = null;
           } else {
-            const op = event.value as Record<string, unknown>;
-            const action = Object.keys(op).find((key) => key !== "version")!;
-            const payload = op[action] as Record<string, unknown>;
-            const surfaceId = payload.surfaceId as string;
-            const existing = surfaces.get(surfaceId);
-            if (action === "createSurface" && existing)
-              throw app.httpErrors.conflict("SURFACE_ALREADY_EXISTS");
-            if (action !== "createSurface" && !existing)
-              throw app.httpErrors.conflict("SURFACE_NOT_FOUND");
-            let operations: unknown[];
-            if (action === "createSurface" || action === "deleteSurface") operations = [op];
-            else if (action === "updateComponents")
-              operations = [
-                ...existing!.filter((entry) => !object(entry) || !("updateComponents" in entry)),
-                op,
-              ];
-            else {
-              const path = (op.updateDataModel as Record<string, unknown>).path;
-              operations = [
-                ...existing!.filter(
-                  (entry) =>
-                    !object(entry) ||
-                    !object(entry.updateDataModel) ||
-                    entry.updateDataModel.path !== path,
-                ),
-                op,
-              ];
+            const { surfaceId, source: patch } = event.value as Record<string, string>;
+            let source: string;
+            try {
+              source = applyOpenUIPatch(surfaces.get(surfaceId) ?? "", patch);
+            } catch (error) {
+              throw app.httpErrors.badRequest(
+                error instanceof Error ? error.message : "INVALID_OPENUI",
+              );
             }
-            touched.set(surfaceId, action === "deleteSurface" ? null : operations);
-            if (action === "deleteSurface") surfaces.delete(surfaceId);
-            else surfaces.set(surfaceId, operations);
+            surfaces.set(surfaceId, source);
+            touched.add(surfaceId);
+            // The buyer always receives the whole program, so a reconnecting
+            // client can render a surface from its latest snapshot alone.
             projected = {
               type: "ACTIVITY_SNAPSHOT",
-              messageId: `a2ui-${surfaceId}`,
-              activityType: "a2ui-surface",
-              content: { a2ui_operations: operations, invocationId: inv.id, surfaceId },
+              messageId: `openui-${surfaceId}`,
+              activityType: "openui-surface",
+              content: { source, invocationId: inv.id, surfaceId },
               replace: true,
             };
           }
@@ -886,17 +873,13 @@ export async function registerAgui(
           sequence = streamSequence;
         }
         if (rows.length) {
-          for (const [surfaceId, operations] of touched) {
-            if (operations === null)
-              await tx.aguiSurface.delete({
-                where: { runId_surfaceId: { runId: run.runId, surfaceId } },
-              });
-            else
-              await tx.aguiSurface.upsert({
-                where: { runId_surfaceId: { runId: run.runId, surfaceId } },
-                create: { runId: run.runId, surfaceId, operations: json(operations) },
-                update: { operations: json(operations) },
-              });
+          for (const surfaceId of touched) {
+            const source = surfaces.get(surfaceId)!;
+            await tx.openUISurface.upsert({
+              where: { runId_surfaceId: { runId: run.runId, surfaceId } },
+              create: { runId: run.runId, surfaceId, source },
+              update: { source },
+            });
           }
           const updated = await tx.providerRun.updateMany({
             where: { runId: run.runId, sequence: run.sequence, state: "RUNNING" },
@@ -1187,16 +1170,8 @@ export async function registerAgui(
         if (event.type === "TEXT_MESSAGE_CONTENT" && texts.has(id))
           texts.get(id)!.content += event.delta;
         if (event.type === "TEXT_MESSAGE_END" && texts.has(id)) texts.get(id)!.complete = true;
-        if (event.type === "ACTIVITY_SNAPSHOT" && event.activityType === "a2ui-surface") {
-          const operations = (event.content as Record<string, unknown> | undefined)
-            ?.a2ui_operations;
-          if (
-            Array.isArray(operations) &&
-            operations.some((op) => object(op) && "deleteSurface" in op)
-          )
-            surfaces.delete(id);
-          else surfaces.set(id, event.content);
-        }
+        if (event.type === "ACTIVITY_SNAPSHOT" && event.activityType === "openui-surface")
+          surfaces.set(id, event.content);
       }
       const invocations = await db.invocation.findMany({
         where: { quote: { threadId: request.params.threadId } },

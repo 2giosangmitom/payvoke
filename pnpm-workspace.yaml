@@ -5,16 +5,23 @@ packages:
 allowBuilds:
   esbuild: true
   protobufjs: false
+
 permissions:
-  '@prisma/engines':
+  "@openuidev/lang-core":
+    build: true
+  "@prisma/engines":
     build: true
   "@tanstack/react-start":
     skills: true
   hardhat:
     skills: true
-
   prisma:
     build: true
+  "@open-slide/core":
+    skills: true
+
+  '@tanstack/react-router':
+    skills: true
 skills:
   dirs:
     - .agents/skills
