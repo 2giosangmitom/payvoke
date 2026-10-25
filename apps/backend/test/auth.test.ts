@@ -2,17 +2,15 @@
 /// <reference types="bun" />
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient, migrationsDirectory } from "@payvoke/db";
+import { PrismaClient } from "@payvoke/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
 
 describe("Better Auth SIWE / Prisma + Fastify", () => {
   const wallet = privateKeyToAccount(generatePrivateKey());
@@ -20,8 +18,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   const origin = "https://app.payvoke.test";
   const secret = randomBytes(48).toString("base64");
   const schema = `auth_test_${randomUUID().replaceAll("-", "")}`;
-  let embedded: PGlite | undefined;
-  let server: PGLiteSocketServer | undefined;
+  let postgres: TestPostgres | undefined;
   let connectionString: string;
   let pool: Pool;
   let db: PrismaClient;
@@ -39,16 +36,11 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     `${cookie.name}=${encodeURIComponent(cookie.value)}`;
 
   before(async () => {
-    if (process.env.TEST_DATABASE_URL) connectionString = process.env.TEST_DATABASE_URL;
-    else {
-      embedded = await PGlite.create();
-      server = new PGLiteSocketServer({ db: embedded, port: 0, host: "127.0.0.1" });
-      await server.start();
-      connectionString = `postgresql://postgres:postgres@${server.getServerConn()}/postgres`;
-    }
+    postgres = await startTestPostgres(process.env.TEST_DATABASE_URL);
+    connectionString = postgres.connectionString;
     pool = new Pool({
       connectionString,
-      max: embedded ? 1 : 5,
+      max: postgres.embedded ? 1 : 5,
       options: `-c search_path=${schema}`,
     });
     pool.setMaxListeners(40);
@@ -56,16 +48,9 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     const client = await pool.connect();
     try {
       await client.query(`SET search_path TO "${schema}"`);
-      const directory = migrationsDirectory;
-      const migrations = (await readdir(directory, { withFileTypes: true }))
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort();
-      assert.equal(migrations[0], "20261020000000_init_better_auth");
-      for (const migration of migrations) {
-        const sql = await readFile(new URL(`${migration}/migration.sql`, directory), "utf8");
-        await client.query(sql.replace('CREATE SCHEMA IF NOT EXISTS "public";', ""));
-      }
+      const migrations = await readMigrations();
+      assert.equal(migrations[0].name, "20261020000000_init_better_auth");
+      for (const migration of migrations) await client.query(migration.sql);
     } finally {
       client.release();
     }
@@ -92,8 +77,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
         }
       }
     } finally {
-      await server?.stop();
-      await embedded?.close();
+      await postgres?.stop();
     }
   });
 

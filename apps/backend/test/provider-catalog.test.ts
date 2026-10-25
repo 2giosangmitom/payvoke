@@ -2,47 +2,35 @@
 /// <reference types="bun" />
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
 import { after, before, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient, migrationsDirectory } from "@payvoke/db";
+import { PrismaClient } from "@payvoke/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
 import { verifyStructuredDeliveries } from "../src/modules/agui/verify";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;
 const wallet = privateKeyToAccount(generatePrivateKey());
 const other = privateKeyToAccount(generatePrivateKey());
-let embedded: PGlite;
-let socket: PGLiteSocketServer;
+let postgres: TestPostgres;
 let pool: Pool;
 let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
 
 before(async () => {
-  embedded = await PGlite.create();
-  socket = new PGLiteSocketServer({ db: embedded, port: 0, host: "127.0.0.1" });
-  await socket.start();
-  const connectionString = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres`;
+  postgres = await startTestPostgres();
+  const { connectionString } = postgres;
   pool = new Pool({ connectionString, max: 1, options: `-c search_path=${schema}` });
   await pool.query(`CREATE SCHEMA "${schema}"`);
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${schema}"`);
-    const dir = migrationsDirectory;
-    for (const migration of (await readdir(dir, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort()) {
-      const sql = await readFile(new URL(`${migration}/migration.sql`, dir), "utf8");
-      await client.query(sql.replace('CREATE SCHEMA IF NOT EXISTS "public";', ""));
-    }
+    for (const migration of await readMigrations()) await client.query(migration.sql);
   } finally {
     client.release();
   }
@@ -64,8 +52,7 @@ after(async () => {
   await app?.close();
   await pool?.query(`DROP SCHEMA "${schema}" CASCADE`);
   await pool?.end();
-  await socket?.stop();
-  await embedded?.close();
+  await postgres?.stop();
 });
 
 async function login(account: typeof wallet) {

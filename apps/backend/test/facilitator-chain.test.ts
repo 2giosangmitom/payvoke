@@ -11,7 +11,7 @@ import {
   vaultDomain,
 } from "@payvoke/protocol";
 import { readQuote } from "@payvoke/x402";
-import { matchingHold, mockVault } from "./fixtures/vault-reader";
+import { matchingHold, mockVault } from "@payvoke/testkit/vault-reader";
 
 const vector = JSON.parse(
   readFileSync(new URL("../../../docs/specs/fixtures/x402-v1.json", import.meta.url), "utf8"),

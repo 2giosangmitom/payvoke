@@ -6,10 +6,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
-import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import type { PGlite } from "@electric-sql/pglite";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -48,16 +47,17 @@ import { loadConfig } from "../src/config";
 import { logRedaction } from "@payvoke/server";
 import fastify from "fastify";
 import { Writable } from "node:stream";
-import { PrismaClient, migrationsDirectory } from "@payvoke/db";
+import { PrismaClient } from "@payvoke/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
 import { SettlementJournal } from "@payvoke/payments/journal";
 import { createFacilitatorApp } from "../src/facilitator/app";
 import { loadFacilitatorConfig } from "../src/facilitator/config";
-import { code, matchingHold, mockVault } from "./fixtures/vault-reader";
-import { mockSettlement } from "./fixtures/settlement-reader";
+import { code, matchingHold, mockVault } from "@payvoke/testkit/vault-reader";
+import { mockSettlement } from "@payvoke/testkit/settlement-reader";
 import { SettlementWorker } from "@payvoke/payments/worker";
 import { createSettlementService } from "@payvoke/payments/settlement";
 import { scanFinalizedHolds } from "@payvoke/payments/scanner";
-import { localEvm } from "./fixtures/local-evm";
+import { localEvm } from "@payvoke/testkit/local-evm";
 import {
   paymentSession,
   preparePayment,
@@ -97,7 +97,7 @@ describe("quotes, x402 and isolated settlement", () => {
   const relayer = privateKeyToAccount(relayerKey);
   const schema = `payment_test_${randomUUID().replaceAll("-", "")}`;
   let embedded: PGlite | undefined;
-  let socket: PGLiteSocketServer | undefined;
+  let postgres: TestPostgres | undefined;
   let pool: Pool;
   let db: PrismaClient;
   let app: ReturnType<typeof createApp>;
@@ -113,13 +113,13 @@ describe("quotes, x402 and isolated settlement", () => {
   const serviceToken = randomBytes(32).toString("hex");
 
   before(async () => {
-    let connectionString = "postgresql://test:test@127.0.0.1:55433/test";
-    if (process.env.PAYMENTS_TEST_POSTGRES !== "1") {
-      embedded = await PGlite.create();
-      socket = new PGLiteSocketServer({ db: embedded, port: 0, host: "127.0.0.1" });
-      await socket.start();
-      connectionString = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres`;
-    }
+    postgres = await startTestPostgres(
+      process.env.PAYMENTS_TEST_POSTGRES === "1"
+        ? "postgresql://test:test@127.0.0.1:55433/test"
+        : undefined,
+    );
+    embedded = postgres.embedded;
+    const { connectionString } = postgres;
     // Explicit Docker mode uses only the repo's local test-db endpoint, never a
     // DATABASE_URL/Neon connection. Each run owns a fresh random schema.
     pool = new Pool({
@@ -133,10 +133,7 @@ describe("quotes, x402 and isolated settlement", () => {
     });
     pool.setMaxListeners(50);
     await pool.query(`CREATE SCHEMA "${schema}"`);
-    const directory = migrationsDirectory;
-    for (const entry of (await readdir(directory, { withFileTypes: true }))
-      .filter((v) => v.isDirectory())
-      .sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of await readMigrations()) {
       if (entry.name === "20261021010000_settlement_journal") {
         await pool.query(`
           INSERT INTO products (id, kind) VALUES ('migration-product', 'TOOL');
@@ -145,12 +142,7 @@ describe("quotes, x402 and isolated settlement", () => {
           VALUES ('migration-quote', 'migration-invocation', 'migration-buyer', 'migration-session', 'migration-request', 'original-hash', NOW(), '{"original":"preserved"}');
         `);
       }
-      await pool.query(
-        (await readFile(new URL(`${entry.name}/migration.sql`, directory), "utf8")).replace(
-          'CREATE SCHEMA IF NOT EXISTS "public";',
-          "",
-        ),
-      );
+      await pool.query(entry.sql);
       if (entry.name === "20261021010000_settlement_journal") {
         const preserved = await pool.query(
           'SELECT "requestHash", document FROM quotes WHERE id = $1',
@@ -318,8 +310,7 @@ describe("quotes, x402 and isolated settlement", () => {
         await pool.end();
       }
     }
-    await socket?.stop();
-    await embedded?.close();
+    await postgres?.stop();
   });
 
   function body(key = randomUUID()) {

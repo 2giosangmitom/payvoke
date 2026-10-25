@@ -45,7 +45,7 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
       "43113",
     ],
     {
-      cwd: fileURLToPath(new URL("../../../../packages/payvoke-vault", import.meta.url)),
+      cwd: fileURLToPath(new URL("../../payvoke-vault", import.meta.url)),
       detached: true,
       stdio: "ignore",
     },
@@ -77,7 +77,7 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
       JSON.parse(
         await readFile(
           new URL(
-            `../../../../packages/payvoke-vault/artifacts/contracts/${path}`,
+            `../../payvoke-vault/artifacts/contracts/${path}`,
             import.meta.url,
           ),
           "utf8",
