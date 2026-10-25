@@ -1,0 +1,33 @@
+{
+  "name": "ops",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./fuji": "./src/fuji.ts",
+    "./payment": "./src/payment.ts",
+    "./seed": "./src/seed.ts"
+  },
+  "scripts": {
+    "ops:operator": "tsx --env-file=operator.env ./src/cli.ts",
+    "ops:approver": "tsx --env-file=approver.env ./src/cli.ts",
+    "ops:executor": "tsx --env-file=executor.env ./src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:evm": "pnpm --dir ../../packages/payvoke-vault compile && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='Fuji ceremony tooling' test/fuji-operations.test.ts"
+  },
+  "dependencies": {
+    "@payvoke/db": "workspace:*",
+    "@payvoke/payments": "workspace:*",
+    "@payvoke/protocol": "workspace:*",
+    "@payvoke/server": "workspace:*",
+    "@payvoke/x402": "workspace:*",
+    "@x402/core": "2.28.0",
+    "tsx": "^4.23.15",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@payvoke/testkit": "workspace:*",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

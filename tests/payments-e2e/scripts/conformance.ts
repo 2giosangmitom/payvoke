@@ -5,16 +5,15 @@ import { fileURLToPath } from "node:url";
 import { rules, type Suite } from "../test/conformance/rules";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const commands: Record<Suite, { cwd: string; command: string }> = {
-  backend: {
-    cwd: `${root}apps/backend`,
-    command: "pnpm exec tsx --test --test-reporter=tap test/*.test.ts",
-  },
-  protocol: {
-    cwd: `${root}packages/payvoke-protocol`,
-    command: "pnpm exec tsx --test --test-reporter=tap test/*.test.ts",
-  },
-  vault: { cwd: `${root}packages/payvoke-vault`, command: "pnpm exec hardhat test" },
+const node = "pnpm exec tsx --test --test-reporter=tap test/*.test.ts";
+// The backend suite spans every service package that owns payment tests.
+const commands: Record<Suite, { cwd: string; command: string }[]> = {
+  backend: ["apps/api", "apps/facilitator", "apps/ops", "tests/payments-e2e"].map((dir) => ({
+    cwd: `${root}${dir}`,
+    command: node,
+  })),
+  protocol: [{ cwd: `${root}packages/payvoke-protocol`, command: node }],
+  vault: [{ cwd: `${root}packages/payvoke-vault`, command: "pnpm exec hardhat test" }],
 };
 
 type Outcome = "pass" | "fail" | "skip";
@@ -36,12 +35,15 @@ function parse(suite: Suite, output: string) {
 
 const outcomes = {} as Record<Suite, Map<string, Outcome>>;
 for (const suite of Object.keys(commands) as Suite[]) {
-  const { cwd, command } = commands[suite];
-  console.log(`> ${suite}: ${command}`);
-  const run = spawnSync(command, { cwd, shell: true, encoding: "utf8", maxBuffer: 1 << 28 });
-  outcomes[suite] = parse(suite, `${run.stdout}\n${run.stderr}`);
-  if (run.status !== 0)
-    console.log(`  ${suite} suite exited ${run.status}; failures are reported below`);
+  outcomes[suite] = new Map();
+  for (const { cwd, command } of commands[suite]) {
+    console.log(`> ${suite}: ${command} (${cwd.slice(root.length)})`);
+    const run = spawnSync(command, { cwd, shell: true, encoding: "utf8", maxBuffer: 1 << 28 });
+    for (const [test, outcome] of parse(suite, `${run.stdout}\n${run.stderr}`))
+      outcomes[suite].set(test, outcome);
+    if (run.status !== 0)
+      console.log(`  ${suite} suite exited ${run.status}; failures are reported below`);
+  }
 }
 
 let failed = false;

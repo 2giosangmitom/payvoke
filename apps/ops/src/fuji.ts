@@ -196,7 +196,7 @@ export async function preflight(client: PublicClient, c: Ceremony) {
 export async function vaultArtifact() {
   return loadJson<{ abi: Abi; bytecode: Hex }>(
     new URL(
-      "../../../../packages/payvoke-vault/artifacts/contracts/PayvokeVault.sol/PayvokeVault.json",
+      "../../../packages/payvoke-vault/artifacts/contracts/PayvokeVault.sol/PayvokeVault.json",
       import.meta.url,
     ).pathname,
   );

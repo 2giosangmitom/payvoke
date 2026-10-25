@@ -42,16 +42,16 @@ import {
   type AuthorizationRecord,
   type QuoteDocument,
 } from "@payvoke/x402";
-import { createApp } from "../src/app";
-import { loadConfig } from "../src/config";
+import { createApp } from "api/app";
+import { loadConfig } from "api/config";
 import { logRedaction } from "@payvoke/server";
 import fastify from "fastify";
 import { Writable } from "node:stream";
 import { PrismaClient } from "@payvoke/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
 import { SettlementJournal } from "@payvoke/payments/journal";
-import { createFacilitatorApp } from "../src/facilitator/app";
-import { loadFacilitatorConfig } from "../src/facilitator/config";
+import { createFacilitatorApp } from "facilitator/app";
+import { loadFacilitatorConfig } from "facilitator/config";
 import { code, matchingHold, mockVault } from "@payvoke/testkit/vault-reader";
 import { mockSettlement } from "@payvoke/testkit/settlement-reader";
 import { SettlementWorker } from "@payvoke/payments/worker";
@@ -65,7 +65,7 @@ import {
   pollPayment,
   verifyPayment,
   type PreparedPayment,
-} from "../src/operations/payment";
+} from "ops/payment";
 import {
   loadJson,
   prepareOperation,
@@ -73,8 +73,8 @@ import {
   operationReceipt,
   type Ceremony,
   type SignedOperation,
-} from "../src/operations/fuji";
-import { journalEvidence, seedCeremony } from "../src/operations/seed";
+} from "ops/fuji";
+import { journalEvidence, seedCeremony } from "ops/seed";
 import {
   FinanceService,
   parseDecision,

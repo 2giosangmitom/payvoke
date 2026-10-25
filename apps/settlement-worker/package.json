@@ -1,0 +1,25 @@
+{
+  "name": "settlement-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx ./src/main.ts",
+    "start": "tsx ./src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@payvoke/db": "workspace:*",
+    "@payvoke/payments": "workspace:*",
+    "@payvoke/server": "workspace:*",
+    "@payvoke/x402": "workspace:*",
+    "close-with-grace": "^2.5.0",
+    "dotenv": "^18.0.9",
+    "tsx": "^4.23.15",
+    "typebox": "^1.4.3",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { createPublicClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {

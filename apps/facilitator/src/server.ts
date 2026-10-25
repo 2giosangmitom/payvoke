@@ -1,7 +1,7 @@
 import "dotenv/config";
 import closeWithGrace from "close-with-grace";
-import { createFacilitatorApp } from "./facilitator/app";
-import { loadFacilitatorConfig } from "./facilitator/config";
+import { createFacilitatorApp } from "./app";
+import { loadFacilitatorConfig } from "./config";
 
 let app: ReturnType<typeof createFacilitatorApp> | undefined;
 try {

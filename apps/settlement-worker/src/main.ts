@@ -8,7 +8,7 @@ import { SettlementChain } from "@payvoke/x402/settlement";
 import { createDatabase } from "@payvoke/db";
 import { vaultDeployment } from "@payvoke/server";
 import { SettlementWorker } from "@payvoke/payments/worker";
-import { loadWorkerConfig, workerGasPolicy } from "./modules/payments/worker-config";
+import { loadWorkerConfig, workerGasPolicy } from "./config";
 import { scanFinalizedHolds } from "@payvoke/payments/scanner";
 import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
 

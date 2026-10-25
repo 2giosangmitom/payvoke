@@ -12,7 +12,7 @@ import {
   type Action,
   type Ceremony,
   type SignedOperation,
-} from "../src/operations/fuji";
+} from "../src/fuji";
 import { localEvm } from "@payvoke/testkit/local-evm";
 
 test("Fuji ceremony tooling signs offline, sends once, verifies finality and withdraws on isolated EVM", async (t) => {
