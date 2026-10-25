@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type { PGlite } from "@electric-sql/pglite";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -2108,7 +2110,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await evm.contract.read.totalHeld(), 100000n);
 
     // Exercise the exact operator recovery tooling against the real held funds.
-    const directory = await mkdtemp("/tmp/opencode/fuji-reclaim-");
+    const directory = await mkdtemp(join(tmpdir(), "fuji-reclaim-"));
     t.after(() => rm(directory, { recursive: true }));
     const ceremony: Ceremony = {
       admin: evm.adminWallet.account.address,
@@ -2182,7 +2184,7 @@ describe("quotes, x402 and isolated settlement", () => {
   });
 
   it("operator runner authenticates, persists authorization, submits and polls through real HTTP handlers", async (t) => {
-    const directory = await mkdtemp("/tmp/opencode/fuji-runner-");
+    const directory = await mkdtemp(join(tmpdir(), "fuji-runner-"));
     t.after(() => rm(directory, { recursive: true }));
     let privateApp: ReturnType<typeof createFacilitatorApp> | undefined;
     t.mock.method(
