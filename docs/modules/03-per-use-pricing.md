@@ -11,3 +11,9 @@ Một lần gọi có một định danh, một chức năng/provider và một 
 Làm mới trang, gửi lại thao tác, tải file hoặc nhận event phát lại không thu thêm tiền. Một khoản trừ không mở hai lần chạy. Khi sản phẩm bị dừng hoặc provider offline, Payvoke chặn yêu cầu mới theo chính sách bán hàng.
 
 Trước khi trừ tiền, buyer có thể bỏ yêu cầu. Sau khi trừ, hủy chỉ là đề nghị dừng; M09 quyết định sửa hoặc hoàn theo điều khoản, M06 xử lý tiền. Không tự chạy lại yêu cầu nếu provider có thể đã thực hiện tác động bên ngoài.
+
+## Vì sao giá cố định theo command
+
+Ling et al. [P2] chứng minh rằng với dịch vụ có tính toán ẩn (thinking tokens), không cách tính giá chỉ theo output nào vừa công bằng với buyer trung thực vừa chống được việc provider thổi phồng phần ẩn; khoảng thao túng họ ước tính là 35–3.213× trên 10 model. Giá cố định theo command revision loại bỏ hẳn đòn bẩy này: provider không thể làm hoá đơn tăng bằng cách "nghĩ nhiều hơn". Cũng vì vậy Payvoke không có scheme kiểu `upto` (trả tối đa rồi quyết toán số thực tế) và không gặp lỗi allowance overdraft mà paper mô tả.
+
+Giá quá nhỏ vẫn có rủi ro: Payvoke trả gas cho `reserveHold` và release, nên một command giá vài atomic USDC có thể tốn gas hơn giá trị thu được. Trước khi bật giao dịch Fuji cần chốt **giá sàn mỗi command** so với chi phí gas ước tính (roadmap R02, liên quan quy tắc SR5 của [P1]). Chi tiết: [nghiên cứu agentic payments](../research/agentic-payments-literature.md).

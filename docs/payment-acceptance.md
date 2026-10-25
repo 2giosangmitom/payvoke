@@ -4,6 +4,9 @@
 > Review date: 2026-10-22. Base implementation: `19a11b8`; this working-tree
 > update adds crash/race regression proof and a finance receipt-identity fix.
 > This is the current evidence matrix, not a claim of launch readiness.
+> Update 2026-10-25 (commit `a7b97ec`): re-ran default suites, refreshed the S01
+> boundary table for the provider gateway/AG-UI work, and recorded that the full
+> backend typecheck now passes. Research cross-check: [S02 §11](specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402).
 
 Sources: [S01](specs/01-api-and-provider-protocol.md),
 [S02](specs/02-x402-and-vault.md), trace IDs from
@@ -101,18 +104,18 @@ signed bytes, and rollback of finalized decision/cost/lane in PostgreSQL.
 
 ## S01 acceptance boundary (all ten §9 entries)
 
-| S01 §9                                     | Current evidence                                                                                      | Missing / not claimed                                                                                       |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 1 product kind, agent/tool UI              | quote/session product ownership checks                                                                | Full product/session management and UI composer/kind transition proof                                       |
-| 2 command validation/defaults              | Q effective args/defaults and invalid args/product commands before payment                            | Provider registration/publishing workflow                                                                   |
-| 3 slash safety                             | paid endpoint accepts only quoteId, no raw slash execution                                            | Frontend slash parser/default-chat flow                                                                     |
-| 4 approved versions, pinned inputs         | Q quote replay after catalog/policy changes, emergency suspension                                     | Provider draft/review APIs and actual provider execution input verification                                 |
-| 5 one hold/ready, free reads/continuations | Q duplicate submission/SQL/HTTP/EVM replay, authenticated free payment polling                        | Result/answer/revision/ACK/report flows not implemented; cannot claim free full continuation E2E            |
-| 6 SSE/ACK/reconnect/restart                | durable unique InvocationReady only                                                                   | SSE, ACK, consumer lease and provider dedupe protocol                                                       |
-| 7 app/buyer isolation                      | A/Q buyer identity/ownership, private service auth                                                    | Provider app/key/download isolation; real file storage                                                      |
-| 8 in-scope continuation                    | no finance action creates another invocation/hold                                                     | Questions/answers/revisions and scope/quota enforcement                                                     |
-| 9 verified delivery                        | trusted internal/manual evidence is required for release                                              | Provider result → VERIFYING → validated DELIVERED, real artifact validation/access                          |
-| 10 UNKNOWN/cancel/dispute semantics        | no provider consumer or automatic refund; unsigned dispute intent is UNSUBMITTED until chain evidence | Provider side-effect state machine and cancel/ticket workflow; no rerun safety claim without implementation |
+| S01 §9                                     | Current evidence                                                                                                            | Missing / not claimed                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 1 one app per thread, shared chat composer | thread bound to one app; quote checks command belongs to the thread's app                                                   | Browser E2E of composer/default-command mapping                                                             |
+| 2 command validation/defaults              | Q effective args/defaults and invalid args before payment; provider command/revision API (`provider-catalog.test.ts`)       | Generated OpenAPI; schema depth/size caps review                                                            |
+| 3 slash safety                             | paid endpoint accepts only quoteId, no raw slash execution                                                                  | Browser test of frontend slash parser                                                                       |
+| 4 pinned revisions and inputs              | Q quote replay after catalog/policy changes, emergency suspension; quotes pin `commandRevisionId`                           | Out-of-process provider fixture verifying received input against snapshot                                   |
+| 5 one hold/ready, free reads/continuations | Q duplicate submission/SQL/HTTP/EVM replay; answers/revisions create new runs without new hold (`provider-catalog.test.ts`) | `/result` endpoint; full continuation E2E on Fuji                                                           |
+| 6 SSE/ACK/reconnect/restart                | provider SSE ready events, ACK, reports, NDJSON stream and buyer SSE replay/snapshot (`provider-catalog.test.ts`)           | `pending-events` resync, multi-writer lease/fencing, ACK route shape differs from S01 §6.2 (see note there) |
+| 7 app/buyer isolation                      | A/Q buyer identity/ownership; cross-app/cross-owner stream and report rejection                                             | File download isolation; real file storage                                                                  |
+| 8 in-scope continuation                    | question → WAITING_BUYER → answer; revision within `revisionPolicy.maxIncluded`                                             | Scope abuse review beyond quota/window                                                                      |
+| 9 verified delivery                        | JSON result → VERIFYING → DELIVERED after host outputSchema check                                                           | File artifact verifier; evidence-level gating (roadmap R03/R04); buyer access/outage signals                |
+| 10 UNKNOWN/cancel/dispute semantics        | `failed`/`unknown` reports; unsigned dispute intent is UNSUBMITTED until chain evidence                                     | Cancellation and dispute ticket APIs; no rerun safety claim without implementation                          |
 
 Payment/execution are separate. Financial terminal state does not itself free a
 session execution slot or make an old ready event safe to dispatch. The future
@@ -131,22 +134,24 @@ consumer must recheck current hold/deadlines and verified execution state.
 - Finance tests use replacement service instances in one test process; actual
   multi-process kill/restart proof currently exists for settlement, not every
   finance boundary. No exhaustive crash/race or independent audit claim.
-- Backend full typecheck has the known upstream thread-stream/worker_threads type
-  incompatibility; `tsc --noEmit --skipLibCheck` checks project code independently.
+- Research conformance: the rules in [S02 §11](specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402)
+  are covered by the tests above but are not yet grouped into a named suite
+  (roadmap R01). The minimum-price-vs-gas policy (R02) is not implemented.
 
 ## Reproduce (local only)
 
-Verified on this working-tree update:
+Re-run on 2026-10-25 at commit `a7b97ec` (Docker suites not re-run; their
+counts are from the 2026-10-22 review):
 
-| Gate                                                                        | Result                                                                                  |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Backend default/PGlite                                                      | 104 pass, 6 explicitly skipped (EVM/PostgreSQL-only cases)                              |
-| Docker PostgreSQL payment suite                                             | 62 pass, 3 EVM-only cases skipped                                                       |
-| Docker PostgreSQL + isolated EVM                                            | 4 flow tests pass, no skips; new flow contains 10 fault/race scenarios                  |
-| Protocol vectors/ABI                                                        | 8 pass                                                                                  |
-| Vault unit/adversarial/fuzz + viem                                          | 82 pass (71 Solidity, 11 Node.js)                                                       |
-| Backend project typecheck (`--skipLibCheck`), focused lint, diff whitespace | Pass                                                                                    |
-| Backend full typecheck                                                      | Blocked by pre-existing `thread-stream@4.2.0` TS2694: `worker_threads.TransferListItem` |
+| Gate                                     | Result                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| Backend default/PGlite                   | 109 pass, 6 explicitly skipped (EVM/PostgreSQL-only cases)        |
+| Docker PostgreSQL payment suite          | 62 pass, 3 EVM-only cases skipped (2026-10-22)                    |
+| Docker PostgreSQL + isolated EVM         | 4 flow tests pass, no skips; 10 fault/race scenarios (2026-10-22) |
+| Protocol vectors/ABI                     | 8 pass                                                            |
+| Vault unit/adversarial/fuzz + viem       | 82 pass (71 Solidity, 11 Node.js)                                 |
+| Backend full typecheck (`tsc --noEmit`)  | Pass (the earlier `thread-stream` TS2694 no longer reproduces)    |
+| Frontend typecheck, build, renderer test | Pass; 4 renderer tests run via tsx (no `test` script yet)         |
 
 The counts overlap in exercised behavior; do not add them as independent coverage
 percentages. Scenarios are diagnostics inside one flow test, not ten separate
@@ -159,7 +164,7 @@ pnpm --dir apps/backend test:payments:postgres
 PAYMENTS_TEST_POSTGRES=1 pnpm --dir apps/backend test:payments:evm
 pnpm --dir packages/payvoke-protocol test
 pnpm --dir packages/payvoke-vault test
-pnpm --dir apps/backend exec tsc --noEmit --skipLibCheck
+pnpm --dir apps/backend exec tsc --noEmit
 docker compose stop test-db
 ```
 

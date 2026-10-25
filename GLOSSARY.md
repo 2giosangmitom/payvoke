@@ -35,7 +35,7 @@ _Avoid_: Dùng “phiên sử dụng”, “session” hoặc “phiên” để
 Trạng thái app có thể nhận quote mới hay không. App available khi `status = ACTIVE`, có default command và có heartbeat trong 45 giây gần nhất. App offline vẫn mở và đọc được thread cũ nhưng không nhận quote mới.
 
 **Store**:
-Danh mục công khai các app `PUBLIC` và `ACTIVE`. Store hiển thị command, giá, availability và lối mở thread. App `PRIVATE` không xuất hiện trong store.
+Danh mục công khai các app `PUBLIC` chưa archive, gồm `ACTIVE` và `SUSPENDED`; app suspend hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. Store hiển thị command, giá, availability và lối mở thread. App `PRIVATE` không xuất hiện trong store.
 
 **Studio / Dashboard**:
 Khu vực owner quản lý app: settings, visibility, payout, command revision, default command, API key, suspend/activate/archive và mở chat thử.
@@ -83,10 +83,16 @@ Phần quote được ký/đưa vào thanh toán, giữ các field dây cũ như
 Giao thức event cho stream hội thoại giữa provider và UI buyer. Payvoke dùng để phát text tăng dần, trạng thái chạy và widget.
 
 **OpenUI Lang**:
-Ngôn ngữ giao diện khai báo theo dòng (`identifier = Component(...)`), thay OpenUI từ 25/10/2026. Provider stream các statement hoàn chỉnh trong `CUSTOM payvoke.openui`; Payvoke kiểm tra bằng parser `@openuidev/lang-core` theo catalog `packages/openui-components` rồi chiếu thành surface trong thread. OpenUI Lang không cấp quyền thực thi, gọi tool hoặc thanh toán.
+Ngôn ngữ giao diện khai báo theo dòng (`identifier = Component(...)`), thay A2UI v0.9.1 từ 25/10/2026. Provider stream các statement hoàn chỉnh trong `CUSTOM payvoke.openui`; Payvoke kiểm tra bằng parser `@openuidev/lang-core` theo catalog `packages/openui-components` rồi chiếu thành surface trong thread. OpenUI Lang không cấp quyền thực thi, gọi tool hoặc thanh toán.
 
 **Continuation**:
 Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏi hoặc yêu cầu revision. Continuation dùng runId mới nhưng không tạo quote/hold mới.
 
 **MCP bridge**:
 Tiến trình local cho ứng dụng AI bên ngoài dùng chung API buyer. MCP không phải giao diện chat của Payvoke và không được thay đổi giá hoặc bỏ qua admission.
+
+**Mức bằng chứng (evidence level)**:
+Đề xuất từ nghiên cứu: cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (đúng schema, đúng key app) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận). Command có thể khai báo mức tối thiểu trước khi được giải ngân. Xem [M05](docs/modules/05-artifacts-and-verification.md).
+
+**Buyer độc lập đã xác minh**:
+Đề xuất cho chỉ số store: buyer có invocation `DELIVERED` đã qua `releaseNotBefore`, không phải ví owner hoặc payout address của chính app. Dùng thay cho số invocation thô vì số giao dịch có thể làm giả khi platform trả gas. Xem [M09](docs/modules/09-reputation-and-operations.md).

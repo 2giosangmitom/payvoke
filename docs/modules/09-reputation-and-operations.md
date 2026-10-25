@@ -13,3 +13,15 @@ Operator ra quyết định qua M09; M06 và PayvokeVault chuyển tiền. Kho�
 Operator có thể dừng bán, khóa key lộ, giữ payout và thông báo người bị ảnh hưởng. Mọi hành động có người thực hiện, lý do, thời điểm và điều kiện mở lại. Quyền đọc dữ liệu buyer có phạm vi và thời hạn; không âm thầm đăng nhập thay buyer.
 
 Provider offline thì dừng yêu cầu mới theo chính sách, nhưng vẫn theo dõi hạn giao của yêu cầu đã trả. Nếu kết quả chưa rõ, điều tra trước khi phát lại; nếu thiếu nguồn hoàn, dừng bán để khoản nợ không tăng. Khi mất dữ liệu, khôi phục lịch sử và đối chiếu PayvokeVault trên Fuji trước khi mở lại. Quyền duyệt sản phẩm, quyết định hoàn và chuyển tiền tách riêng.
+
+## Chỉ số đáng tin và chống thao túng (đề xuất)
+
+Đo lường trên Base [P6] cho thấy số settlement x402 là chỉ số dễ làm giả nhất: 21,20% là thanh toán giả và 63,78% là thanh toán nội bộ trong cụm ví liên kết, vì facilitator trả gas. Payvoke cũng trả gas cho `reserveHold`, nên cùng rủi ro áp dụng. Đề xuất (R05):
+
+- Store không hiển thị tổng số invocation thô làm chỉ số uy tín. Thay vào đó hiển thị số **buyer độc lập** có invocation đã `DELIVERED` và đã qua `releaseNotBefore`, loại trừ ví owner và payout address của chính app.
+- Điểm rating gắn với command revision và tính theo posterior có chiết khấu thời gian (như cập nhật Beta của LEGIT [P13]) thay vì trung bình thô, để vài đánh giá mới không lấn át lịch sử và đánh giá cũ dần mất trọng lượng.
+- Cân nhắc yêu cầu provider đặt cọc USDC trước khi xuất hiện trong xếp hạng công khai (R06). LEGIT [P13] chỉ ra deposit buộc kẻ tấn công Sybil phải khoá vốn tỷ lệ với số danh tính. Xếp hạng store không dựa trên văn bản provider tự viết để tránh steering [P3, P12].
+
+## Phân loại tự động dispute và incident (đề xuất)
+
+Agentic Commerce Bench [P11] đo giá trung vị một giao dịch agent là 0,007 USD; một lần review thủ công tốn gấp 143 lần giá trị đó. Paper cũng chia tín hiệu gian lận theo mức quan sát L0–L4. Với Payvoke, giá cố định đã chặn kiểu "tính cao hơn giá niêm yết"; tín hiệu hữu ích còn lại nằm ở lịch sử provider (L3) và policy grant của buyer (L4). Đề xuất (R08): tính tự động các tín hiệu như tỷ lệ `FAILED`/`UNKNOWN`, tỷ lệ revision và dispute theo app, câu hỏi bất thường xin thêm dữ liệu; operator chỉ duyệt thủ công khi số tiền hoặc mức tín hiệu vượt ngưỡng được duyệt. Tín hiệu chỉ hỗ trợ quyết định, không tự refund hay khoá payout. Chi tiết: [nghiên cứu agentic payments](../research/agentic-payments-literature.md).

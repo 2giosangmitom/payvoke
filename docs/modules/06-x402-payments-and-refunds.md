@@ -23,3 +23,21 @@ Tiền của lần gọi nằm trong khoản đang giữ cho đến khi hết th
 Payvoke đối chiếu tổng tiền trong vault với số dư buyer, khoản đang giữ và khoản provider/Payvoke chưa rút. Ghi riêng giao dịch onchain và trạng thái nghiệp vụ; không xem báo cáo từ trình duyệt là bằng chứng tiền đã chuyển. Quyền duyệt hoàn và quyền thực hiện payout tách nhau.
 
 Trước khi bật thanh toán, phải chốt tỷ lệ/trần phí nền tảng, thời hạn giữ tiền, nguồn xử lý hoàn muộn và đặc tả scheme x402 cho PayvokeVault. Chính sách gas ở M10. Kiểm thử chứng từ sai/hết hạn/thu hồi, thu trùng, hai yêu cầu đồng thời, mất phản hồi sau giao dịch, rút trong lúc thu và hoàn sau payout.
+
+## Đối chiếu với nghiên cứu bảo mật x402
+
+Bốn nghiên cứu độc lập năm 2026 kiểm tra x402 thực tế và đều tìm thấy lỗ hổng ở facilitator/SDK công khai: 49 vi phạm trên 15 facilitator lớn [P1], các lỗi thay resource, settle trùng, overdraft và từ chối settle [P2], năm tấn công thực hiện được trên local chain, testnet và endpoint thật [P3], và 40 phát hiện hình thức mới qua Tamarin [P4]. Scheme `payvoke-vault` được thiết kế để chặn các lớp lỗi này:
+
+| Lớp lỗi trong nghiên cứu                       | Cách Payvoke chặn                                                                   | Trạng thái                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ |
+| Báo thành công khi chưa settle (Free Shopping) | Chỉ `HELD` sau receipt + event + finalized read; pending trả receipt, không success | Local                          |
+| Chữ ký dùng cho resource khác                  | Chữ ký gắn `invocationKey`, quote, input/terms/policy hash                          | Local                          |
+| Settle trùng khi request đồng thời             | CAS durable theo invocation; contract consume-once                                  | Local                          |
+| Overdraft allowance (`upto`)                   | Không dùng `upto`; cap grant cộng dồn atomic trong `reserveHold`                    | Local                          |
+| Gas abuse, calldata tùy ý                      | Trần gas/phí, ngân sách cửa sổ; signer chỉ ký `reserveHold` trên đúng vault         | Local                          |
+| Settle không kiểm tra lại sau verify           | `settle` chạy lại toàn bộ checks                                                    | Local                          |
+| Header bị replay/cache                         | Chỉ `RELAYER_ROLE` settle được; response `no-store`                                 | Local                          |
+| Lộ PII trong metadata thanh toán [P5]          | Header chỉ có ID/hash và mô tả cố định; prompt/file không qua facilitator           | Local; cần test hồi quy        |
+| Payment vô nghĩa kinh tế                       | `grossAmount` dương trong cap                                                       | Thiếu giá sàn so với gas (R02) |
+
+"Local" nghĩa là đã có test chạy trên PGlite/PostgreSQL và Hardhat node chain ID 43113, chưa phải bằng chứng Fuji. Việc tiếp theo là gom các ca trên thành một **conformance suite** đặt tên theo quy tắc SR1–SR8 của [P1] và bất biến I1–I5 của [P2], để mỗi lớp lỗi có test riêng có thể chạy lại (R01). Bảng đầy đủ: [S02 §11](../specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [nghiên cứu agentic payments](../research/agentic-payments-literature.md#1-bảo-mật-facilitator-và-scheme-x402).
