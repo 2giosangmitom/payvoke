@@ -9,9 +9,9 @@ import { registerHttp } from "./plugins/http";
 import { authGuard } from "./modules/auth/guard";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { catalogRoutes } from "./modules/catalog/catalog.routes";
-import { registerQuotes } from "./modules/quotes";
-import { registerPaymentStatus } from "./modules/payments";
-import { registerProvider } from "./modules/provider";
+import { quoteRoutes } from "./modules/quotes/quote.routes";
+import { paymentRoutes } from "./modules/payments/payments.routes";
+import { providerRoutes } from "./modules/provider/provider.routes";
 import { registerAgui } from "./modules/agui";
 
 export function createApp(config: Config, database?: PrismaClient) {
@@ -42,9 +42,9 @@ export function createApp(config: Config, database?: PrismaClient) {
       await registerHttp(instance, config);
       await instance.register(authGuard);
       await instance.register(authRoutes);
-      await instance.register(async (scope) => registerQuotes(scope, config, db));
-      await registerPaymentStatus(instance, db);
-      await registerProvider(instance, db);
+      await instance.register(quoteRoutes);
+      await instance.register(paymentRoutes);
+      await instance.register(providerRoutes);
       await instance.register(catalogRoutes);
       await registerAgui(instance, db, config.AGUI_CURSOR_RETENTION_SECONDS);
     }),

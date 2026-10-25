@@ -7,6 +7,16 @@ import { AuthController } from "./modules/auth/auth.controller";
 import { AuthService } from "./modules/auth/auth.service";
 import { CatalogController } from "./modules/catalog/catalog.controller";
 import { CatalogService } from "./modules/catalog/catalog.service";
+import { ProviderAppService } from "./modules/provider/provider-app.service";
+import { ProviderCommandService } from "./modules/provider/provider-command.service";
+import { ProviderController } from "./modules/provider/provider.controller";
+import { ProviderKeyService } from "./modules/provider/provider-key.service";
+import { InvocationService } from "./modules/payments/invocation.service";
+import { PaymentGateway } from "./modules/payments/payment-gateway";
+import { PaymentStatusService } from "./modules/payments/payment-status.service";
+import { PaymentsController } from "./modules/payments/payments.controller";
+import { QuoteController } from "./modules/quotes/quote.controller";
+import { QuoteService } from "./modules/quotes/quote.service";
 
 declare module "@fastify/awilix" {
   interface Cradle {
@@ -17,6 +27,16 @@ declare module "@fastify/awilix" {
     authController: AuthController;
     catalogService: CatalogService;
     catalogController: CatalogController;
+    providerAppService: ProviderAppService;
+    providerCommandService: ProviderCommandService;
+    providerKeyService: ProviderKeyService;
+    providerController: ProviderController;
+    quoteService: QuoteService;
+    quoteController: QuoteController;
+    invocationService: InvocationService;
+    paymentGateway: PaymentGateway;
+    paymentStatusService: PaymentStatusService;
+    paymentsController: PaymentsController;
   }
 }
 
@@ -34,6 +54,16 @@ export function createAppContainer(config: Config, db: PrismaClient) {
     authController: asClass(AuthController).singleton(),
     catalogService: asClass(CatalogService).singleton(),
     catalogController: asClass(CatalogController).singleton(),
+    providerAppService: asClass(ProviderAppService).singleton(),
+    providerCommandService: asClass(ProviderCommandService).singleton(),
+    providerKeyService: asClass(ProviderKeyService).singleton(),
+    providerController: asClass(ProviderController).singleton(),
+    quoteService: asClass(QuoteService).singleton(),
+    quoteController: asClass(QuoteController).singleton(),
+    invocationService: asClass(InvocationService).singleton(),
+    paymentGateway: asClass(PaymentGateway, { asyncInit: "verifyCapabilities" }).singleton(),
+    paymentStatusService: asClass(PaymentStatusService).singleton(),
+    paymentsController: asClass(PaymentsController).singleton(),
   });
   return container;
 }
