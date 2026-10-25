@@ -1,0 +1,35 @@
+{
+  "name": "payments-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:payments:postgres": "PAYMENTS_TEST_POSTGRES=1 tsx --test test/quotes.test.ts",
+    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC|financial lifecycle' test/quotes.test.ts",
+    "test:conformance": "tsx ./scripts/conformance.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.4.3",
+    "@payvoke/db": "workspace:*",
+    "@payvoke/payments": "workspace:*",
+    "@payvoke/protocol": "workspace:*",
+    "@payvoke/server": "workspace:*",
+    "@payvoke/testkit": "workspace:*",
+    "@payvoke/x402": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@types/bun": "^1.4.4",
+    "@types/emscripten": "^1.41.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@x402/core": "2.28.0",
+    "api": "workspace:*",
+    "facilitator": "workspace:*",
+    "fastify": "^5.12.7",
+    "ops": "workspace:*",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "viem": "2.57.7"
+  }
+}

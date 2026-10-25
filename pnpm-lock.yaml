@@ -173,14 +173,14 @@ importers:
         specifier: ^1.89.0
         version: 1.89.0
 
-  apps/backend:
+  apps/api:
     dependencies:
       '@better-auth/prisma-adapter':
         specifier: 1.7.11
         version: 1.7.11(@better-auth/core@1.7.11(@better-auth/utils@0.5.0)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.2(zod@4.6.7))(jose@6.2.13)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.5.0)(@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2))(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))
-      '@fastify/bearer-auth':
-        specifier: 10.1.4
-        version: 10.1.4
+      '@fastify/awilix':
+        specifier: 8.3.1
+        version: 8.3.1(awilix@13.0.5)(fastify@5.12.7)
       '@fastify/cookie':
         specifier: ^11.1.3
         version: 11.1.3
@@ -211,30 +211,33 @@ importers:
       '@openuidev/lang-core':
         specifier: ^1.0.1
         version: 1.0.1(@modelcontextprotocol/sdk@1.32.2(supports-color@7.2.0)(zod@4.6.7))(zod@4.6.7)
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
       '@payvoke/openui-components':
         specifier: workspace:*
         version: link:../../packages/openui-components
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
       '@payvoke/protocol':
         specifier: workspace:*
         version: link:../../packages/payvoke-protocol
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
       '@payvoke/x402':
         specifier: workspace:*
         version: link:../../packages/payvoke-x402
-      '@prisma/adapter-pg':
-        specifier: ^7.10.1
-        version: 7.10.1
-      '@prisma/client':
-        specifier: ^7.10.1
-        version: 7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2)
-      '@types/pg':
-        specifier: ^8.23.1
-        version: 8.23.1
       '@x402/core':
         specifier: 2.28.0
         version: 2.28.0
       ajv:
         specifier: 8.20.0
         version: 8.20.0
+      awilix:
+        specifier: 13.0.5
+        version: 13.0.5
       better-auth:
         specifier: 1.7.11
         version: 1.7.11(@opentelemetry/api@1.10.0)(@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2))(@tanstack/react-start@1.169.4(esbuild@0.28.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(rolldown@1.2.15)(supports-color@7.2.0)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))(mysql2@3.24.4(@types/node@26.6.5))(pg@8.23.1)(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -244,24 +247,15 @@ importers:
       dotenv:
         specifier: ^18.0.9
         version: 18.0.9
-      env-schema:
-        specifier: ^8.0.1
-        version: 8.0.1
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
       fastify-plugin:
         specifier: ^6.0.1
         version: 6.0.1
-      jsonc-parser:
-        specifier: 3.3.1
-        version: 3.3.1
-      pg:
-        specifier: ^8.23.1
-        version: 8.23.1
-      prisma:
-        specifier: ^7.10.1
-        version: 7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typebox:
         specifier: ^1.4.3
         version: 1.4.3
@@ -272,12 +266,12 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: 0.4.3
-        version: 0.4.3
-      '@electric-sql/pglite-socket':
-        specifier: 0.1.3
-        version: 0.1.3(@electric-sql/pglite@0.4.3)
+      '@payvoke/testkit':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-testkit
+      '@prisma/adapter-pg':
+        specifier: ^7.10.1
+        version: 7.10.1
       '@types/bun':
         specifier: ^1.4.4
         version: 1.4.4
@@ -287,9 +281,73 @@ importers:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  apps/facilitator:
+    dependencies:
+      '@fastify/bearer-auth':
+        specifier: 10.1.4
+        version: 10.1.4
+      '@fastify/helmet':
+        specifier: ^13.2.0
+        version: 13.2.0
+      '@fastify/rate-limit':
+        specifier: ^11.2.1
+        version: 11.2.1
+      '@fastify/sensible':
+        specifier: ^6.0.7
+        version: 6.0.7
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-protocol
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-x402
+      '@x402/core':
+        specifier: 2.28.0
+        version: 2.28.0
+      close-with-grace:
+        specifier: ^2.5.0
+        version: 2.5.0
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      fastify:
+        specifier: ^5.12.7
+        version: 5.12.7
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+      typebox:
+        specifier: ^1.4.3
+        version: 1.4.3
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@payvoke/testkit':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-testkit
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -397,6 +455,80 @@ importers:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  apps/ops:
+    dependencies:
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-protocol
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-x402
+      '@x402/core':
+        specifier: 2.28.0
+        version: 2.28.0
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@payvoke/testkit':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-testkit
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  apps/settlement-worker:
+    dependencies:
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-x402
+      close-with-grace:
+        specifier: ^2.5.0
+        version: 2.5.0
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typebox:
+        specifier: ^1.4.3
+        version: 1.4.3
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   apps/slide:
     dependencies:
       '@open-slide/core':
@@ -435,6 +567,59 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/payvoke-db:
+    dependencies:
+      '@prisma/adapter-pg':
+        specifier: ^7.10.1
+        version: 7.10.1
+      '@prisma/client':
+        specifier: ^7.10.1
+        version: 7.10.1(prisma@7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(typescript@7.0.2)
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      dotenv:
+        specifier: ^18.0.9
+        version: 18.0.9
+      prisma:
+        specifier: ^7.10.1
+        version: 7.10.1(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/payvoke-payments:
+    dependencies:
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../payvoke-db
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../payvoke-protocol
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../payvoke-x402
+      '@x402/core':
+        specifier: 2.28.0
+        version: 2.28.0
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/payvoke-protocol:
     dependencies:
       abitype:
@@ -456,6 +641,65 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+
+  packages/payvoke-server:
+    dependencies:
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../payvoke-protocol
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../payvoke-x402
+      env-schema:
+        specifier: ^8.0.1
+        version: 8.0.1
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
+      typebox:
+        specifier: ^1.4.3
+        version: 1.4.3
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/payvoke-testkit:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: 0.4.3
+        version: 0.4.3
+      '@electric-sql/pglite-socket':
+        specifier: 0.1.3
+        version: 0.1.3(@electric-sql/pglite@0.4.3)
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../payvoke-db
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../payvoke-protocol
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../payvoke-x402
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
+    devDependencies:
+      '@types/emscripten':
+        specifier: ^1.41.6
+        version: 1.41.6
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   packages/payvoke-vault:
     dependencies:
@@ -512,6 +756,72 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+
+  tests/payments-e2e:
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.4.3
+        version: 0.4.3
+      '@payvoke/db':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-db
+      '@payvoke/payments':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-payments
+      '@payvoke/protocol':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-protocol
+      '@payvoke/server':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-server
+      '@payvoke/testkit':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-testkit
+      '@payvoke/x402':
+        specifier: workspace:*
+        version: link:../../packages/payvoke-x402
+      '@prisma/adapter-pg':
+        specifier: ^7.10.1
+        version: 7.10.1
+      '@types/bun':
+        specifier: ^1.4.4
+        version: 1.4.4
+      '@types/emscripten':
+        specifier: ^1.41.6
+        version: 1.41.6
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      '@x402/core':
+        specifier: 2.28.0
+        version: 2.28.0
+      api:
+        specifier: workspace:*
+        version: link:../../apps/api
+      facilitator:
+        specifier: workspace:*
+        version: link:../../apps/facilitator
+      fastify:
+        specifier: ^5.12.7
+        version: 5.12.7
+      ops:
+        specifier: workspace:*
+        version: link:../../apps/ops
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      viem:
+        specifier: 2.57.7
+        version: 2.57.7(typescript@7.0.2)(zod@4.6.7)
 
 packages:
 
@@ -1158,6 +1468,12 @@ packages:
 
   '@fastify/ajv-compiler@4.0.7':
     resolution: {integrity: sha512-VP0yIfwlc1ohj733keYDqyHm1VWeP9VQxYomunhr90jkC4aNNibbkrRiaNgPgqj1ORxUenILR4qzA/ppYBNAtQ==}
+
+  '@fastify/awilix@8.3.1':
+    resolution: {integrity: sha512-i8vqkGgz8ol3wSCB4WzRvTorFXvzbG+04O29hYwcAz8MuGAdNMPo5PJPbqNsaRJ6N15VKIzfy/a4AvcyHWhDwA==}
+    peerDependencies:
+      awilix: '>=9.0.0'
+      fastify: ^5.0.0
 
   '@fastify/bearer-auth@10.1.4':
     resolution: {integrity: sha512-lOHC/Ek4Zlqv7qb1EAYze3wmzq8s8chrrik4vCIzFfOGysSLP5HM5vbcHfywf7JVZZp+BcPcaIRBwUAqHNStiA==}
@@ -3612,6 +3928,16 @@ packages:
 
   avvio@9.3.1:
     resolution: {integrity: sha512-QyTKW61/qlba+cUQBm/sT9X8lri4UdomqSDwCnrnj1IvLVDRRiXRkz4CgBRWB+/cmfC7SK5WQc8T1vSdGvaUcQ==}
+
+  awilix-manager@7.2.0:
+    resolution: {integrity: sha512-mDGekPGrdPQ+KOGoNGilj2SdIEFthfg9QTAbisOQ2+dpG4coFii6GMik5HXmdXl6Z9jhZWYJJTFmNoTFlF1dKw==}
+    engines: {node: '>=22.13'}
+    peerDependencies:
+      awilix: '>=9.0.0'
+
+  awilix@13.0.5:
+    resolution: {integrity: sha512-ORtca6suBdYA1FyTzqHEZDvEuUwo3lPDDBRm7GrzHgi6STESzJKdBtpqfTzObdMj1NGQUWX6k26E3EbQaGJX5Q==}
+    engines: {node: '>=20.0.0'}
 
   aws-ssl-profiles@1.1.2:
     resolution: {integrity: sha512-NZKeq9AfyQvEeNlN0zSYAaWrmBffJh3IELMZfRpJVWgrpEbtEpnjvzqBPf+mxoI287JohRDoa+/nsfqqiZmF6g==}
@@ -6867,6 +7193,13 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.2.3
 
+  '@fastify/awilix@8.3.1(awilix@13.0.5)(fastify@5.12.7)':
+    dependencies:
+      awilix: 13.0.5
+      awilix-manager: 7.2.0(awilix@13.0.5)
+      fastify: 5.12.7
+      fastify-plugin: 6.0.1
+
   '@fastify/bearer-auth@10.1.4':
     dependencies:
       '@fastify/error': 4.2.1
@@ -9359,6 +9692,14 @@ snapshots:
     dependencies:
       '@fastify/error': 4.2.1
       fastq: 1.20.3
+
+  awilix-manager@7.2.0(awilix@13.0.5):
+    dependencies:
+      awilix: 13.0.5
+
+  awilix@13.0.5:
+    dependencies:
+      fast-glob: 3.3.3
 
   aws-ssl-profiles@1.1.2: {}
 

@@ -1,0 +1,29 @@
+{
+  "name": "@payvoke/payments",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./evidence": "./src/evidence.ts",
+    "./finance": "./src/finance.ts",
+    "./finance-ledger": "./src/finance-ledger.ts",
+    "./journal": "./src/journal.ts",
+    "./scanner": "./src/scanner.ts",
+    "./settlement": "./src/settlement.ts",
+    "./validation": "./src/validation.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@payvoke/db": "workspace:*",
+    "@payvoke/protocol": "workspace:*",
+    "@payvoke/x402": "workspace:*",
+    "@x402/core": "2.28.0",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

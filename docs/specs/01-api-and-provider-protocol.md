@@ -2,7 +2,7 @@
 
 Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cập nhật mô hình app/thread/command revision và streaming 23/10/2026. MUST/không được là yêu cầu bắt buộc khi nghiệm thu. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md). Chat streaming và widget: [S04](04-ag-ui-a2ui-streaming.md).
 
-**Nguồn sự thật cho routes:** tài liệu này chỉ mô tả quy tắc nghiệp vụ, quyền, idempotency và state machine. Danh sách route, method, path, request/response body và mã lỗi cụ thể **không được ghi tay ở đây**; đọc trực tiếp từ code trong `apps/backend/src/modules/*` (và OpenAPI sinh từ code khi có). Khi code và tài liệu khác nhau về hình dạng route, code đúng; khi khác nhau về quy tắc nghiệp vụ, đó là lỗi cần sửa một trong hai.
+**Nguồn sự thật cho routes:** tài liệu này chỉ mô tả quy tắc nghiệp vụ, quyền, idempotency và state machine. Danh sách route, method, path, request/response body và mã lỗi cụ thể **không được ghi tay ở đây**; đọc trực tiếp từ code trong `apps/api/src/modules/*` (và OpenAPI sinh từ code khi có). Khi code và tài liệu khác nhau về hình dạng route, code đúng; khi khác nhau về quy tắc nghiệp vụ, đó là lỗi cần sửa một trong hai.
 
 ## 1. Mô hình nghiệp vụ đã chốt
 

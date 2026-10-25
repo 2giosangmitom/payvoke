@@ -264,7 +264,7 @@ Pending có thể vẫn trả HTTP 402 kèm transaction receipt. Client phải �
 
 ### Đối chiếu với nghiên cứu bảo mật x402
 
-Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Giá sàn so với gas nằm trong policy deployment, và `pnpm --dir apps/backend test:conformance` kiểm tra từng quy tắc bằng ca âm tính có tên. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
+Các nghiên cứu năm 2026 tìm thấy lỗ hổng ở mọi facilitator x402 công khai được thử: báo thành công khi chưa settle, một chữ ký dùng cho resource khác, settle trùng khi request đồng thời, overdraft allowance, gas abuse và lộ PII trong metadata. Scheme `payvoke-vault` có yêu cầu và test local cho từng lớp lỗi này: chữ ký gắn đúng invocation/quote/input, consume-once onchain, chỉ `RELAYER_ROLE` settle được, `settle` kiểm tra lại toàn bộ, trần gas, finality gate và header chỉ chứa hash. Giá sàn so với gas nằm trong policy deployment, và `pnpm --dir tests/payments-e2e test:conformance` kiểm tra từng quy tắc bằng ca âm tính có tên. Xem [S02 §11](docs/specs/02-x402-and-vault.md#11-đối-chiếu-nghiên-cứu-bảo-mật-x402) và [M06](docs/modules/06-x402-payments-and-refunds.md).
 
 ## 8. PayvokeVault và vòng đời tiền
 
@@ -672,24 +672,52 @@ Ban đầu dùng PostgreSQL outbox, transaction, lease và fencing, chưa thêm 
 
 ### Layout repository
 
-| Đường dẫn                    | Vai trò                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `apps/backend`               | API, Prisma schema, facilitator, settlement worker, finance và công cụ vận hành Fuji |
-| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                                   |
-| `apps/frontend`              | Web UI: store, chat, Studio                                                          |
-| `apps/slide`                 | Slide pitch                                                                          |
-| `docs`                       | Modules, specs, nghiên cứu và roadmap                                                |
-| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                                  |
-| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                         |
-| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                           |
-| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                               |
-| `apps/mcp`                   | Đề xuất: bridge local stdio                                                          |
+| Đường dẫn                    | Vai trò                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `apps/api`                   | API Fastify cho frontend và provider (auth, catalog, quote, x402 gateway, AG-UI) |
+| `apps/facilitator`           | Facilitator x402 nội bộ, không giữ khóa                                          |
+| `apps/settlement-worker`     | Worker gửi `reserveHold`, giữ khóa relayer                                       |
+| `apps/ops`                   | CLI vận hành Fuji và finance (operator, approver, executor tách env)             |
+| `packages/payvoke-db`        | Prisma schema, migrations và client dùng chung                                   |
+| `packages/payvoke-payments`  | Domain thanh toán: journal, admission, settlement, finance                       |
+| `packages/payvoke-server`    | Env loader, redaction, cấu hình deployment vault dùng chung cho service          |
+| `packages/payvoke-testkit`   | Fixture test: PGlite, local EVM, vault reader                                    |
+| `tests/payments-e2e`         | Test tích hợp xuyên service và conformance x402                                  |
+| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                               |
+| `apps/frontend`              | Web UI: store, chat, Studio                                                      |
+| `apps/slide`                 | Slide pitch                                                                      |
+| `docs`                       | Modules, specs, nghiên cứu và roadmap                                            |
+| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                              |
+| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                     |
+| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                       |
+| `packages/payvoke-client`    | Đề xuất: client x402 dùng lại cho headless/browser/MCP                           |
+| `apps/mcp`                   | Đề xuất: bridge local stdio                                                      |
 
 Những đường dẫn đánh dấu đề xuất là layout mục tiêu, chưa tồn tại. Provider fixture sẽ chạy ngoài process Payvoke như provider thật.
 
+### Services và deploy
+
+Backend gồm bốn process deploy riêng. Mỗi process đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
+
+| Service                  | Lệnh local                            | Docker target       | Giữ khóa                               |
+| ------------------------ | ------------------------------------- | ------------------- | -------------------------------------- |
+| `apps/api`               | `pnpm --filter api dev`               | `api`               | Không                                  |
+| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `facilitator`       | Không (chỉ `RELAYER_ADDRESS`)          |
+| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `settlement-worker` | `RELAYER_PRIVATE_KEY`                  |
+| `apps/ops`               | `pnpm --filter ops ops:<role> …`      | Không (chạy tay)    | Mỗi role một file `private/<role>.env` |
+
+Migrations: `pnpm --filter @payvoke/db migrate`, hoặc image target `migrate` (one-shot).
+
+```sh
+docker build --target api -t payvoke-api .          # tương tự: facilitator, settlement-worker, migrate
+docker compose --profile stack up --build            # db + migrate + api + facilitator + worker
+```
+
+Trong compose, facilitator dùng chung network namespace với API nên chỉ nghe trên loopback và không publish port. Deploy tách máy thì facilitator phải đặt sau TLS (`FACILITATOR_URL=https://…`). `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
+
 ### Vai trò của Prisma schema
 
-[Schema hiện tại](apps/backend/prisma/schema.prisma) bao phủ:
+[Schema hiện tại](packages/payvoke-db/prisma/schema.prisma) bao phủ:
 
 | Nhóm                 | Models tiêu biểu                                                              |
 | -------------------- | ----------------------------------------------------------------------------- |
@@ -792,13 +820,13 @@ Ngoài phạm vi hiện tại:
 - [S02 — x402 và PayvokeVault](docs/specs/02-x402-and-vault.md).
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
 - [S04 — AG-UI chat streaming và OpenUI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
-- [Prisma schema](apps/backend/prisma/schema.prisma).
+- [Prisma schema](packages/payvoke-db/prisma/schema.prisma).
 - [Roadmap 130 task + R01–R08](docs/roadmap.md).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).
 - [Nghiên cứu agentic payments áp dụng cho Payvoke](docs/research/agentic-payments-literature.md).
 - [Ma trận bằng chứng thanh toán](docs/payment-acceptance.md).
 
-README là bản giải thích tổng thể. S01–S04 là đặc tả quy tắc nghiệp vụ và giao thức; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Tài liệu không liệt kê routes API: method, path và request/response lấy từ code trong `apps/backend/src/modules/*`, là nguồn sự thật duy nhất. Không coi ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
+README là bản giải thích tổng thể. S01–S04 là đặc tả quy tắc nghiệp vụ và giao thức; nếu khác với phác thảo nghiên cứu cũ thì ưu tiên đặc tả. Tài liệu không liệt kê routes API: method, path và request/response lấy từ code trong `apps/api/src/modules/*`, là nguồn sự thật duy nhất. Không coi ABI trong tài liệu là tính năng đã tồn tại trước khi có implementation và tests tương ứng.
 
 ## Tài liệu tham khảo và lời cảm ơn
 

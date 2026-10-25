@@ -14,3 +14,73 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+
+  # Full stack, opt-in: docker compose --profile stack up --build
+  # Each service reads only its own env file; DATABASE_URL and bind hosts are
+  # overridden here so the containers talk to the compose database.
+  db:
+    profiles: [stack]
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payvoke
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payvoke"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    profiles: [stack]
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    profiles: [stack]
+    build: { context: ., target: api }
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      HOST: 0.0.0.0
+      FACILITATOR_URL: http://127.0.0.1:3002
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Shares the API's network namespace, so the API reaches it on loopback and
+  # it is never published. Remote deployments need TLS instead.
+  facilitator:
+    profiles: [stack]
+    build: { context: ., target: facilitator }
+    network_mode: service:api
+    env_file:
+      - path: apps/facilitator/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      HOST: 127.0.0.1
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  settlement-worker:
+    profiles: [stack]
+    build: { context: ., target: settlement-worker }
+    env_file:
+      - path: apps/settlement-worker/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  db-data:
