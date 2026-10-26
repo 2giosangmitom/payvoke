@@ -1,6 +1,7 @@
 import type { Cradle } from "@fastify/awilix";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { eventStream, pause } from "../../http/sse";
+import { channels } from "@payvoke/queue";
+import { eventStream } from "../../http/sse";
 import type { KeyScope } from "../provider/provider.validation";
 import type { AnswerBody, RevisionBody } from "./continuation.service";
 import type { ReportBody } from "./provider-run.service";
@@ -13,17 +14,21 @@ export type StreamRoute = { Params: WorkParams & { runId: string } };
 export type AnswerRoute = { Params: { id: string }; Body?: AnswerBody };
 export type RevisionRoute = { Params: { id: string }; Body?: RevisionBody };
 
-const FEED_INTERVAL_MS = 3000;
+// Feed items are rung on commit; the backstop also keeps the heartbeat well
+// inside the 45-second availability window.
+const FEED_BACKSTOP_MS = 15000;
 
 export class RunsController {
   private readonly keys: Cradle["providerKeyService"];
   private readonly runs: Cradle["providerRunService"];
   private readonly continuations: Cradle["continuationService"];
+  private readonly doorbell: Cradle["doorbell"];
 
-  constructor({ providerKeyService, providerRunService, continuationService }: Cradle) {
+  constructor({ providerKeyService, providerRunService, continuationService, doorbell }: Cradle) {
     this.keys = providerKeyService;
     this.runs = providerRunService;
     this.continuations = continuationService;
+    this.doorbell = doorbell;
   }
 
   // Provider worker routes accept only an app key with the given scope.
@@ -42,12 +47,17 @@ export class RunsController {
     if (request.query.once === "1")
       return { events: (await this.runs.feed(appId)).map(({ id, event }) => ({ id, ...event })) };
     return eventStream(reply, "no-store", async (stream) => {
-      while (stream.open) {
-        await this.runs.heartbeat(appId);
-        for (const row of await this.runs.feed(appId))
-          if (!stream.send(row.id, String(row.event.type), row.event)) break;
-        stream.comment("keep-alive");
-        await pause(FEED_INTERVAL_MS);
+      const listener = this.doorbell.listen(channels.app(appId));
+      try {
+        while (stream.open) {
+          await this.runs.heartbeat(appId);
+          for (const row of await this.runs.feed(appId))
+            if (!stream.send(row.id, String(row.event.type), row.event)) break;
+          stream.comment("keep-alive");
+          await listener.wait(FEED_BACKSTOP_MS);
+        }
+      } finally {
+        listener.close();
       }
     });
   };

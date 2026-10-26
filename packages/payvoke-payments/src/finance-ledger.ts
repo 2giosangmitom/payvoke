@@ -37,6 +37,10 @@ export async function readFinalizedHold(
 
 // Separate cursor from admission recovery. Every projection is an observation
 // at one canonical finalized block, never an independent source of credit.
+// An unclosed hold seen in a scanned batch, with the chain deadlines that
+// finance acts on. Callers schedule wake-ups from these; the scan stays the truth.
+export type OpenHold = { invocationId: string; deliveryDeadline: bigint; releaseNotBefore: bigint };
+
 export async function scanFinancialLifecycle(
   db: PrismaClient,
   chain: SettlementChain,
@@ -50,7 +54,13 @@ export async function scanFinancialLifecycle(
     const head = await chain.finalized();
     let cursor = await db.settlementScanCursor.findUnique({ where: { id } });
     if (!cursor) {
-      if (head.number < startBlock) return { caughtUp: false, reason: "deployment_not_finalized" };
+      if (head.number < startBlock)
+        return {
+          caughtUp: false,
+          reason: "deployment_not_finalized",
+          open: [],
+          chainTime: head.timestamp,
+        };
       const parent = await chain.client.getBlock({ blockNumber: startBlock - 1n });
       if (!parent.hash) throw new Error("snapshot_unavailable");
       cursor = await db.settlementScanCursor.upsert({
@@ -62,7 +72,13 @@ export async function scanFinancialLifecycle(
     if (head.number < cursor.blockNumber) throw new FinancialInvariantError("finality_regressed");
     await chain.canonical(cursor.blockNumber, cursor.blockHash as Hex);
     if (head.number === cursor.blockNumber)
-      return { caughtUp: true, cursorBlock: cursor.blockNumber, finalizedHead: head.number };
+      return {
+        caughtUp: true,
+        cursorBlock: cursor.blockNumber,
+        finalizedHead: head.number,
+        open: [],
+        chainTime: head.timestamp,
+      };
     // The public Fuji RPC rejects eth_getLogs spans over 100 blocks.
     const end = head.number < cursor.blockNumber + 100n ? head.number : cursor.blockNumber + 100n;
     const block = await chain.client.getBlock({ blockNumber: end });
@@ -166,12 +182,12 @@ export async function scanFinancialLifecycle(
     }
     await chain.canonical(end, block.hash);
     await chain.canonical(head.number, head.hash);
-    await db.$transaction(async (tx) => {
+    const committed = await db.$transaction(async (tx) => {
       const advanced = await tx.settlementScanCursor.updateMany({
         where: { id, blockNumber: cursor!.blockNumber, blockHash: cursor!.blockHash },
         data: { blockNumber: end, blockHash: block.hash! },
       });
-      if (!advanced.count) return;
+      if (!advanced.count) return false;
       for (const log of logs) {
         await tx.vaultFinancialEvent.create({
           data: {
@@ -242,12 +258,28 @@ export async function scanFinancialLifecycle(
         create: { id: deploymentId },
         update: {},
       });
+      return true;
     });
-    const committed = await db.settlementScanCursor.findUniqueOrThrow({ where: { id } });
+    const latest = await db.settlementScanCursor.findUniqueOrThrow({ where: { id } });
+    const open: OpenHold[] = committed
+      ? snapshots.flatMap(({ hold, invocationId }) =>
+          !hold.closed && invocationId
+            ? [
+                {
+                  invocationId,
+                  deliveryDeadline: BigInt(hold.deliveryDeadline),
+                  releaseNotBefore: BigInt(hold.releaseNotBefore),
+                },
+              ]
+            : [],
+        )
+      : [];
     return {
-      caughtUp: committed.blockNumber >= head.number,
-      cursorBlock: committed.blockNumber,
+      caughtUp: latest.blockNumber >= head.number,
+      cursorBlock: latest.blockNumber,
       finalizedHead: head.number,
+      open,
+      chainTime: head.timestamp,
     };
   } catch (error) {
     const reason =

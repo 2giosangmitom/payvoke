@@ -24,6 +24,7 @@
     "@payvoke/db": "workspace:*",
     "@payvoke/payments": "workspace:*",
     "@payvoke/protocol": "workspace:*",
+    "@payvoke/queue": "workspace:*",
     "@payvoke/server": "workspace:*",
     "@payvoke/x402": "workspace:*",
     "@x402/core": "2.28.0",

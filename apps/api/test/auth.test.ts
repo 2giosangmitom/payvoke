@@ -27,6 +27,8 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   const configFor = (web = origin, api = "https://api.payvoke.test") =>
     loadConfig({
       DATABASE_URL: connectionString,
+      // Unused: createApp defaults to in-process signals in tests.
+      REDIS_URL: "redis://127.0.0.1:1",
       WEB_ORIGIN: web,
       API_ORIGIN: api,
       BETTER_AUTH_SECRET: secret,
@@ -49,7 +51,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     try {
       await client.query(`SET search_path TO "${schema}"`);
       const migrations = await readMigrations();
-      assert.equal(migrations[0].name, "20261020000000_init_better_auth");
+      assert.equal(migrations[0].name, "20261026000000_init");
       for (const migration of migrations) await client.query(migration.sql);
     } finally {
       client.release();

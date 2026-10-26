@@ -2,6 +2,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { StringDecoder } from "node:string_decoder";
 import type { Cradle } from "@fastify/awilix";
 import type { Prisma } from "@payvoke/db";
+import { channels } from "@payvoke/queue";
 import {
   BadRequestError,
   ConflictError,
@@ -34,9 +35,13 @@ const LINE_BYTES = 16384;
 // and the NDJSON AG-UI stream. Callers authenticate the app key first.
 export class ProviderRunService {
   private readonly db: Cradle["db"];
+  private readonly doorbell: Cradle["doorbell"];
+  private readonly jobs: Cradle["jobs"];
 
-  constructor({ db }: Cradle) {
+  constructor({ db, doorbell, jobs }: Cradle) {
     this.db = db;
+    this.doorbell = doorbell;
+    this.jobs = jobs;
   }
 
   async heartbeat(appId: string) {
@@ -268,6 +273,14 @@ export class ProviderRunService {
       if (kind !== "progress")
         await tx.invocation.update({ where: { id: invocation.id }, data: { executionStatus } });
     });
+    // Committed: wake the buyer stream, then hand off verification or refunds.
+    this.doorbell.ring(channels.thread(invocation.quote.threadId));
+    if (kind === "result")
+      await this.jobs.verifyDelivery(
+        invocation.id,
+        (data as { artifactVersion: number }).artifactVersion,
+      );
+    if (kind === "failed") await this.jobs.wakeFinance();
     return { lastCommittedSequence: sequence, executionStatus };
   }
 
@@ -342,7 +355,7 @@ export class ProviderRunService {
   }
 
   private async commit(invocation: Work, runId: string, items: StreamItem[]) {
-    return this.db.$transaction(async (tx) => {
+    const sequence = await this.db.$transaction(async (tx) => {
       const run = await tx.providerRun.findUniqueOrThrow({ where: { runId } });
       if (run.state !== "RUNNING" || !run.acknowledgedAt)
         throw new ConflictError("RUN_NOT_RUNNING");
@@ -434,6 +447,8 @@ export class ProviderRunService {
       }
       return sequence;
     });
+    this.doorbell.ring(channels.thread(invocation.quote.threadId));
+    return sequence;
   }
 }
 

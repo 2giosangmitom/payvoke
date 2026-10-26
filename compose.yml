@@ -15,6 +15,17 @@ services:
       timeout: 3s
       retries: 15
 
+  test-redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
   # Full stack, opt-in: docker compose --profile stack up --build
   # Each service reads only its own env file; DATABASE_URL and bind hosts are
   # overridden here so the containers talk to the compose database.
@@ -29,6 +40,23 @@ services:
       - db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d payvoke"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # Wake-ups and job queues only; Postgres stays the source of truth. noeviction
+  # keeps BullMQ from silently losing queued jobs under memory pressure.
+  redis:
+    profiles: [stack]
+    image: redis:8-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    # Also the local dev Redis: docker compose --profile stack up -d redis
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -49,12 +77,14 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      REDIS_URL: redis://redis:6379
       HOST: 0.0.0.0
       FACILITATOR_URL: http://127.0.0.1:3002
     ports:
       - "127.0.0.1:3001:3001"
     depends_on:
       migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
 
   # Shares the API's network namespace, so the API reaches it on loopback and
   # it is never published. Remote deployments need TLS instead.
@@ -67,9 +97,11 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      REDIS_URL: redis://redis:6379
       HOST: 127.0.0.1
     depends_on:
       migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
 
   settlement-worker:
     profiles: [stack]
@@ -79,8 +111,10 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      REDIS_URL: redis://redis:6379
     depends_on:
       migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
 
   finance-worker:
     profiles: [stack]
@@ -90,8 +124,25 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      REDIS_URL: redis://redis:6379
     depends_on:
       migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Keyless BullMQ jobs: delivery verification, later artifacts and webhooks.
+  job-worker:
+    profiles: [stack]
+    build: { context: ., target: job-worker }
+    env_file:
+      - path: apps/job-worker/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
 
 volumes:
   db-data:
+  redis-data:

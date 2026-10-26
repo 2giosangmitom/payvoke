@@ -10,6 +10,7 @@ import { VaultFacilitatorScheme, VaultValidationError } from "@payvoke/x402/faci
 import { createPublicClient, getAddress, http, zeroAddress } from "viem";
 import { logRedaction, parseFinancialJson, vaultDeployment } from "@payvoke/server";
 import { createDatabase, type PrismaClient } from "@payvoke/db";
+import { MemoryJobs, type Jobs } from "@payvoke/queue";
 import { VaultChain } from "@payvoke/x402/chain";
 import type { FacilitatorConfig } from "./config";
 import { createPaymentValidator } from "@payvoke/payments/validation";
@@ -54,6 +55,8 @@ export function createFacilitatorApp(
   config: FacilitatorConfig,
   database?: PrismaClient,
   reader?: VaultChain,
+  // Wakes the settlement worker; tests and tools default to recording calls.
+  jobs: Jobs = new MemoryJobs(),
 ) {
   if (Buffer.byteLength(config.FACILITATOR_TOKEN) < 32)
     throw new VaultValidationError("invalid_facilitator_policy", 503);
@@ -156,7 +159,12 @@ export function createFacilitatorApp(
         relayer: deployment.relayer,
         validate,
         settle: config.SETTLEMENT_ENABLED
-          ? createSettlementService(db, chain, new URL("/v1/invocations", config.API_ORIGIN).href)
+          ? createSettlementService(
+              db,
+              chain,
+              new URL("/v1/invocations", config.API_ORIGIN).href,
+              (invocationId) => jobs.settle(invocationId),
+            )
           : undefined,
       }),
     );

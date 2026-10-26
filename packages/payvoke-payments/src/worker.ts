@@ -11,7 +11,7 @@ import { VaultValidationError } from "@payvoke/x402/facilitator";
 import type { VaultChain } from "@payvoke/x402/chain";
 import type { SettlementChain } from "@payvoke/x402/settlement";
 import { encodeFunctionData, getAddress, type Hex, type LocalAccount } from "viem";
-import type { PrismaClient } from "@payvoke/db";
+import { Prisma, type PrismaClient } from "@payvoke/db";
 import { createPaymentValidator } from "./validation";
 import { SettlementError, SettlementJournal, type GasPolicy } from "./journal";
 
@@ -43,6 +43,8 @@ export class SettlementWorker {
     private readonly signer: LocalAccount,
     private readonly resourceUrl: string,
     private readonly budget: GasPolicy,
+    // Called after an operation commits HELD and its provider feed item exists.
+    private readonly onHeld: (held: { invocationId: string; appId: string }) => void = () => {},
   ) {
     validateGasPolicy(budget);
     if (
@@ -55,63 +57,91 @@ export class SettlementWorker {
       throw new Error("Worker deployment mismatch");
     this.journal = new SettlementJournal(db, { vault: chain.deployment.vault, resourceUrl });
   }
+
+  // Database time, not application clock, determines scheduling and ownership.
+  // Prisma stores these columns as UTC `timestamp`, so compare against the clock
+  // in UTC; a bare timestamptz comparison would shift by the session time zone.
+  private readonly dueFilter = Prisma.sql`state = 'PENDING'
+      AND "nextCheckAt" <= (clock_timestamp() AT TIME ZONE 'UTC')
+      AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= (clock_timestamp() AT TIME ZONE 'UTC'))`;
+
   async tick() {
-    // Database time, not application clock, determines scheduling and ownership.
     const due = await this.db.$queryRaw<{ invocationId: string }[]>`
-      SELECT "invocationId" FROM settlement_operations
-      WHERE state = 'PENDING' AND "nextCheckAt" <= clock_timestamp()
-      AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= clock_timestamp())
+      SELECT "invocationId" FROM settlement_operations WHERE ${this.dueFilter}
       ORDER BY "nextCheckAt", "createdAt" LIMIT 20`;
-    for (const candidate of due) {
-      const lease = await this.journal.claim(candidate.invocationId, this.owner, 120);
-      if (!lease) continue;
+    for (const candidate of due) if (await this.run(candidate.invocationId)) return true;
+    return false;
+  }
+
+  // Job entry point: processes one operation only if it is due right now, so a
+  // wake-up never jumps a deferral the journal scheduled.
+  async handle(invocationId: string) {
+    const [due] = await this.db.$queryRaw<{ invocationId: string }[]>`
+      SELECT "invocationId" FROM settlement_operations
+      WHERE "invocationId" = ${invocationId} AND ${this.dueFilter}`;
+    return due ? this.run(invocationId) : false;
+  }
+
+  // Claims and advances one operation; false when another worker holds it.
+  private async run(invocationId: string) {
+    const lease = await this.journal.claim(invocationId, this.owner, 120);
+    if (!lease) return false;
+    try {
+      await this.process(lease);
+    } catch (error) {
+      if (error instanceof SettlementError && error.code === "LEASE_LOST") return true;
+      const operation = await this.db.settlementOperation.findUnique({
+        where: { invocationId: lease.invocationId },
+        include: { attempt: true },
+      });
+      if (operation?.state !== "PENDING") return true;
       try {
-        await this.process(lease);
-      } catch (error) {
-        if (error instanceof SettlementError && error.code === "LEASE_LOST") return true;
-        const operation = await this.db.settlementOperation.findUnique({
-          where: { invocationId: lease.invocationId },
-          include: { attempt: true },
-        });
-        if (operation?.state !== "PENDING") return true;
-        try {
-          const code =
-            error instanceof VaultValidationError
-              ? error.code
-              : error instanceof SettlementError
-                ? error.code.toLowerCase()
-                : "rpc_unavailable";
-          if (
-            [
-              "transaction_inconsistent",
-              "receipt_inconsistent",
-              "hold_event_inconsistent",
-              "hold_inconsistent",
-              "reverted_with_existing_hold",
-              "journal_inconsistent",
-              "nonce_consumed",
-              "nonce_conflict",
-            ].includes(code)
-          ) {
-            await this.journal.quarantine(lease, code);
-          } else if (
-            !operation.attempt &&
-            error instanceof VaultValidationError &&
-            error.statusCode < 500
-          ) {
-            await this.journal.rejectUnattempted(lease, code);
-          } else {
-            // RESERVED and signed attempts are never discarded on expiry/revoke.
-            await this.journal.defer(lease, code);
-          }
-        } catch (mutationError) {
-          if (!(mutationError instanceof SettlementError && mutationError.code === "LEASE_LOST"))
-            throw mutationError;
+        const code =
+          error instanceof VaultValidationError
+            ? error.code
+            : error instanceof SettlementError
+              ? error.code.toLowerCase()
+              : "rpc_unavailable";
+        if (
+          [
+            "transaction_inconsistent",
+            "receipt_inconsistent",
+            "hold_event_inconsistent",
+            "hold_inconsistent",
+            "reverted_with_existing_hold",
+            "journal_inconsistent",
+            "nonce_consumed",
+            "nonce_conflict",
+          ].includes(code)
+        ) {
+          await this.journal.quarantine(lease, code);
+        } else if (
+          !operation.attempt &&
+          error instanceof VaultValidationError &&
+          error.statusCode < 500
+        ) {
+          await this.journal.rejectUnattempted(lease, code);
+        } else {
+          // RESERVED and signed attempts are never discarded on expiry/revoke.
+          await this.journal.defer(lease, code);
         }
+      } catch (mutationError) {
+        if (!(mutationError instanceof SettlementError && mutationError.code === "LEASE_LOST"))
+          throw mutationError;
       }
       return true;
     }
-    return false;
+    await this.notifyIfHeld(lease.invocationId);
+    return true;
+  }
+
+  private async notifyIfHeld(invocationId: string) {
+    const operation = await this.db.settlementOperation.findUnique({
+      where: { invocationId },
+      select: { state: true, invocation: { select: { quote: { select: { appId: true } } } } },
+    });
+    if (operation?.state === "HELD")
+      this.onHeld({ invocationId, appId: operation.invocation.quote.appId });
   }
 
   private async process(lease: import("./journal").SettlementLease) {

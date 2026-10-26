@@ -1,7 +1,5 @@
 import type { FastifyReply } from "fastify";
 
-export const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export type EventStream = {
   readonly open: boolean;
   // False once the client is gone or the socket applies backpressure.

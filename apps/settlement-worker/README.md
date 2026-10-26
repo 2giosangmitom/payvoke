@@ -41,8 +41,16 @@ and **no ready event**; [`apps/finance-worker`](../finance-worker/README.md)
 refunds them after `deliveryDeadline`, or the buyer can reclaim after `resolveBy`.
 Contradictory receipts/holds/nonces are quarantined without releasing the lane.
 
-Finalized log backfill starts at `DEPLOYMENT_START_BLOCK`, scans at most 500 blocks
-per iteration and advances a CAS-protected durable cursor in the same transaction
+The facilitator enqueues a `settle` job right after it journals an intent, and the
+worker handles it at once if the operation is due; deferred checks and lost jobs are
+picked up by the database sweep every 5 s. Jobs and the sweep share one in-process
+lane, so the relayer nonce is never driven twice at the same time; the SQL lease
+still fences other processes. When an operation commits HELD the worker rings the
+app's provider feed, and every open hold seen by the financial scan schedules finance
+wake-ups at its `deliveryDeadline` and `releaseNotBefore`.
+
+Finalized log backfill starts at `DEPLOYMENT_START_BLOCK`, scans at most 100 blocks
+(the public Fuji RPC limit for `eth_getLogs`) per iteration and advances a CAS-protected durable cursor in the same transaction
 as recovery wakeups/incidents. Logs alone never mark HELD. Orphan/mismatched holds
 are recorded in `settlement_incidents`, not fabricated into invocations or jobs.
 No cursor/lane/attempt TTL cleanup or operator force-release endpoint is provided.

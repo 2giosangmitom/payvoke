@@ -1,14 +1,20 @@
 import "dotenv/config";
 import { setTimeout as delay } from "node:timers/promises";
 import closeWithGrace from "close-with-grace";
+import { Worker } from "bullmq";
 import { createPublicClient, getAddress, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { createDatabase } from "@payvoke/db";
-import { vaultDeployment } from "@payvoke/server";
+import { connectRedis, queues, serial, throttled } from "@payvoke/queue";
+import { errorTag, vaultDeployment } from "@payvoke/server";
 import { FinanceService } from "@payvoke/payments/finance";
 import { AutoFinance } from "@payvoke/payments/finance-policy";
 import { financeGasPolicy, loadFinanceWorkerConfig } from "./config";
+
+// Jobs wake finance on new evidence, failed runs and hold deadlines; the sweep
+// only backs up wake-ups Redis lost.
+const SWEEP_MS = 30000;
 
 let db: ReturnType<typeof createDatabase> | undefined;
 try {
@@ -30,6 +36,11 @@ try {
   });
   const chain = new SettlementChain(client, deployment);
   await chain.finalized();
+  const onError = throttled(
+    (error) => console.error(`Finance worker Redis error (${errorTag(error)})`),
+    errorTag,
+  );
+  const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
   db = createDatabase(config.DATABASE_URL);
   const database = db;
   const auto = new AutoFinance(
@@ -38,6 +49,18 @@ try {
     executor,
   );
   let stopping = false;
+  // One executor lane: a job and the sweep never send decisions concurrently.
+  const lane = serial();
+  const cycle = () =>
+    lane(async () => {
+      await auto.propose();
+      if (!stopping) await auto.execute();
+    });
+  const waker = new Worker(queues.finance, () => cycle(), { connection: consumer, concurrency: 1 });
+  waker.on("failed", (_job, error) =>
+    console.error(`Finance job failed (${errorTag(error)}); durable state retained`),
+  );
+  waker.on("error", onError);
   let finish!: () => void;
   const done = new Promise<void>((resolve) => {
     finish = resolve;
@@ -46,26 +69,27 @@ try {
     { delay: 150000, logger: { error: () => console.error("Finance worker shutdown failed") } },
     async () => {
       stopping = true;
+      await waker.close();
       await done;
+      consumer.disconnect();
       await database.$disconnect();
     },
   );
   try {
     while (!stopping) {
       try {
-        await auto.propose();
-        if (!stopping) await auto.execute();
-      } catch {
-        console.error("Finance worker tick failed; durable state retained");
+        await cycle();
+      } catch (error) {
+        console.error(`Finance worker tick failed (${errorTag(error)}); durable state retained`);
       }
-      if (!stopping) await delay(5000);
+      if (!stopping) await delay(SWEEP_MS);
     }
   } finally {
     finish();
   }
 } catch {
   console.error(
-    "Finance worker startup failed: check execution policy, signer keys, database and RPC",
+    "Finance worker startup failed: check execution policy, signer keys, database, RPC and Redis",
   );
   await db?.$disconnect().catch(() => {});
   process.exitCode = 1;

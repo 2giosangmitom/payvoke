@@ -22,7 +22,7 @@ Nền tảng → contract → backend/API → x402 và recovery → provider/job
 2. Có test đúng lớp: unit cho tính toán, integration cho DB/chain, HTTP contract cho endpoint, E2E cho luồng người dùng. Không mock mất phần đang cần chứng minh.
 3. Formatting, lint, typecheck và test liên quan pass; không thêm secret/key thật vào repo/log.
 4. Idempotency, quyền sở hữu, timeout và lỗi được xử lý nếu task có side effect.
-5. Task không tự thêm Redis/Kafka, đa chain, hosted custody hay tính năng ngoài phạm vi để “chuẩn bị tương lai”.
+5. Task không tự thêm Kafka/RabbitMQ, đa chain, hosted custody hay tính năng ngoài phạm vi để “chuẩn bị tương lai”. Redis/BullMQ đã được duyệt ngày 26/10/2026 với phạm vi hẹp (xem §15): chỉ báo việc và chạy job idempotent, không lưu trạng thái.
 
 ## 2. Mốc hiện tại và layout mục tiêu
 
@@ -337,7 +337,8 @@ Số trong fixture chỉ là dữ liệu test. T089 phải có cấu hình cụ 
 ### Ngoài phạm vi ban đầu
 
 - Multi-chain/custom Avalanche L1, smart-account/bundler/paymaster bắt buộc, ZK/TEE và batch-settlement/payment channel.
-- Redis/Kafka/RabbitMQ trước khi Postgres outbox/worker đã được đo và thấy không đáp ứng.
+- Kafka/RabbitMQ trước khi Postgres outbox/worker đã được đo và thấy không đáp ứng.
+- Redis làm nơi lưu trạng thái. **Quyết định 26/10/2026:** Redis/BullMQ chỉ được dùng để (1) đánh thức SSE buyer/provider bằng pub/sub, (2) lưu rate-limit dùng chung giữa các bản API, (3) chạy job không giữ key trong `apps/job-worker` (xác minh delivery), (4) đánh thức settlement/finance worker và hẹn giờ theo deadline của hold. Postgres journal, lease và nonce lane vẫn là nguồn sự thật; mọi consumer giữ vòng quét DB dự phòng nên Redis mất dữ liệu hoặc sập chỉ làm chậm, không làm sai.
 - Remote MCP paid signer, arbitrary provider code execution trong Payvoke, tool gọi chéo agent trong cùng phiên.
 - LLM tự phân xử tranh chấp hoặc tự xác nhận đồng ý chi tiền thay người dùng.
 - Phí theo token/parameter động trái giá cố định command, mainnet rollout hoặc hỗ trợ token tùy ý.

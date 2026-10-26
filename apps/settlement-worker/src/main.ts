@@ -1,16 +1,31 @@
 import "dotenv/config";
 import { setTimeout as delay } from "node:timers/promises";
 import closeWithGrace from "close-with-grace";
+import { Worker } from "bullmq";
 import { createPublicClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { VaultChain } from "@payvoke/x402/chain";
 import { SettlementChain } from "@payvoke/x402/settlement";
 import { createDatabase } from "@payvoke/db";
-import { vaultDeployment } from "@payvoke/server";
+import {
+  channels,
+  connectRedis,
+  queues,
+  QueueJobs,
+  ring,
+  serial,
+  throttled,
+  type InvocationJob,
+} from "@payvoke/queue";
+import { errorTag, vaultDeployment } from "@payvoke/server";
 import { SettlementWorker } from "@payvoke/payments/worker";
 import { loadWorkerConfig, workerGasPolicy } from "./config";
 import { scanFinalizedHolds } from "@payvoke/payments/scanner";
 import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
+
+// `settle` jobs wake the worker as soon as the facilitator journals an intent;
+// the sweep still finds deferred operations and any job Redis lost.
+const SWEEP_MS = 5000;
 
 let db: ReturnType<typeof createDatabase> | undefined;
 try {
@@ -29,6 +44,13 @@ try {
   // Role revocation must stop admission, not receipt recovery for old attempts.
   await admission.initialize({ requireRelayerRole: false });
   await chain.finalized();
+  const onError = throttled(
+    (error) => console.error(`Settlement worker Redis error (${errorTag(error)})`),
+    errorTag,
+  );
+  const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
+  const producer = await connectRedis(config.REDIS_URL, "producer", onError);
+  const jobs = new QueueJobs(producer, onError);
   db = createDatabase(config.DATABASE_URL);
   const database = db;
   const worker = new SettlementWorker(
@@ -38,7 +60,22 @@ try {
     signer,
     new URL("/v1/invocations", config.API_ORIGIN).href,
     budget,
+    // The hold committed with an invocation.ready item on the provider feed.
+    ({ appId }) => ring(producer, channels.app(appId), onError),
   );
+  // One relayer, one nonce lane: jobs and the sweep never run concurrently.
+  const lane = serial();
+  const settler = new Worker<InvocationJob>(
+    queues.settlement,
+    (job) => lane(() => worker.handle(job.data.invocationId)),
+    { connection: consumer, concurrency: 1 },
+  );
+  settler.on("failed", (_job, error) =>
+    console.error(`Settlement job failed (${errorTag(error)}); durable state retained`),
+  );
+  settler.on("error", onError);
+  const start = BigInt(config.DEPLOYMENT_START_BLOCK);
+
   let stopping = false;
   let finish!: () => void;
   const done = new Promise<void>((resolve) => {
@@ -48,33 +85,46 @@ try {
     { delay: 150000, logger: { error: () => console.error("Settlement worker shutdown failed") } },
     async () => {
       stopping = true;
+      await settler.close();
       await done;
+      await jobs.close();
+      consumer.disconnect();
+      producer.disconnect();
       await database.$disconnect();
     },
   );
   try {
     while (!stopping) {
+      let busy = false;
       try {
-        await worker.tick();
-      } catch {
-        console.error("Settlement worker tick failed; durable state retained");
+        busy = await lane(() => worker.tick());
+      } catch (error) {
+        console.error(`Settlement worker tick failed (${errorTag(error)}); durable state retained`);
       }
       if (!stopping) {
         try {
-          await scanFinancialLifecycle(database, chain, BigInt(config.DEPLOYMENT_START_BLOCK));
-          await scanFinalizedHolds(database, chain, BigInt(config.DEPLOYMENT_START_BLOCK));
-        } catch {
-          console.error("Settlement backfill failed; cursor retained");
+          const lifecycle = await scanFinancialLifecycle(database, chain, start);
+          // Finance acts at each hold's deadlines; schedule a wake-up for both.
+          for (const hold of lifecycle.open) {
+            await jobs.financeDue(hold.invocationId, hold.deliveryDeadline, lifecycle.chainTime);
+            await jobs.financeDue(hold.invocationId, hold.releaseNotBefore, lifecycle.chainTime);
+          }
+          if (lifecycle.open.length) await jobs.wakeFinance();
+          await scanFinalizedHolds(database, chain, start);
+          // Keep scanning without a pause while finalized blocks are still behind.
+          if (!lifecycle.caughtUp && !("reason" in lifecycle)) busy = true;
+        } catch (error) {
+          console.error(`Settlement backfill failed (${errorTag(error)}); cursor retained`);
         }
       }
-      if (!stopping) await delay(1000);
+      if (!stopping && !busy) await delay(SWEEP_MS);
     }
   } finally {
     finish();
   }
 } catch {
   console.error(
-    "Settlement worker startup failed: check explicit execution policy, database and RPC",
+    "Settlement worker startup failed: check explicit execution policy, database, RPC and Redis",
   );
   await db?.$disconnect().catch(() => {});
   process.exitCode = 1;

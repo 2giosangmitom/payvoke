@@ -7,6 +7,8 @@ const schema = Type.Object({
   PORT: Type.Integer({ default: 3002 }),
   LOG_LEVEL: Type.String({ default: "info" }),
   DATABASE_URL: Type.String(),
+  // Settlement wake-ups only; the journal in Postgres stays authoritative.
+  REDIS_URL: Type.String(),
   FACILITATOR_TOKEN: Type.String(),
   ...deploymentEnv,
 });

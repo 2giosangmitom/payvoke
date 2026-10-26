@@ -2,6 +2,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { randomUUID } from "node:crypto";
 import type { Cradle } from "@fastify/awilix";
 import type { Prisma } from "@payvoke/db";
+import { channels } from "@payvoke/queue";
 import {
   BadRequestError,
   ConflictError,
@@ -27,9 +28,17 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
 // (invocation, clientRequestId).
 export class ContinuationService {
   private readonly db: Cradle["db"];
+  private readonly doorbell: Cradle["doorbell"];
 
-  constructor({ db }: Cradle) {
+  constructor({ db, doorbell }: Cradle) {
     this.db = db;
+    this.doorbell = doorbell;
+  }
+
+  // A continuation is a new item on the provider feed and a change the buyer sees.
+  private ring(quote: { appId: string; threadId: string }) {
+    this.doorbell.ring(channels.app(quote.appId));
+    this.doorbell.ring(channels.thread(quote.threadId));
   }
 
   // The input schema comes from the provider's question, never the browser.
@@ -105,6 +114,7 @@ export class ContinuationService {
       if (isUniqueViolation(error)) throw new ConflictError("QUESTION_ALREADY_ANSWERED");
       throw error;
     }
+    this.ring(invocation.quote);
     const answer = await this.db.invocationAnswer.findUniqueOrThrow({ where: key });
     return {
       questionId: body.questionId,
@@ -204,6 +214,7 @@ export class ContinuationService {
         if (!queued.count) throw new ConflictError("REVISION_NOT_AVAILABLE");
         return revision;
       });
+      this.ring(invocation.quote);
       return { revisionId: created.id, runId, executionStatus: "QUEUED" };
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictError("REVISION_ALREADY_REQUESTED");
