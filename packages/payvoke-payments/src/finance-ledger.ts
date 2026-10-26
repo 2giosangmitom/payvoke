@@ -63,7 +63,8 @@ export async function scanFinancialLifecycle(
     await chain.canonical(cursor.blockNumber, cursor.blockHash as Hex);
     if (head.number === cursor.blockNumber)
       return { caughtUp: true, cursorBlock: cursor.blockNumber, finalizedHead: head.number };
-    const end = head.number < cursor.blockNumber + 500n ? head.number : cursor.blockNumber + 500n;
+    // The public Fuji RPC rejects eth_getLogs spans over 100 blocks.
+    const end = head.number < cursor.blockNumber + 100n ? head.number : cursor.blockNumber + 100n;
     const block = await chain.client.getBlock({ blockNumber: end });
     if (!block.hash) throw new Error("snapshot_unavailable");
     const client = chain.client;

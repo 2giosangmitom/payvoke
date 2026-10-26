@@ -43,8 +43,6 @@ admin key. Add a `PayvokeVaultRoles` object with `relayer` (settlement worker),
 pnpm exec hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
 
-The contract changed when disputes were removed (`ResolutionDecision` and `HoldView`
-lost their dispute fields), so the earlier Fuji deployment in
-`ignition/deployments/chain-43113` does not match this source. Redeploy, then update
-`VAULT_ADDRESS`, `EXPECTED_VAULT_CODE_HASH` and `DEPLOYMENT_START_BLOCK` in every
-service `.env`.
+The current Fuji deployment (`ignition/deployments/chain-43113`, block 60042827) matches
+this source. The earlier vault, deployed before disputes were removed, is kept in
+`ignition/deployments/legacy-chain-43113-predispute-removal` for reference only.

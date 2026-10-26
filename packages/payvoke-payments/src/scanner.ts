@@ -27,8 +27,9 @@ export async function scanFinalizedHolds(
   if (checkpoint.number < cursor.blockNumber)
     throw new VaultValidationError("finality_regressed", 503);
   if (checkpoint.number === cursor.blockNumber) return;
+  // The public Fuji RPC rejects eth_getLogs spans over 100 blocks.
   const end =
-    checkpoint.number < cursor.blockNumber + 500n ? checkpoint.number : cursor.blockNumber + 500n;
+    checkpoint.number < cursor.blockNumber + 100n ? checkpoint.number : cursor.blockNumber + 100n;
   const block = await chain.client.getBlock({ blockNumber: end });
   if (!block.hash) throw new VaultValidationError("snapshot_unavailable", 503);
   const logs = await chain.client.getLogs({
