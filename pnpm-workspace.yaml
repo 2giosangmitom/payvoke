@@ -22,6 +22,8 @@ permissions:
     skills: true
   '@tanstack/react-router':
     skills: true
+  '@slidev/cli':
+    skills: true
 
 skills:
   dirs:
