@@ -5,6 +5,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Optional native msgpack speedup for BullMQ; the pure JS fallback is enough.
+  msgpackr-extract: false
   protobufjs: true
 
 permissions:
@@ -20,9 +22,9 @@ permissions:
     build: true
   "@open-slide/core":
     skills: true
-  '@tanstack/react-router':
+  "@tanstack/react-router":
     skills: true
-  '@slidev/cli':
+  "@slidev/cli":
     skills: true
 
 skills:

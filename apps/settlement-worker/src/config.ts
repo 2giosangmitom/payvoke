@@ -5,6 +5,8 @@ import { validateGasPolicy } from "@payvoke/payments/worker";
 const schema = Type.Object({
   EXECUTION_ENABLED: Type.Boolean({ default: false }),
   DATABASE_URL: Type.String(),
+  // Wake-ups and job queues only; the journal in Postgres stays authoritative.
+  REDIS_URL: Type.String(),
   ...deploymentEnv,
   RELAYER_PRIVATE_KEY: Type.String(),
   DEPLOYMENT_START_BLOCK: Type.String(),

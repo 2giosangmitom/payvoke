@@ -29,12 +29,11 @@ pnpm generate                          # regenerate Prisma Client after schema c
 
 `migrate dev` requires a development DB and a shadow DB Prisma can create/use;
 never point it at production. Better Auth models are generated directly using
-the pinned `auth@1.7.11` CLI with its native table names. The single initial migration
-was generated with `prisma migrate diff --from-empty --to-schema
-prisma --script --output
-prisma/migrations/20261020000000_init_better_auth/migration.sql`.
-No Neon migration has been applied by the implementation process.
+the pinned `auth@1.7.11` CLI with its native table names; `pnpm auth:schema`
+rewrites `auth.prisma`, so re-add `previewFeatures = ["partialIndexes"]` to its
+generator if the CLI drops it (the one-active-key index on `app_api_keys` needs it).
 
-Migration history has been regenerated for a fresh database, not as an upgrade
-from the previous schema. If a database already applied older migrations, stop
-and plan its transition separately; do not run reset/db push or drop real data.
+History was squashed before the first production deployment into a single
+`20261026000000_init` migration, generated with `prisma migrate diff --from-empty
+--to-schema prisma --script`. Databases that applied the earlier migrations must be
+recreated, not upgraded; never run reset/db push against real data.

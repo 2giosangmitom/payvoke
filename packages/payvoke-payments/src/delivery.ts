@@ -1,0 +1,86 @@
+import Ajv2020 from "ajv/dist/2020.js";
+import { hashSnapshot, type Json } from "@payvoke/protocol";
+import type { PrismaClient } from "@payvoke/db";
+import { recordPaymentDelivery } from "./finance";
+
+const object = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+// A paid run waiting for host verification of its stored result.
+const awaiting = {
+  executionStatus: "VERIFYING" as const,
+  settlement: { state: "HELD" as const },
+  run: { state: "VERIFYING" },
+};
+
+// Oldest runs awaiting verification, for the sweep that re-enqueues jobs a
+// crashed producer never added.
+export async function pendingVerifications(db: PrismaClient, limit = 100) {
+  const rows = await db.invocation.findMany({
+    where: awaiting,
+    select: { id: true, run: { select: { result: true } } },
+    take: limit,
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.flatMap((row) => {
+    const result = row.run?.result;
+    return object(result) && Number.isSafeInteger(result.artifactVersion)
+      ? [{ invocationId: row.id, artifactVersion: result.artifactVersion as number }]
+      : [];
+  });
+}
+
+// Trusted host-side verification for one inline JSON result. File results
+// require a separate artifact/access verifier and are deliberately excluded.
+// Provider reports never directly create delivery evidence or unlock payment;
+// the decision uses the stored immutable result and snapshotted schema.
+// Returns whether evidence was recorded. Safe to repeat: the evidence id is
+// derived from the invocation and artifact version.
+export async function verifyStructuredDelivery(db: PrismaClient, invocationId: string) {
+  const invocation = await db.invocation.findFirst({
+    where: { id: invocationId, ...awaiting },
+    select: {
+      id: true,
+      quote: { select: { document: true, commandRevisionId: true } },
+      run: { select: { result: true } },
+    },
+  });
+  if (!invocation) return false;
+  const result = invocation.run?.result;
+  const document = invocation.quote.document;
+  if (!object(result) || !object(document) || !object(document.inputSnapshot)) return false;
+  if (
+    !Number.isSafeInteger(result.artifactVersion) ||
+    (result.artifactVersion as number) < 1 ||
+    !Array.isArray(result.files) ||
+    result.files.length > 0
+  )
+    return false;
+  if (!invocation.quote.commandRevisionId) return false;
+  const command = await db.appCommandRevision.findUnique({
+    where: { id: invocation.quote.commandRevisionId },
+    select: { outputSchema: true },
+  });
+  if (!command?.outputSchema || !object(command.outputSchema)) return false;
+  const validate = new Ajv2020({ strict: true, useDefaults: false }).compile(command.outputSchema);
+  if (!validate(result.output)) return false;
+  await recordPaymentDelivery(db, {
+    id: `structured-${invocation.id}-${result.artifactVersion}`,
+    invocationId: invocation.id,
+    artifactVersion: result.artifactVersion as number,
+    outputHash: hashSnapshot(result.output as Json),
+    verifier: "payvoke-host-structured-v1",
+    accessInterruptionSeconds: 0,
+    // Schema-valid output bound to app, invocation and artifact version (M05).
+    evidenceLevel: "SIGN",
+  });
+  return true;
+}
+
+// Verifies every pending run once; returns how many gained evidence.
+export async function verifyStructuredDeliveries(db: PrismaClient) {
+  let verified = 0;
+  for (const { invocationId } of await pendingVerifications(db, 20))
+    if (await verifyStructuredDelivery(db, invocationId)) verified++;
+  return verified;
+}

@@ -31,7 +31,11 @@ settlement relayer. Neither key can move funds anywhere except to the hold's own
 buyer (refund) or its signed provider and fee recipient (release), and release is
 still rejected on chain before `releaseNotBefore`.
 
-Each loop proposes at most one decision per open hold, then advances queued
+Finance runs when a BullMQ `finance` job wakes it: new delivery evidence, a failed
+run, or a hold deadline scheduled by the settlement worker. A 30 s database sweep
+covers lost wake-ups. Jobs and the sweep share one in-process lane.
+
+Each cycle proposes at most one decision per open hold, then advances queued
 decisions through `FinanceService` in `@payvoke/payments`: the same gate,
 single-executor lane, gas budget, persisted signed bytes and finalized-receipt
 checks as before. The settlement worker keeps the financial projection up to date.

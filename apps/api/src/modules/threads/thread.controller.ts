@@ -1,7 +1,8 @@
 import type { Cradle } from "@fastify/awilix";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { BadRequestError } from "../../errors";
-import { eventStream, pause } from "../../http/sse";
+import { channels } from "@payvoke/queue";
+import { eventStream } from "../../http/sse";
 import type { NewThreadBody, ThreadQuery } from "./thread.service";
 
 export type ThreadRoute = { Params: { threadId: string } };
@@ -10,14 +11,17 @@ export type ListThreadsRoute = { Querystring: ThreadQuery };
 export type RenameThreadRoute = ThreadRoute & { Body?: { title?: unknown } };
 export type ThreadEventsRoute = ThreadRoute & { Querystring: { after?: string; once?: string } };
 
-const POLL_MS = 600;
+// Rings wake the stream at once; the backstop bounds latency if one is lost.
+const BACKSTOP_MS = 5000;
 const KEEP_ALIVE_MS = 15000;
 
 export class ThreadController {
   private readonly threads: Cradle["threadService"];
+  private readonly doorbell: Cradle["doorbell"];
 
-  constructor({ threadService }: Cradle) {
+  constructor({ threadService, doorbell }: Cradle) {
     this.threads = threadService;
+    this.doorbell = doorbell;
   }
 
   create = async (request: FastifyRequest<CreateThreadRoute>, reply: FastifyReply) => {
@@ -54,19 +58,25 @@ export class ThreadController {
     await this.threads.assertReplayable(threadId, cursor);
     const once = request.query.once === "1";
     return eventStream(reply, "no-store, no-transform", async (stream) => {
-      let lastKeepAlive = Date.now();
-      do {
-        for (const row of await this.threads.eventsAfter(threadId, cursor)) {
-          if (!stream.send(row.cursor, "ag-ui", row.event)) break;
-          cursor = row.cursor;
-        }
-        if (once) break;
-        if (Date.now() - lastKeepAlive > KEEP_ALIVE_MS) {
-          stream.comment("keep-alive");
-          lastKeepAlive = Date.now();
-        }
-        await pause(POLL_MS);
-      } while (stream.open);
+      // Listen before the first read so a commit racing it is not slept through.
+      const listener = once ? undefined : this.doorbell.listen(channels.thread(threadId));
+      try {
+        let lastKeepAlive = Date.now();
+        do {
+          for (const row of await this.threads.eventsAfter(threadId, cursor)) {
+            if (!stream.send(row.cursor, "ag-ui", row.event)) break;
+            cursor = row.cursor;
+          }
+          if (!listener) break;
+          if (Date.now() - lastKeepAlive > KEEP_ALIVE_MS) {
+            stream.comment("keep-alive");
+            lastKeepAlive = Date.now();
+          }
+          await listener.wait(BACKSTOP_MS);
+        } while (stream.open);
+      } finally {
+        listener?.close();
+      }
     });
   };
 }

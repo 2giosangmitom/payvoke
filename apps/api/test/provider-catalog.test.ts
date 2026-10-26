@@ -11,7 +11,8 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "@payvoke/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { verifyStructuredDeliveries } from "../src/modules/runs/delivery-verifier";
+import { pendingVerifications, verifyStructuredDeliveries } from "@payvoke/payments/delivery";
+import { MemoryDoorbell, MemoryJobs } from "@payvoke/queue";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;
@@ -21,6 +22,7 @@ let postgres: TestPostgres;
 let pool: Pool;
 let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
+const jobs = new MemoryJobs();
 
 before(async () => {
   postgres = await startTestPostgres();
@@ -38,6 +40,8 @@ before(async () => {
   app = createApp(
     loadConfig({
       DATABASE_URL: connectionString,
+      // Unused: the test passes in-process signals.
+      REDIS_URL: "redis://127.0.0.1:1",
       WEB_ORIGIN: origin,
       API_ORIGIN: "https://api.payvoke.test",
       BETTER_AUTH_SECRET: randomBytes(48).toString("base64"),
@@ -45,6 +49,7 @@ before(async () => {
       VAULT_ADDRESS: wallet.address,
     }),
     db,
+    { doorbell: new MemoryDoorbell(), jobs, close: async () => {} },
   );
   await app.ready();
 });
@@ -739,6 +744,11 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   assert.equal((await postWorker(`${task}/reports`, validResult)).statusCode, 200);
   assert.equal((await postWorker(`${task}/reports`, validResult)).statusCode, 200);
+  // The committed result is handed to the verifier queue once; the replay is not.
+  assert.deepEqual(
+    jobs.calls.filter((call) => call.name === "verifyDelivery"),
+    [{ name: "verifyDelivery", args: [quoted.invocationId, 1] }],
+  );
   assert.equal(
     (
       await postWorker(`${task}/reports`, {
@@ -752,8 +762,13 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(invocationStatus.json().executionStatus, "VERIFYING");
   const unverified = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(unverified.json().invocations[0].output, null);
+  // The job-worker sweep finds the run even if the enqueue above was lost.
+  assert.deepEqual(await pendingVerifications(db), [
+    { invocationId: quoted.invocationId, artifactVersion: 1 },
+  ]);
   assert.equal(await verifyStructuredDeliveries(db), 1);
   assert.equal(await verifyStructuredDeliveries(db), 0);
+  assert.deepEqual(await pendingVerifications(db), []);
   assert.equal(await db.paymentDeliveryEvidence.count(), 1);
   const delivered = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(delivered.json().invocations[0].executionStatus, "DELIVERED");

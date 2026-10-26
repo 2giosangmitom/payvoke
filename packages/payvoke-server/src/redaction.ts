@@ -27,3 +27,12 @@ export const logRedaction = {
   ],
   censor: "[REDACTED]",
 };
+
+// Error class and code only: messages can embed RPC URLs, SQL or signed payloads.
+export function errorTag(error: unknown) {
+  if (!(error instanceof Error)) return "unknown";
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" || typeof code === "number"
+    ? `${error.name}:${code}`
+    : error.name;
+}

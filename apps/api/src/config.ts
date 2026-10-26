@@ -6,6 +6,8 @@ const schema = Type.Object({
   PORT: Type.Integer({ default: 3001 }),
   LOG_LEVEL: Type.String({ default: "info" }),
   DATABASE_URL: Type.String(),
+  // Wake-ups, job queues and the shared rate-limit store; not a source of truth.
+  REDIS_URL: Type.String(),
   API_ORIGIN: Type.String(),
   WEB_ORIGIN: Type.String(),
   BETTER_AUTH_SECRET: Type.String(),

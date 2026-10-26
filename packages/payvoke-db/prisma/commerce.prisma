@@ -44,6 +44,8 @@ model AppApiKey {
   app        App       @relation(fields: [appId], references: [id], onDelete: Restrict)
 
   @@index([appId, revokedAt])
+  // An app has at most one unrevoked key.
+  @@unique([appId], where: raw("\"revokedAt\" IS NULL"), map: "app_api_keys_one_active_per_app")
   @@map("app_api_keys")
 }
 

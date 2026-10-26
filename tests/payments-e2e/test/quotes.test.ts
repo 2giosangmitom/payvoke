@@ -65,6 +65,7 @@ import {
   type WireDecision,
 } from "@payvoke/payments/finance";
 import { scanFinancialLifecycle } from "@payvoke/payments/finance-ledger";
+import { serial } from "@payvoke/queue";
 import { AutoFinance, autoOutcome } from "@payvoke/payments/finance-policy";
 import { vaultFinanceAbi } from "@payvoke/protocol";
 
@@ -91,7 +92,6 @@ describe("quotes, x402 and isolated settlement", () => {
   let productId: string;
   let commandId: string;
   let journal: SettlementJournal;
-  let preservedMigrationQuote = false;
   let privateApps: ReturnType<typeof createFacilitatorApp>[];
   const serviceToken = randomBytes(32).toString("hex");
 
@@ -116,28 +116,11 @@ describe("quotes, x402 and isolated settlement", () => {
     });
     pool.setMaxListeners(50);
     await pool.query(`CREATE SCHEMA "${schema}"`);
-    for (const entry of await readMigrations()) {
-      if (entry.name === "20261021010000_settlement_journal") {
-        await pool.query(`
-          INSERT INTO products (id, kind) VALUES ('migration-product', 'TOOL');
-          INSERT INTO usage_sessions (id, "buyerId", "productId") VALUES ('migration-session', 'migration-buyer', 'migration-product');
-          INSERT INTO quotes (id, "invocationId", "buyerId", "sessionId", "clientRequestId", "requestHash", "validUntil", document)
-          VALUES ('migration-quote', 'migration-invocation', 'migration-buyer', 'migration-session', 'migration-request', 'original-hash', NOW(), '{"original":"preserved"}');
-        `);
-      }
-      await pool.query(entry.sql);
-      if (entry.name === "20261021010000_settlement_journal") {
-        const preserved = await pool.query(
-          'SELECT "requestHash", document FROM quotes WHERE id = $1',
-          ["migration-quote"],
-        );
-        assert.equal(preserved.rows[0].requestHash, "original-hash");
-        assert.deepEqual(preserved.rows[0].document, { original: "preserved" });
-        preservedMigrationQuote = true;
-      }
-    }
+    for (const entry of await readMigrations()) await pool.query(entry.sql);
     config = loadConfig({
       DATABASE_URL: connectionString,
+      // Unused: createApp defaults to in-process signals in tests.
+      REDIS_URL: "redis://127.0.0.1:1",
       API_ORIGIN: api,
       WEB_ORIGIN: origin,
       BETTER_AUTH_SECRET: randomBytes(48).toString("base64"),
@@ -408,6 +391,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const f = createFacilitatorApp(
       loadFacilitatorConfig({
         DATABASE_URL: config.DATABASE_URL,
+        REDIS_URL: config.REDIS_URL,
         API_ORIGIN: api,
         RPC_URL: "https://rpc.payvoke.test",
         FACILITATOR_TOKEN: serviceToken,
@@ -464,8 +448,19 @@ describe("quotes, x402 and isolated settlement", () => {
       authorizationDigest: intent.authorizationDigest,
       grantId: intent.authorization.grantId,
     });
-    const service = createSettlementService(db, preview.chain, `${api}/v1/invocations`);
-    const makeWorker = (budget = gasPolicy) =>
+    const intents: string[] = [];
+    const service = createSettlementService(
+      db,
+      preview.chain,
+      `${api}/v1/invocations`,
+      async (invocationId) => {
+        intents.push(invocationId);
+      },
+    );
+    const makeWorker = (
+      budget = gasPolicy,
+      onHeld?: (held: { invocationId: string; appId: string }) => void,
+    ) =>
       new SettlementWorker(
         db,
         preview.chain,
@@ -473,6 +468,7 @@ describe("quotes, x402 and isolated settlement", () => {
         relayer,
         `${api}/v1/invocations`,
         budget,
+        onHeld,
       );
     const due = async () => {
       await db.settlementOperation.updateMany({
@@ -481,11 +477,10 @@ describe("quotes, x402 and isolated settlement", () => {
       });
     };
     await assert.rejects(service(p, paymentRequirements(q)), /settlement_queued/);
-    return { p, intent, preview, ...settlement, service, makeWorker, due };
+    return { p, intent, preview, ...settlement, service, makeWorker, due, intents };
   }
 
   it("freezes effective defaults, all snapshots and canonical EIP-712 fields", async () => {
-    assert.ok(preservedMigrationQuote, "additive journal migration preserved existing quotes");
     const q = await quote();
     assert.deepEqual(q.effectiveArguments, { text: "hello", language: "vi" });
     assert.deepEqual(q.contextManifest, { messages: [], brief: null, files: [] });
@@ -1449,6 +1444,32 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(status.json().receipt.success, true);
   });
 
+  it("wakes settlement by job without skipping deferrals and signals the provider feed on HELD", async () => {
+    const q = await quote();
+    const f = await execution(q);
+    // Only a newly journaled intent wakes the worker; a resubmission does not.
+    await assert.rejects(f.service(f.p, paymentRequirements(q)), /settlement_queued/);
+    assert.deepEqual(f.intents, [q.invocationId]);
+    const held: { invocationId: string; appId: string }[] = [];
+    const worker = f.makeWorker(gasPolicy, (event) => held.push(event));
+    assert.equal(await worker.handle(q.invocationId), true);
+    assert.equal(f.state.sent.length, 1);
+    // The journal deferred the receipt check; an early wake-up must not jump it.
+    assert.equal(await worker.handle(q.invocationId), false);
+    assert.deepEqual(held, []);
+    await f.due();
+    // A job and the sweep on one lane advance the operation exactly once.
+    const lane = serial();
+    assert.deepEqual(
+      await Promise.all([lane(() => worker.handle(q.invocationId)), lane(() => worker.tick())]),
+      [true, false],
+    );
+    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
+    assert.equal(f.state.sent.length, 1);
+    const { appId } = await db.quote.findFirstOrThrow({ where: { id: q.quoteId } });
+    assert.deepEqual(held, [{ invocationId: q.invocationId, appId }]);
+  });
+
   it("recovers a send timeout after chain execution without another broadcast", async () => {
     const q = await quote();
     const f = await execution(q);
@@ -1942,6 +1963,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
     const privateConfig = loadFacilitatorConfig({
       DATABASE_URL: config.DATABASE_URL,
+      REDIS_URL: config.REDIS_URL,
       API_ORIGIN: api,
       RPC_URL: evm.rpc,
       FACILITATOR_TOKEN: serviceToken,

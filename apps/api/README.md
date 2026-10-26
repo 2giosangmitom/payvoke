@@ -45,7 +45,21 @@ used). Services and controllers are singletons in `PROXY` mode: a class takes
 the cradle in its constructor and keeps only what it uses. Routes resolve their
 controller from `app.diContainer.cradle` once, at registration. Startup work
 uses Awilix lifecycle hooks: `paymentGateway.verifyCapabilities` runs on ready
-(`asyncInit`), and the delivery verifier starts on ready and stops on close.
+(`asyncInit`). `doorbell` and `jobs` come from `src/signals.ts`: the server
+connects them to Redis, while `createApp` defaults to in-process versions for tests.
+
+### Redis signals
+
+`REDIS_URL` is required and Redis must be reachable at startup; later outages are
+logged and tolerated. Redis never holds state:
+
+- SSE streams listen on a doorbell (`payvoke:thread:{id}`, `payvoke:app:{id}`) that
+  services ring after their transaction commits, and re-read Postgres by cursor.
+  A lost ring is caught by the backstop poll (5 s buyer, 15 s provider feed).
+- Rate limits use Redis as a shared store (`skipOnError`), so they hold across replicas.
+- A committed `result` report enqueues `delivery-verify` for `apps/job-worker`; a
+  `failed` report wakes the finance worker. Workers keep database sweeps, so a lost
+  job only delays work.
 
 To add a feature: write the service and controller, register both in
 `container.ts` (and the `Cradle` declaration), and register its routes in
@@ -94,9 +108,13 @@ cookies. HTTPS is required outside loopback development. No RPC or funded wallet
 is needed.
 
 ```sh
+docker compose --profile stack up -d redis   # local Redis on 127.0.0.1:6380
 pnpm --filter @payvoke/db migrate   # apply migrations (reads packages/payvoke-db/.env)
 pnpm --filter api dev
 ```
+
+Start order for the full backend: Redis, facilitator, API, then settlement-worker,
+finance-worker and job-worker.
 
 Change auth fields/plugins in `src/modules/auth/auth.ts`, then run
 `pnpm --filter api auth:schema`; do not copy model definitions or modify generated

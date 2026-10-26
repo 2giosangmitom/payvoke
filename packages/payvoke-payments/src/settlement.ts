@@ -7,7 +7,14 @@ import type { PrismaClient } from "@payvoke/db";
 import { createPaymentValidator, readPersistedPayment } from "./validation";
 import { SettlementJournal } from "./journal";
 
-export function createSettlementService(db: PrismaClient, chain: VaultChain, resourceUrl: string) {
+// `onIntent` runs after a new intent commits, to wake the settlement worker; the
+// worker's own sweep still finds the operation if the wake-up is lost.
+export function createSettlementService(
+  db: PrismaClient,
+  chain: VaultChain,
+  resourceUrl: string,
+  onIntent: (invocationId: string) => Promise<void> = async () => {},
+) {
   const journal = new SettlementJournal(db, { vault: chain.deployment.vault, resourceUrl });
   return async (
     payload: PaymentPayload,
@@ -30,6 +37,7 @@ export function createSettlementService(db: PrismaClient, chain: VaultChain, res
         buyerAddress: getAddress(bound.document.protocolQuote.buyer),
         paymentPayload: payload,
       });
+      await onIntent(bound.row.invocationId);
     }
     const operation = await db.settlementOperation.findUniqueOrThrow({
       where: { invocationId: bound.row.invocationId },
