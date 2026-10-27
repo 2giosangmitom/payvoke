@@ -24,6 +24,7 @@ model App {
   threads        ChatThread[]
   stars          AppStar[]
   quotes         Quote[]
+  files          FileAsset[]
 
   @@unique([ownerId, clientRequestId])
   @@index([visibility, status, id])
@@ -107,6 +108,7 @@ model ChatThread {
 
   app    App     @relation(fields: [appId], references: [id], onDelete: Restrict)
   quotes Quote[]
+  files  FileAsset[]
 
   @@unique([buyerId, clientRequestId])
   @@index([buyerId, archivedAt, updatedAt])
