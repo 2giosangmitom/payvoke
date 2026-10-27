@@ -62,10 +62,17 @@ export class ThreadController {
       const listener = once ? undefined : this.doorbell.listen(channels.thread(threadId));
       try {
         let lastKeepAlive = Date.now();
+        let mark = await this.threads.conversationMark(threadId);
         do {
           for (const row of await this.threads.eventsAfter(threadId, cursor)) {
             if (!stream.send(row.cursor, "ag-ui", row.event)) break;
             cursor = row.cursor;
+          }
+          const next = await this.threads.conversationMark(threadId);
+          if (next !== mark) {
+            mark = next;
+            // Same id: the replay cursor only ever follows AG-UI events.
+            if (!stream.send(cursor, "conversation", { changedAt: next })) break;
           }
           if (!listener) break;
           if (Date.now() - lastKeepAlive > KEEP_ALIVE_MS) {

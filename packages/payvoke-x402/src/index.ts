@@ -138,6 +138,8 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
   const terms = object(document.termsSnapshot);
   const policy = object(document.policySnapshot);
   const definition = object(terms.definition);
+  // v1: fixed-price command. v2: an accepted provider offer, whose summary and
+  // negotiated conversation are frozen into the input hash.
   keys(input, [
     "schemaVersion",
     "sessionId",
@@ -147,6 +149,7 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
     "commandSchemaHash",
     "arguments",
     "context",
+    ...(input.schemaVersion === 2 ? ["offer"] : []),
   ]);
   keys(terms, [
     "schemaVersion",
@@ -197,7 +200,21 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
   assert(q.releaseNotBefore < q.resolveBy);
   assert(Number.isSafeInteger(document.productVersion) && document.productVersion > 0);
   // TermsSnapshot v2 carries the evidence floor that gates release (M05).
-  assert(input.schemaVersion === 1 && terms.schemaVersion === 2 && policy.schemaVersion === 1);
+  assert(
+    (input.schemaVersion === 1 || input.schemaVersion === 2) &&
+      terms.schemaVersion === 2 &&
+      policy.schemaVersion === 1,
+  );
+  if (input.schemaVersion === 2) {
+    const offer = object(input.offer);
+    keys(offer, ["offerId", "summary", "conversation", "conversationHash"]);
+    assert(typeof offer.offerId === "string" && offer.offerId.length > 0);
+    assert(typeof offer.summary === "string" && offer.summary.length > 0);
+    assert(Array.isArray(offer.conversation));
+    assert(
+      typeof offer.conversationHash === "string" && /^0x[0-9a-f]{64}$/.test(offer.conversationHash),
+    );
+  }
   const verification = object(definition.verification);
   assert(verification.minEvidence === "SIGN" || verification.minEvidence === "REC");
   assert(input.sessionId === document.sessionId);

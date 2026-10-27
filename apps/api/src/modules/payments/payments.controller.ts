@@ -4,6 +4,7 @@ import type { FinancialIntentBody } from "./payment-status.service";
 
 export type SubmitInvocationRoute = { Body: { quoteId: string } };
 export type InvocationRoute = { Params: { id: string } };
+export type InvocationListRoute = { Querystring: { cursor?: string } };
 export type FinancialIntentRoute = InvocationRoute & { Body: FinancialIntentBody };
 
 export class PaymentsController {
@@ -29,6 +30,9 @@ export class PaymentsController {
       return this.paymentGateway.settle(quote, request, reply);
     return this.paymentGateway.challenge(quote, reply);
   };
+
+  list = async (request: FastifyRequest<InvocationListRoute>) =>
+    this.paymentStatusService.list(request.account!.id, request.query.cursor);
 
   status = async (request: FastifyRequest<InvocationRoute>) =>
     this.paymentStatusService.status(request.account!.id, request.params.id);

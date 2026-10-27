@@ -38,12 +38,14 @@ export class ProviderRunService {
   private readonly doorbell: Cradle["doorbell"];
   private readonly jobs: Cradle["jobs"];
   private readonly files: Cradle["fileService"];
+  private readonly presale: Cradle["presaleService"];
 
-  constructor({ db, doorbell, jobs, fileService }: Cradle) {
+  constructor({ db, doorbell, jobs, fileService, presaleService }: Cradle) {
     this.db = db;
     this.doorbell = doorbell;
     this.jobs = jobs;
     this.files = fileService;
+    this.presale = presaleService;
   }
 
   async heartbeat(appId: string) {
@@ -74,7 +76,8 @@ export class ProviderRunService {
   }
 
   // Continuations are durable queue items too. The provider re-reads them until
-  // ACK; each one carries the Payvoke-issued runId for the next cycle.
+  // ACK; each one carries the Payvoke-issued runId for the next cycle. Pre-sale
+  // messages are ACKed per message and carry no run.
   async feed(appId: string) {
     const pending = {
       acknowledgedAt: null,
@@ -129,6 +132,8 @@ export class ProviderRunService {
           targetArtifactVersion: row.targetArtifactVersion,
         },
       })),
+      // Unpaid pre-sale chat of AGENT threads.
+      ...(await this.presale.pendingMessages(appId)),
     ];
     return events.sort(
       (left, right) =>

@@ -20,6 +20,13 @@ import { getAddress, type Address } from "viem";
 import { ServiceUnavailableError } from "../../errors";
 import type { TranscriptMessage } from "./transcript";
 
+export type QuoteOffer = {
+  offerId: string;
+  summary: string;
+  conversation: Json;
+  conversationHash: string;
+};
+
 export type QuoteInput = {
   vault: Address;
   buyer: string;
@@ -27,6 +34,10 @@ export type QuoteInput = {
   product: { id: string; payoutAddress: string };
   commandId: string;
   revision: AppCommandRevision;
+  // The fixed TOOL price, or the accepted offer's price and delivery time.
+  grossAmount: bigint;
+  deliverySeconds: number;
+  offer: QuoteOffer | null;
   policy: DeploymentPolicy;
   schema: Json;
   effectiveArguments: Record<string, Json>;
@@ -61,15 +72,16 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
   const { vault, threadId, product, commandId, revision, policy, now } = input;
   const version = { number: 1 };
   const { validUntil, deliveryDeadline, releaseNotBefore, resolveBy } = quoteDeadlines(
-    revision,
+    { deliverySeconds: input.deliverySeconds, reviewSeconds: revision.reviewSeconds },
     policy,
     now,
   );
   const quoteId = randomUUID();
   const invocationId = randomUUID();
   const contextManifest = { messages: input.history, brief: null, files: input.files };
+  // v2 freezes the accepted offer and its negotiation into the input hash.
   const inputSnapshot = {
-    schemaVersion: 1,
+    schemaVersion: input.offer ? 2 : 1,
     sessionId: threadId,
     productId: product.id,
     productVersion: version.number,
@@ -77,13 +89,17 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
     commandSchemaHash: hashSnapshot(input.schema),
     arguments: input.effectiveArguments,
     context: contextManifest,
+    ...(input.offer ? { offer: input.offer } : {}),
   };
   const termsSnapshot = {
     schemaVersion: 2,
     productId: product.id,
     productVersion: version.number,
     commandId,
-    definition: revision.terms as Json,
+    definition: {
+      ...(revision.terms as Record<string, Json>),
+      deliverySeconds: input.deliverySeconds,
+    },
     deliveryDeadline,
   };
   const policySnapshot = {
@@ -108,7 +124,7 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
     policyHash: hashSnapshot(policySnapshot),
     provider: getAddress(product.payoutAddress),
     asset: ASSET,
-    grossAmount: BigInt(revision.grossAmount.toFixed(0)),
+    grossAmount: input.grossAmount,
     feeBps: policy.feeBps,
     feeRecipient: policySnapshot.feeRecipient,
     validUntil,

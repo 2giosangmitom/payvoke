@@ -13,6 +13,8 @@ import { CatalogController } from "./modules/catalog/catalog.controller";
 import { CatalogService } from "./modules/catalog/catalog.service";
 import { FileController } from "./modules/files/file.controller";
 import { FileService } from "./modules/files/file.service";
+import { PresaleController } from "./modules/presale/presale.controller";
+import { PresaleService } from "./modules/presale/presale.service";
 import { ProviderAppService } from "./modules/provider/provider-app.service";
 import { ProviderCommandService } from "./modules/provider/provider-command.service";
 import { ProviderController } from "./modules/provider/provider.controller";
@@ -60,6 +62,8 @@ declare module "@fastify/awilix" {
     runsController: RunsController;
     fileService: FileService;
     fileController: FileController;
+    presaleService: PresaleService;
+    presaleController: PresaleController;
   }
 }
 
@@ -104,6 +108,8 @@ export function createAppContainer(
     runsController: asClass(RunsController).singleton(),
     fileService: asClass(FileService).singleton(),
     fileController: asClass(FileController).singleton(),
+    presaleService: asClass(PresaleService).singleton(),
+    presaleController: asClass(PresaleController).singleton(),
   });
   return container;
 }
