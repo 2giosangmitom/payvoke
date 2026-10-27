@@ -121,7 +121,7 @@ cookies. HTTPS is required outside loopback development. No RPC or funded wallet
 is needed.
 
 ```sh
-docker compose --profile stack up -d redis   # local Redis on 127.0.0.1:6380
+docker compose up -d redis   # Redis on 127.0.0.1:6380 (needs the root .env)
 pnpm --filter @payvoke/db migrate   # apply migrations (reads packages/payvoke-db/.env)
 pnpm --filter api dev
 ```
@@ -130,14 +130,14 @@ Start order for the full backend: Redis, facilitator, API, then settlement-worke
 finance-worker and job-worker.
 
 Files are optional. Any S3-compatible store works and only the `S3_*` values
-change between environments: RustFS from compose locally, Neon S3 storage in
-production (bucket and CORS for `WEB_ORIGIN` provisioned there).
+change between environments; compose runs RustFS with the bucket and CORS for
+`WEB_ORIGIN`.
 
 ```sh
-docker compose --profile stack up -d rustfs storage-init   # S3 on 127.0.0.1:9000, bucket payvoke-files
+docker compose up -d rustfs storage-init   # S3 on 127.0.0.1:9000, bucket payvoke-files
 # .env: FILES_ENABLED=true S3_ENDPOINT=http://127.0.0.1:9000 S3_REGION=us-east-1
-#       S3_BUCKET=payvoke-files S3_ACCESS_KEY_ID=payvoke S3_SECRET_ACCESS_KEY=payvoke-secret
-#       S3_FORCE_PATH_STYLE=true
+#       S3_BUCKET=payvoke-files S3_FORCE_PATH_STYLE=true
+#       S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY = the values in the root .env
 ```
 
 Set the same `S3_*` values on the job-worker; without them, file results are
@@ -190,8 +190,8 @@ Neon is production and must never be used for tests. Tests create/remove only
 their own random schema; they never read `DATABASE_URL`.
 
 Storage is in-memory in API tests. The presigned-URL behavior is tested against a
-real S3 endpoint in `@payvoke/storage`: `docker compose up -d test-rustfs`, then
-`TEST_S3_ENDPOINT=http://127.0.0.1:59000 pnpm --filter @payvoke/storage test`.
+real S3 endpoint in `@payvoke/storage` when `TEST_S3_ENDPOINT` points at a
+disposable store (the test creates its own bucket).
 
 Quote, x402, settlement and finance flows span several services and are tested in
 [`tests/payments-e2e`](../../tests/payments-e2e).

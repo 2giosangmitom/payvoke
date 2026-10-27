@@ -18,6 +18,11 @@ it("is off unless enabled and rejects incomplete or unsafe configuration", () =>
   assert.equal(createStorage({ FILES_ENABLED: false, S3_FORCE_PATH_STYLE: false }), null);
   assert.ok(createStorage(complete));
   assert.ok(createStorage({ ...complete, S3_ENDPOINT: "http://127.0.0.1:9000" }));
+  // A container service name may be reached over http; browsers never use it.
+  assert.ok(createStorage({ ...complete, S3_ENDPOINT: "http://rustfs:9000" }));
+  for (const S3_ENDPOINT of ["http://s3.example.com", "http://user:pw@rustfs:9000"])
+    assert.throws(() => createStorage({ ...complete, S3_ENDPOINT }));
+  assert.throws(() => createStorage({ ...complete, S3_PUBLIC_ENDPOINT: "http://rustfs:9000" }));
   for (const change of [
     { S3_BUCKET: undefined },
     { S3_REGION: undefined },
@@ -50,8 +55,8 @@ it("memory storage copies, hashes and deletes", async () => {
   await assert.rejects(storage.copy("missing", "c"));
 });
 
-// Opt-in: docker compose up -d test-rustfs, then
-// TEST_S3_ENDPOINT=http://127.0.0.1:59000 pnpm --filter @payvoke/storage test
+// Opt-in, against a disposable S3-compatible store (creates its own bucket):
+// TEST_S3_ENDPOINT=http://127.0.0.1:9000 pnpm --filter @payvoke/storage test
 const s3 = process.env.TEST_S3_ENDPOINT;
 it("round-trips presigned uploads against a real S3 endpoint", { skip: !s3 }, async () => {
   const env = {

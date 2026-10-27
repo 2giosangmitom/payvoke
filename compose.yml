@@ -1,217 +1,184 @@
+# Production stack: docker compose up -d --build
+#
+# Secrets and public URLs come from ./.env (copy .env.example). Each service
+# also reads its own apps/<service>/.env for keys, RPC and gas limits; the
+# values set here override those files so every container uses this stack's
+# Postgres, Redis and object storage.
+#
+# Only the web app, the API and object storage (presigned URLs are fetched by
+# browsers) are published, on BIND_ADDRESS. Put a TLS reverse proxy in front.
+
+x-stack: &stack
+  DATABASE_URL: postgresql://payvoke:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/payvoke
+  REDIS_URL: redis://redis:6379
+  API_ORIGIN: ${API_ORIGIN:?set API_ORIGIN}
+
+x-storage: &storage
+  FILES_ENABLED: "true"
+  S3_ENDPOINT: http://rustfs:9000
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?set S3_PUBLIC_ENDPOINT}
+  S3_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-payvoke-files}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+  S3_FORCE_PATH_STYLE: "true"
+
+x-backend: &backend
+  restart: unless-stopped
+  depends_on:
+    migrate: { condition: service_completed_successfully }
+    redis: { condition: service_healthy }
+
 services:
-  test-db:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: test
-      POSTGRES_DB: test
-    ports:
-      - "127.0.0.1:55433:5432"
-    tmpfs:
-      - /var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U test -d test"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-
-  test-redis:
-    image: redis:8-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    ports:
-      - "127.0.0.1:56379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-
-  # Throwaway S3 for opt-in storage tests: TEST_S3_ENDPOINT=http://127.0.0.1:59000
-  test-rustfs:
-    image: rustfs/rustfs:1.0.1
-    environment:
-      RUSTFS_ACCESS_KEY: payvoke
-      RUSTFS_SECRET_KEY: payvoke-secret
-      RUSTFS_VOLUMES: /data
-      RUSTFS_CONSOLE_ENABLE: "false"
-    ports:
-      - "127.0.0.1:59000:9000"
-    tmpfs:
-      - /data:uid=10001,gid=10001
-
-  # Full stack, opt-in: docker compose --profile stack up --build
-  # Each service reads only its own env file; DATABASE_URL and bind hosts are
-  # overridden here so the containers talk to the compose database.
   db:
-    profiles: [stack]
     image: postgres:18-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: payvoke
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: payvoke
     volumes:
       - db-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d payvoke"]
-      interval: 2s
+      test: ["CMD-SHELL", "pg_isready -U payvoke -d payvoke"]
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 20
 
   # Wake-ups and job queues only; Postgres stays the source of truth. noeviction
   # keeps BullMQ from silently losing queued jobs under memory pressure.
   redis:
-    profiles: [stack]
     image: redis:8-alpine
+    restart: unless-stopped
     command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
-    # Also the local dev Redis: docker compose --profile stack up -d redis
+    # Loopback only, for host-side tools and services run outside Docker.
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
       - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 20
 
-  # Local S3-compatible storage. Production points the S3_* settings at Neon's
-  # S3 storage instead; nothing in the services is specific to RustFS.
-  # Also the local dev store: docker compose --profile stack up -d rustfs storage-init
+  # S3-compatible object storage for buyer inputs and provider artifacts.
   rustfs:
-    profiles: [stack]
     image: rustfs/rustfs:1.0.1
+    restart: unless-stopped
     environment:
-      RUSTFS_ACCESS_KEY: payvoke
-      RUSTFS_SECRET_KEY: payvoke-secret
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
       RUSTFS_VOLUMES: /data
       RUSTFS_CONSOLE_ENABLE: "false"
       # Browsers PUT and GET presigned URLs directly from the web app.
-      RUSTFS_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      RUSTFS_CORS_ALLOWED_ORIGINS: ${WEB_ORIGIN:?set WEB_ORIGIN}
     ports:
-      - "127.0.0.1:9000:9000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-9000}:9000"
     volumes:
       - rustfs-data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9000/ || exit 1"]
-      interval: 2s
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 20
 
-  # Creates the bucket once; a production bucket is provisioned by the provider.
+  # Creates the bucket once; later runs find it and exit.
   storage-init:
-    profiles: [stack]
     image: amazon/aws-cli:2.37.12
     environment:
-      AWS_ACCESS_KEY_ID: payvoke
-      AWS_SECRET_ACCESS_KEY: payvoke-secret
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: us-east-1
+      BUCKET: ${S3_BUCKET:-payvoke-files}
     entrypoint: ["sh", "-c"]
     command:
       - >-
-        aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket payvoke-files ||
-        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket payvoke-files
+        aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket "$$BUCKET" ||
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$$BUCKET"
     depends_on:
       rustfs: { condition: service_healthy }
 
+  # One-shot: applies pending Prisma migrations before any service starts.
   migrate:
-    profiles: [stack]
-    build: { context: ., target: migrate }
+    build: { context: ., dockerfile: packages/payvoke-db/Dockerfile }
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
+      DATABASE_URL: postgresql://payvoke:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/payvoke
     depends_on:
       db: { condition: service_healthy }
 
   api:
-    profiles: [stack]
-    build: { context: ., target: api }
-    env_file:
-      - path: apps/api/.env
-        required: false
+    <<: *backend
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    env_file: [apps/api/.env]
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
-      REDIS_URL: redis://redis:6379
+      <<: [*stack, *storage]
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN}
       HOST: 0.0.0.0
-      FACILITATOR_URL: http://127.0.0.1:3002
-      FILES_ENABLED: "true"
-      S3_ENDPOINT: http://rustfs:9000
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      S3_REGION: us-east-1
-      S3_BUCKET: payvoke-files
-      S3_ACCESS_KEY_ID: payvoke
-      S3_SECRET_ACCESS_KEY: payvoke-secret
-      S3_FORCE_PATH_STYLE: "true"
+      PORT: 3001
+      FACILITATOR_URL: http://facilitator:3002
     ports:
-      - "127.0.0.1:3001:3001"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3001}:3001"
     depends_on:
-      migrate: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
+      facilitator: { condition: service_healthy }
       storage-init: { condition: service_completed_successfully }
 
-  # Shares the API's network namespace, so the API reaches it on loopback and
-  # it is never published. Remote deployments need TLS instead.
+  # Private: reachable only by name on the compose network, never published.
+  # Requires the active deployment policy row; see the README deploy section.
   facilitator:
-    profiles: [stack]
-    build: { context: ., target: facilitator }
-    network_mode: service:api
-    env_file:
-      - path: apps/facilitator/.env
-        required: false
+    <<: *backend
+    build: { context: ., dockerfile: apps/facilitator/Dockerfile }
+    env_file: [apps/facilitator/.env]
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
-      REDIS_URL: redis://redis:6379
-      HOST: 127.0.0.1
-    depends_on:
-      migrate: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
+      <<: *stack
+      HOST: 0.0.0.0
+      PORT: 3002
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - require("net").connect(3002, "127.0.0.1").on("connect", () => process.exit(0)).on("error", () => process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   settlement-worker:
-    profiles: [stack]
-    build: { context: ., target: settlement-worker }
-    env_file:
-      - path: apps/settlement-worker/.env
-        required: false
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      migrate: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
+    <<: *backend
+    build: { context: ., dockerfile: apps/settlement-worker/Dockerfile }
+    env_file: [apps/settlement-worker/.env]
+    environment: *stack
 
   finance-worker:
-    profiles: [stack]
-    build: { context: ., target: finance-worker }
-    env_file:
-      - path: apps/finance-worker/.env
-        required: false
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      migrate: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
+    <<: *backend
+    build: { context: ., dockerfile: apps/finance-worker/Dockerfile }
+    env_file: [apps/finance-worker/.env]
+    environment: *stack
 
   # Keyless BullMQ jobs: delivery verification (JSON and files), upload cleanup.
   job-worker:
-    profiles: [stack]
-    build: { context: ., target: job-worker }
-    env_file:
-      - path: apps/job-worker/.env
-        required: false
+    <<: *backend
+    build: { context: ., dockerfile: apps/job-worker/Dockerfile }
+    env_file: [apps/job-worker/.env]
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
-      REDIS_URL: redis://redis:6379
-      FILES_ENABLED: "true"
-      S3_ENDPOINT: http://rustfs:9000
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      S3_REGION: us-east-1
-      S3_BUCKET: payvoke-files
-      S3_ACCESS_KEY_ID: payvoke
-      S3_SECRET_ACCESS_KEY: payvoke-secret
-      S3_FORCE_PATH_STYLE: "true"
+      <<: [*stack, *storage]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       storage-init: { condition: service_completed_successfully }
+
+  web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        VITE_API_ORIGIN: ${API_ORIGIN:?set API_ORIGIN}
+        VITE_FUJI_RPC_URL: ${FUJI_RPC_URL:-}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
 
 volumes:
   db-data:
