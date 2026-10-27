@@ -3,7 +3,7 @@ import { paymentRequirements, validateQuoteDocument, type QuoteDocument } from "
 import { paymentTypes, vaultAdmissionAbi, vaultDomain } from "@payvoke/protocol";
 import type { Address, Hex } from "viem";
 
-export type CommandOptionType = "STRING" | "INTEGER" | "NUMBER" | "BOOLEAN";
+export type CommandOptionType = "STRING" | "INTEGER" | "NUMBER" | "BOOLEAN" | "FILE";
 export type CommandOption = {
   name: string;
   description?: string;
@@ -14,6 +14,9 @@ export type CommandOption = {
   max?: number;
   minLength?: number;
   maxLength?: number;
+  accept?: string[];
+  maxBytes?: number;
+  multiple?: boolean;
 };
 export type RevisionPolicy = { maxIncluded: number; description: string };
 export type CommandRevision = {
@@ -22,9 +25,7 @@ export type CommandRevision = {
   inputSchema: unknown;
   outputSchema: unknown | null;
   positionalParameter: string | null;
-  // TOOL commands carry a fixed price; AGENT commands a range for offers.
-  grossAmount: string | null;
-  minGrossAmount: string | null;
+  // Prices come from the bot's offers; this optional cap bounds them.
   maxGrossAmount: string | null;
   terms: {
     deliverySeconds: number;
@@ -43,12 +44,10 @@ export type ThreadCommand = {
   description: string;
   revision: CommandRevision | null;
 };
-export type AppKind = "TOOL" | "AGENT";
 export type ThreadApp = {
   id: string;
   name: string;
   description: string | null;
-  kind: AppKind;
   visibility: "PUBLIC" | "PRIVATE";
   status: string;
   availability: "AVAILABLE" | "UNAVAILABLE" | "SUSPENDED";
@@ -60,7 +59,6 @@ export type ThreadSummary = {
     id: string;
     name: string;
     description: string | null;
-    kind: AppKind;
     availability: string;
   };
   lastMessageAt: string;
@@ -97,8 +95,12 @@ export type ConversationMessage = {
   commandId: string | null;
   arguments: Record<string, unknown> | null;
   files: FileManifest[];
+  // A bot message may ask for a form; the buyer's answer points back to it.
+  form: MessageForm | null;
+  replyToId: string | null;
   createdAt: string;
 };
+export type MessageForm = { title: string; description?: string; schema: unknown };
 export type OfferStatus = "OPEN" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "SUPERSEDED" | "EXPIRED";
 export type Offer = {
   id: string;
@@ -167,10 +169,9 @@ export type ChatSnapshot = {
   offers: Offer[];
 };
 
-export const getThreads = (query?: string, kind?: AppKind) => {
+export const getThreads = (query?: string) => {
   const params = new URLSearchParams();
   if (query?.trim()) params.set("q", query.trim());
-  if (kind) params.set("kind", kind);
   const search = params.toString();
   return api<{ items: ThreadSummary[]; nextCursor: string | null }>(
     `/v1/threads${search ? `?${search}` : ""}`,
@@ -218,18 +219,15 @@ export const requestRevision = (invocationId: string, reason: string, clientRequ
   );
 
 // TOOL apps quote a command and arguments; AGENT apps quote an open offer.
-export type QuoteSource =
-  | { commandId: string; arguments: Record<string, unknown> }
-  | { offerId: string };
-
-export async function quoteFor(threadId: string, source: QuoteSource, fileIds: string[] = []) {
+// Every quote is for an open offer from the app's bot.
+export async function quoteFor(threadId: string, offerId: string, fileIds: string[] = []) {
   const clientRequestId = crypto.randomUUID();
   return api<QuoteDocument>(
     "/v1/quotes",
     "POST",
     {
       threadId,
-      ...source,
+      offerId,
       contextSelection: { messageIds: [], briefVersionId: null, fileIds },
       clientRequestId,
     },
@@ -237,12 +235,14 @@ export async function quoteFor(threadId: string, source: QuoteSource, fileIds: s
   );
 }
 
-// Free pre-sale message to an AGENT app; a slash command adds its arguments.
+// Free interaction with the app's bot: a message, a slash command with its
+// arguments, or the answer to a bot form.
 export const sendMessage = (
   threadId: string,
   body: {
     content: string;
     commandId?: string;
+    replyToId?: string;
     arguments?: Record<string, unknown>;
     fileIds?: string[];
   },
@@ -261,7 +261,7 @@ export const declineOffer = (threadId: string, offerId: string) =>
 export type ActivityItem = {
   invocationId: string;
   threadId: string;
-  app: { id: string; name: string; kind: AppKind };
+  app: { id: string; name: string };
   commandName: string | null;
   grossAmount: string;
   paymentStatus: string;

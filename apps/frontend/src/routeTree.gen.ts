@@ -24,8 +24,6 @@ import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.ind
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
 import { Route as ConsoleChatIndexRouteImport } from './routes/console.chat.index'
 import { Route as ConsoleChatThreadIdRouteImport } from './routes/console.chat.$threadId'
-import { Route as ConsoleRunAppIdRouteImport } from './routes/console.run.$appId'
-import { Route as ConsoleRunsInvocationIdRouteImport } from './routes/console.runs.$invocationId'
 import { Route as ConsoleStudioIndexRouteImport } from './routes/console.studio.index'
 import { Route as DashboardAppsAppIdRouteImport } from './routes/dashboard.apps.$appId'
 import { Route as ConsoleStudioAppsAppIdRouteImport } from './routes/console.studio.apps.$appId'
@@ -114,16 +112,6 @@ const ConsoleChatThreadIdRoute = ConsoleChatThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => ConsoleChatRoute,
 } as any)
-const ConsoleRunAppIdRoute = ConsoleRunAppIdRouteImport.update({
-  id: '/run/$appId',
-  path: '/run/$appId',
-  getParentRoute: () => ConsoleRoute,
-} as any)
-const ConsoleRunsInvocationIdRoute = ConsoleRunsInvocationIdRouteImport.update({
-  id: '/runs/$invocationId',
-  path: '/runs/$invocationId',
-  getParentRoute: () => ConsoleRoute,
-} as any)
 const ConsoleStudioIndexRoute = ConsoleStudioIndexRouteImport.update({
   id: '/studio/',
   path: '/studio/',
@@ -155,8 +143,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
-  '/console/run/$appId': typeof ConsoleRunAppIdRoute
-  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
@@ -175,8 +161,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
-  '/console/run/$appId': typeof ConsoleRunAppIdRoute
-  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store': typeof MarketStoreIndexRoute
   '/console/chat': typeof ConsoleChatIndexRoute
@@ -200,8 +184,6 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/_market/store/$appId': typeof MarketStoreAppIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
-  '/console/run/$appId': typeof ConsoleRunAppIdRoute
-  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/_market/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
@@ -225,8 +207,6 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/store/$appId'
     | '/console/chat/$threadId'
-    | '/console/run/$appId'
-    | '/console/runs/$invocationId'
     | '/dashboard/apps/$appId'
     | '/store/'
     | '/console/chat/'
@@ -245,8 +225,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/store/$appId'
     | '/console/chat/$threadId'
-    | '/console/run/$appId'
-    | '/console/runs/$invocationId'
     | '/dashboard/apps/$appId'
     | '/store'
     | '/console/chat'
@@ -269,8 +247,6 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/_market/store/$appId'
     | '/console/chat/$threadId'
-    | '/console/run/$appId'
-    | '/console/runs/$invocationId'
     | '/dashboard/apps/$appId'
     | '/_market/store/'
     | '/console/chat/'
@@ -410,20 +386,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleChatThreadIdRouteImport
       parentRoute: typeof ConsoleChatRoute
     }
-    '/console/run/$appId': {
-      id: '/console/run/$appId'
-      path: '/run/$appId'
-      fullPath: '/console/run/$appId'
-      preLoaderRoute: typeof ConsoleRunAppIdRouteImport
-      parentRoute: typeof ConsoleRoute
-    }
-    '/console/runs/$invocationId': {
-      id: '/console/runs/$invocationId'
-      path: '/runs/$invocationId'
-      fullPath: '/console/runs/$invocationId'
-      preLoaderRoute: typeof ConsoleRunsInvocationIdRouteImport
-      parentRoute: typeof ConsoleRoute
-    }
     '/console/studio/': {
       id: '/console/studio/'
       path: '/studio'
@@ -495,8 +457,6 @@ interface ConsoleRouteChildren {
   ConsoleActivityRoute: typeof ConsoleActivityRoute
   ConsoleChatRoute: typeof ConsoleChatRouteWithChildren
   ConsoleIndexRoute: typeof ConsoleIndexRoute
-  ConsoleRunAppIdRoute: typeof ConsoleRunAppIdRoute
-  ConsoleRunsInvocationIdRoute: typeof ConsoleRunsInvocationIdRoute
   ConsoleStudioIndexRoute: typeof ConsoleStudioIndexRoute
   ConsoleStudioAppsAppIdRoute: typeof ConsoleStudioAppsAppIdRoute
 }
@@ -505,8 +465,6 @@ const ConsoleRouteChildren: ConsoleRouteChildren = {
   ConsoleActivityRoute: ConsoleActivityRoute,
   ConsoleChatRoute: ConsoleChatRouteWithChildren,
   ConsoleIndexRoute: ConsoleIndexRoute,
-  ConsoleRunAppIdRoute: ConsoleRunAppIdRoute,
-  ConsoleRunsInvocationIdRoute: ConsoleRunsInvocationIdRoute,
   ConsoleStudioIndexRoute: ConsoleStudioIndexRoute,
   ConsoleStudioAppsAppIdRoute: ConsoleStudioAppsAppIdRoute,
 }

@@ -21,7 +21,6 @@ import { cn } from "@/src/lib/utils";
 import { authClient } from "@/src/lib/auth-client";
 import {
   formatUsdc,
-  formatUsdcRange,
   getStars,
   listStoreApps,
   starApp,
@@ -72,17 +71,9 @@ function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; c
         </p>
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 font-mono text-[11px] text-faint">
-        <span>
-          {app.kind === "AGENT" ? "agent" : "tool"} · {plural(app.commandCount, "command")}
-        </span>
+        <span>{plural(app.commandCount, "command")}</span>
         <span className="text-primary">
-          {app.kind === "AGENT"
-            ? app.priceRange
-              ? `offers ${formatUsdcRange(app.priceRange.min, app.priceRange.max)}`
-              : "No price yet"
-            : app.fromPrice
-              ? `from ${formatUsdc(app.fromPrice)}`
-              : "No price yet"}
+          {app.priceCap ? `by offer · up to ${formatUsdc(app.priceCap)}` : "priced by offer"}
         </span>
         <ArrowUpRight
           size={15}

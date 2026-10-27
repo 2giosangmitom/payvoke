@@ -7,16 +7,12 @@ import {
   Copy,
   KeyRound,
   MessageSquareText,
-  Pencil,
-  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Textarea } from "./ui/textarea";
@@ -40,439 +36,51 @@ import { authClient } from "@/src/lib/auth-client";
 import {
   activateProviderApp,
   archiveProviderApp,
-  archiveProviderCommand,
-  createProviderCommand,
   createProviderKey,
-  defaultTerms,
   formatCommandPrice,
-  fromAtomicUsdc,
   getProviderApp,
   getStoreApp,
   listProviderKeys,
   revokeProviderKey,
-  setDefaultCommand,
   suspendProviderApp,
-  toAtomicUsdc,
   updateProviderApp,
-  updateProviderCommand,
-  type AppKind,
-  type CommandInput,
-  type CommandTerms,
   type ProviderAppDetail,
-  type ProviderCommand,
 } from "@/src/lib/apps";
-import type { CommandOption } from "@/src/lib/paid-chat";
 import { newThread } from "@/src/lib/paid-chat";
 import { cn } from "@/src/lib/utils";
-
-const optionTypes: CommandOption["type"][] = ["STRING", "INTEGER", "NUMBER", "BOOLEAN"];
-
-function blankOption(): CommandOption {
-  return { name: "", description: "", type: "STRING", required: false };
-}
-
-function CommandEditor({
-  appId,
-  kind,
-  command,
-  open,
-  onClose,
-}: {
-  appId: string;
-  kind: AppKind;
-  command: ProviderCommand | null;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const revision = command?.revision;
-  const [name, setName] = useState(command?.name ?? "");
-  const [description, setDescription] = useState(command?.description ?? "");
-  const [options, setOptions] = useState<CommandOption[]>(revision?.options ?? [blankOption()]);
-  const [positional, setPositional] = useState(revision?.positionalParameter ?? "");
-  const [price, setPrice] = useState(
-    revision?.grossAmount ? fromAtomicUsdc(revision.grossAmount) : "0.01",
-  );
-  // Agents publish the range their offers must fall within.
-  const [minPrice, setMinPrice] = useState(
-    revision?.minGrossAmount ? fromAtomicUsdc(revision.minGrossAmount) : "0.01",
-  );
-  const [maxPrice, setMaxPrice] = useState(
-    revision?.maxGrossAmount ? fromAtomicUsdc(revision.maxGrossAmount) : "1",
-  );
-  const [delivery, setDelivery] = useState(String(revision?.deliverySeconds ?? 600));
-  const [review, setReview] = useState(String(revision?.reviewSeconds ?? 3600));
-  const [terms, setTerms] = useState<CommandTerms>(revision?.terms ?? defaultTerms());
-  const [output, setOutput] = useState(
-    revision?.outputSchema ? JSON.stringify(revision.outputSchema, null, 2) : "",
-  );
-  const [error, setError] = useState("");
-  const save = useMutation({
-    mutationFn: (payload: CommandInput) =>
-      command
-        ? updateProviderCommand(appId, command.id, payload)
-        : createProviderCommand(appId, payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", appId] });
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-      onClose();
-    },
-    onError: (cause) => setError(errorMessage(cause)),
-  });
-  if (!open) return null;
-  const validOptions = options.filter((option) => option.name.trim());
-  const stringOptions = validOptions.filter((option) => option.type === "STRING");
-  const updateOption = (index: number, patch: Partial<CommandOption>) =>
-    setOptions((current) =>
-      current.map((item, at) => (at === index ? { ...item, ...patch } : item)),
-    );
-
-  return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{command ? `Edit /${command.name}` : "New slash command"}</DialogTitle>
-          <DialogDescription>
-            Saving creates a new revision. Quotes that were already issued keep the old one.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="grid gap-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setError("");
-            let parsedOutput: unknown;
-            if (output.trim()) {
-              try {
-                parsedOutput = JSON.parse(output);
-              } catch {
-                setError("Output schema must be valid JSON.");
-                return;
-              }
-            }
-            try {
-              save.mutate({
-                name: name.trim(),
-                description: description.trim(),
-                options: validOptions,
-                positionalParameter: positional || null,
-                ...(kind === "AGENT"
-                  ? {
-                      minGrossAmount: toAtomicUsdc(minPrice),
-                      maxGrossAmount: toAtomicUsdc(maxPrice),
-                    }
-                  : { grossAmount: toAtomicUsdc(price) }),
-                terms: {
-                  ...terms,
-                  deliverySeconds: Number(delivery),
-                  reviewSeconds: Number(review),
-                },
-                ...(parsedOutput !== undefined ? { outputSchema: parsedOutput } : {}),
-                ...(revision ? { expectedRevisionId: revision.id } : {}),
-              });
-            } catch (cause) {
-              setError(errorMessage(cause));
-            }
-          }}
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Command name" htmlFor="command-name">
-              <div className="flex items-center border border-input bg-background-deep pl-3 font-mono text-primary focus-within:border-ring">
-                <span aria-hidden="true">/</span>
-                <Input
-                  id="command-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value.replace(/[^a-z0-9_]/g, ""))}
-                  required
-                  maxLength={32}
-                  pattern="[a-z][a-z0-9_]{0,31}"
-                  placeholder="summarize"
-                  spellCheck={false}
-                  className="border-0 bg-transparent pl-1 font-mono focus-visible:ring-0"
-                />
-              </div>
-            </FormField>
-            {kind === "AGENT" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Lowest offer (USDC)" htmlFor="command-min-price">
-                  <Input
-                    id="command-min-price"
-                    value={minPrice}
-                    onChange={(event) => setMinPrice(event.target.value)}
-                    inputMode="decimal"
-                    required
-                    className="font-mono"
-                  />
-                </FormField>
-                <FormField label="Highest offer (USDC)" htmlFor="command-max-price">
-                  <Input
-                    id="command-max-price"
-                    value={maxPrice}
-                    onChange={(event) => setMaxPrice(event.target.value)}
-                    inputMode="decimal"
-                    required
-                    className="font-mono"
-                  />
-                </FormField>
-              </div>
-            ) : (
-              <FormField label="Price per request (USDC)" htmlFor="command-price">
-                <Input
-                  id="command-price"
-                  value={price}
-                  onChange={(event) => setPrice(event.target.value)}
-                  inputMode="decimal"
-                  required
-                  className="font-mono"
-                />
-              </FormField>
-            )}
-          </div>
-          <FormField label="Description" htmlFor="command-description">
-            <Textarea
-              id="command-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={2}
-              required
-              maxLength={2000}
-            />
-          </FormField>
-
-          <fieldset className="grid gap-2 border border-border p-4">
-            <legend className="px-1 font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
-              Arguments
-            </legend>
-            {options.map((option, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto_auto]"
-              >
-                <Input
-                  aria-label={`Argument ${index + 1} name`}
-                  value={option.name}
-                  placeholder="text"
-                  onChange={(event) =>
-                    updateOption(index, { name: event.target.value.replace(/[^a-zA-Z0-9_]/g, "") })
-                  }
-                  required
-                  className="font-mono"
-                />
-                <NativeSelect
-                  aria-label={`Argument ${index + 1} type`}
-                  value={option.type}
-                  onChange={(event) =>
-                    updateOption(index, { type: event.target.value as CommandOption["type"] })
-                  }
-                  className="w-full"
-                >
-                  {optionTypes.map((type) => (
-                    <NativeSelectOption key={type}>{type}</NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={Boolean(option.required)}
-                    onCheckedChange={(checked) => updateOption(index, { required: checked })}
-                  />
-                  Required
-                </label>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label={`Remove argument ${index + 1}`}
-                  disabled={options.length === 1}
-                  onClick={() => setOptions((current) => current.filter((_, at) => at !== index))}
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-1 justify-self-start"
-              onClick={() => setOptions((current) => [...current, blankOption()])}
-            >
-              <Plus /> Add argument
-            </Button>
-          </fieldset>
-
-          <FormField label="Plain text maps to" htmlFor="command-positional">
-            <NativeSelect
-              id="command-positional"
-              value={positional}
-              onChange={(event) => setPositional(event.target.value)}
-              className="w-full"
-            >
-              <NativeSelectOption value="">Nothing (always open the form)</NativeSelectOption>
-              {stringOptions.map((option) => (
-                <NativeSelectOption key={option.name} value={option.name}>
-                  {option.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </FormField>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Delivery deadline (seconds)" htmlFor="command-delivery">
-              <Input
-                id="command-delivery"
-                type="number"
-                min={1}
-                value={delivery}
-                onChange={(event) => setDelivery(event.target.value)}
-                required
-              />
-            </FormField>
-            <FormField label="Review window (seconds)" htmlFor="command-review">
-              <Input
-                id="command-review"
-                type="number"
-                min={0}
-                value={review}
-                onChange={(event) => setReview(event.target.value)}
-                required
-              />
-            </FormField>
-            <FormField label="Refund policy" htmlFor="command-refund">
-              <Input
-                id="command-refund"
-                value={terms.refundPolicy}
-                onChange={(event) =>
-                  setTerms((current) => ({ ...current, refundPolicy: event.target.value }))
-                }
-                required
-              />
-            </FormField>
-            <FormField label="Side effects" htmlFor="command-side-effects">
-              <Input
-                id="command-side-effects"
-                value={terms.sideEffects}
-                onChange={(event) =>
-                  setTerms((current) => ({ ...current, sideEffects: event.target.value }))
-                }
-                required
-              />
-            </FormField>
-          </div>
-          <FormField label="Data use" htmlFor="command-data-use">
-            <Input
-              id="command-data-use"
-              value={terms.dataUse}
-              onChange={(event) =>
-                setTerms((current) => ({ ...current, dataUse: event.target.value }))
-              }
-              required
-            />
-          </FormField>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Included revisions" htmlFor="command-revisions">
-              <Input
-                id="command-revisions"
-                type="number"
-                min={0}
-                value={terms.revisionPolicy.maxIncluded}
-                onChange={(event) =>
-                  setTerms((current) => ({
-                    ...current,
-                    revisionPolicy: {
-                      ...current.revisionPolicy,
-                      maxIncluded: Number(event.target.value),
-                    },
-                  }))
-                }
-              />
-            </FormField>
-            <FormField label="Revision scope" htmlFor="command-revision-description">
-              <Input
-                id="command-revision-description"
-                value={terms.revisionPolicy.description}
-                onChange={(event) =>
-                  setTerms((current) => ({
-                    ...current,
-                    revisionPolicy: { ...current.revisionPolicy, description: event.target.value },
-                  }))
-                }
-              />
-            </FormField>
-          </div>
-          <details className="group border border-border">
-            <summary className="px-4 py-3 font-mono text-xs text-muted-foreground group-open:border-b group-open:border-border hover:text-primary">
-              Output schema (optional JSON Schema)
-            </summary>
-            <Textarea
-              aria-label="Output JSON schema"
-              rows={5}
-              value={output}
-              onChange={(event) => setOutput(event.target.value)}
-              placeholder='{"type":"object","properties":{"summary":{"type":"string"}}}'
-              spellCheck={false}
-              className="border-0 font-mono text-xs"
-            />
-          </details>
-          {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={save.isPending || !name.trim()}>
-              {save.isPending && <Spinner />}
-              {command ? "Save new revision" : "Create command"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={save.isPending}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function PanelIntro({ children }: { children: string }) {
   return <p className="mb-6 max-w-2xl text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
+// Commands are registered by the app's bot through the API, like Discord
+// application commands; Studio only shows what buyers can call.
+const SYNC_EXAMPLE = `curl -X PUT "$PAYVOKE_API/v1/provider/apps/<appId>/commands" \\
+  -H "Authorization: Bearer $PAYVOKE_KEY" -H "Content-Type: application/json" \\
+  -d '[{"name":"summarize","description":"Summarizes text",
+        "options":[{"name":"text","type":"STRING","required":true},
+                   {"name":"file","type":"FILE","accept":["application/pdf"]}],
+        "maxAmount":"5000000",
+        "terms":{"deliverySeconds":600,"reviewSeconds":3600,
+                 "revisionPolicy":{"maxIncluded":1,"description":"One revision"},
+                 "refundPolicy":"Refund if not delivered","sideEffects":"none",
+                 "dataUse":"This request only"}}]'`;
+
 function CommandsTab({ app }: { app: ProviderAppDetail }) {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<ProviderCommand | null | undefined>(undefined);
-  const [error, setError] = useState("");
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
-    void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-  };
-  const defaultCommand = useMutation({
-    mutationFn: (commandId: string) => setDefaultCommand(app.id, commandId),
-    onSuccess: refresh,
-    onError: (cause) => setError(errorMessage(cause)),
-  });
-  const archive = useMutation({
-    mutationFn: (commandId: string) => archiveProviderCommand(app.id, commandId),
-    onSuccess: refresh,
-    onError: (cause) => setError(errorMessage(cause)),
-  });
   return (
     <div>
-      <SectionHeader
-        eyebrow="Slash commands"
-        title="What buyers can call"
-        aside={
-          <Button onClick={() => setEditing(null)}>
-            <Plus /> New command
-          </Button>
-        }
-      />
+      <SectionHeader eyebrow="Slash commands" title="What buyers can call" />
       <PanelIntro>
-        A command keeps its name and options; every save adds a revision. Plain text in a thread
-        goes to the default command&apos;s positional argument.
+        Your bot registers commands with an app key: PUT the whole list and Payvoke keeps unchanged
+        commands, adds a revision for changed ones and archives the rest. Buyers see them when they
+        type / in a chat. Every request is priced by your bot's offer; a command can only cap it.
       </PanelIntro>
-      {error && <ErrorNotice>{error}</ErrorNotice>}
+      <pre className="mb-8 overflow-x-auto border border-border bg-background-deep p-4 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        {SYNC_EXAMPLE.replace("<appId>", app.id)}
+      </pre>
       {app.commands.length === 0 ? (
-        <EmptyState
-          title="No commands yet."
-          action={<Button onClick={() => setEditing(null)}>Create command</Button>}
-        >
-          The app needs at least one command, set as default, before it can quote a price.
+        <EmptyState title="No commands yet.">
+          Register commands from your bot. The first one becomes the default.
         </EmptyState>
       ) : (
         <div className="grid gap-3">
@@ -487,49 +95,13 @@ function CommandsTab({ app }: { app: ProviderAppDetail }) {
                 command.revision && [
                   formatCommandPrice(command.revision),
                   plural(command.revision.options.length, "argument"),
-                  `plain text → ${command.revision.positionalParameter || "form only"}`,
+                  `delivery ≤ ${Math.round(command.revision.deliverySeconds / 60)} min`,
                   `revision ${command.revision.id.slice(0, 8)}`,
                 ]
-              }
-              actions={
-                <>
-                  {command.id !== app.defaultCommandId && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={defaultCommand.isPending}
-                      onClick={() => defaultCommand.mutate(command.id)}
-                    >
-                      Make default
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => setEditing(command)}>
-                    <Pencil /> Edit
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Archive ${command.name}`}
-                    disabled={archive.isPending}
-                    onClick={() => archive.mutate(command.id)}
-                  >
-                    <Trash2 />
-                  </Button>
-                </>
               }
             />
           ))}
         </div>
-      )}
-      {editing !== undefined && (
-        <CommandEditor
-          key={editing?.id ?? "new"}
-          appId={app.id}
-          kind={app.kind}
-          command={editing}
-          open
-          onClose={() => setEditing(undefined)}
-        />
       )}
     </div>
   );
@@ -878,7 +450,6 @@ export function ProviderAppPage({ appId }: { appId: string }) {
             {data.description || "No description yet."}
             <span className="mt-5 flex flex-wrap gap-2">
               <AppStatus availability={data.availability} />
-              <Tag>{data.kind.toLowerCase()}</Tag>
               <Tag>{data.visibility.toLowerCase()}</Tag>
               <Tag>{plural(data.commands.length, "command")}</Tag>
               <Tag>
@@ -896,10 +467,6 @@ export function ProviderAppPage({ appId }: { appId: string }) {
               size="lg"
               disabled={opening || data.availability !== "AVAILABLE"}
               onClick={() => {
-                if (data.kind === "TOOL") {
-                  void navigate({ to: "/console/run/$appId", params: { appId: data.id } });
-                  return;
-                }
                 setOpening(true);
                 setError("");
                 void newThread(data.id)
@@ -910,8 +477,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
                   .finally(() => setOpening(false));
               }}
             >
-              {opening ? <Spinner /> : <MessageSquareText />}{" "}
-              {data.kind === "TOOL" ? "Try the tool" : "Open a chat"}
+              {opening ? <Spinner /> : <MessageSquareText />} Open a chat
             </Button>
             {data.visibility === "PUBLIC" && publicApp.data && (
               <Button
