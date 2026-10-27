@@ -164,6 +164,22 @@ Lời nhắn trả lời phải tham chiếu `questionId`; sửa phải tham chi
 
 Storage S3-compatible là phụ thuộc khi bật file; PostgreSQL lưu metadata. Signed URL không nằm trong hash manifest; hash dùng file ID/version/content hash bất biến, không làm quote đổi khi URL hết hạn.
 
+**Hiện thực (27/10/2026).** Bật bằng `FILES_ENABLED=true` và các biến `S3_*`. Code chỉ dùng S3 API chung: local chạy RustFS trong compose, production dùng Neon S3 storage. Khi tắt, route file trả 503 `FILES_DISABLED`, quote có `fileIds` trả `CONTEXT_NOT_SUPPORTED` và result có file trả `FILES_NOT_SUPPORTED`.
+
+| Bước       | Buyer (phiên ví)                                                                                        | Provider (app key)                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Xin upload | `POST /v1/files` `{threadId,name,contentType,size,sha256,clientRequestId}`                              | `POST /v1/provider/apps/:appId/invocations/:id/files` (`files:write`, run đã ACK)                         |
+| Hoàn tất   | `POST /v1/files/:fileId/completions`                                                                    | `POST …/invocations/:id/files/:fileId/completions` (`files:write`)                                        |
+| Tải        | `GET /v1/files/:fileId/download`: input của mình, hoặc artifact khi result của invocation đã liệt kê nó | `GET …/invocations/:id/files/:fileId/download` (`events:read`), chỉ file có trong `contextManifest.files` |
+
+- Xin upload trả `{file, upload:{url,method:"PUT",headers,expiresAt}}`. Request idempotent theo `(uploadScope, clientRequestId)`, gửi lại với nội dung khác thì trả 409. Presigned PUT có ký `Content-Type` và `Content-Length` và chỉ trỏ tới staging key.
+- Khi hoàn tất, server copy staging sang một final key mới mà không URL upload nào trỏ tới, rồi tính lại size và sha256 trên chính bản copy. Khớp thì `READY`, sai thì `REJECTED` (`SIZE_MISMATCH`/`CHECKSUM_MISMATCH`). URL PUT còn hạn vì vậy không ghi đè được bản đã kiểm tra.
+- Download luôn là attachment với `Content-Type` đã khai; signed URL không được lưu hay ghi log. Giới hạn hiện tại: allowlist content type, tối đa `FILE_MAX_BYTES`, 10 file mỗi quote và mỗi result, 50 artifact mỗi invocation.
+- Quote: `contextSelection.fileIds` phải là input `READY` cùng buyer, cùng thread. `contextManifest.files` = `[{fileId,name,contentType,size,sha256}]` sắp theo `fileId`, nằm trong `inputHash`. `invocation.ready` mang manifest đó (không có URL).
+- Result: `files: [{fileId}]` phải là artifact `READY` của chính invocation đó. Payvoke lưu manifest đầy đủ vào result; verifier ghi `REC` khi mọi object còn nguyên (xem M05).
+- Upload bỏ dở quá hạn URL thêm 1 giờ sẽ bị job-worker chuyển `EXPIRED` và xoá staging object.
+- Chưa có: quét an toàn nội dung, nhận diện type theo magic bytes, multipart cho file lớn, retention/legal hold.
+
 ## 6. Provider event protocol
 
 ### 6.1 Kết nối và phân phối
