@@ -7,7 +7,9 @@ type Revision = {
   inputSchema: Prisma.JsonValue;
   outputSchema: Prisma.JsonValue | null;
   positionalParameter: string | null;
-  grossAmount: Prisma.Decimal;
+  grossAmount: Prisma.Decimal | null;
+  minGrossAmount: Prisma.Decimal | null;
+  maxGrossAmount: Prisma.Decimal | null;
   terms: Prisma.JsonValue;
   deliverySeconds: number;
   reviewSeconds: number;
@@ -20,9 +22,18 @@ type Command = {
   activeRevision: Revision | null;
 };
 
+const amount = (value: Prisma.Decimal | null) => value?.toFixed(0) ?? null;
+
 // Decimal prices leave the API as base-unit integer strings.
 export function serializeRevision(revision: Revision | null) {
-  return revision ? { ...revision, grossAmount: revision.grossAmount.toFixed(0) } : null;
+  return revision
+    ? {
+        ...revision,
+        grossAmount: amount(revision.grossAmount),
+        minGrossAmount: amount(revision.minGrossAmount),
+        maxGrossAmount: amount(revision.maxGrossAmount),
+      }
+    : null;
 }
 
 // Buyer-facing command: no lifecycle timestamps.
@@ -56,13 +67,26 @@ export function serializeOwnedApp<
   return { ...app, availability: availabilityLabel(app) };
 }
 
-// Lowest active command price as a base-unit integer string.
-export function fromPrice(commands: { activeRevision: { grossAmount: Prisma.Decimal } | null }[]) {
-  const prices = commands
-    .map((command) => command.activeRevision?.grossAmount)
-    .filter((price): price is Prisma.Decimal => Boolean(price))
-    .map((price) => BigInt(price.toFixed(0)));
-  return prices.length
-    ? prices.reduce((min, price) => (price < min ? price : min)).toString()
-    : null;
+type Priced = {
+  activeRevision: Pick<Revision, "grossAmount" | "minGrossAmount" | "maxGrossAmount"> | null;
+};
+const atomic = (values: (Prisma.Decimal | null | undefined)[]) =>
+  values
+    .filter((value): value is Prisma.Decimal => Boolean(value))
+    .map((v) => BigInt(v.toFixed(0)));
+const min = (values: bigint[]) =>
+  values.length ? values.reduce((a, b) => (b < a ? b : a)).toString() : null;
+const max = (values: bigint[]) =>
+  values.length ? values.reduce((a, b) => (b > a ? b : a)).toString() : null;
+
+// Lowest fixed (TOOL) command price as a base-unit integer string.
+export function fromPrice(commands: Priced[]) {
+  return min(atomic(commands.map((command) => command.activeRevision?.grossAmount)));
+}
+
+// Range across an AGENT app's commands; null when nothing is published.
+export function priceRange(commands: Priced[]) {
+  const low = min(atomic(commands.map((command) => command.activeRevision?.minGrossAmount)));
+  const high = max(atomic(commands.map((command) => command.activeRevision?.maxGrossAmount)));
+  return low && high ? { min: low, max: high } : null;
 }

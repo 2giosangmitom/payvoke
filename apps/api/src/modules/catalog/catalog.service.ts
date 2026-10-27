@@ -1,7 +1,7 @@
 import type { Cradle } from "@fastify/awilix";
 import { NotFoundError } from "../../errors";
 import { availabilityLabel, isAvailable } from "../apps/schema";
-import { fromPrice, serializeCommand } from "../apps/serializers";
+import { fromPrice, priceRange, serializeCommand } from "../apps/serializers";
 
 export type CatalogQuery = { q?: string; cursor?: string; limit: number; savedBy?: string };
 
@@ -69,11 +69,13 @@ export class CatalogService {
         id: row.id,
         name: row.name,
         description: row.description,
+        kind: row.kind,
         visibility: row.visibility,
         status: row.status,
         availability: availabilityLabel(row),
         commandCount: row.commands.length,
         fromPrice: fromPrice(row.commands),
+        priceRange: priceRange(row.commands),
         updatedAt: row.updatedAt,
       })),
       nextCursor: rows.length > limit ? rows[limit - 1].id : null,
@@ -87,9 +89,11 @@ export class CatalogService {
       ownerId: row.ownerId,
       name: row.name,
       description: row.description,
+      kind: row.kind,
       visibility: row.visibility,
       status: row.status,
       availability: availabilityLabel(row),
+      priceRange: priceRange(row.commands),
       canChat: isAvailable(row),
       defaultCommandId: row.defaultCommandId,
       commands: row.commands.map(serializeCommand),
@@ -114,6 +118,7 @@ export class CatalogService {
       id: app.id,
       name: app.name,
       description: app.description,
+      kind: app.kind,
       visibility: app.visibility,
       status: app.status,
       availability: availabilityLabel(app),

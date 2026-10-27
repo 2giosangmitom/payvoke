@@ -7,6 +7,7 @@ const appSelect = {
   id: true,
   name: true,
   description: true,
+  kind: true,
   visibility: true,
   status: true,
   payoutAddress: true,
@@ -41,7 +42,8 @@ export class ProviderAppService {
         prior.name !== fields.name ||
         prior.description !== fields.description ||
         prior.payoutAddress !== fields.payoutAddress ||
-        prior.visibility !== fields.visibility
+        prior.visibility !== fields.visibility ||
+        prior.kind !== fields.kind
       )
         throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return { created: false, app: serializeOwnedApp(prior) };

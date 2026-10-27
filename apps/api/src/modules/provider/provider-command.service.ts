@@ -7,7 +7,12 @@ import {
   UnprocessableEntityError,
 } from "../../errors";
 import { serializeOwnedCommand } from "../apps/serializers";
-import { parseCommandBody, type CommandBody, type CommandDefinition } from "./provider.validation";
+import {
+  parseCommandBody,
+  type AppKind,
+  type CommandBody,
+  type CommandDefinition,
+} from "./provider.validation";
 
 const commandInclude = { activeRevision: true } as const;
 
@@ -23,7 +28,7 @@ export class ProviderCommandService {
   // Checks a parsed definition against the active deployment policy and the
   // app's other command names.
   private async admit(appId: string, definition: CommandDefinition, commandId?: string) {
-    const { terms, grossAmount } = definition.revision;
+    const { terms, grossAmount, minGrossAmount } = definition.revision;
     const policy = await this.db.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
     if (
       !policy ||
@@ -36,7 +41,8 @@ export class ProviderCommandService {
       throw new BadRequestError("TERMS_EXCEED_POLICY");
     // Payvoke sponsors hold and release gas; the approved policy floor keeps each
     // paid call above that cost.
-    if (BigInt(grossAmount) < BigInt(policy.minGrossAmount.toFixed(0)))
+    // For agents the floor applies to the lowest price an offer may carry.
+    if (BigInt(grossAmount ?? minGrossAmount!) < BigInt(policy.minGrossAmount.toFixed(0)))
       throw new UnprocessableEntityError("PRICE_BELOW_FLOOR");
     const duplicate = await this.db.appCommand.findFirst({
       where: { appId, name: definition.name, NOT: commandId ? { id: commandId } : undefined },
@@ -54,6 +60,8 @@ export class ProviderCommandService {
         : {}),
       positionalParameter: revision.positionalParameter,
       grossAmount: revision.grossAmount,
+      minGrossAmount: revision.minGrossAmount,
+      maxGrossAmount: revision.maxGrossAmount,
       terms: revision.terms as Prisma.InputJsonValue,
       deliverySeconds: revision.deliverySeconds,
       reviewSeconds: revision.reviewSeconds,
@@ -70,7 +78,7 @@ export class ProviderCommandService {
   }
 
   async create(app: App, body: CommandBody | undefined) {
-    const definition = parseCommandBody(body);
+    const definition = parseCommandBody(body, app.kind as AppKind);
     await this.admit(app.id, definition);
     const command = await this.db.$transaction(async (tx) => {
       const created = await tx.appCommand.create({
@@ -100,7 +108,7 @@ export class ProviderCommandService {
       body.expectedRevisionId !== current.activeRevisionId
     )
       throw new ConflictError("REVISION_CONFLICT");
-    const definition = parseCommandBody(body);
+    const definition = parseCommandBody(body, app.kind as AppKind);
     await this.admit(app.id, definition, current.id);
     const updated = await this.db.$transaction(async (tx) => {
       const revision = await tx.appCommandRevision.create({
