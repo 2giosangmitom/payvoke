@@ -5,19 +5,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
-  MessagePrimitive,
   ThreadPrimitive,
-  useAuiState,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import {
+  ArrowDown,
+  ArrowUp,
   CircleDollarSign,
   Download,
   Handshake,
   Paperclip,
-  Radio,
   RefreshCcw,
-  Send,
   Slash,
   X,
 } from "lucide-react";
@@ -27,10 +25,13 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
-import { ErrorNotice, Eyebrow, FormField, LoadingState, plural } from "./page-kit";
+import { ErrorNotice, FormField, LoadingState, plural } from "./page-kit";
 import { ChatWidget } from "./chat-widget";
+import { AssistantReply, BuyerMessage, ChatAppContext, TypingIndicator } from "./chat-messages";
+import { ResultView } from "./result-view";
 import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
 import { PaymentConfirm, formatDuration } from "./payment-confirm";
+import { TooltipIconButton } from "./assistant-ui/elements/tooltip-icon-button";
 import { QuestionForm } from "./question-form";
 import { SchemaForm } from "./schema-form";
 import { apiOrigin } from "@/src/lib/api";
@@ -299,26 +300,6 @@ function useStream(threadId: string, kind: AppKind) {
   return { messages, surfaces, connection, snapshot, refresh: () => snapshot.refetch() };
 }
 
-function BuyerMessage() {
-  return (
-    <MessagePrimitive.Root className="max-w-[85%] self-end border border-border bg-primary-soft px-5 py-4 text-sm leading-relaxed break-words whitespace-pre-wrap animate-in fade-in-0 slide-in-from-bottom-2">
-      <span className="mb-2 block font-mono text-[10px] tracking-widest text-faint">YOU</span>
-      <MessagePrimitive.Parts />
-    </MessagePrimitive.Root>
-  );
-}
-function AssistantReply() {
-  const label = useAuiState((s) => s.message.metadata.custom?.["label"] as string | undefined);
-  return (
-    <MessagePrimitive.Root className="max-w-[85%] self-start border border-border bg-background-deep px-5 py-4 text-sm leading-relaxed break-words whitespace-pre-wrap animate-in fade-in-0 slide-in-from-bottom-2">
-      <span className="mb-2 block font-mono text-[10px] tracking-widest text-faint">
-        {label ?? "APP · LIVE OUTPUT"}
-      </span>
-      <MessagePrimitive.Parts />
-    </MessagePrimitive.Root>
-  );
-}
-
 export function RevisionControl({
   invocationId,
   remaining,
@@ -551,8 +532,15 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     retry: false,
   });
   const candidateQuote = quote ?? restored.data?.quote ?? null;
+  // A quote stops being pending once its hold shows up, even if this tab
+  // never saw the authorization response.
+  const paidQuote = stream.snapshot.data?.prompts.some(
+    (prompt) => prompt.quoteId === candidateQuote?.quoteId && prompt.paid,
+  );
   const pendingQuote =
-    candidateQuote && candidateQuote.validUntil * 1000 > Date.now() ? candidateQuote : null;
+    candidateQuote && candidateQuote.validUntil * 1000 > Date.now() && !paidQuote
+      ? candidateQuote
+      : null;
 
   useEffect(() => {
     setQuote(null);
@@ -704,6 +692,13 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       role: message.role,
       content: [{ type: "text", text: message.text }],
       metadata: { custom: message.label ? { label: message.label } : {} },
+      ...(message.role === "assistant"
+        ? {
+            status: message.complete
+              ? { type: "complete" as const, reason: "stop" as const }
+              : { type: "running" as const },
+          }
+        : {}),
     }),
     isRunning:
       stream.snapshot.data?.invocations.some((inv) =>
@@ -759,6 +754,26 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   const status = pendingQuote
     ? "AWAITING_AUTHORIZATION"
     : (stream.snapshot.data?.invocations.at(0)?.executionStatus ?? "READY");
+  // Who owes the next move: the provider answering free chat, or a paid run
+  // that has not streamed any text yet.
+  const latest = stream.snapshot.data?.invocations.at(0);
+  const latestStreamed = Boolean(
+    latest &&
+    (stream.snapshot.data?.messages.some((m) => m.invocationId === latest.id) ||
+      stream.messages.some((m) => !m.complete)),
+  );
+  const lastTurn = stream.snapshot.data?.conversation.at(-1);
+  const typing =
+    latest && ["QUEUED", "ACKED", "RUNNING"].includes(latest.executionStatus) && !latestStreamed
+      ? latest.executionStatus === "RUNNING"
+        ? "working on your request…"
+        : "payment held · starting…"
+      : agent &&
+          lastTurn?.role === "BUYER" &&
+          !openOffer &&
+          !(stream.snapshot.data?.offers ?? []).some((offer) => offer.messageSeq >= lastTurn.seq)
+        ? "replying…"
+        : null;
 
   if (thread.isPending || stream.snapshot.isPending)
     return <LoadingState className="px-8">Opening thread…</LoadingState>;
@@ -782,28 +797,40 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     "border-b border-border bg-background-deep px-6 py-2.5 font-mono text-[11px] leading-relaxed text-warning";
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-5 border-b border-border px-5 py-4 sm:px-7">
-        <div className="min-w-0">
-          <Eyebrow className="text-faint">THREAD / {threadId.slice(0, 8)}</Eyebrow>
-          <h2 className="mt-1.5 truncate text-[clamp(1.15rem,2vw,1.6rem)] font-medium tracking-[-0.025em]">
-            {data.title || data.app.name}
-          </h2>
-          <span className="text-xs text-faint">
-            {data.app.name} · {selected ? `/${selected.name}` : "no command"} ·{" "}
-            {plural(data.commands.length, "slash command")}
-          </span>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2 font-mono text-[10px] uppercase">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3.5 sm:px-7">
+        <div className="flex min-w-0 items-center gap-3.5">
           <span
-            className={cn(
-              "flex items-center gap-1.5 text-primary",
-              stream.connection !== "connected" && "text-warning",
-            )}
+            aria-hidden="true"
+            className="grid size-10 shrink-0 place-items-center border border-primary bg-primary-soft font-mono text-sm font-semibold text-primary uppercase"
           >
-            <Radio size={12} className={cn(stream.connection === "connected" && "animate-pulse")} />
-            {stream.connection}
+            {data.app.name.trim().slice(0, 2)}
           </span>
-          <Badge variant="outline">{status}</Badge>
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-medium tracking-[-0.025em]">
+              {data.title || data.app.name}
+            </h2>
+            <span className="flex flex-wrap items-center gap-x-2 font-mono text-[10px] tracking-wide text-faint uppercase">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "size-1.5",
+                    offline ? "bg-faint" : "animate-pulse bg-primary motion-reduce:animate-none",
+                  )}
+                />
+                {offline ? "offline" : "online"}
+              </span>
+              <span>·</span>
+              <span>{agent ? "agent" : "tool"}</span>
+              <span>·</span>
+              <span>{plural(data.commands.length, "command")}</span>
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5 font-mono text-[10px] uppercase">
+          <Badge variant="outline">{status.replaceAll("_", " ").toLowerCase()}</Badge>
+          <span className={cn("text-faint", stream.connection !== "connected" && "text-warning")}>
+            {stream.connection === "connected" ? "live" : stream.connection}
+          </span>
         </div>
       </div>
 
@@ -822,318 +849,340 @@ export function ThreadChat({ threadId }: { threadId: string }) {
         </div>
       )}
 
-      <AssistantRuntimeProvider runtime={runtime}>
-        <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-          <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-5 py-7 sm:px-[clamp(1.25rem,4vw,3.75rem)]">
-            <ThreadPrimitive.Empty>
-              <div className="my-auto py-14">
-                <Eyebrow className="text-faint">01 / Start a conversation</Eyebrow>
-                <h3 className="mt-5 max-w-md text-[clamp(1.8rem,4vw,3rem)] leading-[1.07] font-medium tracking-[-0.05em]">
-                  Ask {data.app.name} something.
-                </h3>
-                {agent ? (
-                  <p className="mt-5 max-w-md leading-7 text-muted-foreground">
-                    Describe what you need. Messages are free: {data.app.name} replies and sends an
-                    offer with a price. You pay only if you accept it. Type{" "}
-                    <code className="font-mono text-primary">/</code> to use a command.
+      <ChatAppContext.Provider value={{ name: data.app.name }}>
+        <AssistantRuntimeProvider runtime={runtime}>
+          <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
+            <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-4 py-7 sm:px-[clamp(1.25rem,4vw,3.75rem)]">
+              <ThreadPrimitive.Empty>
+                <div className="mx-auto my-auto grid w-full max-w-xl justify-items-center py-14 text-center">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-14 place-items-center border border-primary bg-primary-soft font-mono text-lg font-semibold text-primary uppercase"
+                  >
+                    {data.app.name.trim().slice(0, 2)}
+                  </span>
+                  <h3 className="mt-6 text-[clamp(1.6rem,3.5vw,2.4rem)] leading-[1.1] font-medium tracking-[-0.045em]">
+                    {agent ? `What should ${data.app.name} do?` : `Ask ${data.app.name} something.`}
+                  </h3>
+                  <p className="mt-4 max-w-md leading-7 text-muted-foreground">
+                    {agent ? (
+                      <>
+                        Messages are free. Describe the job; the app replies and sends an offer with
+                        a price. You pay only if you accept it.
+                      </>
+                    ) : (
+                      <>
+                        Plain text goes to{" "}
+                        <code className="font-mono text-primary">
+                          /{selected?.name ?? "default"}
+                        </code>
+                        . You see a quote before every request.
+                      </>
+                    )}
                   </p>
-                ) : (
-                  <p className="mt-5 max-w-md leading-7 text-muted-foreground">
-                    Plain text goes to{" "}
-                    <code className="font-mono text-primary">/{selected?.name ?? "default"}</code>.
-                    Type <code className="font-mono text-primary">/</code> to pick another command.
-                    You see a quote before every request.
-                  </p>
-                )}
-                <div className="mt-6 flex flex-wrap gap-2">
-                  {commands.slice(0, 5).map((command) => (
-                    <Button
+                  <div className="mt-8 flex w-full flex-wrap justify-center gap-2 *:w-full sm:*:w-[calc(50%-0.25rem)]">
+                    {commands.slice(0, 4).map((command) =>
+                      agent ? (
+                        <ThreadPrimitive.Suggestion
+                          key={command.id}
+                          prompt={`/${command.name} `}
+                          send={false}
+                          className="grid gap-1 border border-border bg-background-deep px-4 py-3 text-left transition-colors hover:border-primary focus-visible:border-primary focus-visible:outline-none"
+                        >
+                          <code className="font-mono text-xs text-primary">/{command.name}</code>
+                          <span className="line-clamp-2 text-sm text-muted-foreground">
+                            {command.description}
+                          </span>
+                        </ThreadPrimitive.Suggestion>
+                      ) : (
+                        <button
+                          key={command.id}
+                          type="button"
+                          className="grid gap-1 border border-border bg-background-deep px-4 py-3 text-left transition-colors hover:border-primary"
+                          onClick={() => {
+                            setDialogText("");
+                            setDialogCommand(command);
+                          }}
+                        >
+                          <code className="font-mono text-xs text-primary">/{command.name}</code>
+                          <span className="line-clamp-2 text-sm text-muted-foreground">
+                            {command.description}
+                          </span>
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </ThreadPrimitive.Empty>
+              <ThreadPrimitive.Messages
+                components={{ UserMessage: BuyerMessage, AssistantMessage: AssistantReply }}
+              />
+              {typing && <TypingIndicator label={`${data.app.name} · ${typing}`} />}
+              {stream.surfaces.map((surface) => (
+                <OpenUISurface
+                  key={surface.messageId}
+                  source={surface.content.source}
+                  questions={questions}
+                  invocationId={surface.content.invocationId}
+                  onAnswer={answer}
+                />
+              ))}
+              {openQuestions
+                .filter((question) => !widgetQuestionIds.has(question.questionId))
+                .map((question) => (
+                  <ChatWidget
+                    key={question.id}
+                    label="App question"
+                    meta={question.invocationId.slice(0, 8)}
+                    aria-label="Provider question"
+                  >
+                    <QuestionForm
+                      question={question}
+                      onSubmit={(values) => answer(question, values)}
+                    />
+                  </ChatWidget>
+                ))}
+              {stream.snapshot.data?.invocations
+                .filter((inv) => inv.executionStatus === "DELIVERED" && inv.output !== null)
+                .map((inv) => {
+                  const used = stream.snapshot.data!.revisions.filter(
+                    (revision) => revision.invocationId === inv.id,
+                  ).length;
+                  const remaining = Math.max(0, (data.revisionPolicy?.maxIncluded ?? 0) - used);
+                  return (
+                    <ChatWidget
+                      key={inv.id}
+                      label="Verified output"
+                      meta={inv.id.slice(0, 8)}
+                      aria-label="Verified structured result"
+                    >
+                      <ResultView output={inv.output} />
+                      {inv.files.length > 0 && (
+                        <ul aria-label="Delivered files" className="mt-3 grid gap-1.5">
+                          {inv.files.map((file) => (
+                            <li key={file.fileId} className="min-w-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="max-w-full font-mono"
+                                onClick={() =>
+                                  void downloadFile(file.fileId).catch((cause) =>
+                                    setError(readableError(cause)),
+                                  )
+                                }
+                              >
+                                <Download />
+                                <span className="truncate">{file.name}</span>
+                                <span className="text-faint">{formatBytes(file.size)}</span>
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {remaining > 0 && (
+                        <RevisionControl invocationId={inv.id} remaining={remaining} />
+                      )}
+                    </ChatWidget>
+                  );
+                })}
+              <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 mt-auto flex justify-center pt-2">
+                <ThreadPrimitive.ScrollToBottom
+                  aria-label="Scroll to latest"
+                  className="pointer-events-auto grid size-9 place-items-center border border-border-strong bg-card text-muted-foreground shadow-float transition hover:border-primary hover:text-primary disabled:invisible"
+                >
+                  <ArrowDown size={16} />
+                </ThreadPrimitive.ScrollToBottom>
+              </ThreadPrimitive.ViewportFooter>
+            </ThreadPrimitive.Viewport>
+
+            <div className="relative shrink-0 bg-card px-3 pt-1 pb-3 sm:px-[clamp(1.25rem,4vw,3.75rem)]">
+              {slashQuery !== null && suggestions.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-label="Slash commands"
+                  className="absolute inset-x-4 bottom-[calc(100%-4px)] z-20 grid max-h-68 overflow-y-auto border border-border-strong bg-background-deep shadow-float animate-in fade-in-0 slide-in-from-bottom-1 sm:inset-x-6"
+                >
+                  {suggestions.map((command) => (
+                    <button
                       key={command.id}
-                      variant="outline"
-                      size="sm"
-                      className="bg-background-deep font-mono text-primary hover:border-primary"
+                      type="button"
+                      role="option"
+                      aria-selected={command.id === selected?.id}
+                      className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-3.5 py-2.5 text-left text-muted-foreground last:border-b-0 hover:bg-card aria-selected:bg-card"
                       onClick={() => {
+                        setSelectedCommandId(command.id);
+                        setComposerText("");
                         setDialogText("");
                         setDialogCommand(command);
                       }}
                     >
-                      /{command.name}
-                    </Button>
+                      <code className="font-mono text-xs text-primary">/{command.name}</code>
+                      <span className="truncate text-xs">{command.description}</span>
+                      <small className="font-mono text-[10px] text-faint">
+                        {formatCommandPrice(command.revision)}
+                      </small>
+                    </button>
                   ))}
                 </div>
-              </div>
-            </ThreadPrimitive.Empty>
-            <ThreadPrimitive.Messages
-              components={{ UserMessage: BuyerMessage, AssistantMessage: AssistantReply }}
-            />
-            {stream.surfaces.map((surface) => (
-              <OpenUISurface
-                key={surface.messageId}
-                source={surface.content.source}
-                questions={questions}
-                invocationId={surface.content.invocationId}
-                onAnswer={answer}
-              />
-            ))}
-            {openQuestions
-              .filter((question) => !widgetQuestionIds.has(question.questionId))
-              .map((question) => (
-                <ChatWidget
-                  key={question.id}
-                  label="App question"
-                  meta={question.invocationId.slice(0, 8)}
-                  aria-label="Provider question"
-                >
-                  <QuestionForm
-                    question={question}
-                    onSubmit={(values) => answer(question, values)}
+              )}
+              {pendingQuote && !quoteHidden && (
+                <div className="mb-3">
+                  <PaymentConfirm
+                    quote={pendingQuote}
+                    onHide={() => setQuoteHidden(true)}
+                    onPaid={paid}
                   />
-                </ChatWidget>
-              ))}
-            {stream.snapshot.data?.invocations
-              .filter((inv) => inv.executionStatus === "DELIVERED" && inv.output !== null)
-              .map((inv) => {
-                const used = stream.snapshot.data!.revisions.filter(
-                  (revision) => revision.invocationId === inv.id,
-                ).length;
-                const remaining = Math.max(0, (data.revisionPolicy?.maxIncluded ?? 0) - used);
-                return (
-                  <ChatWidget
-                    key={inv.id}
-                    label="Verified output"
-                    meta={inv.id.slice(0, 8)}
-                    aria-label="Verified structured result"
-                  >
-                    <pre className="max-h-105 overflow-auto font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-                      {JSON.stringify(inv.output, null, 2)}
-                    </pre>
-                    {inv.files.length > 0 && (
-                      <ul aria-label="Delivered files" className="mt-3 grid gap-1.5">
-                        {inv.files.map((file) => (
-                          <li key={file.fileId} className="min-w-0">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="max-w-full font-mono"
-                              onClick={() =>
-                                void downloadFile(file.fileId).catch((cause) =>
-                                  setError(readableError(cause)),
-                                )
-                              }
-                            >
-                              <Download />
-                              <span className="truncate">{file.name}</span>
-                              <span className="text-faint">{formatBytes(file.size)}</span>
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {remaining > 0 && (
-                      <RevisionControl invocationId={inv.id} remaining={remaining} />
-                    )}
-                  </ChatWidget>
-                );
-              })}
-            <ThreadPrimitive.ViewportFooter className="sticky bottom-0" />
-          </ThreadPrimitive.Viewport>
-
-          <div className="relative shrink-0 border-t border-border bg-card px-4 pt-2.5 pb-3.5 sm:px-6">
-            {slashQuery !== null && suggestions.length > 0 && (
-              <div
-                role="listbox"
-                aria-label="Slash commands"
-                className="absolute inset-x-4 bottom-[calc(100%-4px)] z-20 grid max-h-68 overflow-y-auto border border-border-strong bg-background-deep shadow-float animate-in fade-in-0 slide-in-from-bottom-1 sm:inset-x-6"
-              >
-                {suggestions.map((command) => (
-                  <button
-                    key={command.id}
-                    type="button"
-                    role="option"
-                    aria-selected={command.id === selected?.id}
-                    className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-3.5 py-2.5 text-left text-muted-foreground last:border-b-0 hover:bg-card aria-selected:bg-card"
-                    onClick={() => {
-                      setSelectedCommandId(command.id);
-                      setComposerText("");
-                      setDialogText("");
-                      setDialogCommand(command);
-                    }}
-                  >
-                    <code className="font-mono text-xs text-primary">/{command.name}</code>
-                    <span className="truncate text-xs">{command.description}</span>
-                    <small className="font-mono text-[10px] text-faint">
-                      {formatCommandPrice(command.revision)}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            )}
-            {pendingQuote && !quoteHidden && (
-              <div className="mb-3">
-                <PaymentConfirm
-                  quote={pendingQuote}
-                  onHide={() => setQuoteHidden(true)}
-                  onPaid={paid}
+                </div>
+              )}
+              {agent && openOffer && !pendingQuote && !data.activeQuoteId && (
+                <OfferCard
+                  offer={openOffer}
+                  command={data.commands.find(
+                    (command) => command.revision?.id === openOffer.commandRevisionId,
+                  )}
+                  busy={busy === "quoting"}
+                  onAccept={() => void prepare({ offerId: openOffer.id }).catch(() => undefined)}
+                  onDecline={() =>
+                    void declineOffer(threadId, openOffer.id)
+                      .then(refreshThread)
+                      .catch((cause) => setError(readableError(cause)))
+                  }
                 />
-              </div>
-            )}
-            {agent && openOffer && !pendingQuote && !data.activeQuoteId && (
-              <OfferCard
-                offer={openOffer}
-                command={data.commands.find(
-                  (command) => command.revision?.id === openOffer.commandRevisionId,
+              )}
+              {pendingQuote && quoteHidden && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mb-2 bg-background-deep font-mono text-primary"
+                  onClick={() => setQuoteHidden(false)}
+                >
+                  <CircleDollarSign /> Review pending quote · {formatUsdc(pendingQuote.grossAmount)}
+                </Button>
+              )}
+              <ComposerPrimitive.Root className="border border-border-strong bg-background transition-colors focus-within:border-primary">
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={ACCEPTED_FILE_TYPES.join(",")}
+                  onChange={(event) => {
+                    attach(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                {attachments.length > 0 && (
+                  <ul aria-label="Attachments" className="flex flex-wrap gap-2 px-3 pt-3">
+                    {attachments.map((item) => (
+                      <li
+                        key={item.key}
+                        className={cn(
+                          "inline-flex max-w-full min-w-0 items-center gap-2 border px-2.5 py-1 font-mono text-[11px]",
+                          item.status === "error"
+                            ? "border-destructive text-destructive"
+                            : "border-border bg-background-deep text-muted-foreground",
+                        )}
+                      >
+                        {item.status === "uploading" ? (
+                          <Spinner className="size-3" aria-label="Uploading" />
+                        ) : (
+                          <Paperclip size={12} aria-hidden="true" />
+                        )}
+                        <span className="max-w-48 truncate text-foreground">{item.name}</span>
+                        <span className="truncate">
+                          {item.status === "error" ? item.error : formatBytes(item.size)}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${item.name}`}
+                          className="text-faint hover:text-foreground"
+                          onClick={() =>
+                            setAttachments((current) =>
+                              current.filter(({ key }) => key !== item.key),
+                            )
+                          }
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-                busy={busy === "quoting"}
-                onAccept={() => void prepare({ offerId: openOffer.id }).catch(() => undefined)}
-                onDecline={() =>
-                  void declineOffer(threadId, openOffer.id)
-                    .then(refreshThread)
-                    .catch((cause) => setError(readableError(cause)))
-                }
-              />
-            )}
-            {pendingQuote && quoteHidden && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mb-2 bg-background-deep font-mono text-primary"
-                onClick={() => setQuoteHidden(false)}
-              >
-                <CircleDollarSign /> Review pending quote · {formatUsdc(pendingQuote.grossAmount)}
-              </Button>
-            )}
-            {attachments.length > 0 && (
-              <ul aria-label="Attachments" className="flex flex-wrap gap-2 pb-1">
-                {attachments.map((item) => (
-                  <li
-                    key={item.key}
-                    className={cn(
-                      "inline-flex max-w-full min-w-0 items-center gap-2 border px-2.5 py-1 font-mono text-[11px]",
-                      item.status === "error"
-                        ? "border-destructive text-destructive"
-                        : "border-border text-muted-foreground",
-                    )}
+                <ComposerPrimitive.Input
+                  rows={1}
+                  placeholder={
+                    offline
+                      ? "App unavailable. History is read-only."
+                      : agent
+                        ? `Describe what you need from ${data.app.name}…`
+                        : `Message ${data.app.name}…`
+                  }
+                  aria-label="Message the app"
+                  onChange={(event) => setComposerText(event.currentTarget.value)}
+                  className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed outline-none placeholder:text-faint"
+                />
+                <div className="flex items-center gap-2 px-2 pb-2">
+                  <TooltipIconButton
+                    tooltip="Attach files"
+                    side="top"
+                    className="size-8 text-muted-foreground"
+                    disabled={sendDisabled}
+                    onClick={() => fileInput.current?.click()}
                   >
-                    {item.status === "uploading" ? (
-                      <Spinner className="size-3" aria-label="Uploading" />
-                    ) : (
-                      <Paperclip size={12} aria-hidden="true" />
-                    )}
-                    <span className="max-w-48 truncate text-foreground">{item.name}</span>
-                    <span className="truncate">
-                      {item.status === "error" ? item.error : formatBytes(item.size)}
+                    <Paperclip />
+                  </TooltipIconButton>
+                  {agent ? (
+                    <span className="hidden items-center gap-1.5 font-mono text-[10px] text-faint sm:inline-flex">
+                      <Slash size={11} /> commands
                     </span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${item.name}`}
-                      className="text-faint hover:text-foreground"
-                      onClick={() =>
-                        setAttachments((current) => current.filter(({ key }) => key !== item.key))
-                      }
-                    >
-                      <X size={12} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {agent ? (
-              <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
-                <span className="inline-flex items-center gap-1.5">
-                  <Slash size={12} /> Type / for commands
-                </span>
-                {presale && (
+                  ) : (
+                    <label className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-faint">
+                      <Slash size={11} />
+                      <select
+                        aria-label="Selected command"
+                        value={selected?.id ?? ""}
+                        onChange={(event) => setSelectedCommandId(event.target.value)}
+                        className="max-w-32 truncate bg-transparent py-1 text-[11px] text-foreground"
+                      >
+                        {commands.map((command) => (
+                          <option key={command.id} value={command.id}>
+                            /{command.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <span
                     className={cn(
-                      "ml-auto",
-                      presale.remaining === 0 ? "text-warning" : "text-primary",
+                      "ml-auto truncate font-mono text-[10px]",
+                      agent && presale?.remaining === 0 ? "text-warning" : "text-primary",
                     )}
                   >
-                    {presale.remaining === 0
-                      ? "Free messages used up · accept an offer to continue"
-                      : `${presale.remaining}/${presale.limit} free messages`}
+                    {agent
+                      ? presale &&
+                        (presale.remaining === 0
+                          ? "Free messages used up · accept an offer"
+                          : `${presale.remaining}/${presale.limit} free`)
+                      : selected
+                        ? formatCommandPrice(selected.revision)
+                        : ""}
                   </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
-                <label className="inline-flex min-w-0 items-center gap-1.5">
-                  <Slash size={12} />
-                  <span>Command</span>
-                  <select
-                    aria-label="Selected command"
-                    value={selected?.id ?? ""}
-                    onChange={(event) => setSelectedCommandId(event.target.value)}
-                    className="bg-transparent px-0.5 py-1 text-[11px] text-foreground"
+                  <ComposerPrimitive.Send
+                    aria-label={agent ? "Send message" : "Get a quote"}
+                    className="grid size-9 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {commands.map((command) => (
-                      <option key={command.id} value={command.id}>
-                        /{command.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <span className="hidden truncate sm:inline">
-                  {selected?.revision?.positionalParameter
-                    ? `Plain text → ${selected.revision.positionalParameter}`
-                    : "Options open in a form"}
-                </span>
-                <span className="ml-auto text-primary">
-                  {selected ? formatCommandPrice(selected.revision) : ""}
-                </span>
-              </div>
-            )}
-            <ComposerPrimitive.Root className="flex items-end gap-3 pt-2">
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                hidden
-                accept={ACCEPTED_FILE_TYPES.join(",")}
-                onChange={(event) => {
-                  attach(event.currentTarget.files);
-                  event.currentTarget.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                className="size-12 shrink-0"
-                aria-label="Attach files"
-                disabled={sendDisabled}
-                onClick={() => fileInput.current?.click()}
-              >
-                <Paperclip />
-              </Button>
-              <ComposerPrimitive.Input
-                rows={2}
-                placeholder={
-                  offline ? "App unavailable. History is read-only." : `Message ${data.app.name}…`
-                }
-                aria-label="Message the app"
-                onChange={(event) => setComposerText(event.currentTarget.value)}
-                className="min-w-0 flex-1 resize-none border border-border bg-background px-3.5 py-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
-              />
-              <ComposerPrimitive.Send
-                aria-label={agent ? "Send message" : "Get a quote"}
-                className="grid size-12 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Send size={18} />
-              </ComposerPrimitive.Send>
-            </ComposerPrimitive.Root>
-          </div>
-        </ThreadPrimitive.Root>
-      </AssistantRuntimeProvider>
+                    {busy ? <Spinner className="size-4" /> : <ArrowUp size={17} />}
+                  </ComposerPrimitive.Send>
+                </div>
+              </ComposerPrimitive.Root>
+            </div>
+          </ThreadPrimitive.Root>
+        </AssistantRuntimeProvider>
+      </ChatAppContext.Provider>
 
-      {busy && (
-        <p className="flex items-center gap-2 px-6 py-2 font-mono text-xs text-muted-foreground">
-          <Spinner className="size-3.5" /> {busy === "quoting" ? "Preparing quote…" : "Sending…"}
-        </p>
-      )}
       {error && <ErrorNotice className="mx-6 my-3 w-auto">{error}</ErrorNotice>}
       <footer className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border px-5 py-1.5 font-mono text-[10px] text-faint sm:px-6">
-        <span>AG-UI STREAM / OPENUI LANG</span>
+        <span className="max-sm:hidden">AG-UI STREAM / OPENUI LANG</span>
         <span>{plural(stream.snapshot.data?.invocations.length ?? 0, "paid invocation")}</span>
         <Button
           variant="ghost"
