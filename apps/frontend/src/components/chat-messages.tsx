@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { Suspense, createContext, lazy, useContext, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   MessagePrimitive,
@@ -8,7 +8,6 @@ import {
   type TextMessagePartProps,
 } from "@assistant-ui/react";
 import { CheckIcon, CopyIcon, Handshake, UserRound } from "lucide-react";
-import { MarkdownText } from "./assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "./assistant-ui/elements/tooltip-icon-button";
 import { cn } from "@/src/lib/utils";
 
@@ -44,6 +43,19 @@ function PlainText({ text }: TextMessagePartProps) {
   return <span className="whitespace-pre-wrap">{text}</span>;
 }
 
+// Streamdown and its highlighter are heavy; the chat shell loads without them
+// and app output shows as plain text until the renderer arrives.
+const StreamdownText = lazy(() =>
+  import("./assistant-ui/elements/streamdown-text").then((m) => ({ default: m.StreamdownText })),
+);
+function AppText(props: TextMessagePartProps) {
+  return (
+    <Suspense fallback={<PlainText {...props} />}>
+      <StreamdownText />
+    </Suspense>
+  );
+}
+
 export function BuyerMessage() {
   return (
     <MessagePrimitive.Root className="group flex max-w-[min(85%,44rem)] flex-row-reverse max-sm:max-w-[92%] items-start gap-3 self-end animate-in fade-in-0 slide-in-from-bottom-2">
@@ -63,8 +75,8 @@ export function BuyerMessage() {
   );
 }
 
-// Streamed and delivered app output renders as markdown with a live caret
-// while the run streams; settled offers render as a compact receipt line.
+// Streamed and delivered app output renders through streamdown with a live
+// caret while the run streams; settled offers render as a compact receipt line.
 export function AssistantReply() {
   const { name } = useContext(ChatAppContext);
   const label = useAuiState((s) => s.message.metadata.custom?.["label"] as string | undefined);
@@ -103,7 +115,7 @@ export function AssistantReply() {
             provider ? "border-border bg-background" : "border-border bg-background-deep",
           )}
         >
-          <MessagePrimitive.Parts components={{ Text: provider ? PlainText : MarkdownText }} />
+          <MessagePrimitive.Parts components={{ Text: provider ? PlainText : AppText }} />
         </div>
         <ActionBarPrimitive.Root
           hideWhenRunning
