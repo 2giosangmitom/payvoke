@@ -92,6 +92,10 @@ archived appear in the store without operator review; availability requires
 `ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
 can star apps.
 
+Files (buyer inputs and provider artifacts) use presigned S3 uploads, a
+server-side completion that copies and re-hashes the bytes, and per-request
+download URLs; see [S01 §5.4](../../docs/specs/01-api-and-provider-protocol.md#54-file).
+
 Protected routes use `preHandler: app.requireAccount`. Prisma is the data
 layer; no generic repository layer sits between services and the client.
 
@@ -115,6 +119,20 @@ pnpm --filter api dev
 
 Start order for the full backend: Redis, facilitator, API, then settlement-worker,
 finance-worker and job-worker.
+
+Files are optional. Any S3-compatible store works and only the `S3_*` values
+change between environments: RustFS from compose locally, Neon S3 storage in
+production (bucket and CORS for `WEB_ORIGIN` provisioned there).
+
+```sh
+docker compose --profile stack up -d rustfs storage-init   # S3 on 127.0.0.1:9000, bucket payvoke-files
+# .env: FILES_ENABLED=true S3_ENDPOINT=http://127.0.0.1:9000 S3_REGION=us-east-1
+#       S3_BUCKET=payvoke-files S3_ACCESS_KEY_ID=payvoke S3_SECRET_ACCESS_KEY=payvoke-secret
+#       S3_FORCE_PATH_STYLE=true
+```
+
+Set the same `S3_*` values on the job-worker; without them, file results are
+never verified and are refunded at the delivery deadline.
 
 Change auth fields/plugins in `src/modules/auth/auth.ts`, then run
 `pnpm --filter api auth:schema`; do not copy model definitions or modify generated
@@ -161,6 +179,10 @@ provider/catalog endpoints. For real multi-connection PostgreSQL auth proof,
 explicitly supply a `TEST_DATABASE_URL` pointing to local Docker PostgreSQL only.
 Neon is production and must never be used for tests. Tests create/remove only
 their own random schema; they never read `DATABASE_URL`.
+
+Storage is in-memory in API tests. The presigned-URL behavior is tested against a
+real S3 endpoint in `@payvoke/storage`: `docker compose up -d test-rustfs`, then
+`TEST_S3_ENDPOINT=http://127.0.0.1:59000 pnpm --filter @payvoke/storage test`.
 
 Quote, x402, settlement and finance flows span several services and are tested in
 [`tests/payments-e2e`](../../tests/payments-e2e).

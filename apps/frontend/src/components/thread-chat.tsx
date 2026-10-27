@@ -9,7 +9,17 @@ import {
   ThreadPrimitive,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { CircleDollarSign, Radio, RefreshCcw, Send, ShieldCheck, Slash, X } from "lucide-react";
+import {
+  CircleDollarSign,
+  Download,
+  Paperclip,
+  Radio,
+  RefreshCcw,
+  Send,
+  ShieldCheck,
+  Slash,
+  X,
+} from "lucide-react";
 import { useConnection, usePublicClient, useSignTypedData } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
 import { isHex, type Address, type Hex } from "viem";
@@ -28,6 +38,7 @@ import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
 import { QuestionForm } from "./question-form";
 import { apiOrigin } from "@/src/lib/api";
 import { formatUsdc } from "@/src/lib/apps";
+import { ACCEPTED_FILE_TYPES, downloadFile, formatBytes, uploadThreadFile } from "@/src/lib/files";
 import { cn } from "@/src/lib/utils";
 import {
   answerQuestion,
@@ -47,6 +58,16 @@ import {
 } from "@/src/lib/paid-chat";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; text: string; complete: boolean };
+// A local file on its way to READY; only READY ones are sent with a quote.
+type Attachment = {
+  key: string;
+  name: string;
+  size: number;
+  status: "uploading" | "ready" | "error";
+  fileId?: string;
+  error?: string;
+};
+const MAX_ATTACHMENTS = 10;
 type Surface = ChatSnapshot["surfaces"][number];
 const readableError = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Request failed.";
@@ -567,6 +588,8 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   const [quoteHidden, setQuoteHidden] = useState(false);
   const [busy, setBusy] = useState<"quoting" | "signing" | null>(null);
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const { address, chainId } = useConnection();
   const publicClient = usePublicClient({ chainId: avalancheFuji.id });
   const { signTypedDataAsync } = useSignTypedData();
@@ -587,6 +610,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     setSelectedCommandId("");
     setError("");
     setComposerText("");
+    setAttachments([]);
   }, [threadId]);
 
   useEffect(() => {
@@ -606,7 +630,14 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     setError("");
     setBusy("quoting");
     try {
-      const result = await quoteFor(thread.data, commandId, args);
+      if (attachments.some((item) => item.status === "uploading"))
+        throw new Error("Wait for attachments to finish uploading.");
+      const fileIds = attachments.flatMap((item) =>
+        item.status === "ready" && item.fileId ? [item.fileId] : [],
+      );
+      const result = await quoteFor(thread.data, commandId, args, fileIds);
+      // The quote froze these files; the next request starts without them.
+      setAttachments([]);
       setQuote(result);
       setQuoteHidden(false);
       await stream.refresh();
@@ -642,6 +673,30 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     }
   }
 
+  function attach(files: FileList | null) {
+    if (!files?.length || !thread.data) return;
+    if (attachments.length + files.length > MAX_ATTACHMENTS) {
+      setError(`Attach at most ${MAX_ATTACHMENTS} files per request.`);
+      return;
+    }
+    const threadId = thread.data.id;
+    for (const file of Array.from(files)) {
+      const key = crypto.randomUUID();
+      const update = (patch: Partial<Attachment>) =>
+        setAttachments((current) =>
+          current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+        );
+      setAttachments((current) => [
+        ...current,
+        { key, name: file.name, size: file.size, status: "uploading" },
+      ]);
+      uploadThreadFile(threadId, file).then(
+        (ready) => update({ status: "ready", fileId: ready.id }),
+        (cause) => update({ status: "error", error: readableError(cause) }),
+      );
+    }
+  }
+
   function submitText(text: string) {
     if (!thread.data) return;
     const resolved = commandForText(thread.data, text, selectedCommandId);
@@ -663,6 +718,14 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     return Promise.resolve();
   }
 
+  const sendDisabled =
+    !thread.data ||
+    thread.data.app.availability !== "AVAILABLE" ||
+    Boolean(thread.data.archivedAt) ||
+    busy !== null ||
+    Boolean(pendingQuote) ||
+    Boolean(thread.data.activeQuoteId);
+
   const runtime = useExternalStoreRuntime({
     messages: stream.messages,
     convertMessage: (message) => ({
@@ -674,13 +737,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       stream.snapshot.data?.invocations.some((inv) =>
         ["QUEUED", "ACKED", "RUNNING", "WAITING_BUYER"].includes(inv.executionStatus),
       ) ?? false,
-    isSendDisabled:
-      !thread.data ||
-      thread.data.app.availability !== "AVAILABLE" ||
-      Boolean(thread.data.archivedAt) ||
-      busy !== null ||
-      Boolean(pendingQuote) ||
-      Boolean(thread.data.activeQuoteId),
+    isSendDisabled: sendDisabled,
     onNew: async (message) => {
       const text = message.content
         .filter((part) => part.type === "text")
@@ -870,6 +927,28 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     <pre className="max-h-105 overflow-auto font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
                       {JSON.stringify(inv.output, null, 2)}
                     </pre>
+                    {inv.files.length > 0 && (
+                      <ul aria-label="Delivered files" className="mt-3 grid gap-1.5">
+                        {inv.files.map((file) => (
+                          <li key={file.fileId} className="min-w-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="max-w-full font-mono"
+                              onClick={() =>
+                                void downloadFile(file.fileId).catch((cause) =>
+                                  setError(readableError(cause)),
+                                )
+                              }
+                            >
+                              <Download />
+                              <span className="truncate">{file.name}</span>
+                              <span className="text-faint">{formatBytes(file.size)}</span>
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {remaining > 0 && (
                       <RevisionControl invocationId={inv.id} remaining={remaining} />
                     )}
@@ -927,6 +1006,41 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 <CircleDollarSign /> Review pending quote · {formatUsdc(pendingQuote.grossAmount)}
               </Button>
             )}
+            {attachments.length > 0 && (
+              <ul aria-label="Attachments" className="flex flex-wrap gap-2 pb-1">
+                {attachments.map((item) => (
+                  <li
+                    key={item.key}
+                    className={cn(
+                      "inline-flex max-w-full min-w-0 items-center gap-2 border px-2.5 py-1 font-mono text-[11px]",
+                      item.status === "error"
+                        ? "border-destructive text-destructive"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {item.status === "uploading" ? (
+                      <Spinner className="size-3" aria-label="Uploading" />
+                    ) : (
+                      <Paperclip size={12} aria-hidden="true" />
+                    )}
+                    <span className="max-w-48 truncate text-foreground">{item.name}</span>
+                    <span className="truncate">
+                      {item.status === "error" ? item.error : formatBytes(item.size)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${item.name}`}
+                      className="text-faint hover:text-foreground"
+                      onClick={() =>
+                        setAttachments((current) => current.filter(({ key }) => key !== item.key))
+                      }
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
               <label className="inline-flex min-w-0 items-center gap-1.5">
                 <Slash size={12} />
@@ -954,6 +1068,28 @@ export function ThreadChat({ threadId }: { threadId: string }) {
               </span>
             </div>
             <ComposerPrimitive.Root className="flex items-end gap-3 pt-2">
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                accept={ACCEPTED_FILE_TYPES.join(",")}
+                onChange={(event) => {
+                  attach(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                className="size-12 shrink-0"
+                aria-label="Attach files"
+                disabled={sendDisabled}
+                onClick={() => fileInput.current?.click()}
+              >
+                <Paperclip />
+              </Button>
               <ComposerPrimitive.Input
                 rows={2}
                 placeholder={

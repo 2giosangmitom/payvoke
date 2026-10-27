@@ -1,0 +1,41 @@
+// File bytes live in S3-compatible storage; this row is the metadata and the
+// only source of truth for status and access. Purpose is BUYER_INPUT |
+// PROVIDER_ARTIFACT; status is AWAITING_UPLOAD | READY | REJECTED | EXPIRED.
+// A presigned PUT only ever targets stagingKey. Each completion copies the bytes
+// to its own fresh key, hashes that copy and, if it wins the READY transition,
+// records it as objectKey. No upload URL can reach a verified object.
+model FileAsset {
+  id               String    @id @default(uuid())
+  purpose          String
+  status           String    @default("AWAITING_UPLOAD")
+  // Server-derived account:<userId> or app:<appId>; idempotency is per scope.
+  uploadScope      String
+  clientRequestId  String
+  // Buyer inputs: owning account and thread. Provider artifacts: app and invocation.
+  ownerId          String?
+  threadId         String?
+  appId            String?
+  invocationId     String?
+  name             String
+  contentType      String
+  size             BigInt
+  // Declared by the uploader, then recomputed from the stored bytes.
+  sha256           String
+  stagingKey       String
+  objectKey        String?
+  uploadExpiresAt  DateTime
+  readyAt          DateTime?
+  rejectionCode    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  thread     ChatThread? @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  app        App?        @relation(fields: [appId], references: [id], onDelete: Restrict)
+  invocation Invocation? @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+
+  @@unique([uploadScope, clientRequestId])
+  @@index([threadId, ownerId])
+  @@index([invocationId])
+  @@index([status, uploadExpiresAt])
+  @@map("file_assets")
+}

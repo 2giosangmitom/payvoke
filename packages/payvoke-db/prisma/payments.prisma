@@ -44,6 +44,7 @@ model Invocation {
   questions       InvocationQuestion[]
   answers         InvocationAnswer[]
   revisions       InvocationRevision[]
+  files           FileAsset[]
 
   @@index([buyerId, createdAt])
   @@map("invocations")

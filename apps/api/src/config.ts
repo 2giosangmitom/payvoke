@@ -1,5 +1,6 @@
 import { Type, type Static } from "typebox";
 import { loadEnv } from "@payvoke/server";
+import { storageEnv } from "@payvoke/storage";
 
 const schema = Type.Object({
   HOST: Type.String({ default: "127.0.0.1" }),
@@ -20,6 +21,11 @@ const schema = Type.Object({
   // Buyer AG-UI replay window. A cursor older than the oldest event inside
   // this window must bootstrap from the snapshot instead.
   AGUI_CURSOR_RETENTION_SECONDS: Type.Integer({ minimum: 60, default: 604800 }),
+  // S3-compatible file storage; FILES_ENABLED=true requires the S3_* settings.
+  ...storageEnv,
+  FILE_MAX_BYTES: Type.Integer({ minimum: 1, maximum: 1073741824, default: 26214400 }),
+  FILE_UPLOAD_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 600 }),
+  FILE_DOWNLOAD_TTL_SECONDS: Type.Integer({ minimum: 30, maximum: 3600, default: 300 }),
 });
 
 export type Config = Readonly<Static<typeof schema>>;

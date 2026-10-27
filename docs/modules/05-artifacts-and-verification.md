@@ -16,19 +16,19 @@ Quyền tải kiểm tra người xem ở mỗi lần truy cập. Link tạm th�
 
 ## Mức bằng chứng trước khi giải ngân
 
-> Trạng thái 25/10/2026: đã có code và test local (R03/R04). Mức `SIGN` do verifier structured JSON ghi; `WIT`/`REC` hiện chỉ đến từ attestation thủ công có kiểm soát. `REC` tự động cho file vẫn chờ file verifier, nên PAY-13 trong [payment-acceptance](../payment-acceptance.md) vẫn là **Partial**.
+> Trạng thái 27/10/2026: đã có code và test local. Verifier của host ghi `SIGN` cho result JSON hợp schema. Result có file thì verifier ghi `REC` (`payvoke-host-files-v1`) khi mọi file còn là artifact `READY` của invocation, đúng sha256/size đã lưu và object còn trong storage. `files` của Evidence Envelope chứa `{fileId,sha256,size}`. `WIT` vẫn chỉ đến từ attestation thủ công. PAY-13 vẫn là **Partial** vì chưa có theo dõi gián đoạn truy cập và luồng buyer chấp nhận.
 
 TessPay [P7] và RAILS [P8] cùng chỉ ra rằng escrow chỉ an toàn khi quyết định giải ngân dựa trên bằng chứng có cấp độ rõ ràng, không phải trên lời provider tự báo. Payvoke có hình dạng "verify-then-pay": hold → `VERIFYING` → `DELIVERED` → quyết định finance có approver tách khỏi executor. Thang bằng chứng dưới đây định nghĩa _bằng chứng nào đủ_.
 
 Thang bằng chứng, rút gọn từ RAILS cho MVP:
 
-| Lớp    | Nghĩa trong Payvoke                                                                 | Nguồn hiện có                                          |
-| ------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `SELF` | Provider tự báo `result`                                                            | Report `result` chưa kiểm tra; không bao giờ được ghi  |
-| `SIGN` | Output khớp `outputSchema`, gắn đúng app/invocation/artifactVersion, do key app gửi | Verifier structured JSON của host                      |
-| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được    | Attestation thủ công; file verifier tự động chưa có    |
-| `WIT`  | Người có quyền xác nhận                                                             | Attestation thủ công (buyer chấp nhận, operator duyệt) |
-| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                     | Ngoài MVP                                              |
+| Lớp    | Nghĩa trong Payvoke                                                                 | Nguồn hiện có                                             |
+| ------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `SELF` | Provider tự báo `result`                                                            | Report `result` chưa kiểm tra; không bao giờ được ghi     |
+| `SIGN` | Output khớp `outputSchema`, gắn đúng app/invocation/artifactVersion, do key app gửi | Verifier structured JSON của host                         |
+| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được    | File verifier của host (job-worker); attestation thủ công |
+| `WIT`  | Người có quyền xác nhận                                                             | Attestation thủ công (buyer chấp nhận, operator duyệt)    |
+| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                     | Ngoài MVP                                                 |
 
 Thứ tự là `SELF < SIGN < {REC, WIT} < ATT`. `REC` và `WIT` không so sánh trực tiếp được: một bên chứng minh dữ liệu đã đến, bên kia chứng minh người nhận đồng ý. Vì vậy `minEvidence: REC` không được thoả bằng `WIT`.
 

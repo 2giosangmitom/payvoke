@@ -272,23 +272,6 @@ enum CheckStatus {
   UNKNOWN
 }
 
-enum FilePurpose {
-  BUYER_INPUT
-  PROVIDER_ARTIFACT
-}
-
-enum FileStatus {
-  AWAITING_UPLOAD
-  UPLOADED
-  PROCESSING
-  READY
-  QUARANTINED
-  REJECTED
-  DELETION_PENDING
-  DELETED
-  EXPIRED
-}
-
 enum FinancialDecisionStatus {
   DRAFT
   APPROVED
@@ -1210,57 +1193,7 @@ model ReviewInterruption {
 
 // File bytes live in object storage. Never persist presigned download URLs.
 // PROVIDER_ARTIFACT requires providerAppId + invocationId; buyer uploads do not.
-model FileAsset {
-  id                  String      @id @default(uuid())
-  ownerId             String
-  workspaceId         String?
-  providerAppId       String?
-  invocationId        String?
-  clientRequestId     String      @db.VarChar(128)
-  // Server-derived account:<id> or provider-app:<id>; never a bearer secret.
-  uploadScope         String      @db.VarChar(160)
-  purpose             FilePurpose
-  status              FileStatus  @default(AWAITING_UPLOAD)
-  version             Int         @default(1)
-  originalName        String      @db.VarChar(255)
-  declaredContentType String      @db.VarChar(160)
-  detectedContentType String?     @db.VarChar(160)
-  declaredSize        BigInt
-  actualSize          BigInt?
-  expectedChecksum    String?     @db.Char(64)
-  observedChecksum    String?     @db.Char(64)
-  contentHash         String?     @db.Char(66)
-  bucket              String      @db.VarChar(128)
-  objectKey           String      @db.VarChar(512)
-  storageVersionId    String?     @db.VarChar(256)
-  uploadExpiresAt     DateTime    @db.Timestamptz(3)
-  uploadedAt          DateTime?   @db.Timestamptz(3)
-  scanStatus          CheckStatus @default(PENDING)
-  scanDetails         Json?       @db.JsonB
-  readyAt             DateTime?   @db.Timestamptz(3)
-  retainUntil         DateTime?   @db.Timestamptz(3)
-  legalHold           Boolean     @default(false)
-  deletedAt           DateTime?   @db.Timestamptz(3)
-  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
-
-  owner       User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  workspace   Workspace?            @relation(fields: [workspaceId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
-  providerApp ProviderApp?          @relation(fields: [providerAppId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
-  invocation  Invocation?           @relation(fields: [invocationId, providerAppId], references: [id, providerAppId], onDelete: Restrict, onUpdate: Restrict)
-  selectedFor InvocationInputFile[]
-  artifacts   ArtifactFile[]
-
-  @@unique([uploadScope, clientRequestId])
-  @@unique([bucket, objectKey])
-  @@index([ownerId, createdAt])
-  @@index([workspaceId, ownerId])
-  @@index([providerAppId, ownerId])
-  @@index([invocationId, providerAppId])
-  @@index([status, uploadExpiresAt])
-  @@index([legalHold, retainUntil, deletedAt])
-  @@map("file_assets")
-}
+// FileAsset is active in files.prisma (string purpose/status).
 
 // Immutable economic snapshots and durable x402 admission operations.
 

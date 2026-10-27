@@ -26,6 +26,19 @@ services:
       timeout: 3s
       retries: 15
 
+  # Throwaway S3 for opt-in storage tests: TEST_S3_ENDPOINT=http://127.0.0.1:59000
+  test-rustfs:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: payvoke
+      RUSTFS_SECRET_KEY: payvoke-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "false"
+    ports:
+      - "127.0.0.1:59000:9000"
+    tmpfs:
+      - /data:uid=10001,gid=10001
+
   # Full stack, opt-in: docker compose --profile stack up --build
   # Each service reads only its own env file; DATABASE_URL and bind hosts are
   # overridden here so the containers talk to the compose database.
@@ -61,6 +74,45 @@ services:
       timeout: 3s
       retries: 15
 
+  # Local S3-compatible storage. Production points the S3_* settings at Neon's
+  # S3 storage instead; nothing in the services is specific to RustFS.
+  # Also the local dev store: docker compose --profile stack up -d rustfs storage-init
+  rustfs:
+    profiles: [stack]
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: payvoke
+      RUSTFS_SECRET_KEY: payvoke-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "false"
+      # Browsers PUT and GET presigned URLs directly from the web app.
+      RUSTFS_CORS_ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9000/ || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # Creates the bucket once; a production bucket is provisioned by the provider.
+  storage-init:
+    profiles: [stack]
+    image: amazon/aws-cli:2.37.12
+    environment:
+      AWS_ACCESS_KEY_ID: payvoke
+      AWS_SECRET_ACCESS_KEY: payvoke-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket payvoke-files ||
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket payvoke-files
+    depends_on:
+      rustfs: { condition: service_healthy }
+
   migrate:
     profiles: [stack]
     build: { context: ., target: migrate }
@@ -80,11 +132,20 @@ services:
       REDIS_URL: redis://redis:6379
       HOST: 0.0.0.0
       FACILITATOR_URL: http://127.0.0.1:3002
+      FILES_ENABLED: "true"
+      S3_ENDPOINT: http://rustfs:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: payvoke-files
+      S3_ACCESS_KEY_ID: payvoke
+      S3_SECRET_ACCESS_KEY: payvoke-secret
+      S3_FORCE_PATH_STYLE: "true"
     ports:
       - "127.0.0.1:3001:3001"
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      storage-init: { condition: service_completed_successfully }
 
   # Shares the API's network namespace, so the API reaches it on loopback and
   # it is never published. Remote deployments need TLS instead.
@@ -129,7 +190,7 @@ services:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
 
-  # Keyless BullMQ jobs: delivery verification, later artifacts and webhooks.
+  # Keyless BullMQ jobs: delivery verification (JSON and files), upload cleanup.
   job-worker:
     profiles: [stack]
     build: { context: ., target: job-worker }
@@ -139,10 +200,20 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/payvoke
       REDIS_URL: redis://redis:6379
+      FILES_ENABLED: "true"
+      S3_ENDPOINT: http://rustfs:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: payvoke-files
+      S3_ACCESS_KEY_ID: payvoke
+      S3_SECRET_ACCESS_KEY: payvoke-secret
+      S3_FORCE_PATH_STYLE: "true"
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      storage-init: { condition: service_completed_successfully }
 
 volumes:
   db-data:
   redis-data:
+  rustfs-data:

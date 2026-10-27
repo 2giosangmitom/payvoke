@@ -8,6 +8,7 @@
     "./finance": "./src/finance.ts",
     "./finance-ledger": "./src/finance-ledger.ts",
     "./finance-policy": "./src/finance-policy.ts",
+    "./files": "./src/files.ts",
     "./journal": "./src/journal.ts",
     "./scanner": "./src/scanner.ts",
     "./settlement": "./src/settlement.ts",
@@ -20,6 +21,7 @@
   "dependencies": {
     "@payvoke/db": "workspace:*",
     "@payvoke/protocol": "workspace:*",
+    "@payvoke/storage": "workspace:*",
     "@payvoke/x402": "workspace:*",
     "@x402/core": "2.28.0",
     "ajv": "8.20.0",

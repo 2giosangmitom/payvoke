@@ -1,5 +1,6 @@
 import type { Cradle } from "@fastify/awilix";
 import type { Prisma } from "@payvoke/db";
+import { parseManifest } from "@payvoke/payments/files";
 import { BadRequestError, ConflictError, NotFoundError, PayloadTooLargeError } from "../../errors";
 import { availabilityLabel, threadSlotReleased } from "../apps/schema";
 import { serializeCommand } from "../apps/serializers";
@@ -269,12 +270,19 @@ export class ThreadService {
       cursor: fence.toString(),
       messages: [...texts.values()],
       surfaces: [...surfaces].map(([messageId, content]) => ({ messageId, content })),
-      invocations: invocations.map((i) => ({
-        id: i.id,
-        executionStatus: i.executionStatus,
-        output:
-          i.executionStatus === "DELIVERED" && object(i.run?.result) ? i.run.result.output : null,
-      })),
+      invocations: invocations.map((i) => {
+        const result =
+          i.executionStatus === "DELIVERED" && object(i.run?.result) ? i.run.result : null;
+        return {
+          id: i.id,
+          executionStatus: i.executionStatus,
+          output: result ? result.output : null,
+          // Metadata only; the buyer fetches a short-lived URL per download.
+          files: (parseManifest(result?.files) ?? []).map(
+            ({ fileId, name, contentType, size }) => ({ fileId, name, contentType, size }),
+          ),
+        };
+      }),
       prompts: quotes.map((q) => {
         const snapshot = (q.document as Record<string, unknown>).inputSnapshot as Record<
           string,

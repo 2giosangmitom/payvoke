@@ -15,6 +15,7 @@ import {
   type QuoteDocument,
 } from "@payvoke/x402";
 import type { AppCommandRevision, DeploymentPolicy } from "@payvoke/db";
+import type { FileManifestEntry } from "@payvoke/payments/files";
 import { getAddress, type Address } from "viem";
 import { ServiceUnavailableError } from "../../errors";
 import type { TranscriptMessage } from "./transcript";
@@ -30,6 +31,8 @@ export type QuoteInput = {
   schema: Json;
   effectiveArguments: Record<string, Json>;
   history: TranscriptMessage[];
+  // READY buyer files; their digests, never URLs, enter the input hash.
+  files: FileManifestEntry[];
   now: number;
 };
 
@@ -64,7 +67,7 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
   );
   const quoteId = randomUUID();
   const invocationId = randomUUID();
-  const contextManifest = { messages: input.history, brief: null, files: [] };
+  const contextManifest = { messages: input.history, brief: null, files: input.files };
   const inputSnapshot = {
     schemaVersion: 1,
     sessionId: threadId,

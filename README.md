@@ -519,8 +519,10 @@ Các kiểm tra này không xác minh nội dung chuyên môn. Tiến độ tạ
 - Signed URL không nằm trong snapshot thanh toán hoặc log công khai.
 - Không tự tải URL Internet bất kỳ do provider đưa, tránh SSRF.
 - Retention theo điều khoản.
+- Upload đi thẳng lên storage bằng presigned URL. Server copy sang key riêng, tính lại sha256/size rồi mới đánh dấu `READY`, nên URL upload cũ không ghi đè được file đã kiểm tra.
+- Local dùng RustFS trong docker compose, production dùng Neon S3 storage; chỉ khác giá trị các biến `S3_*`.
 
-Upload xong không tự có nghĩa artifact đã giao.
+Upload xong không tự có nghĩa artifact đã giao. Kết quả có file chỉ được ghi bằng chứng `REC` khi mọi file còn nguyên trong storage; chi tiết endpoint ở [S01 §5.4](docs/specs/01-api-and-provider-protocol.md#54-file).
 
 ### Revision
 

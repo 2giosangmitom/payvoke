@@ -108,7 +108,12 @@ export type ChatSnapshot = {
   cursor: string;
   messages: { messageId: string; invocationId: string; content: string; complete: boolean }[];
   surfaces: { messageId: string; content: OpenUISurfaceContent }[];
-  invocations: { id: string; executionStatus: string; output: unknown | null }[];
+  invocations: {
+    id: string;
+    executionStatus: string;
+    output: unknown | null;
+    files: { fileId: string; name: string; contentType: string; size: number }[];
+  }[];
   prompts: { quoteId: string; invocationId: string; text: string; paid: boolean }[];
   questions: ChatQuestion[];
   answers: ChatAnswer[];
@@ -164,6 +169,7 @@ export async function quoteFor(
   thread: ThreadDetail,
   commandId: string,
   args: Record<string, unknown>,
+  fileIds: string[] = [],
 ) {
   const clientRequestId = crypto.randomUUID();
   return api<QuoteDocument>(
@@ -173,7 +179,7 @@ export async function quoteFor(
       threadId: thread.id,
       commandId,
       arguments: args,
-      contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+      contextSelection: { messageIds: [], briefVersionId: null, fileIds },
       clientRequestId,
     },
     { "idempotency-key": clientRequestId },

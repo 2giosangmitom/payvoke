@@ -3,6 +3,7 @@ import type { Cradle } from "@fastify/awilix";
 import type { FastifyBaseLogger } from "fastify";
 import type { PrismaClient } from "@payvoke/db";
 import type { Doorbell, Jobs } from "@payvoke/queue";
+import type { ObjectStorage } from "@payvoke/storage";
 import type { Config } from "./config";
 import type { Signals } from "./signals";
 import { createAuth } from "./modules/auth/auth";
@@ -10,6 +11,8 @@ import { AuthController } from "./modules/auth/auth.controller";
 import { AuthService } from "./modules/auth/auth.service";
 import { CatalogController } from "./modules/catalog/catalog.controller";
 import { CatalogService } from "./modules/catalog/catalog.service";
+import { FileController } from "./modules/files/file.controller";
+import { FileService } from "./modules/files/file.service";
 import { ProviderAppService } from "./modules/provider/provider-app.service";
 import { ProviderCommandService } from "./modules/provider/provider-command.service";
 import { ProviderController } from "./modules/provider/provider.controller";
@@ -33,6 +36,8 @@ declare module "@fastify/awilix" {
     log: FastifyBaseLogger;
     doorbell: Doorbell;
     jobs: Jobs;
+    // Null when FILES_ENABLED is false.
+    storage: ObjectStorage | null;
     auth: ReturnType<typeof createAuth>;
     authService: AuthService;
     authController: AuthController;
@@ -53,6 +58,8 @@ declare module "@fastify/awilix" {
     providerRunService: ProviderRunService;
     continuationService: ContinuationService;
     runsController: RunsController;
+    fileService: FileService;
+    fileController: FileController;
   }
 }
 
@@ -64,6 +71,7 @@ export function createAppContainer(
   db: PrismaClient,
   log: FastifyBaseLogger,
   signals: Signals,
+  storage: ObjectStorage | null,
 ) {
   const container = createContainer<Cradle>({ injectionMode: InjectionMode.PROXY, strict: true });
   container.register({
@@ -72,6 +80,7 @@ export function createAppContainer(
     log: asValue(log),
     doorbell: asValue(signals.doorbell),
     jobs: asValue(signals.jobs),
+    storage: asValue(storage),
     auth: asFunction(({ config, db }: Cradle) => createAuth(config, db)).singleton(),
 
     authService: asClass(AuthService).singleton(),
@@ -93,6 +102,8 @@ export function createAppContainer(
     providerRunService: asClass(ProviderRunService).singleton(),
     continuationService: asClass(ContinuationService).singleton(),
     runsController: asClass(RunsController).singleton(),
+    fileService: asClass(FileService).singleton(),
+    fileController: asClass(FileController).singleton(),
   });
   return container;
 }
