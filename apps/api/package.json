@@ -8,7 +8,8 @@
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",
-    "./config": "./src/config.ts"
+    "./config": "./src/config.ts",
+    "./testing": "./test/offer-fixture.ts"
   },
   "scripts": {
     "dev": "tsx --watch ./src/server.ts",

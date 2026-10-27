@@ -8,6 +8,7 @@ import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
+import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "@payvoke/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
@@ -132,13 +133,6 @@ async function marketplace() {
     description: "Converts a file",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: "text",
-    outputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["summary"],
-      properties: { summary: { type: "string" } },
-    },
-    grossAmount: "10000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,
@@ -154,7 +148,14 @@ async function marketplace() {
   await web("POST", `/v1/provider/apps/${appId}/commands/${commandId}/default`, {});
   await db.app.update({ where: { id: appId }, data: { lastHeartbeatAt: new Date() } });
   const key = await web("POST", `/v1/provider/apps/${appId}/keys`, {
-    scopes: ["events:read", "events:ack", "reports:write", "files:write"],
+    scopes: [
+      "events:read",
+      "events:ack",
+      "reports:write",
+      "files:write",
+      "messages:write",
+      "offers:write",
+    ],
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   assert.equal(key.statusCode, 201, key.body);
@@ -171,16 +172,21 @@ async function marketplace() {
   const thread = async () =>
     (await web("POST", "/v1/threads", { appId, clientRequestId: randomUUID() })).json()
       .id as string;
-  const quote = (threadId: string, fileIds: string[] = []) => {
+  const quote = async (threadId: string, fileIds: string[] = []) => {
     const clientRequestId = randomUUID();
+    const offer = await offerFixture(db, {
+      threadId,
+      commandId,
+      arguments: { text: "convert this" },
+      grossAmount: "10000",
+    });
     return app.inject({
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },
       payload: {
         threadId,
-        commandId,
-        arguments: { text: "convert this" },
+        offerId: offer.id,
         contextSelection: { messageIds: [], briefVersionId: null, fileIds },
         clientRequestId,
       },
@@ -354,6 +360,131 @@ it("verifies buyer inputs before a quote freezes them for the provider", async (
   assert.equal(await storage.head(`staging/${abandoned.id}`), null);
 });
 
+it("takes files from bot forms and FILE options into the frozen quote", async () => {
+  const { web, worker, appId, thread } = await marketplace();
+  const threadId = await thread();
+  const readyFile = async (target: string, body: string, contentType: string, name: string) => {
+    const file = (
+      await web("POST", "/v1/files", upload(body, { threadId: target, contentType, name }))
+    ).json().file;
+    storage.put(`staging/${file.id}`, body);
+    assert.equal((await web("POST", `/v1/files/${file.id}/completions`, {})).statusCode, 200);
+    return file.id as string;
+  };
+  const say = (body: Record<string, unknown>) =>
+    web("POST", `/v1/threads/${threadId}/messages`, { clientRequestId: randomUUID(), ...body });
+  const botSays = (body: Record<string, unknown>) =>
+    worker("POST", `/threads/${threadId}/messages`, { clientRequestId: randomUUID(), ...body });
+  assert.equal((await say({ content: "I have a scan" })).statusCode, 201);
+
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["scan"],
+    properties: {
+      scan: { type: "string", format: "file", title: "Scan", accept: ["image/*"], maxBytes: 64 },
+      note: { type: "string", maxLength: 200 },
+    },
+  };
+  for (const form of [
+    {
+      title: "Nested",
+      schema: {
+        ...schema,
+        properties: {
+          deep: { type: "object", properties: {}, required: [], additionalProperties: false },
+        },
+      },
+    },
+    {
+      title: "Bad format",
+      schema: { ...schema, properties: { scan: { type: "string", format: "uri" } } },
+    },
+    { title: "", schema },
+  ])
+    assert.equal((await botSays({ content: "Upload", form })).json().error, "INVALID_FORM");
+  const asked = await botSays({
+    content: "Please upload the scan",
+    form: { title: "Scan", schema },
+  });
+  assert.equal(asked.statusCode, 201, asked.body);
+  assert.equal(asked.json().form.title, "Scan");
+
+  const png = await readyFile(threadId, "png bytes", "image/png", "scan.png");
+  const text = await readyFile(threadId, "plain text", "text/plain", "scan.txt");
+  const large = await readyFile(threadId, "x".repeat(65), "image/png", "large.png");
+  const foreign = await readyFile(await thread(), "other", "image/png", "other.png");
+  const answer = (scan: unknown) =>
+    say({ content: "Here it is", replyToId: asked.json().id, arguments: { scan } });
+  for (const scan of [text, large, foreign, randomUUID()])
+    assert.equal((await answer(scan)).json().error, "INVALID_ARGUMENT_FILES");
+  assert.equal((await answer(42)).json().error, "INVALID_ARGUMENTS");
+  const answered = await answer(png);
+  assert.equal(answered.statusCode, 201, answered.body);
+  assert.equal(answered.json().replyToId, asked.json().id);
+  assert.deepEqual(
+    answered.json().files.map((file: { fileId: string }) => file.fileId),
+    [png],
+  );
+  assert.equal((await answer(png)).json().error, "FORM_ALREADY_ANSWERED");
+  // The bot sees the answer and its file metadata, never the bytes before payment.
+  const feed = (await worker("GET", "/events?once=1")).json().events;
+  const event = feed.find((item: { messageId: string }) => item.messageId === answered.json().id);
+  assert.equal(event.replyToId, asked.json().id);
+  assert.equal(event.files[0].contentType, "image/png");
+  assert.equal(event.conversation.at(-2).form.title, "Scan");
+
+  // A FILE option takes the same path through slash commands and offers.
+  const command = await web("POST", `/v1/provider/apps/${appId}/commands`, {
+    name: "ocr",
+    description: "Reads an image",
+    options: [{ name: "image", type: "FILE", required: true, accept: ["image/*"] }],
+    terms: {
+      deliverySeconds: 600,
+      reviewSeconds: 3600,
+      revisionPolicy: { maxIncluded: 0, description: "None" },
+      refundPolicy: "Refund undelivered",
+      sideEffects: "none",
+      dataUse: "This request",
+    },
+  });
+  assert.equal(command.statusCode, 201, command.body);
+  const ocr = command.json().id as string;
+  assert.equal(
+    (await say({ content: "/ocr", commandId: ocr, arguments: { image: text } })).json().error,
+    "INVALID_ARGUMENT_FILES",
+  );
+  const slash = await say({ content: "/ocr", commandId: ocr, arguments: { image: png } });
+  assert.equal(slash.statusCode, 201, slash.body);
+  assert.equal(slash.json().files[0].fileId, png);
+  const offer = await worker("POST", `/threads/${threadId}/offers`, {
+    clientRequestId: randomUUID(),
+    commandId: ocr,
+    arguments: { image: png },
+    grossAmount: "5000",
+    summary: "OCR of your scan",
+  });
+  assert.equal(offer.statusCode, 201, offer.body);
+  const clientRequestId = randomUUID();
+  const quoted = await app.inject({
+    method: "POST",
+    url: "/v1/quotes",
+    headers: { origin, cookie: await login(wallet), "idempotency-key": clientRequestId },
+    payload: {
+      threadId,
+      offerId: offer.json().id,
+      contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+      clientRequestId,
+    },
+  });
+  assert.equal(quoted.statusCode, 201, quoted.body);
+  // The offer named the file, so the quote froze it for the provider.
+  assert.deepEqual(
+    quoted.json().contextManifest.files.map((file: { fileId: string }) => file.fileId),
+    [png],
+  );
+});
+
 it("accepts verified provider artifacts and records REC evidence", async () => {
   const { web, worker, otherCookie, thread, quote, hold } = await marketplace();
   const threadId = await thread();
@@ -464,8 +595,7 @@ it("keeps file routes and file context closed when files are disabled", async ()
       headers: { origin, cookie, "idempotency-key": clientRequestId },
       payload: {
         threadId: randomUUID(),
-        commandId: randomUUID(),
-        arguments: {},
+        offerId: randomUUID(),
         contextSelection: { messageIds: [], briefVersionId: null, fileIds: [randomUUID()] },
         clientRequestId,
       },

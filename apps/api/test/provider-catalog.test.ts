@@ -8,6 +8,7 @@ import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
+import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "@payvoke/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
@@ -170,13 +171,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       },
     ],
     positionalParameter: "text",
-    outputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["summary"],
-      properties: { summary: { type: "string" } },
-    },
-    grossAmount: "10000",
     terms,
   });
   assert.equal(first.statusCode, 201, first.body);
@@ -185,7 +179,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     name: "Not Valid",
     description: "Invalid command name",
     options: [{ name: "text", type: "STRING", required: true }],
-    grossAmount: "10000",
     terms,
   });
   assert.equal(invalidName.statusCode, 400, invalidName.body);
@@ -194,7 +187,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     description: "Explicitly has no positional argument",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: null,
-    grossAmount: "10000",
     terms,
   });
   assert.equal(formOnly.statusCode, 201, formOnly.body);
@@ -211,7 +203,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "escape",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
-        grossAmount: "10000",
         terms,
       })
     ).statusCode,
@@ -228,7 +219,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(catalog.statusCode, 200, catalog.body);
   assert.equal(catalog.json().items[0].id, id);
   assert.equal(catalog.json().items[0].availability, "AVAILABLE");
-  assert.equal(catalog.json().items[0].fromPrice, "10000");
+  // No command declares a cap, so offers are bounded only by the policy floor.
+  assert.equal(catalog.json().items[0].priceCap, null);
   // Private apps stay out of the public catalog but remain visible to the owner.
   assert.equal(
     catalog.json().items.some((item: { id: string }) => item.id === otherAppId),
@@ -244,14 +236,19 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   assert.equal(threadResponse.statusCode, 201, threadResponse.body);
   const thread = threadResponse.json();
+  const firstOffer = await offerFixture(db, {
+    threadId: thread.id,
+    commandId,
+    arguments: { text: "hello" },
+    grossAmount: "10000",
+  });
   const quote = await app.inject({
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie, "idempotency-key": "not-ready" },
     payload: {
       threadId: thread.id,
-      commandId,
-      arguments: { text: "hello" },
+      offerId: firstOffer.id,
       contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
       clientRequestId: "not-ready",
     },
@@ -278,20 +275,19 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       },
     ],
     positionalParameter: "text",
-    outputSchema: original.outputSchema as Record<string, unknown>,
-    grossAmount: "20000",
+    maxAmount: "20000",
     terms,
     expectedRevisionId: original.id,
   });
   assert.equal(changed.statusCode, 200, changed.body);
   assert.notEqual(changed.json().revision.id, original.id);
-  assert.equal(original.grossAmount?.toString(), "10000");
+  assert.equal(original.maxGrossAmount, null);
   assert.equal(
     (
       await db.appCommandRevision.findUniqueOrThrow({
         where: { id: changed.json().revision.id },
       })
-    ).grossAmount?.toString(),
+    ).maxGrossAmount?.toString(),
     "20000",
   );
   assert.equal((await web("PUT", `/v1/apps/${id}/star`)).statusCode, 200);
@@ -729,10 +725,16 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     409,
   );
   assert.equal(
+    (await postWorker(`${task}/reports`, report(2, "result", { artifactVersion: 1, files: [] })))
+      .statusCode,
+    400,
+  );
+  // Output is free-form, but an empty result or blank text is not a delivery.
+  assert.equal(
     (
       await postWorker(
         `${task}/reports`,
-        report(2, "result", { artifactVersion: 1, output: { wrong: "x" }, files: [] }),
+        report(2, "result", { artifactVersion: 1, output: "  ", files: [] }),
       )
     ).statusCode,
     400,
@@ -770,6 +772,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(await verifyStructuredDeliveries(db), 0);
   assert.deepEqual(await pendingVerifications(db), []);
   assert.equal(await db.paymentDeliveryEvidence.count(), 1);
+  // No output schema: the app-key-reported JSON is SIGN evidence.
+  assert.equal((await db.paymentDeliveryEvidence.findFirstOrThrow()).evidenceLevel, "SIGN");
   const delivered = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(delivered.json().invocations[0].executionStatus, "DELIVERED");
   assert.deepEqual(delivered.json().invocations[0].output, { summary: "Done" });
@@ -819,7 +823,11 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     (
       await postWorker(
         `${task}/reports`,
-        report(2, "result", { artifactVersion: 2, output: { summary: "Short" }, files: [] }),
+        report(2, "result", {
+          artifactVersion: 2,
+          output: "## Short\n\nMarkdown text.",
+          files: [],
+        }),
       )
     ).statusCode,
     200,
@@ -827,7 +835,12 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(await verifyStructuredDeliveries(db), 1);
   const revised = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(revised.json().invocations[0].executionStatus, "DELIVERED");
-  assert.deepEqual(revised.json().invocations[0].output, { summary: "Short" });
+  // Plain markdown text is a delivery too.
+  assert.equal(revised.json().invocations[0].output, "## Short\n\nMarkdown text.");
+  const markdown = await db.paymentDeliveryEvidence.findFirstOrThrow({
+    where: { invocationId: quoted.invocationId, artifactVersion: 2 },
+  });
+  assert.equal(markdown.evidenceLevel, "SIGN");
   assert.equal(
     (
       await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, {
@@ -856,14 +869,19 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   // A verified chat turn frees the admission slot while preserving its
   // original held payment and complete transcript.
   await db.app.update({ where: { id }, data: { status: "ACTIVE", lastHeartbeatAt: new Date() } });
+  const followUp = await offerFixture(db, {
+    threadId: thread.id,
+    commandId,
+    arguments: { text: "follow up" },
+    grossAmount: "10000",
+  });
   const nextQuote = await app.inject({
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie, "idempotency-key": "second-paid-turn" },
     payload: {
       threadId: thread.id,
-      commandId,
-      arguments: { text: "follow up" },
+      offerId: followUp.id,
       contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
       clientRequestId: "second-paid-turn",
     },
@@ -896,7 +914,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "old",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
-        grossAmount: "10000",
         terms,
       })
     ).statusCode,
@@ -916,7 +933,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "denied",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
-          grossAmount: "10000",
           terms,
         },
         restricted.json().secret,
@@ -938,7 +954,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "revoked",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
-          grossAmount: "10000",
           terms,
         },
         restricted.json().secret,
@@ -969,13 +984,6 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
     description: "Summarizes text",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: "text",
-    outputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["summary"],
-      properties: { summary: { type: "string" } },
-    },
-    grossAmount: "10000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,
@@ -994,19 +1002,25 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
   });
   const thread = async (clientRequestId: string) =>
     (await web("POST", "/v1/threads", { appId: id, clientRequestId })).json().id as string;
-  const quote = (threadId: string, clientRequestId: string) =>
-    app.inject({
+  const quote = async (threadId: string, clientRequestId: string) => {
+    const offer = await offerFixture(db, {
+      threadId,
+      commandId,
+      arguments: { text: "hello" },
+      grossAmount: "10000",
+    });
+    return app.inject({
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },
       payload: {
         threadId,
-        commandId,
-        arguments: { text: "hello" },
+        offerId: offer.id,
         contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
         clientRequestId,
       },
     });
+  };
   // Finalized holds are test fixtures; the settlement worker creates them in production.
   const hold = async (
     quoted: {
@@ -1105,19 +1119,13 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
     sideEffects: "none",
     dataUse: "This request",
   };
-  const command = (grossAmount: string, extra: Record<string, unknown> = {}) =>
+  const command = (maxAmount: string, extra: Record<string, unknown> = {}) =>
     web("POST", `/v1/provider/apps/${id}/commands`, {
       name: `cmd_${randomBytes(4).toString("hex")}`,
       description: "Summarizes text",
       options: [{ name: "text", type: "STRING", required: true }],
       positionalParameter: "text",
-      outputSchema: {
-        type: "object",
-        additionalProperties: false,
-        required: ["summary"],
-        properties: { summary: { type: "string" } },
-      },
-      grossAmount,
+      maxAmount,
       terms: { ...terms, ...extra },
     });
   const below = await command("999");
@@ -1135,20 +1143,26 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
   await web("POST", `/v1/provider/apps/${id}/commands/${commandId}/default`, {});
   await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
   const thread = (await web("POST", "/v1/threads", { appId: id, clientRequestId: "floor" })).json();
-  const quote = (clientRequestId: string) =>
-    app.inject({
+  const quote = async (clientRequestId: string) => {
+    const offer = await offerFixture(db, {
+      threadId: thread.id,
+      commandId,
+      arguments: { text: "hello" },
+      grossAmount: "1000",
+    });
+    return app.inject({
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },
       payload: {
         threadId: thread.id,
-        commandId,
-        arguments: { text: "hello" },
+        offerId: offer.id,
         contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
         clientRequestId,
       },
     });
-  // A floor raised after publication blocks new sales of the cheaper revision.
+  };
+  // A floor raised after an offer still blocks its sale.
   await db.deploymentPolicy.update({
     where: { version: "test" },
     data: { minGrossAmount: "5000" },
@@ -1164,4 +1178,95 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
   assert.equal(quoted.statusCode, 201, quoted.body);
   assert.equal(quoted.json().termsSnapshot.schemaVersion, 2);
   assert.deepEqual(quoted.json().termsSnapshot.definition.verification, { minEvidence: "SIGN" });
+
+  // Bulk overwrite: the body is the whole list, matched by name.
+  const sync = (list: Record<string, unknown>[]) =>
+    web("PUT", `/v1/provider/apps/${id}/commands`, list as unknown as Record<string, unknown>);
+  const define = (name: string, extra: Record<string, unknown> = {}) => ({
+    name,
+    description: `Runs ${name}`,
+    options: [{ name: "text", type: "STRING", required: true }],
+    terms,
+    ...extra,
+  });
+  const first = await sync([define("alpha"), define("beta", { maxAmount: "5000" })]);
+  assert.equal(first.statusCode, 200, first.body);
+  assert.deepEqual(
+    first.json().map((c: { name: string }) => c.name),
+    ["alpha", "beta"],
+  );
+  const alpha = first.json()[0];
+  const beta = first.json()[1];
+  assert.equal(beta.revision.maxGrossAmount, "5000");
+  // The default fell to the first command once the old ones were archived.
+  assert.equal((await db.app.findUniqueOrThrow({ where: { id } })).defaultCommandId, alpha.id);
+  // Unchanged commands keep their revision; changed ones get a new one; missing
+  // ones are archived.
+  const second = await sync([
+    define("alpha"),
+    define("gamma"),
+    define("beta", { maxAmount: "6000" }),
+  ]);
+  assert.equal(second.statusCode, 200, second.body);
+  const byName = new Map(
+    second.json().map((c: { name: string; id: string; revision: { id: string } }) => [c.name, c]),
+  );
+  assert.equal((byName.get("alpha") as typeof alpha).revision.id, alpha.revision.id);
+  assert.equal((byName.get("beta") as typeof beta).id, beta.id);
+  assert.notEqual((byName.get("beta") as typeof beta).revision.id, beta.revision.id);
+  const third = await sync([define("gamma")]);
+  assert.deepEqual(
+    third.json().map((c: { name: string }) => c.name),
+    ["gamma"],
+  );
+  assert.equal(
+    (await db.app.findUniqueOrThrow({ where: { id } })).defaultCommandId,
+    third.json()[0].id,
+  );
+  for (const [list, error] of [
+    [[define("dup"), define("dup")], "DUPLICATE_COMMAND_NAME"],
+    [[define("bad", { pricing: { mode: "fixed", amount: "1" } })], "INVALID_COMMAND"],
+    [[define("bad", { outputSchema: { type: "object" } })], "INVALID_COMMAND"],
+  ] as [Record<string, unknown>[], string][])
+    assert.equal((await sync(list)).json().error, error);
+  assert.equal(
+    (await sync([define("low", { maxAmount: "999" })])).json().error,
+    "PRICE_BELOW_FLOOR",
+  );
+
+  // FILE options compile to file fields; they can't be the positional text.
+  const upload = await web("POST", `/v1/provider/apps/${id}/commands`, {
+    name: "transcribe",
+    description: "Transcribes audio",
+    options: [
+      { name: "audio", type: "FILE", required: true, accept: ["audio/*"], maxBytes: 1000 },
+      { name: "extra", type: "FILE", multiple: true },
+    ],
+    terms,
+  });
+  assert.equal(upload.statusCode, 201, upload.body);
+  assert.deepEqual(upload.json().revision.inputSchema.properties.audio, {
+    type: "string",
+    format: "file",
+    accept: ["audio/*"],
+    maxBytes: 1000,
+  });
+  assert.equal(upload.json().revision.inputSchema.properties.extra.type, "array");
+  assert.equal(upload.json().revision.positionalParameter, null);
+  for (const option of [
+    { name: "audio", type: "FILE", accept: ["not a mime"] },
+    { name: "audio", type: "STRING", accept: ["audio/*"] },
+    { name: "audio", type: "FILE", choices: ["a"] },
+  ])
+    assert.equal(
+      (
+        await web("POST", `/v1/provider/apps/${id}/commands`, {
+          name: `f${randomBytes(3).toString("hex")}`,
+          description: "x",
+          options: [option],
+          terms,
+        })
+      ).statusCode,
+      400,
+    );
 });
