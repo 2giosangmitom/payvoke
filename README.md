@@ -43,17 +43,21 @@ Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao k�
 
 ## 2. App, command và thread
 
-Mỗi đơn vị được bán là một **App**, có một `kind` cố định từ lúc tạo:
+Mỗi đơn vị được bán là một **App**. Không còn phân biệt tool hay agent: buyer dùng mọi app qua **một giao diện chat** (thread), giống một Discord bot.
 
-| Thuộc tính    | Tool                                                      | Agent                                                                  |
-| ------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Giá           | Cố định cho mỗi command                                   | Provider gửi offer trong khoảng giá công khai của command              |
-| Giao diện     | Form sinh từ input schema, mỗi lần chạy một trang kết quả | Chat assistant-ui; chat trước khi trả miễn phí (có giới hạn)           |
-| Cách gọi      | Điền form, xem quote, ký                                  | Mô tả việc hoặc dùng slash command → nhận offer → chấp nhận → ký quote |
-| Hỏi lại buyer | Câu hỏi có schema trong trang kết quả                     | Câu hỏi có schema và widget OpenUI trong thread                        |
-| Phù hợp       | API/công cụ giá biết trước, MCP và agent mua tự động      | Việc cần trao đổi trước khi biết phạm vi và giá                        |
+- **Provider đăng ký slash command qua API** (tên, mô tả, options, điều khoản, trần giá tùy chọn). Payvoke lưu lại để gợi ý khi buyer gõ `/` và hiển thị trong store. Studio chỉ sửa thông tin app và API key; danh sách command chỉ đọc.
+- **Mỗi tin nhắn hoặc slash command là một interaction miễn phí** gửi cho bot của provider (có giới hạn số tin trước khi trả).
+- Bot phản hồi bằng một trong ba loại:
 
-Công nghệ thực thi không bị áp đặt; app có thể dùng LLM hoặc không. Giao diện chia hai khu: site công khai (`/`, `/store`) và **console** (`/console`) chứa chat, chạy tool, activity (mọi khoản đang giữ và deadline) và Studio.
+| Phản hồi  | Nội dung                                                      | Phía buyer                                                                  |
+| --------- | ------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `message` | Text                                                          | Tin nhắn của app trong thread                                               |
+| `form`    | `{title, description?, schema}`, JSON Schema phẳng, có ô file | Form trong thread; trả lời một lần, Payvoke kiểm tra rồi chuyển lại cho bot |
+| `offer`   | Giá, tóm tắt, thời gian giao, arguments đã chốt               | Card "Chấp nhận và trả" → quote → ký x402                                   |
+
+**Giá luôn đến từ offer của bot**, nên bot tự tính theo cách nào cũng được (cố định, theo độ dài, theo file, theo độ khó). Kết quả có thể là text/markdown, JSON hoặc file; không bắt buộc output schema. Câu hỏi có schema và widget OpenUI trong lúc chạy vẫn hiện trong thread.
+
+Công nghệ thực thi không bị áp đặt; app có thể dùng LLM hoặc không. Giao diện chia hai khu: site công khai (`/`, `/store`) và **console** (`/console`) chứa chat, activity (mọi khoản đang giữ và deadline) và Studio.
 
 Ví dụ app nghiên cứu:
 
@@ -74,7 +78,7 @@ Ví dụ app tóm tắt:
 [Quote] → [Authorize] → Kết quả
 ```
 
-Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevisionId`; command id ổn định qua các lần sửa. Với tool, free text được ánh xạ vào tham số vị trí của command mặc định (hoặc command người dùng chọn). Với agent, free text là tin nhắn cho provider; offer chấp nhận được Payvoke đổi thành quote và khoá cả nội dung đã thương lượng vào `inputHash` (S01 §6.5). Quote hiển thị thành card ghim ngay trên composer, nhưng không thay đổi giao thức x402/vault.
+Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevisionId`; command id ổn định qua các lần sửa. Free text là tin nhắn cho bot; `/lệnh văn bản` điền vào tham số vị trí của lệnh, còn lệnh có tham số bắt buộc khác mở form. Offer chấp nhận được Payvoke đổi thành quote và khoá cả nội dung đã thương lượng vào `inputHash` (S01 §6.5). Quote hiển thị thành card ghim ngay trên composer, nhưng không thay đổi giao thức x402/vault.
 
 App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Availability suy ra từ trạng thái `ACTIVE`, có default command và heartbeat trong 45 giây gần nhất.
 
@@ -124,13 +128,21 @@ Khoản tiền được dành riêng cho một invocation. Tiền đã chuyển 
 
 ## 4. Cách tính tiền
 
-Tool đăng ký giá USDC cố định cho từng command. Agent đăng ký khoảng giá `[min, max]` cho từng command rồi báo giá cụ thể bằng offer sau khi chat; offer không đổi được refund, side effects hay mức bằng chứng đã đăng ký. Payvoke tính tiền theo invocation, không mặc định theo tin nhắn, token hoặc thời gian chạy; tin nhắn trước khi trả của agent miễn phí nhưng giới hạn số lượng.
+Mọi giá đến từ **offer của bot** cho từng lần gọi (xem §2). Payvoke chỉ đặt các luật bảo vệ:
+
+- Offer không thấp hơn **giá sàn** của policy (bù gas hold + release do Payvoke trả).
+- Command có thể khai **trần giá** `maxAmount`; offer vượt trần bị từ chối và store hiển thị trần đó.
+- Offer chỉ được rút ngắn thời gian giao; refund, side effects, số lần sửa và mức bằng chứng luôn lấy từ điều khoản đã đăng ký của command.
+- Giá không bao giờ lấy từ text của bot; chỉ offer có cấu trúc mới thành quote, và buyer luôn thấy quote rồi tự ký.
+
+Payvoke luôn ra **một số tiền chính xác** trước khi ký; tính theo invocation, không theo token hoặc thời gian chạy. Tin nhắn trước khi trả miễn phí nhưng giới hạn số lượng.
 
 Ví dụ minh họa, không phải giá mặc định:
 
 ```text
-/summarize: 0,01 USDC/lần
-/analyze:   0,10 USDC/lần
+/summarize  bot báo 0,01 USDC cho đoạn văn ngắn
+/ocr        bot báo theo số trang trong file, trần 2 USDC
+/research   bot hỏi phạm vi bằng form rồi báo 5 USDC
 ```
 
 Một invocation có thể gồm buyer gửi yêu cầu, provider hỏi lại, buyer trả lời, provider giao kết quả và buyer yêu cầu sửa trong phạm vi đã mua. Những bước tiếp tục đúng phạm vi không thu thêm tiền.
@@ -365,36 +377,35 @@ Secret chỉ hiện một lần khi cấp; backend lưu hash. API key không t�
 
 ### Đăng ký commands
 
-Provider gửi structured definition qua API, ví dụ:
+Bot đăng ký command bằng API key (scope `products:write`), giống Discord application commands. Cách gọn nhất là ghi đè cả danh sách:
 
 ```text
-name: summarize
-
-input:
-  text: string, bắt buộc
-  language: vi | en
-  maxWords: integer
-
-output:
-  summary: string
-
-price:
-  grossAmount
-
-terms:
-  deliverySeconds
-  reviewSeconds
-  revisionPolicy
-  refundPolicy
-  sideEffects
-  dataUse
+PUT /v1/provider/apps/:appId/commands
+[{
+  name: ocr
+  description: Đọc chữ trong ảnh
+  options:
+    image: FILE, bắt buộc, accept [image/*], maxBytes 10 MB
+    language: STRING, vi | en
+  maxAmount: 2000000              # tùy chọn, trần giá offer (atomic USDC)
+  terms:
+    deliverySeconds, reviewSeconds, revisionPolicy,
+    refundPolicy, sideEffects, dataUse, verification?
+}]
 ```
 
-Web và API dùng cùng validation; không bắt buộc manifest file.
+Payvoke khớp theo tên: command không đổi giữ revision, command đổi tạo revision mới, command thiếu bị archive; default command giữ nếu còn, không thì lấy command đầu. Các route tạo/sửa/xoá từng command vẫn dùng được. Không có `pricing` hay `outputSchema` khi đăng ký.
 
-Input/output dùng subset JSON Schema 2020-12 có giới hạn. Không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần lúc chuẩn bị quote rồi đóng băng.
+Kiểu option: `STRING`, `INTEGER`, `NUMBER`, `BOOLEAN`, `FILE` (`accept`, `maxBytes`, `multiple`). Options được biên dịch thành subset JSON Schema 2020-12 có giới hạn; không nhận remote `$ref`, code hoặc schema không được kiểm soát. Defaults được áp một lần rồi đóng băng.
 
 UI chuyển slash shortcut thành `commandId + arguments`. Backend không shell-eval chuỗi slash thô hoặc nhờ LLM đoán command/giá. Các action điều hướng như help/status/cancel không được biến thành paid command tùy ý.
+
+### Interaction, form và file
+
+- Buyer gửi tin (`content`), slash command (`commandId + arguments`) hoặc câu trả lời form (`replyToId + arguments`). Arguments được kiểm tra theo schema của command hoặc form.
+- Bot gửi form bằng tin nhắn kèm `form: {title, description?, schema}`. Schema là object phẳng gồm field scalar, enum, file (`{type: "string", format: "file", accept?, maxBytes?}`) hoặc mảng file. Mỗi form chỉ được trả lời một lần.
+- Field file nhận `fileId` của file buyer đã tải lên thread (trạng thái READY, đúng `accept`, không vượt `maxBytes`). Bot chỉ thấy metadata (tên, loại, kích thước, sha256); nội dung tải được sau khi tiền đã vào vault.
+- File mà offer nhắc tới trong arguments được quote đóng băng vào `inputHash`, nên không đổi được sau khi ký.
 
 ### Command revision, availability và tự công khai
 
@@ -410,6 +421,7 @@ Provider chủ động mở kết nối SSE tới Payvoke. Không yêu cầu Pay
 
 Events gồm:
 
+- `thread.message` (interaction miễn phí: tin nhắn, slash command, câu trả lời form)
 - `invocation.ready`
 - `invocation.answer`
 - `invocation.revision_requested`
@@ -509,7 +521,7 @@ Quote hết hạn có thể giải phóng draft slot nếu chưa submit; pending
 
 ### Kết quả
 
-Provider gửi result → `VERIFYING`, chưa phải `DELIVERED`. Payvoke kiểm tra output schema, file đúng invocation/provider, dữ liệu đủ, loại/kích thước/checksum, an toàn theo policy và khả năng buyer truy cập.
+Provider gửi result (text/markdown, JSON và/hoặc file) → `VERIFYING`, chưa phải `DELIVERED`. Payvoke kiểm tra kết quả không rỗng (và output schema nếu revision cũ có khai), file đúng invocation/provider, dữ liệu đủ, loại/kích thước/checksum, an toàn theo policy và khả năng buyer truy cập.
 
 Các kiểm tra này không xác minh nội dung chuyên môn. Tiến độ tạm thời tách khỏi artifact cuối; platform ghi thời điểm giao, không dùng timestamp provider để lùi ngày giao.
 
@@ -676,23 +688,30 @@ Stack:
 
 ### Services và deploy
 
-Backend gồm bốn process deploy riêng. Mỗi process đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
+Mỗi service có Dockerfile riêng (build context là root repo) và đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
 
-| Service                  | Lệnh local                            | Docker target       | Giữ khóa                                                       |
-| ------------------------ | ------------------------------------- | ------------------- | -------------------------------------------------------------- |
-| `apps/api`               | `pnpm --filter api dev`               | `api`               | Không                                                          |
-| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `facilitator`       | Không (chỉ `RELAYER_ADDRESS`)                                  |
-| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `settlement-worker` | `RELAYER_PRIVATE_KEY`                                          |
-| `apps/finance-worker`    | `pnpm --filter finance-worker dev`    | `finance-worker`    | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
+| Service                  | Lệnh local                            | Dockerfile                          | Giữ khóa                                                       |
+| ------------------------ | ------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
+| `apps/frontend`          | `pnpm --filter frontend dev`          | `apps/frontend/Dockerfile`          | Không                                                          |
+| `apps/api`               | `pnpm --filter api dev`               | `apps/api/Dockerfile`               | Không                                                          |
+| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `apps/facilitator/Dockerfile`       | Không (chỉ `RELAYER_ADDRESS`)                                  |
+| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `apps/settlement-worker/Dockerfile` | `RELAYER_PRIVATE_KEY`                                          |
+| `apps/finance-worker`    | `pnpm --filter finance-worker dev`    | `apps/finance-worker/Dockerfile`    | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
+| `apps/job-worker`        | `pnpm --filter job-worker dev`        | `apps/job-worker/Dockerfile`        | Không                                                          |
+| migrations (one-shot)    | `pnpm --filter @payvoke/db migrate`   | `packages/payvoke-db/Dockerfile`    | Không                                                          |
 
-Migrations: `pnpm --filter @payvoke/db migrate`, hoặc image target `migrate` (one-shot).
+`compose.yml` là stack production tự host: Postgres, Redis, RustFS (S3), migrate, các service trên và web.
 
 ```sh
-docker build --target api -t payvoke-api .          # tương tự: facilitator, settlement-worker, finance-worker, migrate
-docker compose --profile stack up --build            # db + migrate + api + facilitator + hai worker
+cp .env.example .env          # POSTGRES_PASSWORD, S3 keys, WEB_ORIGIN/API_ORIGIN/S3_PUBLIC_ENDPOINT
+docker compose up -d --build
+docker build -f apps/api/Dockerfile -t payvoke-api .   # build riêng một service
 ```
 
-Trong compose, facilitator dùng chung network namespace với API nên chỉ nghe trên loopback và không publish port. Deploy tách máy thì facilitator phải đặt sau TLS (`FACILITATOR_URL=https://…`). `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
+- Chỉ web, API và RustFS được publish (trên `BIND_ADDRESS`, mặc định loopback); đặt reverse proxy TLS phía trước. Postgres không publish; Redis chỉ mở trên loopback của host.
+- Facilitator chạy container riêng, không publish; API gọi `http://facilitator:3002` trong mạng nội bộ của compose. Deploy tách máy thì facilitator phải đặt sau TLS. `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
+- Compose ghi đè `DATABASE_URL`, `REDIS_URL`, `API_ORIGIN` và `S3_*` trong `.env` của từng service để mọi container dùng hạ tầng của stack.
+- **DB mới cần một deployment policy đã duyệt** (vault, phí, giá sàn, thời gian giữ tiền) trong bảng `deployment_policies` với `activeSlot = 'active'`. Thiếu bản ghi này thì facilitator từ chối khởi động (`deployment_policy_mismatch`) và API chờ theo.
 
 ### Vai trò của Prisma schema
 

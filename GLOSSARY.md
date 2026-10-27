@@ -18,14 +18,24 @@ _Avoid_: Dùng “agent”, “tool” hoặc “sản phẩm” như ba loại 
 Cách gọi app ở góc nhìn provider trong Studio. Không phải một model dữ liệu riêng; cùng một `App` ở store và dashboard.
 
 **Command (slash command)**:
-Chức năng có tên, schema tham số, giá và điều khoản thuộc một app. Command có id ổn định trong suốt vòng đời app; tên chỉ cần duy nhất trong app.
+Chức năng có tên, schema tham số, điều khoản và trần giá tùy chọn thuộc một app, do bot đăng ký qua API. Command có id ổn định trong suốt vòng đời app; tên chỉ cần duy nhất trong app. Giá cụ thể do offer của bot đặt.
 _Avoid_: Dùng “tool” để gọi một command.
 
+**Interaction**:
+Một tin nhắn, slash command hoặc câu trả lời form mà buyer gửi cho bot trong thread. Miễn phí, có giới hạn số tin trước khi trả; không bao giờ tự di chuyển tiền.
+
+**Form (của bot)**:
+Tin nhắn của bot kèm `{title, description?, schema}` với JSON Schema phẳng (có thể có field file). Buyer trả lời đúng một lần; Payvoke kiểm tra theo schema rồi chuyển lại cho bot.
+
+**Trần giá (`maxAmount`)**:
+Giá tối đa tùy chọn của một command. Offer vượt trần bị từ chối. Giá cụ thể luôn do offer của bot đặt.
+_Avoid_: Gọi trần giá là "giá của command".
+
 **Command revision**:
-Bản bất biến của command tại một thời điểm, chứa options, JSON Schema, giá, terms và thời hạn. Sửa command tạo revision mới. Quote ghim `commandRevisionId`, nên quote/invocation cũ không đổi khi provider sửa command.
+Bản bất biến của command tại một thời điểm, chứa options, JSON Schema, trần giá, terms và thời hạn. Sửa command tạo revision mới. Quote ghim `commandRevisionId`, nên quote/invocation cũ không đổi khi provider sửa command.
 
 **Default command**:
-Command nhận free text khi buyer không gõ slash command. Free text được map vào tham số vị trí của default command; nếu default command không có tham số vị trí, UI mở form arguments.
+Command mà offer dùng khi bot không nêu command nào. Free text của buyer luôn là tin nhắn cho bot, không tự chạy default command.
 
 **Thread (hội thoại)**:
 Không gian chat gắn cố định với một buyer và đúng một app. Thread chứa tin nhắn, câu hỏi, revision, widget OpenUI và lịch sử invocation. Danh sách thread trộn mọi app và hỗ trợ đổi tên/archive.
@@ -95,7 +105,7 @@ Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏ
 Tiến trình local cho ứng dụng AI bên ngoài dùng chung API buyer. MCP không phải giao diện chat của Payvoke và không được thay đổi giá hoặc bỏ qua admission.
 
 **Mức bằng chứng (evidence level)**:
-Cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (đúng schema, đúng key app) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận; hai mức này không thay thế nhau). Command revision mang `terms.verification.minEvidence` (mặc định `SIGN`); finance không giải ngân khi bằng chứng thấp hơn mức này. Xem [M05](docs/modules/05-artifacts-and-verification.md).
+Cấp độ bằng chứng giao hàng của một artifact version, theo thang `SELF` (provider tự báo) → `SIGN` (kết quả hợp lệ do đúng key app gửi, gắn hash nội dung; khớp output schema nếu revision có khai) → `REC`/`WIT` (biên nhận hệ thống ngoài / người có quyền xác nhận; hai mức này không thay thế nhau). Command revision mang `terms.verification.minEvidence` (mặc định `SIGN`); finance không giải ngân khi bằng chứng thấp hơn mức này. Xem [M05](docs/modules/05-artifacts-and-verification.md).
 
 **Evidence Envelope**:
 Bản ghi bất biến của một lần quan sát giao hàng (invocation, artifact version, hash output, file, thời điểm giao, mức bằng chứng, verifier), canonicalize bằng JCS. Hash của nó cho phép tái tạo và đối chiếu đúng lần quan sát mà quyết định giải ngân đã dựa vào.
