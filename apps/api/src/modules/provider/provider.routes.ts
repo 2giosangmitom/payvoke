@@ -4,6 +4,7 @@ import type {
   CommandRoute,
   CreateAppRoute,
   CreateCommandRoute,
+  OverwriteCommandsRoute,
   IssueKeyRoute,
   KeyRoute,
   PatchAppRoute,
@@ -45,6 +46,11 @@ export async function providerRoutes(app: FastifyInstance) {
 
   app.get<AppRoute>(`${base}/commands`, c.listCommands);
   app.post<CreateCommandRoute>(`${base}/commands`, commandWrite, c.createCommand);
+  app.put<OverwriteCommandsRoute>(
+    `${base}/commands`,
+    { ...commandWrite, bodyLimit: 262144 },
+    c.overwriteCommands,
+  );
   app.patch<UpdateCommandRoute>(`${base}/commands/:commandId`, commandWrite, c.updateCommand);
   app.delete<CommandRoute>(`${base}/commands/:commandId`, c.archiveCommand);
   app.post<CommandRoute>(`${base}/commands/:commandId/default`, c.setDefaultCommand);

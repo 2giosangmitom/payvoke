@@ -34,7 +34,7 @@ export type QuoteInput = {
   product: { id: string; payoutAddress: string };
   commandId: string;
   revision: AppCommandRevision;
-  // The fixed TOOL price, or the accepted offer's price and delivery time.
+  // The accepted offer's price and delivery time.
   grossAmount: bigint;
   deliverySeconds: number;
   offer: QuoteOffer | null;

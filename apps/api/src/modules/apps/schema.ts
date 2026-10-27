@@ -1,7 +1,7 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { minEvidenceLevels, type MinEvidence } from "@payvoke/payments/evidence";
 
-export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN"] as const;
+export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN", "FILE"] as const;
 export type CommandOptionType = (typeof COMMAND_OPTION_TYPES)[number];
 
 export type CommandOption = {
@@ -14,7 +14,24 @@ export type CommandOption = {
   max?: number;
   minLength?: number;
   maxLength?: number;
+  // FILE options: allowed MIME types (`image/*` wildcards), size cap, and
+  // whether several files may be attached.
+  accept?: string[];
+  maxBytes?: number;
+  multiple?: boolean;
 };
+
+// Input schemas may mark a string as an uploaded file id: {format: "file"},
+// optionally with `accept` and `maxBytes`, alone or as array items.
+const MAX_FILE_ITEMS = 10;
+const MIME = /^[a-z]+\/(\*|[\w.+-]+)$/;
+export function inputValidator(schema: object) {
+  const ajv = new Ajv2020({ strict: true, useDefaults: true, coerceTypes: false });
+  ajv.addFormat("file", /^[\w-]{1,128}$/);
+  ajv.addKeyword({ keyword: "accept", schemaType: "array" });
+  ajv.addKeyword({ keyword: "maxBytes", schemaType: "number" });
+  return ajv.compile(schema);
+}
 
 export const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -47,6 +64,10 @@ export function checkJsonSchema(value: unknown, depth = 0): boolean {
     "minItems",
     "maxItems",
     "description",
+    "title",
+    "format",
+    "accept",
+    "maxBytes",
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) return false;
   if (value.$schema && value.$schema !== "https://json-schema.org/draft/2020-12/schema")
@@ -79,6 +100,24 @@ export function checkJsonSchema(value: unknown, depth = 0): boolean {
     );
   }
   if (value.enum && (!Array.isArray(value.enum) || value.enum.length > 50)) return false;
+  if (value.title !== undefined && !text(value.title, 120)) return false;
+  if (value.format !== undefined && (value.format !== "file" || value.type !== "string"))
+    return false;
+  if ((value.accept !== undefined || value.maxBytes !== undefined) && value.format !== "file")
+    return false;
+  if (
+    value.accept !== undefined &&
+    (!Array.isArray(value.accept) ||
+      !value.accept.length ||
+      value.accept.length > 20 ||
+      value.accept.some((type) => typeof type !== "string" || !MIME.test(type)))
+  )
+    return false;
+  if (
+    value.maxBytes !== undefined &&
+    (!Number.isSafeInteger(value.maxBytes) || (value.maxBytes as number) <= 0)
+  )
+    return false;
   for (const key of ["minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"]) {
     if (
       value[key] !== undefined &&
@@ -104,6 +143,14 @@ function compileOption(option: CommandOption): Record<string, unknown> {
     if (option.min !== undefined) property.minimum = option.min;
     if (option.max !== undefined) property.maximum = option.max;
     if (option.choices) property.enum = option.choices.filter((v) => typeof v === "number");
+  } else if (option.type === "FILE") {
+    const file: Record<string, unknown> = { type: "string", format: "file" };
+    if (option.accept) file.accept = option.accept;
+    if (option.maxBytes !== undefined) file.maxBytes = option.maxBytes;
+    if (!option.multiple) return { ...property, ...file };
+    property.type = "array";
+    property.maxItems = MAX_FILE_ITEMS;
+    property.items = file;
   } else {
     property.type = "boolean";
   }
@@ -117,6 +164,25 @@ export function parseCommandOptions(value: unknown): CommandOption[] | null {
   for (const raw of value) {
     if (!record(raw)) return null;
     const { name, description, type, required, choices, min, max, minLength, maxLength } = raw;
+    const { accept, maxBytes, multiple } = raw;
+    if (
+      type !== "FILE" &&
+      (accept !== undefined || maxBytes !== undefined || multiple !== undefined)
+    )
+      return null;
+    if (type === "FILE" && (choices !== undefined || min !== undefined || max !== undefined))
+      return null;
+    if (
+      accept !== undefined &&
+      (!Array.isArray(accept) ||
+        !accept.length ||
+        accept.length > 20 ||
+        accept.some((item) => typeof item !== "string" || !MIME.test(item)))
+    )
+      return null;
+    if (maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) <= 0))
+      return null;
+    if (multiple !== undefined && typeof multiple !== "boolean") return null;
     if (!validCommandName(name) || names.has(name)) return null;
     names.add(name);
     if (!COMMAND_OPTION_TYPES.includes(type as CommandOptionType)) return null;
@@ -157,6 +223,13 @@ export function parseCommandOptions(value: unknown): CommandOption[] | null {
       max: max as number | undefined,
       minLength: minLength as number | undefined,
       maxLength: maxLength as number | undefined,
+      ...(type === "FILE"
+        ? {
+            accept: accept as string[] | undefined,
+            maxBytes: maxBytes as number | undefined,
+            multiple: multiple === true,
+          }
+        : {}),
     });
   }
   return options;
@@ -197,11 +270,45 @@ export function commandPositional(options: CommandOption[], requested: unknown):
 export function validateCommandInputSchema(schema: unknown): boolean {
   if (!checkJsonSchema(schema) || !record(schema) || schema.type !== "object") return false;
   try {
-    new Ajv2020({ strict: true }).compile(schema);
+    inputValidator(schema);
     return true;
   } catch {
     return false;
   }
+}
+
+// A bot form: a flat object whose fields are scalars, enums, files or arrays
+// of files, so the chat can render it without a schema interpreter.
+export function validateFormSchema(schema: unknown): boolean {
+  if (!validateCommandInputSchema(schema)) return false;
+  return Object.values(
+    (schema as { properties: Record<string, Record<string, unknown>> }).properties,
+  ).every((field) =>
+    field.type === "array"
+      ? record(field.items) && field.items.format === "file"
+      : field.type !== "object",
+  );
+}
+
+export type FileField = { name: string; multiple: boolean; accept?: string[]; maxBytes?: number };
+
+// The top-level fields of an input schema that hold uploaded file ids.
+export function fileFields(schema: unknown): FileField[] {
+  if (!record(schema) || !record(schema.properties)) return [];
+  const fields: FileField[] = [];
+  for (const [name, field] of Object.entries(schema.properties)) {
+    if (!record(field)) continue;
+    const multiple = field.type === "array";
+    const file = multiple ? field.items : field;
+    if (!record(file) || file.format !== "file") continue;
+    fields.push({
+      name,
+      multiple,
+      accept: file.accept as string[] | undefined,
+      maxBytes: file.maxBytes as number | undefined,
+    });
+  }
+  return fields;
 }
 
 export function validateTerms(value: unknown): value is Record<string, unknown> {

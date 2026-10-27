@@ -23,15 +23,12 @@ export const KEY_SCOPES = [
 export type KeyScope = (typeof KEY_SCOPES)[number];
 
 const visibilities = ["PUBLIC", "PRIVATE"];
-export const APP_KINDS = ["TOOL", "AGENT"] as const;
-export type AppKind = (typeof APP_KINDS)[number];
 
 export type NewAppBody = {
   name: string;
   description?: string;
   payoutAddress: string;
   visibility?: string;
-  kind?: string;
   clientRequestId: string;
 };
 export type AppPatchBody = {
@@ -46,21 +43,16 @@ export type CommandBody = {
   description: string;
   options: unknown;
   positionalParameter?: string | null;
-  // TOOL: the fixed price. AGENT: the range provider offers must fall within.
-  grossAmount?: string;
-  minGrossAmount?: string;
-  maxGrossAmount?: string;
+  // Prices come from the bot's offers; this optional cap bounds them.
+  maxAmount?: string;
   terms: unknown;
-  outputSchema?: unknown;
   expectedRevisionId?: string;
 };
 
 export function parseNewApp(body: Partial<NewAppBody> | undefined) {
-  const { name, description, payoutAddress, visibility, kind, clientRequestId } = body ?? {};
+  const { name, description, payoutAddress, visibility, clientRequestId } = body ?? {};
   const visible = visibility ?? "PUBLIC";
-  const appKind = kind ?? "TOOL";
   if (
-    !(APP_KINDS as readonly string[]).includes(appKind) ||
     !text(name, 120) ||
     (description !== undefined && typeof description !== "string") ||
     (description && description.length > 2000) ||
@@ -76,7 +68,6 @@ export function parseNewApp(body: Partial<NewAppBody> | undefined) {
       description: description?.trim() || null,
       payoutAddress: getAddress(payoutAddress as string),
       visibility: visible,
-      kind: appKind as AppKind,
     },
   };
 }
@@ -129,33 +120,28 @@ export function parseKeyRequest(body: KeyRequestBody | undefined, now = Date.now
 }
 
 const UINT256_MAX = (1n << 256n) - 1n;
-const atomicAmount = (value: unknown) =>
+const atomicAmount = (value: unknown): value is string =>
   typeof value === "string" && /^[1-9]\d*$/.test(value) && BigInt(value) <= UINT256_MAX;
-
-// A TOOL command has exactly one fixed price; an AGENT command has none and
-// publishes an inclusive range instead.
-function parsePricing(input: CommandBody, kind: AppKind) {
-  const { grossAmount, minGrossAmount, maxGrossAmount } = input;
-  if (kind === "TOOL") {
-    if (!atomicAmount(grossAmount) || minGrossAmount !== undefined || maxGrossAmount !== undefined)
-      return null;
-    return { grossAmount: grossAmount!, minGrossAmount: null, maxGrossAmount: null };
-  }
-  if (
-    grossAmount !== undefined ||
-    !atomicAmount(minGrossAmount) ||
-    !atomicAmount(maxGrossAmount) ||
-    BigInt(minGrossAmount!) > BigInt(maxGrossAmount!)
-  )
-    return null;
-  return { grossAmount: null, minGrossAmount: minGrossAmount!, maxGrossAmount: maxGrossAmount! };
-}
+const COMMAND_KEYS = new Set([
+  "name",
+  "description",
+  "options",
+  "positionalParameter",
+  "maxAmount",
+  "terms",
+  "expectedRevisionId",
+]);
 
 // Request-only checks of a command definition. Deployment policy and name
 // uniqueness are checked by the command service against the database.
-export function parseCommandBody(body: CommandBody | undefined, kind: AppKind) {
+export function parseCommandBody(body: CommandBody | undefined) {
   const options = parseCommandOptions(body?.options);
-  if (!options || !validCommandName(body!.name) || !text(body!.description, 2000))
+  if (
+    !options ||
+    !validCommandName(body!.name) ||
+    !text(body!.description, 2000) ||
+    Object.keys(body!).some((key) => !COMMAND_KEYS.has(key))
+  )
     throw new BadRequestError("INVALID_COMMAND");
   const input = body!;
   if (!options.length) throw new BadRequestError("COMMAND_OPTIONS_REQUIRED");
@@ -169,10 +155,9 @@ export function parseCommandBody(body: CommandBody | undefined, kind: AppKind) {
       (input.positionalParameter !== "" && positional === null))
   )
     throw new BadRequestError("INVALID_POSITIONAL_PARAMETER");
-  if (input.outputSchema !== undefined && !validateCommandInputSchema(input.outputSchema))
-    throw new BadRequestError("INVALID_OUTPUT_SCHEMA");
-  const pricing = parsePricing(input, kind);
-  if (!pricing || !validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
+  if (input.maxAmount !== undefined && !atomicAmount(input.maxAmount))
+    throw new BadRequestError("INVALID_MAX_AMOUNT");
+  if (!validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
   const terms = normalizeTerms(input.terms as Record<string, unknown>);
   return {
     name: input.name.trim(),
@@ -180,9 +165,8 @@ export function parseCommandBody(body: CommandBody | undefined, kind: AppKind) {
     revision: {
       options,
       inputSchema,
-      outputSchema: input.outputSchema,
       positionalParameter: positional,
-      ...pricing,
+      maxGrossAmount: input.maxAmount ?? null,
       terms,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,

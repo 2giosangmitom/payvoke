@@ -19,6 +19,7 @@ export type PatchAppRoute = AppRoute & { Body: AppPatchBody };
 export type PayoutRoute = AppRoute & { Body: { payoutAddress?: string } };
 export type IssueKeyRoute = AppRoute & { Body: KeyRequestBody };
 export type CreateCommandRoute = AppRoute & { Body: CommandBody };
+export type OverwriteCommandsRoute = AppRoute & { Body: unknown };
 export type UpdateCommandRoute = CommandRoute & { Body: CommandBody };
 
 export class ProviderController {
@@ -114,6 +115,11 @@ export class ProviderController {
   createCommand = async (request: FastifyRequest<CreateCommandRoute>, reply: FastifyReply) => {
     const app = await this.writer(request, request.params.appId);
     return reply.code(201).send(await this.commandService.create(app, request.body));
+  };
+
+  overwriteCommands = async (request: FastifyRequest<OverwriteCommandsRoute>) => {
+    const app = await this.writer(request, request.params.appId);
+    return this.commandService.overwrite(app, request.body);
   };
 
   updateCommand = async (request: FastifyRequest<UpdateCommandRoute>) => {

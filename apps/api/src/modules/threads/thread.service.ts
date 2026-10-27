@@ -9,7 +9,7 @@ import { object } from "../runs/protocol";
 import { revisionPolicy } from "../runs/run-rules";
 
 export type NewThreadBody = { appId: string; clientRequestId: string; title?: string };
-export type ThreadQuery = { q?: string; cursor?: string; archived?: string; kind?: string };
+export type ThreadQuery = { q?: string; cursor?: string; archived?: string };
 
 const PAGE = 50;
 const HISTORY_LIMIT = 100000;
@@ -80,17 +80,12 @@ export class ThreadService {
     return { created: true, thread: serialize(thread) };
   }
 
-  async list(buyerId: string, { q, cursor, archived, kind }: ThreadQuery) {
-    if (
-      (q && q.length > 100) ||
-      (cursor && cursor.length > 128) ||
-      (kind !== undefined && kind !== "AGENT" && kind !== "TOOL")
-    )
+  async list(buyerId: string, { q, cursor, archived }: ThreadQuery) {
+    if ((q && q.length > 100) || (cursor && cursor.length > 128))
       throw new BadRequestError("INVALID_THREAD_QUERY");
     const rows = await this.db.chatThread.findMany({
       where: {
         buyerId,
-        ...(kind ? { app: { kind } } : {}),
         ...(archived === "1" ? { archivedAt: { not: null } } : { archivedAt: null }),
         ...(q
           ? {
@@ -107,7 +102,6 @@ export class ThreadService {
             id: true,
             name: true,
             description: true,
-            kind: true,
             status: true,
             defaultCommandId: true,
             lastHeartbeatAt: true,
@@ -126,7 +120,6 @@ export class ThreadService {
           id: row.app.id,
           name: row.app.name,
           description: row.app.description,
-          kind: row.app.kind,
           availability: availabilityLabel(row.app),
         },
         lastMessageAt: row.lastMessageAt,
@@ -185,7 +178,6 @@ export class ThreadService {
         id: thread.app.id,
         name: thread.app.name,
         description: thread.app.description,
-        kind: thread.app.kind,
         visibility: thread.app.visibility,
         status: thread.app.status,
         availability: availabilityLabel(thread.app),
@@ -196,7 +188,7 @@ export class ThreadService {
       revisionPolicy: revisionPolicy(revision?.terms),
       commands: commands.map(serializeCommand),
       // Free pre-sale messages left before the next paid invocation.
-      presale: thread.app.kind === "AGENT" ? await this.presale.allowance(thread.id) : null,
+      presale: await this.presale.allowance(thread.id),
     };
   }
 
@@ -331,7 +323,7 @@ export class ThreadService {
         status: r.status,
         createdAt: r.createdAt,
       })),
-      // Unpaid pre-sale chat and offers of an AGENT thread.
+      // Unpaid pre-sale chat and offers of the thread.
       conversation: await this.presale.threadMessages(threadId),
       offers: await this.presale.threadOffers(threadId),
     };

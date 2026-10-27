@@ -17,11 +17,20 @@ import {
   ServiceUnavailableError,
   isUniqueViolation,
 } from "../../errors";
+import { fileFields } from "../apps/schema";
 import { object } from "../runs/protocol";
 import type { Work } from "../runs/provider-run.service";
 import type { BuyerUploadBody, UploadBody } from "./file.schemas";
 
 export const MAX_CONTEXT_FILES = 10;
+
+// One manifest from several sources, each file once, in manifest order.
+export function fileManifestUnion(...lists: FileManifestEntry[][]): FileManifestEntry[] {
+  const byId = new Map(lists.flat().map((entry) => [entry.fileId, entry]));
+  return [...byId.values()].sort((a, b) =>
+    a.fileId < b.fileId ? -1 : a.fileId > b.fileId ? 1 : 0,
+  );
+}
 export const MAX_RESULT_FILES = 10;
 const MAX_INVOCATION_ARTIFACTS = 50;
 
@@ -274,6 +283,43 @@ export class FileService {
     });
     if (rows.length !== fileIds.length) throw new BadRequestError("INVALID_CONTEXT_FILES");
     return fileManifest(rows);
+  }
+
+  // Files named by the file fields of validated arguments: READY inputs of
+  // this buyer and thread, within each field's `accept` and `maxBytes`.
+  async argumentFiles(
+    tx: Prisma.TransactionClient,
+    buyerId: string,
+    threadId: string,
+    schema: unknown,
+    args: Record<string, unknown>,
+  ): Promise<FileManifestEntry[]> {
+    const wanted = fileFields(schema).flatMap((field) => {
+      const value = args[field.name];
+      const ids = field.multiple ? ((value as string[] | undefined) ?? []) : value ? [value] : [];
+      return (ids as string[]).map((id) => ({ id, field }));
+    });
+    if (!wanted.length) return [];
+    if (!this.enabled) throw new BadRequestError("FILES_NOT_SUPPORTED");
+    const entries = await this.contextFiles(tx, buyerId, threadId, [
+      ...new Set(wanted.map((item) => item.id)),
+    ]).catch(() => {
+      throw new BadRequestError("INVALID_ARGUMENT_FILES");
+    });
+    const byId = new Map(entries.map((entry) => [entry.fileId, entry]));
+    for (const { id, field } of wanted) {
+      const entry = byId.get(id)!;
+      const accepted =
+        !field.accept ||
+        field.accept.some((type) =>
+          type.endsWith("/*")
+            ? entry.contentType.startsWith(type.slice(0, -1))
+            : entry.contentType === type,
+        );
+      if (!accepted || (field.maxBytes !== undefined && entry.size > field.maxBytes))
+        throw new BadRequestError("INVALID_ARGUMENT_FILES");
+    }
+    return entries;
   }
 
   // Normalizes a result's `files: [{fileId}]` into the frozen manifest.

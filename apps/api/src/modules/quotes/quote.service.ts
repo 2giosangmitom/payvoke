@@ -14,6 +14,7 @@ import {
 } from "../../errors";
 import type { AccountIdentity } from "../auth/auth.service";
 import { isAvailable, threadSlotReleased } from "../apps/schema";
+import { fileManifestUnion } from "../files/file.service";
 import { buildQuoteDocument } from "./quote-document";
 import type { PrepareQuoteBody } from "./quote.schemas";
 import { conversation, conversationHash } from "../presale/conversation";
@@ -133,15 +134,18 @@ export class QuoteService {
     if (!policy || getAddress(policy.vault) !== vault)
       throw new ServiceUnavailableError("POLICY_NOT_CONFIGURED");
     const floor = BigInt(policy.minGrossAmount.toFixed(0));
-    const priced =
-      product.kind === "AGENT"
-        ? await this.offerTerms(tx, thread.id, product.id, body)
-        : await this.commandTerms(tx, product.id, body);
+    const priced = await this.offerTerms(tx, thread.id, product.id, body);
     const { commandId, revision, grossAmount, deliverySeconds, offer } = priced;
     // A floor raised after publication or an offer still blocks new sales.
     if (grossAmount < floor) throw new ConflictError("PRICE_BELOW_FLOOR");
     const schema = revision.inputSchema;
     const effective = effectiveArguments(schema, priced.arguments);
+    // The quote freezes the selected attachments and every file the offer's
+    // arguments name, so the provider can fetch them once the hold lands.
+    const files = fileManifestUnion(
+      await this.files.contextFiles(tx, buyer.id, thread.id, body.contextSelection.fileIds),
+      await this.files.argumentFiles(tx, buyer.id, thread.id, schema, effective),
+    );
     if (
       revision.deliverySeconds <= 0 ||
       revision.reviewSeconds < 0 ||
@@ -174,7 +178,7 @@ export class QuoteService {
       schema: schema as Json,
       effectiveArguments: effective,
       history: await loadTranscript(tx, thread.id),
-      files: await this.files.contextFiles(tx, buyer.id, thread.id, body.contextSelection.fileIds),
+      files,
       now,
     });
     await tx.quote.create({
@@ -205,28 +209,7 @@ export class QuoteService {
     return quote;
   }
 
-  // TOOL: the command's fixed price at its active revision.
-  private async commandTerms(tx: Prisma.TransactionClient, appId: string, body: PrepareQuoteBody) {
-    if (body.offerId || !body.commandId) throw new BadRequestError("APP_KIND_MISMATCH");
-    const command = await tx.appCommand.findFirst({
-      where: { id: body.commandId, appId, archivedAt: null, activeRevisionId: { not: null } },
-      include: { activeRevision: true },
-    });
-    if (!command) throw new NotFoundError("COMMAND_NOT_FOUND");
-    const revision = command.activeRevision;
-    if (!revision) throw new ConflictError("COMMAND_NOT_READY");
-    if (!revision.grossAmount) throw new ServiceUnavailableError("INVALID_COMMAND_PRICE");
-    return {
-      commandId: command.id,
-      revision,
-      grossAmount: BigInt(revision.grossAmount.toFixed(0)),
-      deliverySeconds: revision.deliverySeconds,
-      arguments: body.arguments,
-      offer: null,
-    };
-  }
-
-  // AGENT: an open offer of this thread, re-checked against the revision it
+  // An open offer of this thread, re-checked against the quoted revision it
   // pins and the conversation it was made for.
   private async offerTerms(
     tx: Prisma.TransactionClient,
@@ -245,10 +228,7 @@ export class QuoteService {
     if (revision.command.archivedAt) throw new NotFoundError("COMMAND_NOT_FOUND");
     const grossAmount = BigInt(offer.grossAmount.toFixed(0));
     if (
-      !revision.minGrossAmount ||
-      !revision.maxGrossAmount ||
-      grossAmount < BigInt(revision.minGrossAmount.toFixed(0)) ||
-      grossAmount > BigInt(revision.maxGrossAmount.toFixed(0)) ||
+      (revision.maxGrossAmount && grossAmount > BigInt(revision.maxGrossAmount.toFixed(0))) ||
       offer.deliverySeconds > revision.deliverySeconds
     )
       throw new ConflictError("OFFER_INVALID");

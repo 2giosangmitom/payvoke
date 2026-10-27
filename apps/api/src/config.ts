@@ -26,7 +26,7 @@ const schema = Type.Object({
   FILE_MAX_BYTES: Type.Integer({ minimum: 1, maximum: 1073741824, default: 26214400 }),
   FILE_UPLOAD_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 600 }),
   FILE_DOWNLOAD_TTL_SECONDS: Type.Integer({ minimum: 30, maximum: 3600, default: 300 }),
-  // Free pre-sale buyer messages per AGENT thread between paid invocations.
+  // Free pre-sale buyer messages per chat thread between paid invocations.
   PRESALE_MESSAGE_LIMIT: Type.Integer({ minimum: 1, maximum: 500, default: 20 }),
 });
 
