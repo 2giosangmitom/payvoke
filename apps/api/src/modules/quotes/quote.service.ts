@@ -25,10 +25,12 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 export class QuoteService {
   private readonly db: Cradle["db"];
   private readonly config: Cradle["config"];
+  private readonly files: Cradle["fileService"];
 
-  constructor({ db, config }: Cradle) {
+  constructor({ db, config, fileService }: Cradle) {
     this.db = db;
     this.config = config;
+    this.files = fileService;
   }
 
   vault(): Address {
@@ -61,10 +63,14 @@ export class QuoteService {
   async prepare(buyer: AccountIdentity, body: PrepareQuoteBody, idempotencyKey: unknown) {
     if (idempotencyKey !== body.clientRequestId)
       throw new BadRequestError("IDEMPOTENCY_KEY_REQUIRED");
-    // Context resolvers are not implemented yet. Never silently drop a selected
+    // Only file context is resolved so far. Never silently drop a selected
     // context or let a client supply content/hash instead of an owned record.
     const context = body.contextSelection;
-    if (context.messageIds.length || context.fileIds.length || context.briefVersionId !== null)
+    if (
+      context.messageIds.length ||
+      context.briefVersionId !== null ||
+      (context.fileIds.length && !this.files.enabled)
+    )
       throw new BadRequestError("CONTEXT_NOT_SUPPORTED");
     const vault = this.vault();
     const requestHash = hashSnapshot(body as unknown as Json);
@@ -181,6 +187,7 @@ export class QuoteService {
       schema: schema as Json,
       effectiveArguments,
       history: await loadTranscript(tx, thread.id),
+      files: await this.files.contextFiles(tx, buyer.id, thread.id, body.contextSelection.fileIds),
       now,
     });
     await tx.quote.create({

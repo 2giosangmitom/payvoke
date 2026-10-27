@@ -3,8 +3,10 @@ import closeWithGrace from "close-with-grace";
 import { Queue, Worker } from "bullmq";
 import { createDatabase } from "@payvoke/db";
 import { pendingVerifications, verifyStructuredDelivery } from "@payvoke/payments/delivery";
+import { expireStaleUploads } from "@payvoke/payments/files";
 import { connectRedis, queues, QueueJobs, throttled, type InvocationJob } from "@payvoke/queue";
 import { errorTag } from "@payvoke/server";
+import { createStorage } from "@payvoke/storage";
 import { loadJobWorkerConfig } from "./config";
 
 // Re-adds verification jobs whose producer crashed between commit and enqueue.
@@ -21,6 +23,9 @@ try {
   const producer = await connectRedis(config.REDIS_URL, "producer", onError);
   db = createDatabase(config.DATABASE_URL);
   const database = db;
+  // Null when files are disabled: file results then stay unverified, so the
+  // finance worker refunds them at the delivery deadline.
+  const storage = createStorage(config);
   const jobs = new QueueJobs(producer, onError);
 
   const verifier = new Worker<Partial<InvocationJob>>(
@@ -29,12 +34,13 @@ try {
       if (job.name === "sweep") {
         for (const { invocationId, artifactVersion } of await pendingVerifications(database))
           await jobs.verifyDelivery(invocationId, artifactVersion);
+        if (storage) await expireStaleUploads(database, storage);
         return;
       }
       // New evidence can release a hold once its review window ends.
       if (
         job.data.invocationId &&
-        (await verifyStructuredDelivery(database, job.data.invocationId))
+        (await verifyStructuredDelivery(database, job.data.invocationId, storage))
       )
         await jobs.wakeFinance();
     },

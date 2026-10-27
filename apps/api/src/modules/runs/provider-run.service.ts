@@ -25,7 +25,7 @@ import {
 
 type StreamItem = { sequence: number; event: Record<string, unknown>; digest: string };
 export type ReportBody = { reportId: string; sequence: number; type: string; data?: unknown };
-type Work = Awaited<ReturnType<ProviderRunService["work"]>>;
+export type Work = Awaited<ReturnType<ProviderRunService["work"]>>;
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const STREAM_BYTES = 524288;
@@ -37,11 +37,13 @@ export class ProviderRunService {
   private readonly db: Cradle["db"];
   private readonly doorbell: Cradle["doorbell"];
   private readonly jobs: Cradle["jobs"];
+  private readonly files: Cradle["fileService"];
 
-  constructor({ db, doorbell, jobs }: Cradle) {
+  constructor({ db, doorbell, jobs, fileService }: Cradle) {
     this.db = db;
     this.doorbell = doorbell;
     this.jobs = jobs;
+    this.files = fileService;
   }
 
   async heartbeat(appId: string) {
@@ -222,7 +224,7 @@ export class ProviderRunService {
       });
       if (open) throw new ConflictError("QUESTION_ALREADY_OPEN");
     }
-    if (kind === "result") await this.checkResult(invocation, data);
+    const result = kind === "result" ? await this.checkResult(invocation, data) : null;
     const events = reportEvents(
       kind,
       data,
@@ -241,7 +243,7 @@ export class ProviderRunService {
         data: {
           reportSequence: sequence,
           state: runStateAfter(kind),
-          ...(kind === "result" ? { result: json(data ?? {}) } : {}),
+          ...(result ? { result: json(result) } : {}),
         },
       });
       if (!updated.count) throw new ConflictError("REPORT_CONFLICT");
@@ -285,7 +287,8 @@ export class ProviderRunService {
   }
 
   // A result must match the revision's output schema and publish a strictly
-  // newer artifact. Artifact storage/access is a separate trusted verifier.
+  // newer artifact. Its `files: [{fileId}]` must be READY artifacts of this
+  // invocation; the stored result carries their frozen manifest instead.
   private async checkResult(invocation: Work, data: unknown) {
     const result = data as Record<string, unknown> | undefined;
     if (
@@ -311,7 +314,7 @@ export class ProviderRunService {
     });
     if (latest && (result.artifactVersion as number) <= latest.artifactVersion)
       throw new BadRequestError("ARTIFACT_VERSION_NOT_INCREMENTED");
-    if (result.files.length > 0) throw new BadRequestError("FILES_NOT_SUPPORTED");
+    return { ...result, files: await this.files.resultFiles(invocation, result.files) };
   }
 
   cursor(invocation: Work, runId: string) {

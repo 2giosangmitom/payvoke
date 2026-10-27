@@ -1,6 +1,8 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { hashSnapshot, type Json } from "@payvoke/protocol";
 import type { PrismaClient } from "@payvoke/db";
+import type { ObjectStorage } from "@payvoke/storage";
+import { parseManifest, storedFilesIntact } from "./files";
 import { recordPaymentDelivery } from "./finance";
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -30,13 +32,18 @@ export async function pendingVerifications(db: PrismaClient, limit = 100) {
   });
 }
 
-// Trusted host-side verification for one inline JSON result. File results
-// require a separate artifact/access verifier and are deliberately excluded.
-// Provider reports never directly create delivery evidence or unlock payment;
-// the decision uses the stored immutable result and snapshotted schema.
-// Returns whether evidence was recorded. Safe to repeat: the evidence id is
-// derived from the invocation and artifact version.
-export async function verifyStructuredDelivery(db: PrismaClient, invocationId: string) {
+// Trusted host-side verification for one stored result. Schema-valid JSON alone
+// is SIGN; a result whose every file is still the READY, intact artifact of
+// this invocation in storage is REC. File results need `storage` and are
+// left pending without it. Provider reports never directly create delivery
+// evidence or unlock payment; the decision uses the stored immutable result
+// and snapshotted schema. Returns whether evidence was recorded. Safe to
+// repeat: the evidence id is derived from the invocation and artifact version.
+export async function verifyStructuredDelivery(
+  db: PrismaClient,
+  invocationId: string,
+  storage: ObjectStorage | null = null,
+) {
   const invocation = await db.invocation.findFirst({
     where: { id: invocationId, ...awaiting },
     select: {
@@ -49,13 +56,10 @@ export async function verifyStructuredDelivery(db: PrismaClient, invocationId: s
   const result = invocation.run?.result;
   const document = invocation.quote.document;
   if (!object(result) || !object(document) || !object(document.inputSnapshot)) return false;
-  if (
-    !Number.isSafeInteger(result.artifactVersion) ||
-    (result.artifactVersion as number) < 1 ||
-    !Array.isArray(result.files) ||
-    result.files.length > 0
-  )
+  if (!Number.isSafeInteger(result.artifactVersion) || (result.artifactVersion as number) < 1)
     return false;
+  const files = parseManifest(result.files);
+  if (!files) return false;
   if (!invocation.quote.commandRevisionId) return false;
   const command = await db.appCommandRevision.findUnique({
     where: { id: invocation.quote.commandRevisionId },
@@ -64,23 +68,30 @@ export async function verifyStructuredDelivery(db: PrismaClient, invocationId: s
   if (!command?.outputSchema || !object(command.outputSchema)) return false;
   const validate = new Ajv2020({ strict: true, useDefaults: false }).compile(command.outputSchema);
   if (!validate(result.output)) return false;
+  if (files.length && (!storage || !(await storedFilesIntact(db, storage, invocation.id, files))))
+    return false;
   await recordPaymentDelivery(db, {
-    id: `structured-${invocation.id}-${result.artifactVersion}`,
+    id: `${files.length ? "files" : "structured"}-${invocation.id}-${result.artifactVersion}`,
     invocationId: invocation.id,
     artifactVersion: result.artifactVersion as number,
     outputHash: hashSnapshot(result.output as Json),
-    verifier: "payvoke-host-structured-v1",
+    verifier: files.length ? "payvoke-host-files-v1" : "payvoke-host-structured-v1",
     accessInterruptionSeconds: 0,
-    // Schema-valid output bound to app, invocation and artifact version (M05).
-    evidenceLevel: "SIGN",
+    // SIGN: schema-valid output bound to app, invocation and artifact version.
+    // REC: additionally, every listed file was received intact (M05).
+    evidenceLevel: files.length ? "REC" : "SIGN",
+    files: files.map(({ fileId, sha256, size }) => ({ fileId, sha256, size })),
   });
   return true;
 }
 
 // Verifies every pending run once; returns how many gained evidence.
-export async function verifyStructuredDeliveries(db: PrismaClient) {
+export async function verifyStructuredDeliveries(
+  db: PrismaClient,
+  storage: ObjectStorage | null = null,
+) {
   let verified = 0;
   for (const { invocationId } of await pendingVerifications(db, 20))
-    if (await verifyStructuredDelivery(db, invocationId)) verified++;
+    if (await verifyStructuredDelivery(db, invocationId, storage)) verified++;
   return verified;
 }

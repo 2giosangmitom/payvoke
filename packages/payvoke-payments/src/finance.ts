@@ -143,8 +143,26 @@ export async function recordPaymentDelivery(
     verifier: string;
     accessInterruptionSeconds: number;
     evidenceLevel: EvidenceLevel;
+    // Verified files of this artifact version, bound into the envelope hash.
+    files?: { fileId: string; sha256: string; size: number }[];
   },
 ) {
+  const { files: listed = [], ...evidenceInput } = input;
+  const files = [...listed].sort((left, right) =>
+    left.fileId < right.fileId ? -1 : left.fileId > right.fileId ? 1 : 0,
+  );
+  check(
+    files.every(
+      (file) =>
+        /^[\w-]{1,128}$/.test(file.fileId) &&
+        /^[\da-f]{64}$/.test(file.sha256) &&
+        Number.isSafeInteger(file.size) &&
+        file.size > 0,
+    ) && new Set(files.map((file) => file.fileId)).size === files.length,
+    "invalid_delivery_evidence",
+  );
+  const sameFiles = (envelope: unknown) =>
+    JSON.stringify((envelope as { files?: unknown } | null)?.files ?? []) === JSON.stringify(files);
   check(
     evidenceLevels.includes(input.evidenceLevel) &&
       /^[a-zA-Z0-9_-]{1,128}$/.test(input.id) &&
@@ -178,7 +196,8 @@ export async function recordPaymentDelivery(
           previous.outputHash === input.outputHash &&
           previous.verifier === input.verifier &&
           previous.accessInterruptionSeconds === input.accessInterruptionSeconds &&
-          previous.evidenceLevel === input.evidenceLevel,
+          previous.evidenceLevel === input.evidenceLevel &&
+          sameFiles(previous.envelope),
         "evidence_conflict",
       );
       return previous;
@@ -191,6 +210,7 @@ export async function recordPaymentDelivery(
     if (latest && input.artifactVersion === latest.artifactVersion)
       check(
         input.outputHash === latest.outputHash &&
+          sameFiles(latest.envelope) &&
           input.accessInterruptionSeconds >= latest.accessInterruptionSeconds,
         "delivery_version_conflict",
       );
@@ -203,14 +223,14 @@ export async function recordPaymentDelivery(
       invocationId: input.invocationId,
       artifactVersion: input.artifactVersion,
       outputHash: input.outputHash,
-      files: [],
+      files,
       deliveredAt: Math.floor(now.getTime() / 1000),
       evidenceLevel: input.evidenceLevel,
       verifier: input.verifier,
       accessInterruptionSeconds: input.accessInterruptionSeconds,
     };
     const evidence = await tx.paymentDeliveryEvidence.create({
-      data: { ...input, observedAt: now, envelope, envelopeHash: hashSnapshot(envelope) },
+      data: { ...evidenceInput, observedAt: now, envelope, envelopeHash: hashSnapshot(envelope) },
     });
     // Only this trusted verifier path can make a paid run DELIVERED. Provider
     // reports and AG-UI stream events remain display-only until evidence exists.
