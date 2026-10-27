@@ -15,7 +15,7 @@ import {
   readPaymentIntent,
   type QuoteDocument,
 } from "@payvoke/x402";
-import { isSafeServiceUrl, parseFinancialJson } from "@payvoke/server";
+import { isPrivateServiceUrl, parseFinancialJson } from "@payvoke/server";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { getAddress } from "viem";
 import { BadRequestError, ServiceUnavailableError } from "../../errors";
@@ -24,7 +24,9 @@ const PATH = "/v1/invocations";
 
 function facilitatorClient(config: Cradle["config"]) {
   const url = new URL(config.FACILITATOR_URL!);
-  if (!isSafeServiceUrl(url) || url.search || Buffer.byteLength(config.FACILITATOR_TOKEN!) < 32)
+  // The facilitator is private: loopback, TLS, or a service name on the
+  // deployment's internal network.
+  if (!isPrivateServiceUrl(url) || url.search || Buffer.byteLength(config.FACILITATOR_TOKEN!) < 32)
     throw new Error("Invalid private facilitator configuration");
   return new HTTPFacilitatorClient({
     url: url.href.replace(/\/$/, ""),

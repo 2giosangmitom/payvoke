@@ -1,22 +1,21 @@
 # S01 · Quy tắc API, slash commands và giao job cho provider
 
-Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cập nhật mô hình app/thread/command revision và streaming 23/10/2026; thêm app kind, chat trước khi trả và offer 28/10/2026. MUST/không được là yêu cầu bắt buộc khi nghiệm thu. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md). Chat streaming và widget: [S04](04-ag-ui-a2ui-streaming.md).
+Trạng thái: đặc tả MVP để triển khai, khởi tạo 19/10/2026; cập nhật mô hình app/thread/command revision và streaming 23/10/2026; thêm chat trước khi trả và offer 28/10/2026; bỏ app kind; command chỉ đăng ký qua API, mọi giá từ offer, form của bot có field file và kết quả không cần output schema 29/10/2026. MUST/không được là yêu cầu bắt buộc khi nghiệm thu. Thuật ngữ: [GLOSSARY](../../GLOSSARY.md). Thanh toán: [S02](02-x402-and-vault.md). MCP: [S03](03-mcp-client.md). Chat streaming và widget: [S04](04-ag-ui-a2ui-streaming.md).
 
 **Nguồn sự thật cho routes:** tài liệu này chỉ mô tả quy tắc nghiệp vụ, quyền, idempotency và state machine. Danh sách route, method, path, request/response body và mã lỗi cụ thể **không được ghi tay ở đây**; đọc trực tiếp từ code trong `apps/api/src/modules/*` (và OpenAPI sinh từ code khi có). Khi code và tài liệu khác nhau về hình dạng route, code đúng; khi khác nhau về quy tắc nghiệp vụ, đó là lỗi cần sửa một trong hai.
 
 ## 1. Mô hình nghiệp vụ đã chốt
 
-- Mỗi đơn vị được bán là một `App`, không còn `ProviderApp` tách khỏi `Product`. App có `kind` cố định từ lúc tạo:
-  - `TOOL`: mỗi command có **giá cố định**. Buyer chạy tool bằng form sinh từ input schema; mỗi lần chạy là một thread riêng. Giá biết trước nên MCP/agent mua tự động dùng được.
-  - `AGENT`: command **không có giá cố định**, chỉ công bố khoảng giá `[minGrossAmount, maxGrossAmount]`. Buyer chat miễn phí với provider trước khi trả (§6.5); provider gửi **offer có cấu trúc** và buyer chấp nhận thì Payvoke mới phát quote từ offer đó.
+- Mỗi đơn vị được bán là một `App`, không còn `ProviderApp` tách khỏi `Product`, và không còn `kind`: buyer dùng mọi app qua cùng một thread chat, giống một Discord bot. Bot của provider **đăng ký slash command qua API**; Studio chỉ hiển thị command.
+- Mỗi tin nhắn, slash command hoặc câu trả lời form là một **interaction miễn phí** (§6.5). Bot trả lời bằng tin nhắn, **form** hoặc **offer có cấu trúc**. **Mọi giá đến từ offer**; buyer chấp nhận thì Payvoke mới phát quote từ offer đó. Command chỉ khai trần giá tùy chọn (`maxGrossAmount`).
 - Một `ChatThread` (`threadId`) thuộc một buyer và **đúng một appId**, không đổi app giữa thread. Mở app khác tạo thread mới; không tự mang lịch sử/file sang.
 - App có nhiều `AppCommand`; mỗi command có `id` ổn định và một `AppCommandRevision` đang active. Sửa definition tạo revision mới, không sửa revision đã dùng cho quote.
-- Với TOOL, free text map vào tham số vị trí của command đang chọn/default. Với AGENT, free text là tin nhắn trước khi trả cho provider đọc; slash command vẫn dùng để chọn loại việc và tham số (validate theo schema) nhưng không quyết định giá. Gõ `/` mở danh sách command của chính app. Command không có tham số vị trí mở form arguments. Backend chỉ nhận `commandId + arguments` hoặc `offerId`, không thực thi raw slash text.
+- Free text là tin nhắn cho bot; slash command chọn loại việc và tham số (validate theo schema) nhưng không quyết định giá. Gõ `/` mở danh sách command của chính app. Command không có tham số vị trí mở form arguments. Backend chỉ nhận `commandId + arguments` hoặc `offerId`, không thực thi raw slash text.
 - App có thể `PUBLIC` (xuất hiện trong store) hoặc `PRIVATE` (chỉ owner thấy/chat). Availability suy ra từ `status = ACTIVE`, có default command và heartbeat trong 45 giây gần nhất; provider không tự đặt cờ available.
 - Chat nhận **AG-UI text events** và widget **OpenUI Lang** trong cùng stream. Payload đang stream là preview; chỉ kết quả qua verification mới được giao. Hợp đồng bổ sung tại S04.
 - Một thread chỉ có **một invocation đang thực thi/chờ xử lý** ở MVP; `WAITING_BUYER`/`VERIFYING`/`UNKNOWN` vẫn chiếm slot. `DELIVERED`/`FAILED`/`CANCELLED` giải phóng execution slot dù tiền có thể còn HELD chờ review/refund. Gửi thêm lời nhắn không có question/revision context không tự được xem là trả lời miễn phí.
 - Mỗi invocation mới có một command revision, quote, bộ input bất biến và khoản giữ tiền riêng. Provider hỏi lại, buyer trả lời đúng question hoặc sửa trong phạm vi policy không tạo quote/charge mới.
-- Payvoke tính tiền theo invocation, không theo tin nhắn hoặc token. Tin nhắn trước khi trả của AGENT miễn phí nhưng có giới hạn. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng; giá luôn đến từ quote do Payvoke phát, không từ text của provider.
+- Payvoke tính tiền theo invocation, không theo tin nhắn hoặc token. Tin nhắn trước khi trả miễn phí nhưng có giới hạn. Trước mỗi lần tính phí mới, UI phải thể hiện giá, dữ liệu gửi và quyền chi áp dụng; giá luôn đến từ quote do Payvoke phát, không từ text của provider.
 
 `threadId` là định danh hội thoại nội bộ. Quote document và protocol on-chain vẫn giữ các field dây cũ `sessionId`, `productId`, `productVersion` để tương thích x402/vault; `sessionId` map bằng `threadId`, `productId` map bằng `appId`, `productVersion` hiện là `1`. Đây là chi tiết tương thích, không phải thuật ngữ UI.
 
@@ -73,17 +72,19 @@ Provider có thể dùng Studio hoặc API; cả hai đi qua cùng validation. A
 
 ### 4.2 Command payload
 
-Field bắt buộc: `name,description,options,terms` và giá theo kind của app: TOOL gửi `grossAmount` (không có min/max); AGENT gửi `minGrossAmount` và `maxGrossAmount` (không có `grossAmount`, `min ≤ max`). Sai tổ hợp trả `INVALID_TERMS`. Field tùy chọn: `positionalParameter`, `outputSchema`, revision mong đợi khi sửa. Mọi invocation đều là **paid invocation**; không có flag miễn phí hoặc bypass x402.
+Field bắt buộc: `name,description,options,terms`. Tùy chọn: `positionalParameter`, `maxAmount` (trần giá offer, atomic USDC; sai định dạng trả `INVALID_MAX_AMOUNT`), revision mong đợi khi sửa. Field khác (kể cả `pricing`, `grossAmount`, `outputSchema`) trả `INVALID_COMMAND`. Mọi invocation đều là **paid invocation**; không có flag miễn phí hoặc bypass x402.
+
+**Bulk overwrite.** `PUT .../commands` nhận cả danh sách (tối đa 25, tên không trùng) trong một transaction: khớp theo tên, command không đổi giữ revision, đổi thì tạo revision mới, thiếu thì archive; default command giữ nếu còn, không thì lấy command đầu. Gửi lại cùng danh sách không tạo revision.
 
 - `name`: không có dấu `/`, regex `^[a-z][a-z0-9_]{0,31}$`; namespace theo app. Cùng `/summarize` ở hai app là hai command khác nhau.
 - Dành riêng `help`, `cancel`, `status` cho UI điều hướng; UI action miễn phí không được biến thành provider invocation.
-- `options`: mảng `{name,description,type,required}` với type `STRING|INTEGER|NUMBER|BOOLEAN`; server compile thành JSON Schema input và lưu cả options để render form.
-- `inputSchema`/`outputSchema`: JSON Schema 2020-12, root object. Schema depth/size/item limits do server cap. Không `$ref` remote, code hoặc regex không kiểm soát.
+- `options`: mảng `{name,description,type,required}` với type `STRING|INTEGER|NUMBER|BOOLEAN|FILE`; `FILE` thêm `accept?` (MIME, cho phép `image/*`), `maxBytes?`, `multiple?` (tối đa 10 file) và không làm được `positionalParameter`. Server compile thành JSON Schema input (file là `{type:"string", format:"file", accept?, maxBytes?}`) và lưu cả options để render form.
+- `inputSchema`: JSON Schema 2020-12, root object. Revision cũ có thể còn `outputSchema`; khi đó kết quả vẫn phải khớp. Schema depth/size/item limits do server cap. Không `$ref` remote, code hoặc regex không kiểm soát.
 - Defaults chỉ áp một lần lúc chuẩn bị quote. Lưu effective arguments và hash chính bản đó; không áp default mới ở paid retry.
 - `positionalParameter` nếu có phải là một string option. Free text được map vào đó; nếu không có, buyer nhập bằng form.
 - `terms`: `{deliverySeconds,reviewSeconds,revisionPolicy,refundPolicy,sideEffects,dataUse,verification?}`. `revisionPolicy` phải có `{maxIncluded,description}`.
 - `terms.verification`: `{minEvidence}` với `SIGN` hoặc `REC` ở MVP, là mức bằng chứng tối thiểu trước khi được giải ngân; thiếu thì server điền `SIGN` trước khi lưu revision. Field này đi vào `termsHash` (TermsSnapshot `schemaVersion: 2`). Ngữ nghĩa ở [M05](../modules/05-artifacts-and-verification.md#mức-bằng-chứng-trước-khi-giải-ngân).
-- `grossAmount` (TOOL) hoặc `minGrossAmount` (AGENT) dương, atomic USDC, nằm trong cap policy và không thấp hơn `minGrossAmount` của policy đang active (giá sàn so với gas hold + release do Payvoke trả). Dưới sàn thì tạo/sửa command bị từ chối; nếu policy nâng sàn sau khi revision đã đăng, revision/offer đó không nhận quote mới.
+- Offer không thấp hơn `minGrossAmount` của policy đang active (giá sàn so với gas hold + release do Payvoke trả); `maxAmount` nếu có cũng không được dưới sàn. Nếu policy nâng sàn sau khi offer đã gửi, offer đó không nhận quote mới.
 
 Ví dụ command:
 
@@ -97,7 +98,7 @@ Ví dụ command:
     { "name": "maxWords", "description": "Số từ tối đa", "type": "INTEGER", "required": false }
   ],
   "positionalParameter": "text",
-  "grossAmount": "10000",
+  "maxAmount": "50000",
   "terms": {
     "deliverySeconds": 600,
     "reviewSeconds": 86400,
@@ -116,16 +117,15 @@ Giá và thời gian trong ví dụ là fixture minh họa, không phải policy
 - Composer lấy command của app hiện tại. Gõ `/` mở palette; chọn command không có tham số vị trí thì mở form options.
 - Text shortcut hỗ trợ `/name` theo sau là positional string; object/array phức tạp nhập qua form.
 - UI chuyển shortcut thành `commandId + arguments` trước khi gọi API. **Backend không thực thi raw slash string**, không shell eval và không nhờ LLM đoán command hay giá.
-- TOOL: free text chỉ map vào `positionalParameter` của command đang chọn/default; không tự gọi command khác hoặc app khác.
-- AGENT: free text gửi thành tin nhắn trước khi trả. Slash command gửi kèm `commandId + arguments` (đã validate) để provider biết loại việc; giá vẫn chỉ do offer quyết định.
+- Free text gửi thành tin nhắn trước khi trả. Slash command gửi thành tin nhắn kèm `commandId + arguments` (đã validate, file đã kiểm tra) để bot biết loại việc; giá chỉ do offer quyết định.
 
 ## 5. Buyer API
 
 ### 5.1 Catalog, thread và star
 
-- Catalog chỉ gồm app `PUBLIC` chưa archive, cả `ACTIVE` lẫn `SUSPENDED`, kèm `kind`, availability, giá thấp nhất (`fromPrice`, TOOL) và khoảng giá (`priceRange`, AGENT); có thể lọc theo star. App `PRIVATE` chỉ owner xem được.
+- Catalog chỉ gồm app `PUBLIC` chưa archive, cả `ACTIVE` lẫn `SUSPENDED`, kèm availability và `priceCap` (trần cao nhất của các command, null khi có command không trần); có thể lọc theo star. App `PRIVATE` chỉ owner xem được.
 - Tạo thread cần app `ACTIVE` và chưa archive; idempotent theo `clientRequestId`; không charge.
-- Danh sách thread của buyer trộn mọi app, lọc được theo `kind`. Buyer đổi tên hoặc archive thread; archive vẫn đọc được lịch sử.
+- Danh sách thread của buyer trộn mọi app. Buyer đổi tên hoặc archive thread; archive vẫn đọc được lịch sử.
 - Buyer liệt kê các invocation đã trả của mình (`GET /v1/invocations`, phân trang) kèm trạng thái tiền, execution và các deadline để làm trang activity.
 - Buyer đọc sự kiện AG-UI và snapshot của thread theo S04.
 
@@ -135,7 +135,7 @@ Star là danh sách app yêu thích riêng của buyer. Collection không còn t
 
 ### 5.2 Chuẩn bị quote và bắt đầu invocation
 
-Chuẩn bị quote nhận `threadId`, `contextSelection`, `clientRequestId` và **đúng một** trong hai: `commandId + arguments` (TOOL; AGENT gửi thế này bị `OFFER_REQUIRED`) hoặc `offerId` (AGENT; TOOL gửi bị `APP_KIND_MISMATCH`). Với offer, server kiểm tra offer `OPEN`, chưa hết hạn, đúng thread/app, giá vẫn trong khoảng của revision và trên giá sàn, conversation hash khớp; quote lấy giá và thời gian giao của offer, mọi terms khác từ revision. Offer chuyển `ACCEPTED` bằng cập nhật có điều kiện trong cùng transaction tạo quote, nên chỉ dùng được một lần; replay cùng `clientRequestId` trả lại quote cũ. Quote của offer dùng `inputSnapshot.schemaVersion: 2` có thêm `offer: {offerId, summary, conversation, conversationHash}` để `inputHash` khoá cả nội dung đã thương lượng; quote của TOOL giữ v1. Server kiểm tra command thuộc app của thread, access, file đã sẵn sàng, effective args, command revision/availability và giới hạn một invocation đang mở; resolve context từ dữ liệu đã lưu và đóng băng manifest. Chỉ phần buyer chọn được chia sẻ, không mặc định toàn bộ lịch sử.
+Chuẩn bị quote nhận `threadId`, `contextSelection`, `clientRequestId` và **đúng một** trong hai: `offerId` (không còn quote theo `commandId + arguments`). Server kiểm tra offer `OPEN`, chưa hết hạn, đúng thread/app, giá vẫn dưới trần của revision (nếu có) và trên giá sàn, conversation hash khớp; quote lấy giá và thời gian giao của offer, mọi terms khác từ revision. Offer chuyển `ACCEPTED` bằng cập nhật có điều kiện trong cùng transaction tạo quote, nên chỉ dùng được một lần; replay cùng `clientRequestId` trả lại quote cũ. Quote của offer dùng `inputSnapshot.schemaVersion: 2` có thêm `offer: {offerId, summary, conversation, conversationHash}` để `inputHash` khoá cả nội dung đã thương lượng; quote cũ theo command giữ v1. Manifest file của quote gồm file buyer chọn và mọi file mà arguments của offer nhắc tới. Server kiểm tra command thuộc app của thread, access, file đã sẵn sàng, effective args, command revision/availability và giới hạn một invocation đang mở; resolve context từ dữ liệu đã lưu và đóng băng manifest. Chỉ phần buyer chọn được chia sẻ, không mặc định toàn bộ lịch sử.
 
 Quote trả effective arguments, context manifest, hash, thông tin thanh toán (network, asset, vault, payout, giá, phí), các deadline, quote digest, policy version cùng `inputSnapshot`, `termsSnapshot`, `policySnapshot` và `protocolQuote`. Shape cụ thể đọc từ code.
 
@@ -206,7 +206,7 @@ data: {"type":"invocation.ready","invocationId":"invocation_example","runId":"ru
 
 Envelope luôn chứa eventId/sequence/type qua event field, invocation/thread/command revision và nội dung đã được chọn. Các field `sessionId/productId/productVersion` trong `input` chỉ là tương thích quote document. File lớn chỉ gửi metadata + quyền tải invocation-scoped. Không có payment signature, grant private key, cookie hay dữ liệu workspace chưa chia sẻ.
 
-Outbox tạo `invocation.ready` sau finalized hold. Event khác: `invocation.answer`, `invocation.revision_requested`, `invocation.cancel_requested`; đều dùng cùng invocation, không charge. App AGENT còn nhận `thread.message` cho tin nhắn trước khi trả (§6.5), ACK theo từng message. Mỗi event có ID và ACK độc lập. Với event bắt đầu chu kỳ thực thi (ready/answer/revision), payload chứa `runId` do Payvoke cấp; replay event giữ nguyên `runId`, continuation/revision có `runId` mới. Xem S04.
+Outbox tạo `invocation.ready` sau finalized hold. Event khác: `invocation.answer`, `invocation.revision_requested`, `invocation.cancel_requested`; đều dùng cùng invocation, không charge. App nhận chat còn nhận `thread.message` cho tin nhắn trước khi trả (§6.5), ACK theo từng message. Mỗi event có ID và ACK độc lập. Với event bắt đầu chu kỳ thực thi (ready/answer/revision), payload chứa `runId` do Payvoke cấp; replay event giữ nguyên `runId`, continuation/revision có `runId` mới. Xem S04.
 
 ### 6.2 ACK và báo cáo
 
@@ -220,7 +220,7 @@ Các type/data:
 - `started`: `{}` → RUNNING.
 - `progress`: `{message,percent?}`; percent integer 0–100, không phải kết quả cuối.
 - `question`: `{questionId,prompt,inputSchema,chatTextParameter?}` → WAITING_BUYER; chỉ một question mở; schema giới hạn như command, không xin private key/payment hoặc đổi mục tiêu. UI render `QuestionForm` trong thread; câu trả lời có thể nhập chat nếu schema chỉ định `chatTextParameter`.
-- `result`: `{artifactVersion,output,files:[],presentation?}` → VERIFYING. `presentation` nếu có là `{format:"openui-lang",specVersion:"1.0",surfaceIds:[]}` tham chiếu các surface đã persist trong run và được validate theo catalog/version S04; không cho provider nhét HTML/JS hoặc tạo surface chưa lưu qua report. Không thay `output` hoặc làm kết quả tự được giao. Output validate approved outputSchema; file thuộc app/invocation đã READY. M05 kiểm tra rồi mới DELIVERED.
+- `result`: `{artifactVersion,output,files:[],presentation?}` → VERIFYING. `presentation` nếu có là `{format:"openui-lang",specVersion:"1.0",surfaceIds:[]}` tham chiếu các surface đã persist trong run và được validate theo catalog/version S04; không cho provider nhét HTML/JS hoặc tạo surface chưa lưu qua report. Không thay `output` hoặc làm kết quả tự được giao. `output` là chuỗi markdown (≤ 64 KB, không rỗng) hoặc JSON bất kỳ; phải có `output` hoặc ít nhất một file; nếu revision có `outputSchema` cũ thì phải khớp. File thuộc app/invocation đã READY. M05 kiểm tra rồi mới DELIVERED.
 - `failed`: `{code,message,sideEffectStatus:"none"|"completed"|"unknown"}` → FAILED hoặc UNKNOWN theo bằng chứng; không tự refund.
 - `unknown`: `{reason}` → UNKNOWN; platform điều tra, không tự rerun side effect.
 - `cancelled`: `{reason,sideEffectStatus:"none"}` chỉ khi có cancellation request đang mở và provider xác nhận đã dừng/không gây side effect. Nếu side effect chưa rõ phải báo unknown; nếu đã hoàn tất thì không báo cancelled để xóa trách nhiệm giao hàng.
@@ -239,9 +239,9 @@ Provider agent gửi token/chunk và widget qua **NDJSON streaming HTTP request*
 
 Provider vẫn dùng reports `question/result/failed/...` để chuyển state. Kết thúc AG-UI run không xác nhận giao hàng hoặc kích hoạt payment. Không cho AG-UI `TOOL_CALL` hoặc hành động OpenUI bypass quote/x402.
 
-### 6.5 Chat trước khi trả và offer (AGENT, 28/10/2026)
+### 6.5 Interaction, form và offer (28/10/2026, cập nhật 29/10/2026)
 
-Mục đích: agent hiểu yêu cầu rồi báo giá, thay vì gắn một giá cố định cho mỗi command. Kênh này **không di chuyển tiền**; chỉ quote do Payvoke phát mới trả được.
+Mục đích: bot hiểu yêu cầu rồi báo giá cho từng lần gọi, thay vì gắn một giá cố định cho command. Kênh này **không di chuyển tiền**; chỉ quote do Payvoke phát mới trả được.
 
 | Ai       | Thao tác                                    | Route (code là nguồn sự thật)                                                             |
 | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -253,13 +253,15 @@ Mục đích: agent hiểu yêu cầu rồi báo giá, thay vì gắn một giá
 | Provider | Gửi / rút offer                             | `POST …/threads/:threadId/offers`, `POST …/offers/:offerId/withdrawals` (`offers:write`)  |
 | Buyer    | Chấp nhận offer                             | `POST /v1/quotes` với `offerId` (§5.2), rồi thanh toán như mọi quote                      |
 
-- `thread.message` mang `{threadId, messageId, seq, content, commandId, arguments, files, conversation}`; `conversation` là tối đa 30 tin gần nhất. `files` chỉ là manifest (tên, type, size, sha256): provider **không tải được file trước khi tiền HELD**.
-- Offer: `{commandId?, arguments, grossAmount, deliverySeconds?, summary, validForSeconds, clientRequestId}`. `arguments` validate theo input schema của revision; `grossAmount` trong `[min, max]` của revision (`PRICE_OUT_OF_RANGE`) và trên giá sàn; `deliverySeconds` không vượt revision và chuỗi deadline không vượt `maxHoldSeconds`; `validForSeconds` trong `[60, 86400]`. Refund, side effects, data use, revision và evidence **luôn lấy từ revision đã đăng ký**, offer không ghi đè được.
+- Buyer gửi `content` kèm tùy chọn `commandId + arguments` hoặc `replyToId + arguments` (trả lời form). Arguments validate theo schema command/form; field file phải là `fileId` của buyer trong thread, READY, đúng `accept`/`maxBytes` (`INVALID_ARGUMENT_FILES`) và được gộp vào manifest của tin. Form chỉ trả lời được một lần (`FORM_ALREADY_ANSWERED`, có unique index), phải là form của bot trong cùng thread (`FORM_NOT_FOUND`).
+- Bot gửi form bằng tin nhắn kèm `form: {title, description?, schema}` (`messages:write`); schema là object phẳng với field scalar/enum/file/mảng file, sai thì `INVALID_FORM`.
+- `thread.message` mang `{threadId, messageId, seq, content, commandId, arguments, replyToId, files, conversation}` (mục conversation có `form`/`replyToId` khi có); `conversation` là tối đa 30 tin gần nhất. `files` chỉ là manifest (tên, type, size, sha256): provider **không tải được file trước khi tiền HELD**.
+- Offer: `{commandId?, arguments, grossAmount, deliverySeconds?, summary, validForSeconds, clientRequestId}`. `arguments` validate theo input schema của revision; `commandId` mặc định là default command; file trong arguments phải là file của buyer trong thread; `grossAmount` trên giá sàn (`PRICE_BELOW_FLOOR`) và không vượt trần của revision nếu có (`PRICE_ABOVE_MAX`); `deliverySeconds` không vượt revision và chuỗi deadline không vượt `maxHoldSeconds`; `validForSeconds` trong `[60, 86400]`. Refund, side effects, data use, revision và evidence **luôn lấy từ revision đã đăng ký**, offer không ghi đè được.
 - Offer bất biến; offer mới chuyển offer `OPEN` cũ thành `SUPERSEDED` (mỗi thread tối đa một offer `OPEN`, có unique index). Offer cần ít nhất một tin của buyer trước đó (`NO_BUYER_REQUEST`) và khoá `conversationHash` của các tin tới lúc gửi. Hết hạn được suy ra từ `expiresAt` (`EXPIRED`), không ghi.
 - Giới hạn chống lạm dụng: tối đa `PRESALE_MESSAGE_LIMIT` (mặc định 20) tin buyer mỗi thread giữa hai lần trả (`PRESALE_LIMIT_REACHED`, reset khi có invocation HELD), rate limit theo buyer, mỗi tin tối đa 4000 ký tự, provider tối đa 5 tin liên tiếp khi buyer chưa trả lời (`PROVIDER_MESSAGE_LIMIT`).
 - Tin của provider là text thuần; UI không render HTML/link chạy được và không bao giờ tạo nút thanh toán từ text, chỉ từ offer đọc qua API.
 - Mọi thay đổi ghi `lastMessageAt` của thread và đánh doorbell; thread SSE gửi event `conversation` (không có nội dung) để client tải lại snapshot. Snapshot có thêm `conversation` và `offers`.
-- App TOOL gửi tin/offer bị `APP_KIND_MISMATCH`.
+- Mọi app đều nhận interaction; không còn `APP_KIND_MISMATCH`.
 
 ## 7. State và concurrency
 

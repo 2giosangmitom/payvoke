@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, MessageSquareText, Play, Star } from "lucide-react";
+import { ArrowUpRight, MessageSquareText, Star } from "lucide-react";
 import { BlurFade } from "./ui/blur-fade";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
@@ -21,7 +21,14 @@ import {
 } from "./page-kit";
 import { WalletAccess } from "./wallet-access";
 import { authClient } from "@/src/lib/auth-client";
-import { formatCommandPrice, getStoreApp, getStars, starApp, unstarApp } from "@/src/lib/apps";
+import {
+  formatCommandPrice,
+  formatUsdc,
+  getStoreApp,
+  getStars,
+  starApp,
+  unstarApp,
+} from "@/src/lib/apps";
 import { formatDuration } from "./payment-confirm";
 import { newThread } from "@/src/lib/paid-chat";
 
@@ -49,13 +56,9 @@ export function StoreAppDetail({ appId }: { appId: string }) {
     onError: (cause) => setError(errorMessage(cause, "Could not save.")),
   });
 
-  // Agents open a chat; tools open their form.
+  // Every app is used from a chat thread.
   async function open() {
     if (!session) return;
-    if (detail.data?.kind === "TOOL") {
-      await navigate({ to: "/console/run/$appId", params: { appId } });
-      return;
-    }
     setError("");
     setOpening(true);
     try {
@@ -86,21 +89,22 @@ export function StoreAppDetail({ appId }: { appId: string }) {
   const app = detail.data;
   const offline = app.availability !== "AVAILABLE";
   const suspended = app.availability === "SUSPENDED";
-  const agent = app.kind === "AGENT";
 
   return (
     <PageShell>
       <BackLink to="/store">Store</BackLink>
       <PageHeader
         className="pt-8 lg:pt-10"
-        eyebrow={`${app.visibility === "PRIVATE" ? "Private" : "Public"} ${agent ? "agent" : "tool"} / ${app.id.slice(0, 8)}`}
+        eyebrow={`${app.visibility === "PRIVATE" ? "Private" : "Public"} app / ${app.id.slice(0, 8)}`}
         title={app.name}
         description={
           <>
             {app.description || "No description yet."}
             <span className="mt-5 flex flex-wrap gap-2">
               <AppStatus availability={app.availability} />
-              <Tag>{agent ? "Agent" : "Tool"}</Tag>
+              <Tag>
+                {app.priceCap ? `Offers up to ${formatUsdc(app.priceCap)}` : "Priced by offer"}
+              </Tag>
               <Tag>{app.visibility === "PUBLIC" ? "Public" : "Private"}</Tag>
               <Tag>{plural(app.commands.length, "slash command")}</Tag>
             </span>
@@ -109,16 +113,14 @@ export function StoreAppDetail({ appId }: { appId: string }) {
         actions={
           <aside className="grid w-full gap-3 border border-border bg-card p-5 lg:w-80">
             <Button size="lg" disabled={opening || offline || !session} onClick={() => void open()}>
-              {opening ? <Spinner /> : agent ? <MessageSquareText /> : <Play />}
+              {opening ? <Spinner /> : <MessageSquareText />}
               {suspended
                 ? "App suspended"
                 : offline
                   ? "App offline"
                   : !session
                     ? "Sign in to use this app"
-                    : agent
-                      ? "Start a chat"
-                      : "Run the tool"}
+                    : "Start a chat"}
             </Button>
             {!session && <WalletAccess variant="secondary" />}
             <Button
@@ -134,9 +136,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                 ? "The owner has suspended this app. Old threads stay readable, but it can't take new requests."
                 : offline
                   ? "The app's worker isn't responding, so new requests are paused. Old threads stay readable."
-                  : agent
-                    ? "Chatting is free. The agent sends an offer with a price; nothing is charged unless you accept and approve it."
-                    : "You fill in a form and see a quote first. Nothing is charged until you approve it."}
+                  : "Chatting and commands are free. The app replies with an offer; nothing is charged until you accept it and approve the quote."}
             </p>
           </aside>
         }
@@ -149,7 +149,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
           id="commands-title"
           eyebrow="Slash commands"
           title="What this app can do"
-          aside={agent ? "Commands describe the jobs the agent quotes." : "Each runs from a form."}
+          aside="Type / in the chat to run one."
         />
         {app.commands.length === 0 ? (
           <EmptyState title="No commands yet.">
@@ -166,9 +166,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                   revision={command.revision}
                   terms={
                     command.revision && [
-                      agent
-                        ? `offers ${formatCommandPrice(command.revision)}`
-                        : formatCommandPrice(command.revision),
+                      formatCommandPrice(command.revision),
                       `delivery ≤ ${formatDuration(command.revision.deliverySeconds)}`,
                       `review ${formatDuration(command.revision.reviewSeconds)}`,
                     ]
@@ -182,7 +180,8 @@ export function StoreAppDetail({ appId }: { appId: string }) {
 
       <section className="mt-14 flex flex-col justify-between gap-4 border-t border-border pt-8 sm:flex-row sm:items-center">
         <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-          Chats, tool runs and every held payment live in your console, whatever app they belong to.
+          Chats, command runs and every held payment live in your console, whatever app they belong
+          to.
         </p>
         <Link
           to="/console"

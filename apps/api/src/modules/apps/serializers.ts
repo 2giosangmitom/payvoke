@@ -7,8 +7,6 @@ type Revision = {
   inputSchema: Prisma.JsonValue;
   outputSchema: Prisma.JsonValue | null;
   positionalParameter: string | null;
-  grossAmount: Prisma.Decimal | null;
-  minGrossAmount: Prisma.Decimal | null;
   maxGrossAmount: Prisma.Decimal | null;
   terms: Prisma.JsonValue;
   deliverySeconds: number;
@@ -29,8 +27,6 @@ export function serializeRevision(revision: Revision | null) {
   return revision
     ? {
         ...revision,
-        grossAmount: amount(revision.grossAmount),
-        minGrossAmount: amount(revision.minGrossAmount),
         maxGrossAmount: amount(revision.maxGrossAmount),
       }
     : null;
@@ -67,26 +63,15 @@ export function serializeOwnedApp<
   return { ...app, availability: availabilityLabel(app) };
 }
 
-type Priced = {
-  activeRevision: Pick<Revision, "grossAmount" | "minGrossAmount" | "maxGrossAmount"> | null;
-};
-const atomic = (values: (Prisma.Decimal | null | undefined)[]) =>
-  values
-    .filter((value): value is Prisma.Decimal => Boolean(value))
-    .map((v) => BigInt(v.toFixed(0)));
-const min = (values: bigint[]) =>
-  values.length ? values.reduce((a, b) => (b < a ? b : a)).toString() : null;
-const max = (values: bigint[]) =>
-  values.length ? values.reduce((a, b) => (b > a ? b : a)).toString() : null;
+type Capped = { activeRevision: Pick<Revision, "maxGrossAmount"> | null };
 
-// Lowest fixed (TOOL) command price as a base-unit integer string.
-export function fromPrice(commands: Priced[]) {
-  return min(atomic(commands.map((command) => command.activeRevision?.grossAmount)));
-}
-
-// Range across an AGENT app's commands; null when nothing is published.
-export function priceRange(commands: Priced[]) {
-  const low = min(atomic(commands.map((command) => command.activeRevision?.minGrossAmount)));
-  const high = max(atomic(commands.map((command) => command.activeRevision?.maxGrossAmount)));
-  return low && high ? { min: low, max: high } : null;
+// The most any offer of this app may cost: the highest command cap, or null
+// when a command has no cap (or there is no command).
+export function priceCap(commands: Capped[]) {
+  const caps = commands.map((command) => command.activeRevision?.maxGrossAmount ?? null);
+  if (!caps.length || caps.some((cap) => cap === null)) return null;
+  return caps
+    .map((cap) => BigInt(cap!.toFixed(0)))
+    .reduce((a, b) => (b > a ? b : a))
+    .toString();
 }

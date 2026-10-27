@@ -1,6 +1,7 @@
-// Active marketplace model: an app is a provider-owned bot with slash commands.
-// Kind is TOOL (fixed-price commands run from a form) or AGENT (free pre-sale
-// chat where the provider proposes an offer the buyer accepts); it never changes.
+// Active marketplace model: an app is a provider-owned bot with slash commands
+// registered through the API, used from one chat thread. Every message or
+// command is a free interaction for the bot, which answers with a message, a
+// form or a priced offer; only an accepted offer becomes a payable quote.
 // App status is ACTIVE | SUSPENDED | ARCHIVED. Visibility is PUBLIC | PRIVATE.
 // Availability is derived from lastHeartbeatAt, never stored as a mutable field.
 
@@ -10,7 +11,6 @@ model App {
   clientRequestId  String
   name             String
   description      String?
-  kind             String    @default("TOOL")
   visibility       String    @default("PUBLIC")
   status           String    @default("ACTIVE")
   payoutAddress    String
@@ -82,10 +82,7 @@ model AppCommandRevision {
   inputSchema         Json
   outputSchema        Json?
   positionalParameter String?
-  // TOOL revisions carry a fixed grossAmount; AGENT revisions instead publish
-  // the range every provider offer for this command must fall within.
-  grossAmount         Decimal? @db.Decimal(78, 0)
-  minGrossAmount      Decimal? @db.Decimal(78, 0)
+  // Prices always come from the bot's offer; this optional cap bounds them.
   maxGrossAmount      Decimal? @db.Decimal(78, 0)
   terms               Json
   deliverySeconds     Int
@@ -191,12 +188,18 @@ model ThreadMessage {
   commandId       String?
   arguments       Json?
   fileManifest    Json?
+  // A provider message may carry a form ({title, description?, schema}); the
+  // buyer's single answer to it points back through replyToId.
+  form            Json?
+  replyToId       String?   @unique
   clientRequestId String
   // Provider acknowledgement of the thread.message event (buyer messages only).
   acknowledgedAt  DateTime?
   createdAt       DateTime  @default(now())
 
-  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  thread  ChatThread     @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  replyTo ThreadMessage? @relation("FormReply", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reply   ThreadMessage? @relation("FormReply")
 
   @@unique([threadId, seq])
   @@unique([threadId, role, clientRequestId])

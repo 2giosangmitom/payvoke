@@ -43,6 +43,7 @@ import {
 } from "@payvoke/x402";
 import { createApp } from "api/app";
 import { loadConfig } from "api/config";
+import { offerFixture } from "api/testing";
 import { logRedaction } from "@payvoke/server";
 import fastify from "fastify";
 import { Writable } from "node:stream";
@@ -96,15 +97,12 @@ describe("quotes, x402 and isolated settlement", () => {
   const serviceToken = randomBytes(32).toString("hex");
 
   before(async () => {
-    postgres = await startTestPostgres(
-      process.env.PAYMENTS_TEST_POSTGRES === "1"
-        ? "postgresql://test:test@127.0.0.1:55433/test"
-        : undefined,
-    );
+    // Embedded PGlite by default. PAYMENTS_TEST_DATABASE_URL opts into a real,
+    // disposable Postgres for cross-process races; DATABASE_URL is never read.
+    // Each run owns a fresh random schema.
+    postgres = await startTestPostgres(process.env.PAYMENTS_TEST_DATABASE_URL);
     embedded = postgres.embedded;
     const { connectionString } = postgres;
-    // Explicit Docker mode uses only the repo's local test-db endpoint, never a
-    // DATABASE_URL/Neon connection. Each run owns a fresh random schema.
     pool = new Pool({
       connectionString,
       max: embedded ? 1 : 8,
@@ -145,6 +143,9 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.settlementOperation.deleteMany();
     await db.invocation.deleteMany();
     await db.relayerLane.deleteMany();
+    // Offers point at their quote and messages at their thread.
+    await db.offer.deleteMany();
+    await db.threadMessage.deleteMany();
     await db.quote.deleteMany();
     await db.chatThread.deleteMany();
     await db.appCommandRevision.deleteMany();
@@ -230,7 +231,6 @@ describe("quotes, x402 and isolated settlement", () => {
           },
         },
         positionalParameter: "text",
-        grossAmount: "100000",
         terms: {
           deliverySeconds: 60,
           reviewSeconds: 30,
@@ -292,13 +292,32 @@ describe("quotes, x402 and isolated settlement", () => {
       clientRequestId: key,
     };
   }
+  // Every quote is for a bot offer. `body()` keeps describing the request by
+  // its arguments; `wire()` turns it into the offer the bot would have sent
+  // (the same request reuses one offer, so replays stay replays).
+  const offers = new Map<string, Promise<string>>();
+  async function wire(payload: ReturnType<typeof body>) {
+    const { commandId: command, arguments: args, ...rest } = payload;
+    const key = JSON.stringify([payload.clientRequestId, payload.threadId, args]);
+    if (!offers.has(key))
+      offers.set(
+        key,
+        offerFixture(db, {
+          threadId: payload.threadId,
+          commandId: command,
+          arguments: args,
+          grossAmount: "100000",
+        }).then((offer) => offer.id),
+      );
+    return { ...rest, offerId: await offers.get(key)! };
+  }
   async function prepare(payload = body(), headers: Record<string, string> = {}) {
     await db.app.updateMany({ data: { lastHeartbeatAt: new Date() } });
     return app.inject({
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": payload.clientRequestId, ...headers },
-      payload,
+      payload: await wire(payload),
     });
   }
   async function quote() {
@@ -499,7 +518,9 @@ describe("quotes, x402 and isolated settlement", () => {
     const payload = body();
     const first = await prepare(payload);
     assert.equal(first.statusCode, 201, first.body);
-    await db.appCommandRevision.updateMany({ data: { grossAmount: "999999", reviewSeconds: 100 } });
+    await db.appCommandRevision.updateMany({
+      data: { maxGrossAmount: "999999", reviewSeconds: 100 },
+    });
     await db.deploymentPolicy.updateMany({ data: { feeBps: 500 } });
     assert.deepEqual((await prepare(payload)).json(), first.json());
     assert.equal(await db.quote.count(), 1);
@@ -545,11 +566,12 @@ describe("quotes, x402 and isolated settlement", () => {
   });
 
   it("rejects duplicate keys, invalid Unicode and oversized JSON before hashing", async () => {
-    const payload = body();
+    const payload = await wire(body());
+    const offerId = `"offerId":"${payload.offerId}"`;
     for (const raw of [
-      JSON.stringify(payload).replace('"text":"hello"', '"text":"first","text":"last"'),
-      JSON.stringify(payload).replace('"hello"', '"\\ud800"'),
-      JSON.stringify(payload).replace('"hello"', "1e400"),
+      JSON.stringify(payload).replace(offerId, `${offerId},"offerId":"other"`),
+      JSON.stringify(payload).replace(`"${payload.offerId}"`, '"\\ud800"'),
+      JSON.stringify(payload).replace(`"${payload.offerId}"`, "1e400"),
     ]) {
       const response = await app.inject({
         method: "POST",
@@ -564,9 +586,13 @@ describe("quotes, x402 and isolated settlement", () => {
       });
       assert.equal(response.statusCode, 400, response.body);
     }
-    const tooLarge = body();
-    tooLarge.arguments.text = "x".repeat(33000);
-    assert.equal((await prepare(tooLarge)).statusCode, 413);
+    const tooLarge = await app.inject({
+      method: "POST",
+      url: "/v1/quotes",
+      headers: { origin, cookie, "idempotency-key": payload.clientRequestId },
+      payload: { ...payload, padding: "x".repeat(33000) },
+    });
+    assert.equal(tooLarge.statusCode, 413);
     assert.equal(await db.quote.count(), 0);
   });
 
@@ -1173,7 +1199,8 @@ describe("quotes, x402 and isolated settlement", () => {
   });
 
   it("allows at most one claim across independent Docker PostgreSQL worker processes", async (t) => {
-    if (embedded) return t.skip("Run test:payments:postgres for real cross-process concurrency");
+    if (embedded)
+      return t.skip("Set PAYMENTS_TEST_DATABASE_URL for real cross-process concurrency");
     const q = await quote();
     await pending(q);
     const run = promisify(execFile);

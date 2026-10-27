@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Type, type Static } from "typebox";
-import { isSafeServiceUrl } from "@payvoke/server";
+import { isPrivateServiceUrl, isSafeServiceUrl } from "@payvoke/server";
 
 // A presigned request the uploader replays exactly: the signed headers are
 // part of the signature, so a different type or length is rejected by S3.
@@ -59,10 +59,13 @@ export const storageEnv = {
 const storageEnvSchema = Type.Object(storageEnv);
 export type StorageEnv = Static<typeof storageEnvSchema>;
 
-const endpoint = (value: string | undefined) => {
+// The server-side endpoint may be a private service name (`http://rustfs:9000`);
+// the public endpoint is fetched by browsers and stays https or loopback.
+const endpoint = (value: string | undefined, { allowPrivate = false } = {}) => {
   if (!value) return undefined;
   const url = new URL(value);
-  if (!isSafeServiceUrl(url) || url.search || url.pathname !== "/")
+  const safe = allowPrivate ? isPrivateServiceUrl(url) : isSafeServiceUrl(url);
+  if (!safe || url.search || url.pathname !== "/")
     throw new Error("S3 endpoint must be an https origin (http only on loopback)");
   return url.origin;
 };
@@ -71,7 +74,7 @@ const endpoint = (value: string | undefined) => {
 export function createStorage(env: StorageEnv): ObjectStorage | null {
   if (!env.FILES_ENABLED) return null;
   const { S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY } = env;
-  const server = endpoint(env.S3_ENDPOINT);
+  const server = endpoint(env.S3_ENDPOINT, { allowPrivate: true });
   if (!server || !S3_REGION || !S3_BUCKET || !S3_ACCESS_KEY_ID || !S3_SECRET_ACCESS_KEY)
     throw new Error("Files require S3 endpoint, region, bucket and credentials");
   const options = {

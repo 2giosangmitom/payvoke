@@ -31,12 +31,9 @@ const workspace = [
 const build = [{ to: "/console/studio", label: "Studio", icon: Blocks, exact: false }] as const;
 
 // Breadcrumb from the path: the console is shallow, so the section and
-// whether the page sits below it are enough. Sections without a page of
-// their own (a tool's form, a run) point at the list they belong to.
+// whether the page sits below it are enough.
 const crumbs: { prefix: string; label: string; to?: string }[] = [
   { prefix: "/console/chat", label: "Chat", to: "/console/chat" },
-  { prefix: "/console/runs", label: "Activity", to: "/console/activity" },
-  { prefix: "/console/run", label: "Run a tool" },
   { prefix: "/console/activity", label: "Activity", to: "/console/activity" },
   { prefix: "/console/studio", label: "Studio", to: "/console/studio" },
 ];

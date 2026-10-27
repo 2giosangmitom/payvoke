@@ -11,6 +11,9 @@ export type ConversationEntry = {
   commandId: string | null;
   arguments: Json;
   files: Json;
+  // Present only when set, so hashes of plain messages stay as they were.
+  form?: Json;
+  replyToId?: string;
 };
 
 type Db = Prisma.TransactionClient;
@@ -30,6 +33,8 @@ export async function conversation(db: Db, threadId: string, uptoSeq: number) {
     commandId: row.commandId,
     arguments: (row.arguments ?? null) as Json,
     files: (row.fileManifest ?? []) as Json,
+    ...(row.form ? { form: row.form as Json } : {}),
+    ...(row.replyToId ? { replyToId: row.replyToId } : {}),
   }));
 }
 

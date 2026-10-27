@@ -35,7 +35,7 @@ const toneClass: Record<Stage["tone"], string> = {
   failed: "border-destructive text-destructive",
 };
 
-// Tool runs open their result page; agent work opens the chat it came from.
+// Every paid run opens the chat thread it came from.
 export function ActivityLink({
   item,
   children,
@@ -43,15 +43,7 @@ export function ActivityLink({
   item: ActivityItem;
   children: React.ReactNode;
 }) {
-  return item.app.kind === "TOOL" ? (
-    <Link
-      to="/console/runs/$invocationId"
-      params={{ invocationId: item.invocationId }}
-      className="hover:text-primary"
-    >
-      {children}
-    </Link>
-  ) : (
+  return (
     <Link
       to="/console/chat/$threadId"
       params={{ threadId: item.threadId }}
@@ -163,8 +155,7 @@ export function ActivityPage() {
                     <TableCell className="max-w-64">
                       <span className="block truncate font-medium">{item.app.name}</span>
                       <span className="font-mono text-[11px] text-faint">
-                        {item.app.kind.toLowerCase()}
-                        {item.commandName ? ` · /${item.commandName}` : ""}
+                        {item.commandName ? `/${item.commandName}` : "offer"}
                       </span>
                     </TableCell>
                     <TableCell className="font-mono">{formatUsdc(item.grossAmount)}</TableCell>

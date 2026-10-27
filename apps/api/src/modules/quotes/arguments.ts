@@ -1,7 +1,7 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import type { Json } from "@payvoke/protocol";
 import type { Prisma } from "@payvoke/db";
 import { BadRequestError, ServiceUnavailableError } from "../../errors";
+import { inputValidator } from "../apps/schema";
 
 // Validates command arguments against a stored revision schema and returns
 // them with schema defaults applied. Do not retain freshly loaded schema object
@@ -13,12 +13,7 @@ export function effectiveArguments(schema: Prisma.JsonValue, args: unknown) {
   if (!args || typeof args !== "object" || Array.isArray(args))
     throw new BadRequestError("INVALID_ARGUMENTS");
   const effective = structuredClone(args) as Record<string, Json>;
-  const validate = new Ajv2020({
-    useDefaults: true,
-    coerceTypes: false,
-    removeAdditional: false,
-    strict: true,
-  }).compile(schema);
+  const validate = inputValidator(schema);
   if (!validate(effective)) throw new BadRequestError("INVALID_ARGUMENTS");
   return effective;
 }

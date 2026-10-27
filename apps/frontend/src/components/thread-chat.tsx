@@ -33,7 +33,7 @@ import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
 import { PaymentConfirm, formatDuration } from "./payment-confirm";
 import { TooltipIconButton } from "./assistant-ui/elements/tooltip-icon-button";
 import { QuestionForm } from "./question-form";
-import { SchemaForm } from "./schema-form";
+import { SchemaForm, type UploadFile } from "./schema-form";
 import { apiOrigin } from "@/src/lib/api";
 import { formatCommandPrice, formatUsdc } from "@/src/lib/apps";
 import { ACCEPTED_FILE_TYPES, downloadFile, formatBytes, uploadThreadFile } from "@/src/lib/files";
@@ -48,11 +48,9 @@ import {
   requestRevision,
   sendMessage,
   type AguiEvent,
-  type AppKind,
   type ChatQuestion,
   type ChatSnapshot,
   type Offer,
-  type QuoteSource,
   type ThreadCommand,
   type ThreadDetail,
 } from "@/src/lib/paid-chat";
@@ -85,9 +83,13 @@ const answerText = (values: Record<string, unknown>) => {
     : JSON.stringify(values);
 };
 
-// Streamed output and buyer answers of one paid invocation.
+// Streamed output and buyer answers of one paid invocation, then its verified
+// text result, which renders as markdown like streamed output.
 function paidMessages(snapshot: ChatSnapshot, invocationId: string) {
   const messages: ChatMessage[] = [];
+  const delivered = snapshot.invocations.find(
+    (inv) => inv.id === invocationId && inv.executionStatus === "DELIVERED",
+  );
   for (const reply of snapshot.messages.filter((m) => m.invocationId === invocationId)) {
     messages.push({
       id: reply.messageId,
@@ -104,6 +106,14 @@ function paidMessages(snapshot: ChatSnapshot, invocationId: string) {
       complete: true,
     });
   }
+  if (typeof delivered?.output === "string")
+    messages.push({
+      id: `output-${invocationId}`,
+      role: "assistant",
+      text: delivered.output,
+      complete: true,
+      label: "VERIFIED OUTPUT",
+    });
   return messages;
 }
 
@@ -116,27 +126,36 @@ const OFFER_LABEL: Record<Offer["status"], string> = {
   EXPIRED: "expired",
 };
 
-// Tools: each paid prompt followed by its output. Agents: the free pre-sale
-// conversation in order, each settled offer after the message it answered and
-// the paid output of an accepted offer right after it.
-function normalize(snapshot: ChatSnapshot, kind: AppKind) {
+// One timeline per thread: every free interaction in order, each settled
+// offer after the message it answered and the paid output of an accepted
+// offer right after it. Bot forms are labeled; open ones are answered below.
+function normalize(snapshot: ChatSnapshot) {
   const messages: ChatMessage[] = [];
-  if (kind !== "AGENT") {
-    for (const prompt of snapshot.prompts) {
-      messages.push({ id: prompt.quoteId, role: "user", text: prompt.text, complete: true });
-      messages.push(...paidMessages(snapshot, prompt.invocationId));
-    }
-    return messages;
-  }
   const invocationOf = new Map(snapshot.prompts.map((p) => [p.quoteId, p.invocationId]));
+  const answered = new Set(
+    snapshot.conversation.flatMap((m) => (m.replyToId ? [m.replyToId] : [])),
+  );
   for (const message of snapshot.conversation) {
     const files = message.files.map((file) => `📎 ${file.name}`).join("\n");
+    // A form answer shows its values; file fields are listed as attachments.
+    const body = message.replyToId
+      ? formAnswerText(message.arguments, message.files)
+      : files
+        ? `${message.content}\n${files}`
+        : message.content;
     messages.push({
       id: message.id,
       role: message.role === "BUYER" ? "user" : "assistant",
-      text: files ? `${message.content}\n${files}` : message.content,
+      text: message.form ? `${message.content}\n\nForm: ${message.form.title}` : body,
       complete: true,
-      label: message.role === "PROVIDER" ? "PROVIDER · MESSAGE" : undefined,
+      label:
+        message.role === "BUYER"
+          ? message.replyToId
+            ? "FORM · ANSWER"
+            : undefined
+          : message.form
+            ? `PROVIDER · FORM${answered.has(message.id) ? " · ANSWERED" : ""}`
+            : "PROVIDER · MESSAGE",
     });
     // The open offer is actionable above the composer instead.
     for (const offer of snapshot.offers.filter(
@@ -156,7 +175,25 @@ function normalize(snapshot: ChatSnapshot, kind: AppKind) {
   return messages;
 }
 
-function useStream(threadId: string, kind: AppKind) {
+function formAnswerText(
+  args: Record<string, unknown> | null,
+  files: { fileId: string; name: string }[],
+) {
+  const names = new Map(files.map((file) => [file.fileId, file.name]));
+  return Object.entries(args ?? {})
+    .map(([key, value]) => {
+      const ids = Array.isArray(value) ? value : [value];
+      const shown = ids.every((id) => typeof id === "string" && names.has(id))
+        ? ids.map((id) => `📎 ${names.get(id as string)}`).join(", ")
+        : typeof value === "string"
+          ? value
+          : JSON.stringify(value);
+      return `${key}: ${shown}`;
+    })
+    .join("\n");
+}
+
+function useStream(threadId: string) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [surfaces, setSurfaces] = useState<Surface[]>([]);
@@ -176,9 +213,9 @@ function useStream(threadId: string, kind: AppKind) {
     const next = BigInt(snapshot.data.cursor);
     if (next < cursor.current) return;
     cursor.current = next;
-    setMessages(normalize(snapshot.data, kind));
+    setMessages(normalize(snapshot.data));
     setSurfaces(snapshot.data.surfaces);
-  }, [snapshot.data, kind]);
+  }, [snapshot.data]);
 
   useEffect(() => {
     cursor.current = 0n;
@@ -197,7 +234,7 @@ function useStream(threadId: string, kind: AppKind) {
 
     const applySnapshot = (data: ChatSnapshot) => {
       cursor.current = BigInt(data.cursor);
-      setMessages(normalize(data, kind));
+      setMessages(normalize(data));
       setSurfaces(data.surfaces);
     };
 
@@ -295,7 +332,7 @@ function useStream(threadId: string, kind: AppKind) {
       if (timer) clearTimeout(timer);
       source?.close();
     };
-  }, [threadId, ready, queryClient, kind]);
+  }, [threadId, ready, queryClient]);
 
   return { messages, surfaces, connection, snapshot, refresh: () => snapshot.refetch() };
 }
@@ -367,13 +404,13 @@ export function RevisionControl({
 function CommandDialog({
   command,
   initialText,
-  kind,
+  uploadFile,
   onClose,
   onSubmit,
 }: {
   command: ThreadCommand | null;
   initialText: string;
-  kind: AppKind;
+  uploadFile: UploadFile;
   onClose: () => void;
   onSubmit: (command: ThreadCommand, values: Record<string, unknown>) => Promise<void>;
 }) {
@@ -392,15 +429,14 @@ function CommandDialog({
           <DialogDescription>{command.description}</DialogDescription>
         </DialogHeader>
         <p className="font-mono text-xs text-primary">
-          {kind === "AGENT"
-            ? `${formatCommandPrice(revision)} · the app sends an offer before you pay`
-            : `${formatCommandPrice(revision)} per request`}
+          {formatCommandPrice(revision)} · the app replies with an offer before you pay
         </p>
         <SchemaForm
           key={command.id}
           schema={revision.inputSchema}
           initial={textTarget && initialText ? { [textTarget]: initialText } : {}}
-          submitLabel={kind === "AGENT" ? "Send request" : "Get a quote"}
+          submitLabel="Send"
+          uploadFile={uploadFile}
           onSubmit={async (values) => {
             await onSubmit(command, values);
             onClose();
@@ -416,14 +452,11 @@ function CommandDialog({
   );
 }
 
-function commandForText(thread: ThreadDetail, text: string, selectedCommandId: string) {
+// Plain text is a message to the bot; `/name rest` picks one of its commands.
+function commandForText(thread: ThreadDetail, text: string) {
   const commands = thread.commands.filter((command) => command.revision);
-  const fallback =
-    commands.find((command) => command.id === selectedCommandId) ??
-    commands.find((command) => command.id === thread.defaultCommandId) ??
-    commands[0];
   const trimmed = text.trim();
-  if (!trimmed.startsWith("/")) return { command: fallback, input: trimmed, explicit: false };
+  if (!trimmed.startsWith("/")) return { command: undefined, input: trimmed, explicit: false };
   const slash = /^\/([a-z][a-z0-9_]{0,31})(?:\s+([\s\S]*))?$/.exec(trimmed);
   if (!slash) return { command: undefined, input: trimmed, explicit: true };
   const command = commands.find((item) => item.name === slash[1]);
@@ -507,14 +540,11 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     queryFn: () => getThread(threadId),
     refetchInterval: 5000,
   });
-  const kind: AppKind = thread.data?.app.kind ?? "TOOL";
-  const agent = kind === "AGENT";
-  const stream = useStream(threadId, kind);
+  const stream = useStream(threadId);
   const commands = useMemo(
     () => (thread.data?.commands ?? []).filter((command) => command.revision),
     [thread.data],
   );
-  const [selectedCommandId, setSelectedCommandId] = useState("");
   const [dialogCommand, setDialogCommand] = useState<ThreadCommand | null>(null);
   const [dialogText, setDialogText] = useState("");
   const [composerText, setComposerText] = useState("");
@@ -545,23 +575,10 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   useEffect(() => {
     setQuote(null);
     setQuoteHidden(false);
-    setSelectedCommandId("");
     setError("");
     setComposerText("");
     setAttachments([]);
   }, [threadId]);
-
-  useEffect(() => {
-    if (!thread.data) return;
-    const fallback =
-      thread.data.defaultCommandId &&
-      commands.some((command) => command.id === thread.data!.defaultCommandId)
-        ? thread.data.defaultCommandId
-        : (commands[0]?.id ?? "");
-    setSelectedCommandId((current) =>
-      commands.some((command) => command.id === current) ? current : fallback,
-    );
-  }, [thread.data, commands]);
 
   const readyFileIds = () => {
     if (attachments.some((item) => item.status === "uploading"))
@@ -575,13 +592,13 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "details"] });
   };
 
-  // Tools quote a command; agents quote the provider's open offer.
-  async function prepare(source: QuoteSource) {
+  // Accepting the bot's open offer turns it into a quote to authorize.
+  async function prepare(offerId: string) {
     if (!thread.data) return;
     setError("");
     setBusy("quoting");
     try {
-      const result = await quoteFor(thread.data.id, source, readyFileIds());
+      const result = await quoteFor(thread.data.id, offerId, readyFileIds());
       // The quote froze these files; the next request starts without them.
       setAttachments([]);
       setQuote(result);
@@ -595,15 +612,20 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     }
   }
 
-  // Free pre-sale message to an agent. Files go along as metadata only; the
-  // provider can download them once an accepted offer is paid.
-  async function send(content: string, commandId?: string, args?: Record<string, unknown>) {
+  // Free interaction with the bot: a message, a slash command or a form
+  // answer. Files go along as metadata only; the provider can download them
+  // once an accepted offer is paid.
+  async function send(
+    content: string,
+    target?: { commandId: string } | { replyToId: string },
+    args?: Record<string, unknown>,
+  ) {
     setError("");
     setBusy("sending");
     try {
       await sendMessage(threadId, {
         content,
-        ...(commandId ? { commandId, arguments: args ?? {} } : {}),
+        ...(target ? { ...target, arguments: args ?? {} } : {}),
         fileIds: readyFileIds(),
       });
       setAttachments([]);
@@ -647,27 +669,20 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     }
   }
 
+  const uploadFile: UploadFile = (file) => uploadThreadFile(threadId, file);
+
   function submitText(text: string) {
     if (!thread.data) return;
-    const resolved = commandForText(thread.data, text, selectedCommandId);
-    // Agents read plain text themselves; only a slash command picks a command.
-    if (agent && !resolved.explicit) return send(text.trim());
-    if (!resolved.command)
-      throw new Error(
-        resolved.explicit
-          ? `Unknown slash command ${text.trim().split(/\s/)[0]}.`
-          : "This app has no runnable command yet.",
-      );
+    const resolved = commandForText(thread.data, text);
+    if (!resolved.explicit) return send(text.trim());
+    if (!resolved.command) throw new Error(`Unknown slash command ${text.trim().split(/\s/)[0]}.`);
     const command = resolved.command;
     const positional = command.revision?.positionalParameter;
     const needsForm =
       !positional ||
       command.revision?.options.some((option) => option.required && option.name !== positional);
     if (positional && resolved.input && !needsForm) {
-      const args = { [positional]: resolved.input };
-      return agent
-        ? send(text.trim(), command.id, args)
-        : prepare({ commandId: command.id, arguments: args });
+      return send(text.trim(), { commandId: command.id }, { [positional]: resolved.input });
     }
     setDialogText(resolved.input);
     setDialogCommand(command);
@@ -683,7 +698,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     busy !== null ||
     Boolean(pendingQuote) ||
     Boolean(thread.data.activeQuoteId) ||
-    (agent && presale?.remaining === 0);
+    presale?.remaining === 0;
 
   const runtime = useExternalStoreRuntime({
     messages: stream.messages,
@@ -747,10 +762,12 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     return ids;
   }, [stream.surfaces]);
 
-  const selected =
-    commands.find((command) => command.id === selectedCommandId) ??
-    commands.find((command) => command.id === thread.data?.defaultCommandId) ??
-    commands[0];
+  // Bot forms the buyer has not answered yet, oldest first.
+  const conversation = stream.snapshot.data?.conversation ?? [];
+  const answeredForms = new Set(conversation.flatMap((m) => (m.replyToId ? [m.replyToId] : [])));
+  const openForms = conversation.filter(
+    (message) => message.role === "PROVIDER" && message.form && !answeredForms.has(message.id),
+  );
   const status = pendingQuote
     ? "AWAITING_AUTHORIZATION"
     : (stream.snapshot.data?.invocations.at(0)?.executionStatus ?? "READY");
@@ -768,8 +785,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       ? latest.executionStatus === "RUNNING"
         ? "working on your request…"
         : "payment held · starting…"
-      : agent &&
-          lastTurn?.role === "BUYER" &&
+      : lastTurn?.role === "BUYER" &&
           !openOffer &&
           !(stream.snapshot.data?.offers ?? []).some((offer) => offer.messageSeq >= lastTurn.seq)
         ? "replying…"
@@ -820,8 +836,6 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 {offline ? "offline" : "online"}
               </span>
               <span>·</span>
-              <span>{agent ? "agent" : "tool"}</span>
-              <span>·</span>
               <span>{plural(data.commands.length, "command")}</span>
             </span>
           </div>
@@ -862,55 +876,29 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     {data.app.name.trim().slice(0, 2)}
                   </span>
                   <h3 className="mt-6 text-[clamp(1.6rem,3.5vw,2.4rem)] leading-[1.1] font-medium tracking-[-0.045em]">
-                    {agent ? `What should ${data.app.name} do?` : `Ask ${data.app.name} something.`}
+                    What should {data.app.name} do?
                   </h3>
                   <p className="mt-4 max-w-md leading-7 text-muted-foreground">
-                    {agent ? (
-                      <>
-                        Messages are free. Describe the job; the app replies and sends an offer with
-                        a price. You pay only if you accept it.
-                      </>
-                    ) : (
-                      <>
-                        Plain text goes to{" "}
-                        <code className="font-mono text-primary">
-                          /{selected?.name ?? "default"}
-                        </code>
-                        . You see a quote before every request.
-                      </>
-                    )}
+                    Messages and commands are free. The app may ask for details, then replies with
+                    an offer; you see a quote and pay only if you accept it.
                   </p>
                   <div className="mt-8 flex w-full flex-wrap justify-center gap-2 *:w-full sm:*:w-[calc(50%-0.25rem)]">
-                    {commands.slice(0, 4).map((command) =>
-                      agent ? (
-                        <ThreadPrimitive.Suggestion
-                          key={command.id}
-                          prompt={`/${command.name} `}
-                          send={false}
-                          className="grid gap-1 border border-border bg-background-deep px-4 py-3 text-left transition-colors hover:border-primary focus-visible:border-primary focus-visible:outline-none"
-                        >
-                          <code className="font-mono text-xs text-primary">/{command.name}</code>
-                          <span className="line-clamp-2 text-sm text-muted-foreground">
-                            {command.description}
-                          </span>
-                        </ThreadPrimitive.Suggestion>
-                      ) : (
-                        <button
-                          key={command.id}
-                          type="button"
-                          className="grid gap-1 border border-border bg-background-deep px-4 py-3 text-left transition-colors hover:border-primary"
-                          onClick={() => {
-                            setDialogText("");
-                            setDialogCommand(command);
-                          }}
-                        >
-                          <code className="font-mono text-xs text-primary">/{command.name}</code>
-                          <span className="line-clamp-2 text-sm text-muted-foreground">
-                            {command.description}
-                          </span>
-                        </button>
-                      ),
-                    )}
+                    {commands.slice(0, 4).map((command) => (
+                      <button
+                        key={command.id}
+                        type="button"
+                        className="grid gap-1 border border-border bg-background-deep px-4 py-3 text-left transition-colors hover:border-primary"
+                        onClick={() => {
+                          setDialogText("");
+                          setDialogCommand(command);
+                        }}
+                      >
+                        <code className="font-mono text-xs text-primary">/{command.name}</code>
+                        <span className="line-clamp-2 text-sm text-muted-foreground">
+                          {command.description}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </ThreadPrimitive.Empty>
@@ -942,8 +930,37 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     />
                   </ChatWidget>
                 ))}
+              {openForms.map((message) => (
+                <ChatWidget
+                  key={message.id}
+                  label={message.form!.title}
+                  meta="form"
+                  aria-label={`Form from ${data.app.name}`}
+                >
+                  {message.form!.description && (
+                    <p className="mb-3 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                      {message.form!.description}
+                    </p>
+                  )}
+                  <SchemaForm
+                    schema={message.form!.schema}
+                    submitLabel="Send answer"
+                    uploadFile={uploadFile}
+                    disabled={sendDisabled}
+                    onSubmit={(values) =>
+                      send(`Answered: ${message.form!.title}`, { replyToId: message.id }, values)
+                    }
+                  />
+                </ChatWidget>
+              ))}
               {stream.snapshot.data?.invocations
-                .filter((inv) => inv.executionStatus === "DELIVERED" && inv.output !== null)
+                .filter(
+                  (inv) =>
+                    inv.executionStatus === "DELIVERED" &&
+                    inv.output !== null &&
+                    // Text output is in the timeline; show the card for data or files.
+                    (typeof inv.output !== "string" || inv.files.length > 0),
+                )
                 .map((inv) => {
                   const used = stream.snapshot.data!.revisions.filter(
                     (revision) => revision.invocationId === inv.id,
@@ -954,9 +971,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                       key={inv.id}
                       label="Verified output"
                       meta={inv.id.slice(0, 8)}
-                      aria-label="Verified structured result"
+                      aria-label="Verified result"
                     >
-                      <ResultView output={inv.output} />
+                      {typeof inv.output !== "string" && <ResultView output={inv.output} />}
                       {inv.files.length > 0 && (
                         <ul aria-label="Delivered files" className="mt-3 grid gap-1.5">
                           {inv.files.map((file) => (
@@ -1007,10 +1024,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                       key={command.id}
                       type="button"
                       role="option"
-                      aria-selected={command.id === selected?.id}
+                      aria-selected={false}
                       className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-3.5 py-2.5 text-left text-muted-foreground last:border-b-0 hover:bg-card aria-selected:bg-card"
                       onClick={() => {
-                        setSelectedCommandId(command.id);
                         setComposerText("");
                         setDialogText("");
                         setDialogCommand(command);
@@ -1034,14 +1050,14 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                   />
                 </div>
               )}
-              {agent && openOffer && !pendingQuote && !data.activeQuoteId && (
+              {openOffer && !pendingQuote && !data.activeQuoteId && (
                 <OfferCard
                   offer={openOffer}
                   command={data.commands.find(
                     (command) => command.revision?.id === openOffer.commandRevisionId,
                   )}
                   busy={busy === "quoting"}
-                  onAccept={() => void prepare({ offerId: openOffer.id }).catch(() => undefined)}
+                  onAccept={() => void prepare(openOffer.id).catch(() => undefined)}
                   onDecline={() =>
                     void declineOffer(threadId, openOffer.id)
                       .then(refreshThread)
@@ -1113,9 +1129,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                   placeholder={
                     offline
                       ? "App unavailable. History is read-only."
-                      : agent
-                        ? `Describe what you need from ${data.app.name}…`
-                        : `Message ${data.app.name}…`
+                      : "Describe what you need, or type / for commands…"
                   }
                   aria-label="Message the app"
                   onChange={(event) => setComposerText(event.currentTarget.value)}
@@ -1131,44 +1145,22 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                   >
                     <Paperclip />
                   </TooltipIconButton>
-                  {agent ? (
-                    <span className="hidden items-center gap-1.5 font-mono text-[10px] text-faint sm:inline-flex">
-                      <Slash size={11} /> commands
-                    </span>
-                  ) : (
-                    <label className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-faint">
-                      <Slash size={11} />
-                      <select
-                        aria-label="Selected command"
-                        value={selected?.id ?? ""}
-                        onChange={(event) => setSelectedCommandId(event.target.value)}
-                        className="max-w-32 truncate bg-transparent py-1 text-[11px] text-foreground"
-                      >
-                        {commands.map((command) => (
-                          <option key={command.id} value={command.id}>
-                            /{command.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
+                  <span className="hidden items-center gap-1.5 font-mono text-[10px] text-faint sm:inline-flex">
+                    <Slash size={11} /> commands
+                  </span>
                   <span
                     className={cn(
                       "ml-auto truncate font-mono text-[10px]",
-                      agent && presale?.remaining === 0 ? "text-warning" : "text-primary",
+                      presale?.remaining === 0 ? "text-warning" : "text-primary",
                     )}
                   >
-                    {agent
-                      ? presale &&
-                        (presale.remaining === 0
-                          ? "Free messages used up · accept an offer"
-                          : `${presale.remaining}/${presale.limit} free`)
-                      : selected
-                        ? formatCommandPrice(selected.revision)
-                        : ""}
+                    {presale &&
+                      (presale.remaining === 0
+                        ? "Free messages used up · accept an offer"
+                        : `${presale.remaining}/${presale.limit} free`)}
                   </span>
                   <ComposerPrimitive.Send
-                    aria-label={agent ? "Send message" : "Get a quote"}
+                    aria-label="Send message"
                     className="grid size-9 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {busy ? <Spinner className="size-4" /> : <ArrowUp size={17} />}
@@ -1197,15 +1189,18 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       <CommandDialog
         command={dialogCommand}
         initialText={dialogText}
-        kind={kind}
+        uploadFile={uploadFile}
         onClose={() => setDialogCommand(null)}
         onSubmit={async (command, values) => {
           if (!command.revision) return;
-          if (!agent) return prepare({ commandId: command.id, arguments: values });
           const positional = command.revision.positionalParameter;
           const text =
             positional && typeof values[positional] === "string" ? values[positional] : "";
-          await send(`/${command.name}${text ? ` ${text}` : ""}`, command.id, values);
+          await send(
+            `/${command.name}${text ? ` ${text}` : ""}`,
+            { commandId: command.id },
+            values,
+          );
         }}
       />
     </div>

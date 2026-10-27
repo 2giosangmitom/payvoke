@@ -22,13 +22,13 @@ TessPay [P7] và RAILS [P8] cùng chỉ ra rằng escrow chỉ an toàn khi quy�
 
 Thang bằng chứng, rút gọn từ RAILS cho MVP:
 
-| Lớp    | Nghĩa trong Payvoke                                                                 | Nguồn hiện có                                             |
-| ------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `SELF` | Provider tự báo `result`                                                            | Report `result` chưa kiểm tra; không bao giờ được ghi     |
-| `SIGN` | Output khớp `outputSchema`, gắn đúng app/invocation/artifactVersion, do key app gửi | Verifier structured JSON của host                         |
-| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được    | File verifier của host (job-worker); attestation thủ công |
-| `WIT`  | Người có quyền xác nhận                                                             | Attestation thủ công (buyer chấp nhận, operator duyệt)    |
-| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                     | Ngoài MVP                                                 |
+| Lớp    | Nghĩa trong Payvoke                                                                                                                                             | Nguồn hiện có                                             |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `SELF` | Provider tự báo `result`                                                                                                                                        | Report `result` chưa kiểm tra; không bao giờ được ghi     |
+| `SIGN` | Kết quả (text, JSON và/hoặc file) không rỗng, do key app gửi, gắn đúng invocation/artifactVersion và hash nội dung; khớp `outputSchema` nếu revision cũ có khai | Verifier kết quả của host                                 |
+| `REC`  | Biên nhận từ hệ thống không có lợi ích: file `READY` có checksum, buyer tải được                                                                                | File verifier của host (job-worker); attestation thủ công |
+| `WIT`  | Người có quyền xác nhận                                                                                                                                         | Attestation thủ công (buyer chấp nhận, operator duyệt)    |
+| `ATT`  | Attestation từ môi trường thực thi được tin cậy                                                                                                                 | Ngoài MVP                                                 |
 
 Thứ tự là `SELF < SIGN < {REC, WIT} < ATT`. `REC` và `WIT` không so sánh trực tiếp được: một bên chứng minh dữ liệu đã đến, bên kia chứng minh người nhận đồng ý. Vì vậy `minEvidence: REC` không được thoả bằng `WIT`.
 

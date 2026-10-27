@@ -32,9 +32,10 @@ export async function pendingVerifications(db: PrismaClient, limit = 100) {
   });
 }
 
-// Trusted host-side verification for one stored result. Schema-valid JSON alone
-// is SIGN; a result whose every file is still the READY, intact artifact of
-// this invocation in storage is REC. File results need `storage` and are
+// Trusted host-side verification for one stored result. A well-formed result
+// the app key reported is SIGN (and must still match an output schema when an
+// older revision declared one); a result whose every file is still the READY,
+// intact artifact of this invocation in storage is REC. File results need `storage` and are
 // left pending without it. Provider reports never directly create delivery
 // evidence or unlock payment; the decision uses the stored immutable result
 // and snapshotted schema. Returns whether evidence was recorded. Safe to
@@ -65,19 +66,26 @@ export async function verifyStructuredDelivery(
     where: { id: invocation.quote.commandRevisionId },
     select: { outputSchema: true },
   });
-  if (!command?.outputSchema || !object(command.outputSchema)) return false;
-  const validate = new Ajv2020({ strict: true, useDefaults: false }).compile(command.outputSchema);
-  if (!validate(result.output)) return false;
+  if (!command) return false;
+  const output = (result.output ?? null) as Json;
+  if (output === null && !files.length) return false;
+  if (command.outputSchema) {
+    if (!object(command.outputSchema)) return false;
+    const validate = new Ajv2020({ strict: true, useDefaults: false }).compile(
+      command.outputSchema,
+    );
+    if (!validate(output)) return false;
+  }
   if (files.length && (!storage || !(await storedFilesIntact(db, storage, invocation.id, files))))
     return false;
   await recordPaymentDelivery(db, {
     id: `${files.length ? "files" : "structured"}-${invocation.id}-${result.artifactVersion}`,
     invocationId: invocation.id,
     artifactVersion: result.artifactVersion as number,
-    outputHash: hashSnapshot(result.output as Json),
-    verifier: files.length ? "payvoke-host-files-v1" : "payvoke-host-structured-v1",
+    outputHash: hashSnapshot(output),
+    verifier: files.length ? "payvoke-host-files-v1" : "payvoke-host-result-v1",
     accessInterruptionSeconds: 0,
-    // SIGN: schema-valid output bound to app, invocation and artifact version.
+    // SIGN: the app-key-reported output bound to invocation and artifact version.
     // REC: additionally, every listed file was received intact (M05).
     evidenceLevel: files.length ? "REC" : "SIGN",
     files: files.map(({ fileId, sha256, size }) => ({ fileId, sha256, size })),

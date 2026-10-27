@@ -87,7 +87,7 @@ export class PaymentStatusService {
       include: {
         quote: {
           include: {
-            app: { select: { id: true, name: true, kind: true } },
+            app: { select: { id: true, name: true } },
             commandRevision: { select: { command: { select: { name: true } } } },
           },
         },

@@ -17,7 +17,8 @@ if (
 )
   throw new Error("Expected isolated local worker fixture");
 const pool = new Pool({
-  connectionString: "postgresql://test:test@127.0.0.1:55433/test",
+  // Inherited from the parent test run, which owns the schema.
+  connectionString: process.env.PAYMENTS_TEST_DATABASE_URL,
   options: `-c search_path=${schema}`,
 });
 const db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });

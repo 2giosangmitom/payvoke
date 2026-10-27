@@ -1,14 +1,14 @@
 # M07 · Đăng bán và vận hành app
 
-Provider đăng nhập bằng ví, tạo app và quản lý app đó trong Studio. Không bắt buộc manifest file. Mỗi app nêu công việc, command, dạng input/output, giới hạn, thời gian giao, dữ liệu xử lý, tác động bên ngoài và cách buyer nhận kết quả.
+Provider đăng nhập bằng ví, tạo app và quản lý app đó trong Studio. Không bắt buộc manifest file. Mỗi app nêu công việc, command, dạng input, giới hạn, thời gian giao, dữ liệu xử lý, tác động bên ngoài và cách buyer nhận kết quả.
 
 ## App và visibility
 
 Một app có tên, mô tả, payout address, visibility và danh sách command. Không còn `kind` agent/tool; mọi app đều dùng chung thread chat. App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Owner có thể đổi visibility bất cứ lúc nào mà không phá thread cũ.
 
-Provider đăng ký slash command có tên, mô tả, options, JSON Schema input/output, giá và điều khoản bằng Studio hoặc API ở [S01](../specs/01-api-and-provider-protocol.md). Command namespace theo app. App cần một `defaultCommand`; free text của buyer được map vào tham số vị trí của command đó. Command không có tham số vị trí sẽ mở form arguments.
+Bot của provider đăng ký slash command (tên, mô tả, options gồm cả field file, điều khoản, trần giá tùy chọn) **chỉ qua API** ở [S01](../specs/01-api-and-provider-protocol.md), thường bằng một lệnh ghi đè cả danh sách như Discord. Studio chỉ hiển thị command. Command namespace theo app. Free text và slash command của buyer đều là interaction miễn phí gửi cho bot; bot trả lời bằng tin nhắn, form hoặc offer, và giá luôn đến từ offer.
 
-Mỗi lần sửa schema, giá hoặc điều khoản tạo một command revision mới. Revision là bất biến; quote đã phát hành ghim revision cũ, nên thay đổi không ảnh hưởng invocation đang chạy hoặc lịch sử.
+Mỗi lần sửa schema, trần giá hoặc điều khoản tạo một command revision mới. Revision là bất biến; quote đã phát hành ghim revision cũ, nên thay đổi không ảnh hưởng invocation đang chạy hoặc lịch sử.
 
 ## API key và presence
 

@@ -44,7 +44,6 @@ export function NewThread() {
       id: app.id,
       name: app.name,
       description: app.description,
-      kind: app.kind,
       availability: app.availability,
       visibility: app.visibility,
       commandCount: app.commandCount,
@@ -63,14 +62,11 @@ export function NewThread() {
         id: app.id,
         name: app.name,
         description: app.description,
-        kind: app.kind,
         availability: app.availability,
         visibility: app.visibility,
         commandCount: undefined as number | undefined,
       })),
   ].filter((app) => {
-    // Tools run from a form, not a chat.
-    if (app.kind !== "AGENT") return false;
     if (seen.has(app.id)) return false;
     seen.add(app.id);
     return true;
@@ -93,11 +89,11 @@ export function NewThread() {
         <header className="max-w-2xl">
           <Eyebrow className="mb-4">New chat</Eyebrow>
           <h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.05em]">
-            Which agent do you want to talk to?
+            Which app do you want to use?
           </h1>
           <p className="mt-4 leading-7 text-muted-foreground">
-            Chatting is free. Describe the job; the agent replies and sends an offer with a price,
-            and you pay only if you accept. Tools run from a form instead: open one from the{" "}
+            Every app works in a chat. Run its slash commands at their listed price, or describe the
+            job and get an offer. You see a quote before anything is charged. Browse more in the{" "}
             <Link to="/store" className="text-primary hover:underline">
               store
             </Link>
@@ -111,7 +107,7 @@ export function NewThread() {
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
         />
-        <span className="sr-only">Search agents to chat with</span>
+        <span className="sr-only">Search apps to chat with</span>
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}

@@ -79,9 +79,9 @@ export function ThreadSidebar() {
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const threads = useQuery({
-    queryKey: ["threads", session?.user.id, "AGENT", search],
+    queryKey: ["threads", session?.user.id, search],
     // Tool runs are one thread each and live in Activity instead.
-    queryFn: () => getThreads(search, "AGENT"),
+    queryFn: () => getThreads(search),
     enabled: Boolean(session),
     staleTime: 10_000,
   });

@@ -100,8 +100,8 @@ const options = [
   { name: "pages", type: "INTEGER", required: false },
 ];
 
-// One AGENT app and one TOOL app with worker keys and an active policy; holds
-// are fixtures, as in the catalog test.
+// Two apps with worker keys and an active policy: "agent" caps its command at
+// 50000, "tool" has no cap. Holds are fixtures, as in the catalog test.
 async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
@@ -127,15 +127,13 @@ async function marketplace() {
       minGrossAmount: "1000",
     },
   });
-  const provider = async (kind: "AGENT" | "TOOL", pricing: Record<string, string>) => {
+  const provider = async (label: string, extra: Record<string, unknown>) => {
     const created = await web("POST", "/v1/provider/apps", {
-      name: `${kind} ${randomUUID().slice(0, 6)}`,
+      name: `${label} ${randomUUID().slice(0, 6)}`,
       payoutAddress: wallet.address,
-      kind,
       clientRequestId: randomUUID(),
     });
     assert.equal(created.statusCode, 201, created.body);
-    assert.equal(created.json().kind, kind);
     const appId = created.json().id as string;
     const command = await web("POST", `/v1/provider/apps/${appId}/commands`, {
       name: "write",
@@ -143,7 +141,7 @@ async function marketplace() {
       options,
       positionalParameter: "brief",
       terms,
-      ...pricing,
+      ...extra,
     });
     assert.equal(command.statusCode, 201, command.body);
     const commandId = command.json().id as string;
@@ -163,8 +161,8 @@ async function marketplace() {
         .id as string;
     return { appId, commandId, worker, thread, key: key.json().secret as string };
   };
-  const agent = await provider("AGENT", { minGrossAmount: "5000", maxGrossAmount: "50000" });
-  const tool = await provider("TOOL", { grossAmount: "10000" });
+  const agent = await provider("Agent", { maxAmount: "50000" });
+  const tool = await provider("Tool", {});
   const quote = (payload: Record<string, unknown>, userCookie = cookie, id = randomUUID()) =>
     app.inject({
       method: "POST",
@@ -227,70 +225,101 @@ async function marketplace() {
   return { web, cookie, otherCookie, agent, tool, quote, say, offer, hold };
 }
 
-it("prices commands by app kind and keeps each kind on its own path", async () => {
+it("talks to every app, prices only by offer and takes one answer per bot form", async () => {
   const { web, agent, tool, quote, say, offer } = await marketplace();
-  const define = (appId: string, pricing: Record<string, string>) =>
-    web("POST", `/v1/provider/apps/${appId}/commands`, {
+  // Commands carry no price of their own; pricing fields are rejected.
+  const define = (extra: Record<string, unknown>) =>
+    web("POST", `/v1/provider/apps/${tool.appId}/commands`, {
       name: `c${randomUUID().slice(0, 6)}`,
       description: "x",
       options,
       terms,
-      ...pricing,
+      ...extra,
     });
-  // An agent publishes a range, never a fixed price, and a tool the reverse.
-  for (const pricing of [
+  for (const extra of [
+    { pricing: { mode: "fixed", amount: "10000" } },
     { grossAmount: "10000" },
-    { minGrossAmount: "9000", maxGrossAmount: "8000" },
-    { minGrossAmount: "5000" },
-  ] as Record<string, string>[])
-    assert.equal((await define(agent.appId, pricing)).json().error, "INVALID_TERMS");
-  assert.equal(
-    (await define(agent.appId, { minGrossAmount: "10", maxGrossAmount: "8000" })).json().error,
-    "PRICE_BELOW_FLOOR",
-  );
-  assert.equal(
-    (await define(tool.appId, { minGrossAmount: "5000", maxGrossAmount: "8000" })).json().error,
-    "INVALID_TERMS",
-  );
+    { outputSchema: { type: "object" } },
+  ])
+    assert.equal((await define(extra)).json().error, "INVALID_COMMAND");
+  assert.equal((await define({ maxAmount: "1.5" })).json().error, "INVALID_MAX_AMOUNT");
+  assert.equal((await define({ maxAmount: "999" })).json().error, "PRICE_BELOW_FLOOR");
 
   const listed = (await web("GET", `/v1/apps/${agent.appId}`)).json();
-  assert.equal(listed.kind, "AGENT");
-  assert.deepEqual(listed.priceRange, { min: "5000", max: "50000" });
-  assert.equal(listed.commands[0].revision.grossAmount, null);
+  assert.equal(listed.priceCap, "50000");
+  assert.equal(listed.commands[0].revision.maxGrossAmount, "50000");
+  assert.equal((await web("GET", `/v1/apps/${tool.appId}`)).json().priceCap, null);
 
+  // Every app takes interactions; a quote always needs the bot's offer.
   const toolThread = await tool.thread();
-  assert.equal((await say(toolThread, { content: "hi" })).json().error, "APP_KIND_MISMATCH");
-  assert.equal(
-    (
-      await tool.worker("POST", `/threads/${toolThread}/messages`, {
-        content: "hi",
-        clientRequestId: randomUUID(),
-      })
-    ).json().error,
-    "APP_KIND_MISMATCH",
-  );
-  const toolQuote = await quote({
+  assert.equal((await say(toolThread, { content: "hi" })).statusCode, 201);
+  const byCommand = await quote({
     threadId: toolThread,
     commandId: tool.commandId,
     arguments: { brief: "x" },
   });
-  assert.equal(toolQuote.statusCode, 201, toolQuote.body);
-  assert.equal(toolQuote.json().inputSnapshot.schemaVersion, 1);
-  assert.equal(toolQuote.json().grossAmount, "10000");
-
+  assert.equal(byCommand.statusCode, 400, byCommand.body);
+  assert.equal(
+    (await quote({ threadId: toolThread, offerId: randomUUID() })).json().error,
+    "OFFER_NOT_FOUND",
+  );
   const agentThread = await agent.thread();
-  assert.equal(
-    (
-      await quote({ threadId: agentThread, commandId: agent.commandId, arguments: { brief: "x" } })
-    ).json().error,
-    "OFFER_REQUIRED",
-  );
-  // An offer cannot open the conversation, and a tool app cannot quote one.
   assert.equal((await offer(agentThread)).json().error, "NO_BUYER_REQUEST");
+
+  // A bot form takes exactly one validated answer from the thread's buyer.
+  const form = {
+    title: "Scope",
+    description: "Tell us the length",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["pages"],
+      properties: { pages: { type: "integer", minimum: 1, maximum: 50, title: "Pages" } },
+    },
+  };
+  const asked = await tool.worker("POST", `/threads/${toolThread}/messages`, {
+    content: "How long should it be?",
+    form,
+    clientRequestId: randomUUID(),
+  });
+  assert.equal(asked.statusCode, 201, asked.body);
+  assert.deepEqual(asked.json().form, form);
+  const reply = (args: unknown, extra: Record<string, unknown> = {}) =>
+    say(toolThread, { content: "Answer", replyToId: asked.json().id, arguments: args, ...extra });
+  assert.equal((await reply({ pages: 0 })).json().error, "INVALID_ARGUMENTS");
   assert.equal(
-    (await quote({ threadId: await tool.thread(), offerId: randomUUID() })).json().error,
-    "APP_KIND_MISMATCH",
+    (await reply({ pages: 2 }, { commandId: tool.commandId })).json().error,
+    "INVALID_MESSAGE",
   );
+  const plain = await say(toolThread, { content: "plain" });
+  assert.equal(
+    (await say(toolThread, { content: "x", replyToId: plain.json().id, arguments: {} })).json()
+      .error,
+    "FORM_NOT_FOUND",
+  );
+  const answered = await reply({ pages: 3 });
+  assert.equal(answered.statusCode, 201, answered.body);
+  assert.deepEqual(answered.json().arguments, { pages: 3 });
+  assert.equal((await reply({ pages: 4 })).json().error, "FORM_ALREADY_ANSWERED");
+  const snapshot = (await web("GET", `/v1/threads/${toolThread}/ag-ui/snapshot`)).json();
+  assert.equal(
+    snapshot.conversation.find((m: { id: string }) => m.id === answered.json().id).replyToId,
+    asked.json().id,
+  );
+
+  // The bot prices freely above the floor on an uncapped command.
+  const priced = await tool.worker("POST", `/threads/${toolThread}/offers`, {
+    clientRequestId: randomUUID(),
+    arguments: { brief: "Three pages" },
+    grossAmount: "900000000",
+    summary: "Three pages",
+  });
+  assert.equal(priced.statusCode, 201, priced.body);
+  const accepted = await quote({ threadId: toolThread, offerId: priced.json().id });
+  assert.equal(accepted.statusCode, 201, accepted.body);
+  assert.equal(accepted.json().grossAmount, "900000000");
+  assert.equal(accepted.json().inputSnapshot.schemaVersion, 2);
+  assert.equal(accepted.json().termsSnapshot.schemaVersion, 2);
 });
 
 it("delivers free pre-sale messages to the provider feed with bounded abuse", async () => {
@@ -399,8 +428,8 @@ it("turns exactly one open offer into a quote that freezes the negotiation", asy
 
   // Offers stay inside the published range, policy and registered terms.
   for (const [body, error] of [
-    [{ grossAmount: "4999" }, "PRICE_OUT_OF_RANGE"],
-    [{ grossAmount: "50001" }, "PRICE_OUT_OF_RANGE"],
+    [{ grossAmount: "999" }, "PRICE_BELOW_FLOOR"],
+    [{ grossAmount: "50001" }, "PRICE_ABOVE_MAX"],
     [{ deliverySeconds: 601 }, "INVALID_DELIVERY_SECONDS"],
     [{ arguments: { pages: 2 } }, "INVALID_ARGUMENTS"],
     [{ summary: "" }, "INVALID_OFFER"],
@@ -489,7 +518,6 @@ it("turns exactly one open offer into a quote that freezes the negotiation", asy
     .json()
     .items.find((item: { invocationId: string }) => item.invocationId === document.invocationId);
   assert.equal(row.grossAmount, "20000");
-  assert.equal(row.app.kind, "AGENT");
   assert.equal(row.commandName, "write");
   assert.equal(row.paymentStatus, "HELD");
   assert.equal(

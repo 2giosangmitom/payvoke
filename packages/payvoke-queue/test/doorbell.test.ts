@@ -12,8 +12,8 @@ import {
   type Doorbell,
 } from "../src/index";
 
-// Redis-backed cases run only against the compose test-redis service:
-// REDIS_TEST_URL=redis://127.0.0.1:56379 pnpm --filter @payvoke/queue test
+// Redis-backed cases run only against a disposable Redis:
+// REDIS_TEST_URL=redis://… pnpm --filter @payvoke/queue test
 const redisUrl = process.env.REDIS_TEST_URL;
 
 const elapsed = async (run: () => Promise<void>) => {

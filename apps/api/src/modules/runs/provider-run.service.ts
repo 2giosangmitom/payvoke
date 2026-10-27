@@ -30,6 +30,8 @@ export type Work = Awaited<ReturnType<ProviderRunService["work"]>>;
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const STREAM_BYTES = 524288;
 const LINE_BYTES = 16384;
+// Text results are rendered as markdown in the thread.
+const MAX_TEXT_OUTPUT = 65536;
 
 // Provider side of a paid run: the durable work feed, ACKs, sequenced reports
 // and the NDJSON AG-UI stream. Callers authenticate the app key first.
@@ -132,7 +134,7 @@ export class ProviderRunService {
           targetArtifactVersion: row.targetArtifactVersion,
         },
       })),
-      // Unpaid pre-sale chat of AGENT threads.
+      // Unpaid pre-sale chat of threads with quoted commands.
       ...(await this.presale.pendingMessages(appId)),
     ];
     return events.sort(
@@ -291,8 +293,8 @@ export class ProviderRunService {
     return { lastCommittedSequence: sequence, executionStatus };
   }
 
-  // A result must match the revision's output schema and publish a strictly
-  // newer artifact. Its `files: [{fileId}]` must be READY artifacts of this
+  // A result carries text, JSON and/or files and publishes a strictly newer
+  // artifact. Its `files: [{fileId}]` must be READY artifacts of this
   // invocation; the stored result carries their frozen manifest instead.
   private async checkResult(invocation: Work, data: unknown) {
     const result = data as Record<string, unknown> | undefined;
@@ -309,9 +311,18 @@ export class ProviderRunService {
         })
       : null;
     if (!definition) throw new ConflictError("COMMAND_REVISION_NOT_FOUND");
-    if (!definition.outputSchema) throw new BadRequestError("INVALID_RESULT_OUTPUT");
-    const validate = new Ajv2020({ strict: true }).compile(definition.outputSchema as object);
-    if (!validate(result.output)) throw new BadRequestError("INVALID_RESULT_OUTPUT");
+    // Output is free-form: markdown text or any JSON, alongside or instead of
+    // files. Revisions registered with an output schema still enforce it.
+    const output = result.output;
+    if (output === undefined && !result.files.length)
+      throw new BadRequestError("INVALID_RESULT_OUTPUT");
+    if (typeof output === "string" && (!output.trim() || output.length > MAX_TEXT_OUTPUT))
+      throw new BadRequestError("INVALID_RESULT_OUTPUT");
+    if (
+      definition.outputSchema &&
+      !new Ajv2020({ strict: true }).compile(definition.outputSchema as object)(output)
+    )
+      throw new BadRequestError("INVALID_RESULT_OUTPUT");
     const latest = await this.db.paymentDeliveryEvidence.findFirst({
       where: { invocationId: invocation.id },
       orderBy: { artifactVersion: "desc" },

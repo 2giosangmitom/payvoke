@@ -104,7 +104,13 @@ export function AssistantReply() {
         <MessageLabel>
           {name}
           <span className="text-border-strong">·</span>
-          {provider ? "message" : running ? "streaming" : "live output"}
+          {provider
+            ? "message"
+            : running
+              ? "streaming"
+              : label === "VERIFIED OUTPUT"
+                ? "verified output"
+                : "live output"}
           {running && (
             <span className="size-1.5 animate-pulse bg-primary motion-reduce:animate-none" />
           )}

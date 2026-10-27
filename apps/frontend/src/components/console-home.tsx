@@ -27,8 +27,8 @@ export function ConsoleHome() {
     refetchInterval: 15_000,
   });
   const chats = useQuery({
-    queryKey: ["threads", session?.user.id, "AGENT", ""],
-    queryFn: () => getThreads("", "AGENT"),
+    queryKey: ["threads", session?.user.id, ""],
+    queryFn: () => getThreads(""),
     staleTime: 10_000,
   });
   const attention = (activity.data?.items ?? [])
@@ -43,7 +43,7 @@ export function ConsoleHome() {
       <PageHeader
         eyebrow="Console"
         title="Your work in one place"
-        description="Chat with agents, run tools, follow every held payment and manage the apps you publish."
+        description="Chat with apps and run their commands, follow every held payment and manage the apps you publish."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button render={<Link to="/console/chat" />}>

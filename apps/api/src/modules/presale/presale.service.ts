@@ -8,18 +8,22 @@ import {
   UnprocessableEntityError,
   isUniqueViolation,
 } from "../../errors";
-import { isAvailable } from "../apps/schema";
+import { isAvailable, record, validateFormSchema } from "../apps/schema";
 import { effectiveArguments } from "../quotes/arguments";
+import { fileManifestUnion } from "../files/file.service";
 import { conversation, conversationHash } from "./conversation";
 
 export type BuyerMessageBody = {
   content?: unknown;
   commandId?: unknown;
   arguments?: unknown;
+  // Answers a provider form instead of naming a command.
+  replyToId?: unknown;
   fileIds?: unknown;
   clientRequestId?: unknown;
 };
-export type ProviderMessageBody = { content?: unknown; clientRequestId?: unknown };
+export type ProviderMessageBody = { content?: unknown; form?: unknown; clientRequestId?: unknown };
+type MessageForm = { title: string; description?: string; schema: Prisma.JsonValue };
 export type OfferBody = {
   clientRequestId?: unknown;
   commandId?: unknown;
@@ -54,8 +58,26 @@ export const messageView = (message: ThreadMessage) => ({
   commandId: message.commandId,
   arguments: message.arguments,
   files: message.fileManifest ?? [],
+  form: message.form,
+  replyToId: message.replyToId,
   createdAt: message.createdAt,
 });
+
+// A provider form: a title, an optional description and a flat input schema
+// the chat renders as a popup, file fields included.
+function parseForm(value: unknown): MessageForm | null {
+  if (!record(value)) return null;
+  const { title, description, schema } = value;
+  if (Object.keys(value).some((key) => !["title", "description", "schema"].includes(key)))
+    return null;
+  if (content(title, 120) === null || !validateFormSchema(schema)) return null;
+  if (description !== undefined && content(description, 1000) === null) return null;
+  return {
+    title: (title as string).trim(),
+    ...(description !== undefined ? { description: (description as string).trim() } : {}),
+    schema: schema as Prisma.JsonValue,
+  };
+}
 
 // Expiry is derived, never written: an OPEN offer past expiresAt is EXPIRED.
 export const offerStatus = (offer: Pick<Offer, "status" | "expiresAt">, now = Date.now()) =>
@@ -77,7 +99,8 @@ export const offerView = (offer: Offer) => ({
   createdAt: offer.createdAt,
 });
 
-// Free pre-sale chat of AGENT apps and the priced offers a provider proposes
+// Free interactions with an app's bot (messages, slash commands and form
+// answers) and the priced offers a provider proposes
 // in it. Nothing here moves money; an offer only becomes payable when the
 // buyer turns it into a Payvoke-issued quote.
 export class PresaleService {
@@ -141,7 +164,11 @@ export class PresaleService {
       !text ||
       !requestId(body?.clientRequestId) ||
       (body.commandId !== undefined && typeof body.commandId !== "string") ||
-      (body.commandId === undefined && body.arguments !== undefined) ||
+      (body.replyToId !== undefined && typeof body.replyToId !== "string") ||
+      (body.commandId !== undefined && body.replyToId !== undefined) ||
+      (body.commandId === undefined &&
+        body.replyToId === undefined &&
+        body.arguments !== undefined) ||
       !Array.isArray(fileIds) ||
       fileIds.length > MAX_MESSAGE_FILES ||
       fileIds.some((id) => typeof id !== "string") ||
@@ -150,6 +177,7 @@ export class PresaleService {
       throw new BadRequestError("INVALID_MESSAGE");
     const clientRequestId = body.clientRequestId;
     const commandId = (body.commandId as string | undefined) ?? null;
+    const replyToId = (body.replyToId as string | undefined) ?? null;
     const thread = await this.db.chatThread.findFirst({
       where: { id: threadId, buyerId },
       include: { app: true },
@@ -158,22 +186,32 @@ export class PresaleService {
     const key = { threadId_role_clientRequestId: { threadId, role: "BUYER", clientRequestId } };
     const prior = await this.db.threadMessage.findUnique({ where: key });
     if (prior) {
-      if (prior.content !== text || prior.commandId !== commandId)
+      if (prior.content !== text || prior.commandId !== commandId || prior.replyToId !== replyToId)
         throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return messageView(prior);
     }
     if (thread.archivedAt) throw new NotFoundError("THREAD_NOT_FOUND");
-    this.assertAgent(thread.app);
     if (!isAvailable(thread.app)) throw new ConflictError("APP_OFFLINE");
-    let args: Prisma.InputJsonValue | undefined;
+    // Arguments follow the command's schema or the answered form's schema.
+    let schema: Prisma.JsonValue | null = null;
     if (commandId) {
       const command = await this.db.appCommand.findFirst({
         where: { id: commandId, appId: thread.appId, archivedAt: null },
         include: { activeRevision: true },
       });
       if (!command?.activeRevision) throw new NotFoundError("COMMAND_NOT_FOUND");
-      args = json(effectiveArguments(command.activeRevision.inputSchema, body.arguments ?? {}));
+      schema = command.activeRevision.inputSchema;
     }
+    if (replyToId) {
+      const asked = await this.db.threadMessage.findFirst({
+        where: { id: replyToId, threadId, role: "PROVIDER" },
+        include: { reply: { select: { id: true } } },
+      });
+      if (!asked?.form) throw new NotFoundError("FORM_NOT_FOUND");
+      if (asked.reply) throw new ConflictError("FORM_ALREADY_ANSWERED");
+      schema = (asked.form as MessageForm).schema;
+    }
+    const args = schema ? effectiveArguments(schema, body.arguments ?? {}) : undefined;
     if (fileIds.length && !this.files.enabled) throw new BadRequestError("FILES_NOT_SUPPORTED");
     try {
       const message = await this.db.$transaction(async (tx) => {
@@ -181,7 +219,12 @@ export class PresaleService {
         if ((await this.unpaidBuyerMessages(tx, threadId)) >= this.config.PRESALE_MESSAGE_LIMIT)
           throw new ConflictError("PRESALE_LIMIT_REACHED");
         // Metadata only: a provider can download inputs once the work is paid.
-        const manifest = await this.files.contextFiles(tx, buyerId, threadId, fileIds as string[]);
+        // Files named in arguments join the attachments.
+        const attached = await this.files.contextFiles(tx, buyerId, threadId, fileIds as string[]);
+        const named = args
+          ? await this.files.argumentFiles(tx, buyerId, threadId, schema, args)
+          : [];
+        const manifest = fileManifestUnion(attached, named);
         return tx.threadMessage.create({
           data: {
             threadId,
@@ -189,7 +232,8 @@ export class PresaleService {
             role: "BUYER",
             content: text,
             commandId,
-            ...(args !== undefined ? { arguments: args } : {}),
+            replyToId,
+            ...(args !== undefined ? { arguments: json(args) } : {}),
             fileManifest: json(manifest),
             clientRequestId,
           },
@@ -199,17 +243,15 @@ export class PresaleService {
       return messageView(message);
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      return messageView(await this.db.threadMessage.findUniqueOrThrow({ where: key }));
+      // The same request raced itself, or another answer took the form.
+      const replay = await this.db.threadMessage.findUnique({ where: key });
+      if (!replay) throw new ConflictError("FORM_ALREADY_ANSWERED");
+      return messageView(replay);
     }
-  }
-
-  private assertAgent(app: Pick<App, "kind">) {
-    if (app.kind !== "AGENT") throw new ConflictError("APP_KIND_MISMATCH");
   }
 
   // A thread of this provider app that can still be talked to.
   private async providerThread(app: App, threadId: string) {
-    this.assertAgent(app);
     const thread = await this.db.chatThread.findFirst({
       where: { id: threadId, appId: app.id, archivedAt: null },
     });
@@ -223,7 +265,7 @@ export class PresaleService {
       where: {
         role: "BUYER",
         acknowledgedAt: null,
-        thread: { appId, archivedAt: null, app: { kind: "AGENT" } },
+        thread: { appId, archivedAt: null },
       },
       orderBy: { createdAt: "asc" },
       take: 50,
@@ -240,6 +282,7 @@ export class PresaleService {
           content: row.content,
           commandId: row.commandId,
           arguments: row.arguments,
+          replyToId: row.replyToId,
           files: row.fileManifest ?? [],
           conversation: await conversation(this.db, row.threadId, row.seq),
         } as Record<string, unknown>,
@@ -263,6 +306,8 @@ export class PresaleService {
   async sendProviderMessage(app: App, threadId: string, body: ProviderMessageBody | undefined) {
     const text = content(body?.content, CONTENT_MAX);
     if (!text || !requestId(body?.clientRequestId)) throw new BadRequestError("INVALID_MESSAGE");
+    const form = body.form === undefined ? null : parseForm(body.form);
+    if (body.form !== undefined && !form) throw new BadRequestError("INVALID_FORM");
     const clientRequestId = body.clientRequestId;
     const key = { threadId_role_clientRequestId: { threadId, role: "PROVIDER", clientRequestId } };
     const thread = await this.providerThread(app, threadId);
@@ -283,7 +328,14 @@ export class PresaleService {
         if (!recent.some((m) => m.role === "BUYER"))
           throw new ConflictError("PROVIDER_MESSAGE_LIMIT");
         return tx.threadMessage.create({
-          data: { threadId, seq, role: "PROVIDER", content: text, clientRequestId },
+          data: {
+            threadId,
+            seq,
+            role: "PROVIDER",
+            content: text,
+            ...(form ? { form: json(form) } : {}),
+            clientRequestId,
+          },
         });
       });
       this.ring(app.id, threadId);
@@ -294,9 +346,9 @@ export class PresaleService {
     }
   }
 
-  // Offers are immutable. A new one supersedes the thread's open offer; the
-  // price must sit inside the command's published range and the policy floor,
-  // and every term except the delivery time comes from the registered revision.
+  // Offers are immutable. A new one supersedes the thread's open offer. The
+  // bot sets the price, above the policy floor and under the command's cap if
+  // it has one; every term except the delivery time comes from the revision.
   async createOffer(app: App, threadId: string, body: OfferBody | undefined) {
     const input = body ?? {};
     const summary = content(input.summary, SUMMARY_MAX);
@@ -342,13 +394,8 @@ export class PresaleService {
     const amount = BigInt(input.grossAmount);
     const policy = await this.db.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
     if (!policy) throw new UnprocessableEntityError("POLICY_NOT_CONFIGURED");
-    if (
-      !revision.minGrossAmount ||
-      !revision.maxGrossAmount ||
-      amount < BigInt(revision.minGrossAmount.toFixed(0)) ||
-      amount > BigInt(revision.maxGrossAmount.toFixed(0))
-    )
-      throw new UnprocessableEntityError("PRICE_OUT_OF_RANGE");
+    if (revision.maxGrossAmount && amount > BigInt(revision.maxGrossAmount.toFixed(0)))
+      throw new UnprocessableEntityError("PRICE_ABOVE_MAX");
     if (amount < BigInt(policy.minGrossAmount.toFixed(0)))
       throw new UnprocessableEntityError("PRICE_BELOW_FLOOR");
     const deliverySeconds =
@@ -376,6 +423,8 @@ export class PresaleService {
           orderBy: { seq: "desc" },
         });
         const entries = await conversation(tx, threadId, last.seq);
+        // Files an offer names must be the buyer's uploads in this thread.
+        await this.files.argumentFiles(tx, thread.buyerId, threadId, revision.inputSchema, args);
         await tx.offer.updateMany({
           where: { threadId, status: "OPEN" },
           data: { status: "SUPERSEDED" },

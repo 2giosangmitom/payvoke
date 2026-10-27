@@ -158,13 +158,12 @@ test-runner cases.
 
 ```sh
 pnpm -r test
-docker compose up -d --wait test-db
-pnpm --dir tests/payments-e2e test:payments:postgres
-PAYMENTS_TEST_POSTGRES=1 pnpm --dir tests/payments-e2e test:payments:evm
+pnpm --dir tests/payments-e2e test:payments:evm
 pnpm --dir packages/payvoke-protocol test
 pnpm --dir packages/payvoke-vault test
 pnpm -r typecheck
-docker compose stop test-db
+# Optional: real cross-process races against a disposable Postgres (never Neon).
+PAYMENTS_TEST_DATABASE_URL=postgresql://… pnpm --dir tests/payments-e2e test
 ```
 
 Keep payments/finance execution flags disabled. These gates do not contact Neon

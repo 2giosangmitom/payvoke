@@ -67,8 +67,9 @@ The worker also runs the bounded financial-lifecycle backfill described in
 
 ```sh
 pnpm --dir tests/payments-e2e test:payments:evm
-# Optional: same E2E with real PostgreSQL and two independent worker processes.
-PAYMENTS_TEST_POSTGRES=1 pnpm --dir tests/payments-e2e test:payments:evm
+# Optional: same E2E with a disposable real PostgreSQL (never Neon) and two
+# independent worker processes.
+PAYMENTS_TEST_DATABASE_URL=postgresql://… pnpm --dir tests/payments-e2e test:payments:evm
 ```
 
 These commands build contracts and spawn/stop their own loopback Hardhat node

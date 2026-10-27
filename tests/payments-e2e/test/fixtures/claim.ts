@@ -5,10 +5,11 @@ import { SettlementJournal } from "@payvoke/payments/journal";
 
 const [schema, invocationId, owner] = process.argv.slice(2);
 if (!/^payment_test_[a-f0-9]{32}$/.test(schema ?? "") || !invocationId || !owner) {
-  throw new Error("Expected isolated Docker test schema and operation");
+  throw new Error("Expected isolated test schema and operation");
 }
 const pool = new Pool({
-  connectionString: "postgresql://test:test@127.0.0.1:55433/test",
+  // Inherited from the parent test run, which owns the schema.
+  connectionString: process.env.PAYMENTS_TEST_DATABASE_URL,
   options: `-c search_path=${schema}`,
 });
 const db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
