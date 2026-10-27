@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "motion/react";
 import { WagmiProvider } from "wagmi";
+import { TooltipProvider } from "@/src/components/ui/tooltip";
 import { walletConfig } from "@/src/lib/wagmi";
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -18,7 +19,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         {/* "user" follows prefers-reduced-motion: transforms are skipped and
             opacity still fades, so server and client render the same markup. */}
-        <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider>{children}</TooltipProvider>
+        </MotionConfig>
       </QueryClientProvider>
     </WagmiProvider>
   );

@@ -38,6 +38,15 @@
   --color-destructive-soft: var(--t-danger-soft);
   --color-overlay: var(--t-overlay);
 
+  --color-sidebar: var(--t-bg-deep);
+  --color-sidebar-foreground: var(--t-text);
+  --color-sidebar-primary: var(--t-brand);
+  --color-sidebar-primary-foreground: var(--t-brand-ink);
+  --color-sidebar-accent: var(--t-surface-2);
+  --color-sidebar-accent-foreground: var(--t-text);
+  --color-sidebar-border: var(--t-border-subtle);
+  --color-sidebar-ring: var(--t-brand);
+
   --color-field-bg: var(--field-bg);
   --color-field-dim: var(--field-dim);
   --color-field-mid: var(--field-mid);

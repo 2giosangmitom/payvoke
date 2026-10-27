@@ -44,7 +44,7 @@ import {
   createProviderCommand,
   createProviderKey,
   defaultTerms,
-  formatUsdc,
+  formatCommandPrice,
   fromAtomicUsdc,
   getProviderApp,
   getStoreApp,
@@ -55,6 +55,7 @@ import {
   toAtomicUsdc,
   updateProviderApp,
   updateProviderCommand,
+  type AppKind,
   type CommandInput,
   type CommandTerms,
   type ProviderAppDetail,
@@ -72,11 +73,13 @@ function blankOption(): CommandOption {
 
 function CommandEditor({
   appId,
+  kind,
   command,
   open,
   onClose,
 }: {
   appId: string;
+  kind: AppKind;
   command: ProviderCommand | null;
   open: boolean;
   onClose: () => void;
@@ -87,7 +90,16 @@ function CommandEditor({
   const [description, setDescription] = useState(command?.description ?? "");
   const [options, setOptions] = useState<CommandOption[]>(revision?.options ?? [blankOption()]);
   const [positional, setPositional] = useState(revision?.positionalParameter ?? "");
-  const [price, setPrice] = useState(revision ? fromAtomicUsdc(revision.grossAmount) : "0.01");
+  const [price, setPrice] = useState(
+    revision?.grossAmount ? fromAtomicUsdc(revision.grossAmount) : "0.01",
+  );
+  // Agents publish the range their offers must fall within.
+  const [minPrice, setMinPrice] = useState(
+    revision?.minGrossAmount ? fromAtomicUsdc(revision.minGrossAmount) : "0.01",
+  );
+  const [maxPrice, setMaxPrice] = useState(
+    revision?.maxGrossAmount ? fromAtomicUsdc(revision.maxGrossAmount) : "1",
+  );
   const [delivery, setDelivery] = useState(String(revision?.deliverySeconds ?? 600));
   const [review, setReview] = useState(String(revision?.reviewSeconds ?? 3600));
   const [terms, setTerms] = useState<CommandTerms>(revision?.terms ?? defaultTerms());
@@ -144,7 +156,12 @@ function CommandEditor({
                 description: description.trim(),
                 options: validOptions,
                 positionalParameter: positional || null,
-                grossAmount: toAtomicUsdc(price),
+                ...(kind === "AGENT"
+                  ? {
+                      minGrossAmount: toAtomicUsdc(minPrice),
+                      maxGrossAmount: toAtomicUsdc(maxPrice),
+                    }
+                  : { grossAmount: toAtomicUsdc(price) }),
                 terms: {
                   ...terms,
                   deliverySeconds: Number(delivery),
@@ -175,16 +192,41 @@ function CommandEditor({
                 />
               </div>
             </FormField>
-            <FormField label="Price per request (USDC)" htmlFor="command-price">
-              <Input
-                id="command-price"
-                value={price}
-                onChange={(event) => setPrice(event.target.value)}
-                inputMode="decimal"
-                required
-                className="font-mono"
-              />
-            </FormField>
+            {kind === "AGENT" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Lowest offer (USDC)" htmlFor="command-min-price">
+                  <Input
+                    id="command-min-price"
+                    value={minPrice}
+                    onChange={(event) => setMinPrice(event.target.value)}
+                    inputMode="decimal"
+                    required
+                    className="font-mono"
+                  />
+                </FormField>
+                <FormField label="Highest offer (USDC)" htmlFor="command-max-price">
+                  <Input
+                    id="command-max-price"
+                    value={maxPrice}
+                    onChange={(event) => setMaxPrice(event.target.value)}
+                    inputMode="decimal"
+                    required
+                    className="font-mono"
+                  />
+                </FormField>
+              </div>
+            ) : (
+              <FormField label="Price per request (USDC)" htmlFor="command-price">
+                <Input
+                  id="command-price"
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                  inputMode="decimal"
+                  required
+                  className="font-mono"
+                />
+              </FormField>
+            )}
           </div>
           <FormField label="Description" htmlFor="command-description">
             <Textarea
@@ -443,7 +485,7 @@ function CommandsTab({ app }: { app: ProviderAppDetail }) {
               revision={command.revision}
               terms={
                 command.revision && [
-                  formatUsdc(command.revision.grossAmount),
+                  formatCommandPrice(command.revision),
                   plural(command.revision.options.length, "argument"),
                   `plain text → ${command.revision.positionalParameter || "form only"}`,
                   `revision ${command.revision.id.slice(0, 8)}`,
@@ -483,6 +525,7 @@ function CommandsTab({ app }: { app: ProviderAppDetail }) {
         <CommandEditor
           key={editing?.id ?? "new"}
           appId={app.id}
+          kind={app.kind}
           command={editing}
           open
           onClose={() => setEditing(undefined)}
@@ -681,7 +724,7 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
   });
   const archive = useMutation({
     mutationFn: () => archiveProviderApp(app.id),
-    onSuccess: () => void navigate({ to: "/dashboard" }),
+    onSuccess: () => void navigate({ to: "/console/studio" }),
     onError: (cause) => setError(errorMessage(cause)),
   });
   return (
@@ -800,7 +843,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
           title="Sign in to manage this app."
           description="App controls belong to the wallet that owns the app."
           actions={
-            <Button variant="outline" render={<Link to="/dashboard" />}>
+            <Button variant="outline" render={<Link to="/console/studio" />}>
               Back to Studio
             </Button>
           }
@@ -817,7 +860,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
     return (
       <PageShell className="pt-16">
         <ErrorNotice>{app.error ? errorMessage(app.error) : "App not found."}</ErrorNotice>
-        <Button render={<Link to="/dashboard" />} variant="outline">
+        <Button render={<Link to="/console/studio" />} variant="outline">
           Back to Studio
         </Button>
       </PageShell>
@@ -825,7 +868,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   const data = app.data;
   return (
     <PageShell>
-      <BackLink to="/dashboard">Studio</BackLink>
+      <BackLink to="/console/studio">Studio</BackLink>
       <PageHeader
         className="pt-8 lg:pt-10"
         eyebrow={`App / ${data.id.slice(0, 8)}`}
@@ -835,6 +878,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
             {data.description || "No description yet."}
             <span className="mt-5 flex flex-wrap gap-2">
               <AppStatus availability={data.availability} />
+              <Tag>{data.kind.toLowerCase()}</Tag>
               <Tag>{data.visibility.toLowerCase()}</Tag>
               <Tag>{plural(data.commands.length, "command")}</Tag>
               <Tag>
@@ -852,17 +896,22 @@ export function ProviderAppPage({ appId }: { appId: string }) {
               size="lg"
               disabled={opening || data.availability !== "AVAILABLE"}
               onClick={() => {
+                if (data.kind === "TOOL") {
+                  void navigate({ to: "/console/run/$appId", params: { appId: data.id } });
+                  return;
+                }
                 setOpening(true);
                 setError("");
                 void newThread(data.id)
                   .then((thread) =>
-                    navigate({ to: "/chat/$threadId", params: { threadId: thread.id } }),
+                    navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
                   )
                   .catch((cause) => setError(errorMessage(cause)))
                   .finally(() => setOpening(false));
               }}
             >
-              {opening ? <Spinner /> : <MessageSquareText />} Open a thread
+              {opening ? <Spinner /> : <MessageSquareText />}{" "}
+              {data.kind === "TOOL" ? "Try the tool" : "Open a chat"}
             </Button>
             {data.visibility === "PUBLIC" && publicApp.data && (
               <Button

@@ -102,7 +102,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
       setVerifiedAddress(address);
       await refetch();
       setOpen(false);
-      void navigate({ to: "/dashboard" });
+      void navigate({ to: "/console" });
     } catch (cause) {
       setError(walletError(cause));
     } finally {
@@ -259,10 +259,10 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
                     size="lg"
                     onClick={() => {
                       setOpen(false);
-                      void navigate({ to: "/dashboard" });
+                      void navigate({ to: "/console" });
                     }}
                   >
-                    Open Studio <ArrowRight />
+                    Open console <ArrowRight />
                   </Button>
                   <Button size="lg" variant="outline" disabled={pending} onClick={logOut}>
                     {busy === "logout" ? <LoaderCircle className="animate-spin" /> : <LogOut />}

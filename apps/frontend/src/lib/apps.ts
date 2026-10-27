@@ -1,17 +1,21 @@
 import { parseUnits } from "viem";
 import { api } from "./api";
-import type { CommandOption, CommandRevision } from "./paid-chat";
+import type { AppKind, CommandOption, CommandRevision } from "./paid-chat";
 
+export type { AppKind };
+export type PriceRange = { min: string; max: string };
 export type Availability = "AVAILABLE" | "UNAVAILABLE" | "SUSPENDED";
 export type StoreApp = {
   id: string;
   name: string;
   description: string | null;
+  kind: AppKind;
   visibility: string;
   status: string;
   availability: Availability;
   commandCount: number;
   fromPrice: string | null;
+  priceRange: PriceRange | null;
   updatedAt: string;
 };
 export type StoreAppDetail = {
@@ -19,9 +23,11 @@ export type StoreAppDetail = {
   ownerId: string;
   name: string;
   description: string | null;
+  kind: AppKind;
   visibility: "PUBLIC" | "PRIVATE";
   status: string;
   availability: Availability;
+  priceRange: PriceRange | null;
   canChat: boolean;
   defaultCommandId: string | null;
   commands: { id: string; name: string; description: string; revision: CommandRevision | null }[];
@@ -32,6 +38,7 @@ export type StarredApp = {
   id: string;
   name: string;
   description: string | null;
+  kind: AppKind;
   visibility: string;
   status: string;
   availability: Availability;
@@ -42,6 +49,7 @@ export type ProviderApp = {
   id: string;
   name: string;
   description: string | null;
+  kind: AppKind;
   visibility: "PUBLIC" | "PRIVATE";
   status: string;
   payoutAddress: string;
@@ -84,7 +92,10 @@ export type CommandInput = {
   description: string;
   options: CommandOption[];
   positionalParameter?: string | null;
-  grossAmount: string;
+  // TOOL: grossAmount. AGENT: minGrossAmount and maxGrossAmount.
+  grossAmount?: string;
+  minGrossAmount?: string;
+  maxGrossAmount?: string;
   terms: CommandTerms;
   outputSchema?: unknown;
   expectedRevisionId?: string;
@@ -114,6 +125,7 @@ export const createProviderApp = (body: {
   description?: string;
   payoutAddress: string;
   visibility: "PUBLIC" | "PRIVATE";
+  kind: AppKind;
   clientRequestId?: string;
 }) =>
   api<ProviderApp>("/v1/provider/apps", "POST", {
@@ -142,7 +154,15 @@ export const listProviderKeys = (id: string) =>
   api<ProviderKey[]>(`/v1/provider/apps/${encodeURIComponent(id)}/keys`);
 export const createProviderKey = (
   id: string,
-  scopes = ["products:write", "events:read", "events:ack", "reports:write", "files:write"],
+  scopes = [
+    "products:write",
+    "events:read",
+    "events:ack",
+    "reports:write",
+    "files:write",
+    "messages:write",
+    "offers:write",
+  ],
 ) =>
   api<{ id: string; scopes: string[]; expiresAt: string; secret: string }>(
     `/v1/provider/apps/${encodeURIComponent(id)}/keys`,
@@ -185,6 +205,18 @@ export function toAtomicUsdc(value: string) {
   if (!/^\d+(\.\d{0,6})?$/.test(normalized))
     throw new Error("Enter a USDC amount with up to 6 decimals.");
   return parseUnits(normalized, 6).toString();
+}
+// A command's price as shown to buyers: fixed for tools, a range for agents.
+export function formatCommandPrice(revision: CommandRevision | null | undefined) {
+  if (!revision) return "—";
+  if (revision.grossAmount) return formatUsdc(revision.grossAmount);
+  return formatUsdcRange(revision.minGrossAmount, revision.maxGrossAmount);
+}
+export function formatUsdcRange(min: string | null | undefined, max: string | null | undefined) {
+  if (!min || !max) return "—";
+  return min === max
+    ? formatUsdc(min)
+    : `${formatUsdc(min).replace(" USDC", "")}–${formatUsdc(max)}`;
 }
 export const fromAtomicUsdc = (value: string) =>
   (Number(value) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 });

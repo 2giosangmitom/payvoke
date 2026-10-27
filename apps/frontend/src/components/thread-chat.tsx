@@ -7,57 +7,63 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import {
   CircleDollarSign,
   Download,
+  Handshake,
   Paperclip,
   Radio,
   RefreshCcw,
   Send,
-  ShieldCheck,
   Slash,
   X,
 } from "lucide-react";
-import { useConnection, usePublicClient, useSignTypedData } from "wagmi";
-import { avalancheFuji } from "wagmi/chains";
-import { isHex, type Address, type Hex } from "viem";
 import type { QuoteDocument } from "@payvoke/x402";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Input } from "./ui/input";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 import { ErrorNotice, Eyebrow, FormField, LoadingState, plural } from "./page-kit";
 import { ChatWidget } from "./chat-widget";
 import { OpenUISurface, surfaceQuestionIds } from "./openui-surface";
+import { PaymentConfirm, formatDuration } from "./payment-confirm";
 import { QuestionForm } from "./question-form";
+import { SchemaForm } from "./schema-form";
 import { apiOrigin } from "@/src/lib/api";
-import { formatUsdc } from "@/src/lib/apps";
+import { formatCommandPrice, formatUsdc } from "@/src/lib/apps";
 import { ACCEPTED_FILE_TYPES, downloadFile, formatBytes, uploadThreadFile } from "@/src/lib/files";
 import { cn } from "@/src/lib/utils";
 import {
   answerQuestion,
-  checkGrant,
+  declineOffer,
   getPendingQuote,
   getSnapshot,
   getThread,
   quoteFor,
   requestRevision,
-  submitSigned,
+  sendMessage,
   type AguiEvent,
+  type AppKind,
   type ChatQuestion,
   type ChatSnapshot,
-  type CommandOption,
+  type Offer,
+  type QuoteSource,
   type ThreadCommand,
   type ThreadDetail,
 } from "@/src/lib/paid-chat";
 
-type ChatMessage = { id: string; role: "user" | "assistant"; text: string; complete: boolean };
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  complete: boolean;
+  // Shown above an assistant bubble; distinguishes provider chat from paid output.
+  label?: string;
+};
 // A local file on its way to READY; only READY ones are sent with a quote.
 type Attachment = {
   key: string;
@@ -71,12 +77,6 @@ const MAX_ATTACHMENTS = 10;
 type Surface = ChatSnapshot["surfaces"][number];
 const readableError = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Request failed.";
-const requiredMark = (
-  <span aria-hidden="true" className="text-primary">
-    {" "}
-    *
-  </span>
-);
 const answerText = (values: Record<string, unknown>) => {
   const entries = Object.values(values);
   return entries.length === 1 && typeof entries[0] === "string"
@@ -84,33 +84,78 @@ const answerText = (values: Record<string, unknown>) => {
     : JSON.stringify(values);
 };
 
-function normalize(snapshot: ChatSnapshot) {
+// Streamed output and buyer answers of one paid invocation.
+function paidMessages(snapshot: ChatSnapshot, invocationId: string) {
   const messages: ChatMessage[] = [];
-  for (const prompt of snapshot.prompts) {
-    messages.push({ id: prompt.quoteId, role: "user", text: prompt.text, complete: true });
-    for (const reply of snapshot.messages.filter((m) => m.invocationId === prompt.invocationId)) {
-      messages.push({
-        id: reply.messageId,
-        role: "assistant",
-        text: reply.content,
-        complete: reply.complete,
-      });
+  for (const reply of snapshot.messages.filter((m) => m.invocationId === invocationId)) {
+    messages.push({
+      id: reply.messageId,
+      role: "assistant",
+      text: reply.content,
+      complete: reply.complete,
+    });
+  }
+  for (const answer of snapshot.answers.filter((item) => item.invocationId === invocationId)) {
+    messages.push({
+      id: `answer-${answer.invocationId}-${answer.questionId}`,
+      role: "user",
+      text: answerText(answer.arguments),
+      complete: true,
+    });
+  }
+  return messages;
+}
+
+const OFFER_LABEL: Record<Offer["status"], string> = {
+  OPEN: "open",
+  ACCEPTED: "accepted",
+  DECLINED: "declined",
+  WITHDRAWN: "withdrawn",
+  SUPERSEDED: "replaced",
+  EXPIRED: "expired",
+};
+
+// Tools: each paid prompt followed by its output. Agents: the free pre-sale
+// conversation in order, each settled offer after the message it answered and
+// the paid output of an accepted offer right after it.
+function normalize(snapshot: ChatSnapshot, kind: AppKind) {
+  const messages: ChatMessage[] = [];
+  if (kind !== "AGENT") {
+    for (const prompt of snapshot.prompts) {
+      messages.push({ id: prompt.quoteId, role: "user", text: prompt.text, complete: true });
+      messages.push(...paidMessages(snapshot, prompt.invocationId));
     }
-    for (const answer of snapshot.answers.filter(
-      (item) => item.invocationId === prompt.invocationId,
+    return messages;
+  }
+  const invocationOf = new Map(snapshot.prompts.map((p) => [p.quoteId, p.invocationId]));
+  for (const message of snapshot.conversation) {
+    const files = message.files.map((file) => `📎 ${file.name}`).join("\n");
+    messages.push({
+      id: message.id,
+      role: message.role === "BUYER" ? "user" : "assistant",
+      text: files ? `${message.content}\n${files}` : message.content,
+      complete: true,
+      label: message.role === "PROVIDER" ? "PROVIDER · MESSAGE" : undefined,
+    });
+    // The open offer is actionable above the composer instead.
+    for (const offer of snapshot.offers.filter(
+      (item) => item.messageSeq === message.seq && item.status !== "OPEN",
     )) {
       messages.push({
-        id: `answer-${answer.invocationId}-${answer.questionId}`,
-        role: "user",
-        text: answerText(answer.arguments),
+        id: `offer-${offer.id}`,
+        role: "assistant",
+        text: `${formatUsdc(offer.grossAmount)} · ${offer.summary}`,
         complete: true,
+        label: `OFFER · ${OFFER_LABEL[offer.status].toUpperCase()}`,
       });
+      const invocationId = offer.quoteId ? invocationOf.get(offer.quoteId) : undefined;
+      if (invocationId) messages.push(...paidMessages(snapshot, invocationId));
     }
   }
   return messages;
 }
 
-function useStream(threadId: string) {
+function useStream(threadId: string, kind: AppKind) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [surfaces, setSurfaces] = useState<Surface[]>([]);
@@ -130,9 +175,9 @@ function useStream(threadId: string) {
     const next = BigInt(snapshot.data.cursor);
     if (next < cursor.current) return;
     cursor.current = next;
-    setMessages(normalize(snapshot.data));
+    setMessages(normalize(snapshot.data, kind));
     setSurfaces(snapshot.data.surfaces);
-  }, [snapshot.data]);
+  }, [snapshot.data, kind]);
 
   useEffect(() => {
     cursor.current = 0n;
@@ -151,7 +196,7 @@ function useStream(threadId: string) {
 
     const applySnapshot = (data: ChatSnapshot) => {
       cursor.current = BigInt(data.cursor);
-      setMessages(normalize(data));
+      setMessages(normalize(data, kind));
       setSurfaces(data.surfaces);
     };
 
@@ -215,6 +260,11 @@ function useStream(threadId: string) {
         setConnection("connected");
       };
       source.addEventListener("ag-ui", handler);
+      // Pre-sale messages and offers changed; the event itself carries no content.
+      source.addEventListener("conversation", () => {
+        void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "snapshot"] });
+        void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "details"] });
+      });
       source.onerror = () => {
         setConnection("reconnecting");
         source?.close();
@@ -244,7 +294,7 @@ function useStream(threadId: string) {
       if (timer) clearTimeout(timer);
       source?.close();
     };
-  }, [threadId, ready, queryClient]);
+  }, [threadId, ready, queryClient, kind]);
 
   return { messages, surfaces, connection, snapshot, refresh: () => snapshot.refetch() };
 }
@@ -258,17 +308,24 @@ function BuyerMessage() {
   );
 }
 function AssistantReply() {
+  const label = useAuiState((s) => s.message.metadata.custom?.["label"] as string | undefined);
   return (
     <MessagePrimitive.Root className="max-w-[85%] self-start border border-border bg-background-deep px-5 py-4 text-sm leading-relaxed break-words whitespace-pre-wrap animate-in fade-in-0 slide-in-from-bottom-2">
       <span className="mb-2 block font-mono text-[10px] tracking-widest text-faint">
-        APP · LIVE OUTPUT
+        {label ?? "APP · LIVE OUTPUT"}
       </span>
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
 }
 
-function RevisionControl({ invocationId, remaining }: { invocationId: string; remaining: number }) {
+export function RevisionControl({
+  invocationId,
+  remaining,
+}: {
+  invocationId: string;
+  remaining: number;
+}) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -326,111 +383,24 @@ function RevisionControl({ invocationId, remaining }: { invocationId: string; re
   );
 }
 
-function OptionField({
-  option,
-  value,
-  onChange,
-}: {
-  option: CommandOption;
-  value: unknown;
-  onChange: (value: unknown) => void;
-}) {
-  const id = `command-option-${option.name}`;
-  if (option.type === "BOOLEAN")
-    return (
-      <label className="flex items-center gap-2.5 text-sm" htmlFor={id}>
-        <Checkbox
-          id={id}
-          checked={Boolean(value)}
-          onCheckedChange={(checked) => onChange(checked)}
-        />
-        {option.name}
-        {option.required && requiredMark}
-      </label>
-    );
-  const label = (
-    <>
-      {option.name}
-      {option.required && requiredMark}
-    </>
-  );
-  if (option.choices?.length)
-    return (
-      <FormField label={label} htmlFor={id}>
-        <NativeSelect
-          id={id}
-          className="w-full"
-          value={String(value ?? "")}
-          required={option.required}
-          onChange={(event) => {
-            const raw = event.target.value;
-            if (!raw) return onChange("");
-            const choice = option.choices?.find((item) => String(item) === raw);
-            onChange(choice ?? raw);
-          }}
-        >
-          <NativeSelectOption value="">Choose…</NativeSelectOption>
-          {option.choices.map((choice) => (
-            <NativeSelectOption key={String(choice)} value={String(choice)}>
-              {String(choice)}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </FormField>
-    );
-  return (
-    <FormField label={label} htmlFor={id}>
-      <Input
-        id={id}
-        type={option.type === "STRING" ? "text" : "number"}
-        step={option.type === "INTEGER" ? 1 : option.type === "NUMBER" ? "any" : undefined}
-        value={String(value ?? "")}
-        required={option.required}
-        min={option.min ?? option.minLength}
-        max={option.max ?? option.maxLength}
-        onChange={(event) =>
-          onChange(
-            option.type === "STRING"
-              ? event.target.value
-              : event.target.value === ""
-                ? ""
-                : Number(event.target.value),
-          )
-        }
-      />
-    </FormField>
-  );
-}
-
 function CommandDialog({
   command,
   initialText,
+  kind,
   onClose,
   onSubmit,
 }: {
   command: ThreadCommand | null;
   initialText: string;
+  kind: AppKind;
   onClose: () => void;
   onSubmit: (command: ThreadCommand, values: Record<string, unknown>) => Promise<void>;
 }) {
-  const [values, setValues] = useState<Record<string, unknown>>({});
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!command) return;
-    const next: Record<string, unknown> = {};
-    const textTarget =
-      command.revision?.positionalParameter ??
-      command.revision?.options.find((option) => option.type === "STRING")?.name;
-    for (const option of command.revision?.options ?? []) {
-      if (option.type === "BOOLEAN") next[option.name] = false;
-      else next[option.name] = option.name === textTarget && initialText ? initialText : "";
-    }
-    setValues(next);
-    setError("");
-  }, [command, initialText]);
   if (!command || !command.revision) return null;
   const revision = command.revision;
+  const textTarget =
+    revision.positionalParameter ??
+    revision.options.find((option) => option.type === "STRING")?.name;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -441,41 +411,25 @@ function CommandDialog({
           <DialogDescription>{command.description}</DialogDescription>
         </DialogHeader>
         <p className="font-mono text-xs text-primary">
-          {formatUsdc(revision.grossAmount)} per request
+          {kind === "AGENT"
+            ? `${formatCommandPrice(revision)} · the app sends an offer before you pay`
+            : `${formatCommandPrice(revision)} per request`}
         </p>
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setBusy(true);
-            setError("");
-            const payload = Object.fromEntries(
-              Object.entries(values).filter(([, value]) => value !== ""),
-            );
-            void onSubmit(command, payload)
-              .then(onClose)
-              .catch((cause) => setError(readableError(cause)))
-              .finally(() => setBusy(false));
+        <SchemaForm
+          key={command.id}
+          schema={revision.inputSchema}
+          initial={textTarget && initialText ? { [textTarget]: initialText } : {}}
+          submitLabel={kind === "AGENT" ? "Send request" : "Get a quote"}
+          onSubmit={async (values) => {
+            await onSubmit(command, values);
+            onClose();
           }}
-        >
-          {revision.options.map((option) => (
-            <OptionField
-              key={option.name}
-              option={option}
-              value={values[option.name]}
-              onChange={(value) => setValues((current) => ({ ...current, [option.name]: value }))}
-            />
-          ))}
-          {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>
-              {busy && <Spinner />} Get a quote
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          footer={
+            <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-          </div>
-        </form>
+          }
+        />
       </DialogContent>
     </Dialog>
   );
@@ -495,75 +449,72 @@ function commandForText(thread: ThreadDetail, text: string, selectedCommandId: s
   return { command, input: (slash[2] ?? "").trim(), explicit: true };
 }
 
-function QuoteCard({
-  quote,
-  onAuthorize,
-  onHide,
+// The provider's priced proposal. Only offers read from the API get a pay
+// button; nothing in provider chat text can create one.
+function OfferCard({
+  offer,
+  command,
   busy,
+  onAccept,
+  onDecline,
 }: {
-  quote: QuoteDocument;
-  onAuthorize: (grantId: string) => Promise<void>;
-  onHide: () => void;
+  offer: Offer;
+  command: ThreadCommand | undefined;
   busy: boolean;
+  onAccept: () => void;
+  onDecline: () => void;
 }) {
-  const [grantId, setGrantId] = useState("");
-  const [error, setError] = useState("");
+  const terms = command?.revision?.id === offer.commandRevisionId ? command.revision.terms : null;
   return (
     <section
-      aria-label="Quote awaiting authorization"
-      className="mb-3 grid gap-3 border border-primary bg-primary-soft p-4 animate-in fade-in-0 slide-in-from-bottom-2"
+      aria-label="Offer from the app"
+      className="mb-3 grid gap-3 border border-primary bg-background-deep p-4 animate-in fade-in-0 slide-in-from-bottom-2"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="grid size-8 place-items-center border border-primary text-primary">
-          <CircleDollarSign size={17} />
+          <Handshake size={17} />
         </div>
         <div className="grid min-w-0 gap-0.5">
           <strong className="font-mono text-lg font-semibold tracking-tight">
-            {formatUsdc(quote.grossAmount)}
+            {formatUsdc(offer.grossAmount)}
           </strong>
           <span className="font-mono text-[10px] text-faint">
-            Expires {new Date(quote.validUntil * 1000).toLocaleTimeString()} · Avalanche Fuji
+            Offer · {command ? `/${command.name} · ` : ""}valid until{" "}
+            {new Date(offer.expiresAt).toLocaleTimeString()}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="ml-auto"
-          onClick={onHide}
-          aria-label="Hide quote"
-        >
-          <X />
-        </Button>
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        The vault holds this amount before the app gets your request. The delivery counts as
-        unverified until Payvoke checks it.
-      </p>
-      <FormField label="Delegated grant ID (bytes32)" htmlFor="chat-grant">
-        <Input
-          id="chat-grant"
-          value={grantId}
-          onChange={(event) => setGrantId(event.target.value)}
-          placeholder="0x…"
-          autoComplete="off"
-          className="bg-background font-mono"
-        />
-      </FormField>
+      <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{offer.summary}</p>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px] sm:grid-cols-3">
+        <div>
+          <dt className="text-faint">Delivery</dt>
+          <dd>{formatDuration(offer.deliverySeconds)}</dd>
+        </div>
+        {terms && (
+          <>
+            <div>
+              <dt className="text-faint">Review window</dt>
+              <dd>{formatDuration(terms.reviewSeconds)}</dd>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <dt className="text-faint">Refund</dt>
+              <dd className="break-words">{terms.refundPolicy}</dd>
+            </div>
+          </>
+        )}
+      </dl>
       <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={busy}
-          onClick={() => {
-            setError("");
-            void onAuthorize(grantId).catch((cause) => setError(readableError(cause)));
-          }}
-        >
-          <ShieldCheck /> {busy ? "Authorizing…" : "Authorize in wallet"}
+        <Button disabled={busy} onClick={onAccept}>
+          {busy ? <Spinner /> : <CircleDollarSign />} Accept and pay
         </Button>
-        <Button variant="outline" onClick={onHide} disabled={busy}>
-          Hide
+        <Button variant="outline" disabled={busy} onClick={onDecline}>
+          Decline
         </Button>
       </div>
-      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+      <p className="font-mono text-[10px] leading-relaxed text-faint">
+        Accepting turns this offer into a Payvoke quote. You still review it and authorize the
+        payment in your wallet.
+      </p>
     </section>
   );
 }
@@ -575,7 +526,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     queryFn: () => getThread(threadId),
     refetchInterval: 5000,
   });
-  const stream = useStream(threadId);
+  const kind: AppKind = thread.data?.app.kind ?? "TOOL";
+  const agent = kind === "AGENT";
+  const stream = useStream(threadId, kind);
   const commands = useMemo(
     () => (thread.data?.commands ?? []).filter((command) => command.revision),
     [thread.data],
@@ -586,13 +539,10 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   const [composerText, setComposerText] = useState("");
   const [quote, setQuote] = useState<QuoteDocument | null>(null);
   const [quoteHidden, setQuoteHidden] = useState(false);
-  const [busy, setBusy] = useState<"quoting" | "signing" | null>(null);
+  const [busy, setBusy] = useState<"quoting" | "sending" | null>(null);
   const [error, setError] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const { address, chainId } = useConnection();
-  const publicClient = usePublicClient({ chainId: avalancheFuji.id });
-  const { signTypedDataAsync } = useSignTypedData();
   const restored = useQuery({
     queryKey: ["thread", threadId, "pending-quote", thread.data?.activeQuoteId],
     queryFn: () => getPendingQuote(thread.data!.activeQuoteId!),
@@ -625,23 +575,30 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     );
   }, [thread.data, commands]);
 
-  async function prepare(commandId: string, args: Record<string, unknown>) {
+  const readyFileIds = () => {
+    if (attachments.some((item) => item.status === "uploading"))
+      throw new Error("Wait for attachments to finish uploading.");
+    return attachments.flatMap((item) =>
+      item.status === "ready" && item.fileId ? [item.fileId] : [],
+    );
+  };
+  const refreshThread = async () => {
+    await stream.refresh();
+    void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "details"] });
+  };
+
+  // Tools quote a command; agents quote the provider's open offer.
+  async function prepare(source: QuoteSource) {
     if (!thread.data) return;
     setError("");
     setBusy("quoting");
     try {
-      if (attachments.some((item) => item.status === "uploading"))
-        throw new Error("Wait for attachments to finish uploading.");
-      const fileIds = attachments.flatMap((item) =>
-        item.status === "ready" && item.fileId ? [item.fileId] : [],
-      );
-      const result = await quoteFor(thread.data, commandId, args, fileIds);
+      const result = await quoteFor(thread.data.id, source, readyFileIds());
       // The quote froze these files; the next request starts without them.
       setAttachments([]);
       setQuote(result);
       setQuoteHidden(false);
-      await stream.refresh();
-      void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "details"] });
+      await refreshThread();
     } catch (cause) {
       setError(readableError(cause));
       throw cause;
@@ -650,27 +607,32 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     }
   }
 
-  async function authorize(grant: string) {
-    if (!pendingQuote || !address || chainId !== avalancheFuji.id || !publicClient) {
-      throw new Error("Connect the authorized signer wallet on Avalanche Fuji.");
-    }
-    if (!isHex(grant, { strict: true }) || grant.length !== 66)
-      throw new Error("Enter a valid 32-byte delegated grant ID.");
-    setBusy("signing");
+  // Free pre-sale message to an agent. Files go along as metadata only; the
+  // provider can download them once an accepted offer is paid.
+  async function send(content: string, commandId?: string, args?: Record<string, unknown>) {
+    setError("");
+    setBusy("sending");
     try {
-      const buyer = pendingQuote.protocolQuote.buyer as Address;
-      const { epoch } = await checkGrant(pendingQuote, grant as Hex, buyer, address, (args) =>
-        publicClient.readContract(args),
-      );
-      await submitSigned(pendingQuote, grant as Hex, epoch, (args) => signTypedDataAsync(args));
-      setQuote(null);
-      setQuoteHidden(false);
-      void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "pending-quote"] });
-      void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "details"] });
-      await stream.refresh();
+      await sendMessage(threadId, {
+        content,
+        ...(commandId ? { commandId, arguments: args ?? {} } : {}),
+        fileIds: readyFileIds(),
+      });
+      setAttachments([]);
+      await refreshThread();
+    } catch (cause) {
+      setError(readableError(cause));
+      throw cause;
     } finally {
       setBusy(null);
     }
+  }
+
+  async function paid() {
+    setQuote(null);
+    setQuoteHidden(false);
+    void queryClient.invalidateQueries({ queryKey: ["thread", threadId, "pending-quote"] });
+    await refreshThread();
   }
 
   function attach(files: FileList | null) {
@@ -700,6 +662,8 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   function submitText(text: string) {
     if (!thread.data) return;
     const resolved = commandForText(thread.data, text, selectedCommandId);
+    // Agents read plain text themselves; only a slash command picks a command.
+    if (agent && !resolved.explicit) return send(text.trim());
     if (!resolved.command)
       throw new Error(
         resolved.explicit
@@ -711,20 +675,27 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     const needsForm =
       !positional ||
       command.revision?.options.some((option) => option.required && option.name !== positional);
-    if (positional && resolved.input && !needsForm)
-      return prepare(command.id, { [positional]: resolved.input });
+    if (positional && resolved.input && !needsForm) {
+      const args = { [positional]: resolved.input };
+      return agent
+        ? send(text.trim(), command.id, args)
+        : prepare({ commandId: command.id, arguments: args });
+    }
     setDialogText(resolved.input);
     setDialogCommand(command);
     return Promise.resolve();
   }
 
+  const openOffer = stream.snapshot.data?.offers.find((offer) => offer.status === "OPEN");
+  const presale = thread.data?.presale ?? null;
   const sendDisabled =
     !thread.data ||
     thread.data.app.availability !== "AVAILABLE" ||
     Boolean(thread.data.archivedAt) ||
     busy !== null ||
     Boolean(pendingQuote) ||
-    Boolean(thread.data.activeQuoteId);
+    Boolean(thread.data.activeQuoteId) ||
+    (agent && presale?.remaining === 0);
 
   const runtime = useExternalStoreRuntime({
     messages: stream.messages,
@@ -732,6 +703,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       id: message.id,
       role: message.role,
       content: [{ type: "text", text: message.text }],
+      metadata: { custom: message.label ? { label: message.label } : {} },
     }),
     isRunning:
       stream.snapshot.data?.invocations.some((inv) =>
@@ -859,12 +831,20 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 <h3 className="mt-5 max-w-md text-[clamp(1.8rem,4vw,3rem)] leading-[1.07] font-medium tracking-[-0.05em]">
                   Ask {data.app.name} something.
                 </h3>
-                <p className="mt-5 max-w-md leading-7 text-muted-foreground">
-                  Plain text goes to{" "}
-                  <code className="font-mono text-primary">/{selected?.name ?? "default"}</code>.
-                  Type <code className="font-mono text-primary">/</code> to pick another command.
-                  You see a quote before every request.
-                </p>
+                {agent ? (
+                  <p className="mt-5 max-w-md leading-7 text-muted-foreground">
+                    Describe what you need. Messages are free: {data.app.name} replies and sends an
+                    offer with a price. You pay only if you accept it. Type{" "}
+                    <code className="font-mono text-primary">/</code> to use a command.
+                  </p>
+                ) : (
+                  <p className="mt-5 max-w-md leading-7 text-muted-foreground">
+                    Plain text goes to{" "}
+                    <code className="font-mono text-primary">/{selected?.name ?? "default"}</code>.
+                    Type <code className="font-mono text-primary">/</code> to pick another command.
+                    You see a quote before every request.
+                  </p>
+                )}
                 <div className="mt-6 flex flex-wrap gap-2">
                   {commands.slice(0, 5).map((command) => (
                     <Button
@@ -982,18 +962,34 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     <code className="font-mono text-xs text-primary">/{command.name}</code>
                     <span className="truncate text-xs">{command.description}</span>
                     <small className="font-mono text-[10px] text-faint">
-                      {formatUsdc(command.revision?.grossAmount)}
+                      {formatCommandPrice(command.revision)}
                     </small>
                   </button>
                 ))}
               </div>
             )}
             {pendingQuote && !quoteHidden && (
-              <QuoteCard
-                quote={pendingQuote}
-                busy={busy === "signing"}
-                onHide={() => setQuoteHidden(true)}
-                onAuthorize={authorize}
+              <div className="mb-3">
+                <PaymentConfirm
+                  quote={pendingQuote}
+                  onHide={() => setQuoteHidden(true)}
+                  onPaid={paid}
+                />
+              </div>
+            )}
+            {agent && openOffer && !pendingQuote && !data.activeQuoteId && (
+              <OfferCard
+                offer={openOffer}
+                command={data.commands.find(
+                  (command) => command.revision?.id === openOffer.commandRevisionId,
+                )}
+                busy={busy === "quoting"}
+                onAccept={() => void prepare({ offerId: openOffer.id }).catch(() => undefined)}
+                onDecline={() =>
+                  void declineOffer(threadId, openOffer.id)
+                    .then(refreshThread)
+                    .catch((cause) => setError(readableError(cause)))
+                }
               />
             )}
             {pendingQuote && quoteHidden && (
@@ -1041,32 +1037,52 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 ))}
               </ul>
             )}
-            <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
-              <label className="inline-flex min-w-0 items-center gap-1.5">
-                <Slash size={12} />
-                <span>Command</span>
-                <select
-                  aria-label="Selected command"
-                  value={selected?.id ?? ""}
-                  onChange={(event) => setSelectedCommandId(event.target.value)}
-                  className="bg-transparent px-0.5 py-1 text-[11px] text-foreground"
-                >
-                  {commands.map((command) => (
-                    <option key={command.id} value={command.id}>
-                      /{command.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="hidden truncate sm:inline">
-                {selected?.revision?.positionalParameter
-                  ? `Plain text → ${selected.revision.positionalParameter}`
-                  : "Options open in a form"}
-              </span>
-              <span className="ml-auto text-primary">
-                {selected ? formatUsdc(selected.revision?.grossAmount) : ""}
-              </span>
-            </div>
+            {agent ? (
+              <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
+                <span className="inline-flex items-center gap-1.5">
+                  <Slash size={12} /> Type / for commands
+                </span>
+                {presale && (
+                  <span
+                    className={cn(
+                      "ml-auto",
+                      presale.remaining === 0 ? "text-warning" : "text-primary",
+                    )}
+                  >
+                    {presale.remaining === 0
+                      ? "Free messages used up · accept an offer to continue"
+                      : `${presale.remaining}/${presale.limit} free messages`}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3.5 pt-1 font-mono text-[10px] text-faint">
+                <label className="inline-flex min-w-0 items-center gap-1.5">
+                  <Slash size={12} />
+                  <span>Command</span>
+                  <select
+                    aria-label="Selected command"
+                    value={selected?.id ?? ""}
+                    onChange={(event) => setSelectedCommandId(event.target.value)}
+                    className="bg-transparent px-0.5 py-1 text-[11px] text-foreground"
+                  >
+                    {commands.map((command) => (
+                      <option key={command.id} value={command.id}>
+                        /{command.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="hidden truncate sm:inline">
+                  {selected?.revision?.positionalParameter
+                    ? `Plain text → ${selected.revision.positionalParameter}`
+                    : "Options open in a form"}
+                </span>
+                <span className="ml-auto text-primary">
+                  {selected ? formatCommandPrice(selected.revision) : ""}
+                </span>
+              </div>
+            )}
             <ComposerPrimitive.Root className="flex items-end gap-3 pt-2">
               <input
                 ref={fileInput}
@@ -1100,7 +1116,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                 className="min-w-0 flex-1 resize-none border border-border bg-background px-3.5 py-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
               />
               <ComposerPrimitive.Send
-                aria-label="Get a quote"
+                aria-label={agent ? "Send message" : "Get a quote"}
                 className="grid size-12 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Send size={18} />
@@ -1110,9 +1126,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
         </ThreadPrimitive.Root>
       </AssistantRuntimeProvider>
 
-      {busy === "quoting" && (
+      {busy && (
         <p className="flex items-center gap-2 px-6 py-2 font-mono text-xs text-muted-foreground">
-          <Spinner className="size-3.5" /> Preparing quote…
+          <Spinner className="size-3.5" /> {busy === "quoting" ? "Preparing quote…" : "Sending…"}
         </p>
       )}
       {error && <ErrorNotice className="mx-6 my-3 w-auto">{error}</ErrorNotice>}
@@ -1132,10 +1148,15 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       <CommandDialog
         command={dialogCommand}
         initialText={dialogText}
+        kind={kind}
         onClose={() => setDialogCommand(null)}
         onSubmit={async (command, values) => {
           if (!command.revision) return;
-          await prepare(command.id, values);
+          if (!agent) return prepare({ commandId: command.id, arguments: values });
+          const positional = command.revision.positionalParameter;
+          const text =
+            positional && typeof values[positional] === "string" ? values[positional] : "";
+          await send(`/${command.name}${text ? ` ${text}` : ""}`, command.id, values);
         }}
       />
     </div>

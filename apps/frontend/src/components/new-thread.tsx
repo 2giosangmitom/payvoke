@@ -44,6 +44,7 @@ export function NewThread() {
       id: app.id,
       name: app.name,
       description: app.description,
+      kind: app.kind,
       availability: app.availability,
       visibility: app.visibility,
       commandCount: app.commandCount,
@@ -62,11 +63,14 @@ export function NewThread() {
         id: app.id,
         name: app.name,
         description: app.description,
+        kind: app.kind,
         availability: app.availability,
         visibility: app.visibility,
         commandCount: undefined as number | undefined,
       })),
   ].filter((app) => {
+    // Tools run from a form, not a chat.
+    if (app.kind !== "AGENT") return false;
     if (seen.has(app.id)) return false;
     seen.add(app.id);
     return true;
@@ -78,7 +82,7 @@ export function NewThread() {
       setError("");
     },
     onSuccess: (thread) =>
-      void navigate({ to: "/chat/$threadId", params: { threadId: thread.id } }),
+      void navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
     onError: (cause) => setError(errorMessage(cause, "Could not start a thread.")),
     onSettled: () => setBusy(""),
   });
@@ -87,14 +91,17 @@ export function NewThread() {
     <main className="overflow-y-auto px-5 py-10 sm:px-10 lg:px-14">
       <BlurFade>
         <header className="max-w-2xl">
-          <Eyebrow className="mb-4">New thread</Eyebrow>
+          <Eyebrow className="mb-4">New chat</Eyebrow>
           <h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.05em]">
-            Which app do you want to talk to?
+            Which agent do you want to talk to?
           </h1>
           <p className="mt-4 leading-7 text-muted-foreground">
-            Threads from every app share one list. Type{" "}
-            <code className="font-mono text-primary">/</code> in a thread to pick a command; plain
-            text goes to the app&apos;s default command.
+            Chatting is free. Describe the job; the agent replies and sends an offer with a price,
+            and you pay only if you accept. Tools run from a form instead: open one from the{" "}
+            <Link to="/store" className="text-primary hover:underline">
+              store
+            </Link>
+            .
           </p>
         </header>
       </BlurFade>
@@ -104,7 +111,7 @@ export function NewThread() {
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
         />
-        <span className="sr-only">Search apps to chat with</span>
+        <span className="sr-only">Search agents to chat with</span>
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -133,11 +140,11 @@ export function NewThread() {
           </ErrorNotice>
         ) : apps.length === 0 ? (
           <EmptyState
-            eyebrow="No apps found"
-            title="Nothing to chat with yet."
+            eyebrow="No agents found"
+            title="No agent to chat with yet."
             action={<Button render={<Link to="/store" />}>Browse the store</Button>}
           >
-            Public apps appear here once their owner publishes a command.
+            Public agents appear here once their owner publishes a command.
           </EmptyState>
         ) : (
           <section aria-label="Apps" className="grid gap-3 xl:grid-cols-2">
@@ -169,7 +176,7 @@ export function NewThread() {
                         onClick={() => start.mutate(app.id)}
                       >
                         {busy === app.id ? <Spinner /> : <ArrowUpRight />}
-                        {available ? "Start thread" : "Offline"}
+                        {available ? "Start chat" : "Offline"}
                       </Button>
                     </div>
                   </article>

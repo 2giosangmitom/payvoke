@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { NetworkAvalancheFuji, TokenUSDC } from "@web3icons/react";
-import { ArrowUp, ArrowUpRight, Menu, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, LayoutDashboard, Menu, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/src/components/ui/button";
 import { RevealGroup, RevealItem, easeOut } from "@/src/components/ui/reveal";
@@ -9,16 +9,15 @@ import { cn } from "@/src/lib/utils";
 import { ThemeToggle } from "./theme-select";
 import { WalletAccess } from "./wallet-access";
 
-export type SiteSection = "home" | "store" | "chat" | "dashboard";
+export type SiteSection = "home" | "store";
 
+// The public site only browses; chats, runs, payments and Studio live in the console.
 const navItems = [
   { section: "home", to: "/", label: "Home" },
   { section: "store", to: "/store", label: "Store" },
-  { section: "chat", to: "/chat", label: "Chat" },
-  { section: "dashboard", to: "/dashboard", label: "Studio" },
 ] as const;
 
-function Brand({ small = false }: { small?: boolean }) {
+export function Brand({ small = false }: { small?: boolean }) {
   return (
     <Link to="/" className="inline-flex shrink-0 items-center gap-2.5" aria-label="Payvoke home">
       <img
@@ -65,6 +64,9 @@ export function SiteHeader({ current }: { current: SiteSection }) {
         <div className="flex items-center gap-1.5 min-[360px]:gap-3">
           <ThemeToggle />
           <WalletAccess />
+          <Button render={<Link to="/console" />} className="hidden sm:inline-flex">
+            <LayoutDashboard /> Console
+          </Button>
           <Button
             ref={toggleRef}
             type="button"
@@ -97,6 +99,13 @@ export function SiteHeader({ current }: { current: SiteSection }) {
               {item.label} <ArrowUpRight size={15} />
             </Link>
           ))}
+          <Link
+            to="/console"
+            onClick={() => setMenu(false)}
+            className="container-page flex items-center justify-between py-4 text-base font-medium text-primary"
+          >
+            Open console <ArrowUpRight size={15} />
+          </Link>
         </nav>
       )}
     </header>
@@ -108,8 +117,9 @@ const footerColumns = [
     title: "Product",
     links: [
       { to: "/store", label: "Store" },
-      { to: "/chat", label: "Chat" },
-      { to: "/dashboard", label: "Studio" },
+      { to: "/console/chat", label: "Chat" },
+      { to: "/console/activity", label: "Activity" },
+      { to: "/console/studio", label: "Studio" },
     ],
   },
   {
@@ -144,7 +154,7 @@ export function SiteFooter({ clearDock = false }: { clearDock?: boolean }) {
             <Button size="lg" render={<Link to="/store" />}>
               Browse the store <ArrowUpRight />
             </Button>
-            <Button size="lg" variant="outline" render={<Link to="/dashboard" />}>
+            <Button size="lg" variant="outline" render={<Link to="/console/studio" />}>
               Open Studio
             </Button>
           </RevealItem>

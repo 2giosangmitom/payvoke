@@ -8,22 +8,45 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MarketRouteImport } from './routes/_market'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as ConsoleRouteImport } from './routes/console'
+import { Route as RunRouteImport } from './routes/run'
 import { Route as MarketIndexRouteImport } from './routes/_market.index'
 import { Route as MarketAgentsRouteImport } from './routes/_market.agents'
-import { Route as MarketAppRouteImport } from './routes/_market.app'
-import { Route as MarketChatRouteImport } from './routes/_market.chat'
-import { Route as MarketDashboardRouteImport } from './routes/_market.dashboard'
-import { Route as MarketRunRouteImport } from './routes/_market.run'
 import { Route as MarketStoreRouteImport } from './routes/_market.store'
-import { Route as MarketChatIndexRouteImport } from './routes/_market.chat.index'
-import { Route as MarketChatThreadIdRouteImport } from './routes/_market.chat.$threadId'
-import { Route as MarketDashboardIndexRouteImport } from './routes/_market.dashboard.index'
+import { Route as ChatIndexRouteImport } from './routes/chat.index'
+import { Route as ChatThreadIdRouteImport } from './routes/chat.$threadId'
+import { Route as ConsoleIndexRouteImport } from './routes/console.index'
+import { Route as ConsoleActivityRouteImport } from './routes/console.activity'
+import { Route as ConsoleChatRouteImport } from './routes/console.chat'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
-import { Route as MarketDashboardAppsAppIdRouteImport } from './routes/_market.dashboard.apps.$appId'
+import { Route as ConsoleChatIndexRouteImport } from './routes/console.chat.index'
+import { Route as ConsoleChatThreadIdRouteImport } from './routes/console.chat.$threadId'
+import { Route as ConsoleRunAppIdRouteImport } from './routes/console.run.$appId'
+import { Route as ConsoleRunsInvocationIdRouteImport } from './routes/console.runs.$invocationId'
+import { Route as ConsoleStudioIndexRouteImport } from './routes/console.studio.index'
+import { Route as DashboardAppsAppIdRouteImport } from './routes/dashboard.apps.$appId'
+import { Route as ConsoleStudioAppsAppIdRouteImport } from './routes/console.studio.apps.$appId'
 
 const MarketRoute = MarketRouteImport.update({
   id: '/_market',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsoleRoute = ConsoleRouteImport.update({
+  id: '/console',
+  path: '/console',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunRoute = RunRouteImport.update({
+  id: '/run',
+  path: '/run',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketIndexRoute = MarketIndexRouteImport.update({
@@ -36,45 +59,40 @@ const MarketAgentsRoute = MarketAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => MarketRoute,
 } as any)
-const MarketAppRoute = MarketAppRouteImport.update({
-  id: '/app',
-  path: '/app',
-  getParentRoute: () => MarketRoute,
-} as any)
-const MarketChatRoute = MarketChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => MarketRoute,
-} as any)
-const MarketDashboardRoute = MarketDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => MarketRoute,
-} as any)
-const MarketRunRoute = MarketRunRouteImport.update({
-  id: '/run',
-  path: '/run',
-  getParentRoute: () => MarketRoute,
-} as any)
 const MarketStoreRoute = MarketStoreRouteImport.update({
   id: '/store',
   path: '/store',
   getParentRoute: () => MarketRoute,
 } as any)
-const MarketChatIndexRoute = MarketChatIndexRouteImport.update({
+const ChatIndexRoute = ChatIndexRouteImport.update({
+  id: '/chat/',
+  path: '/chat/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
+  id: '/chat/$threadId',
+  path: '/chat/$threadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsoleIndexRoute = ConsoleIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => MarketChatRoute,
+  getParentRoute: () => ConsoleRoute,
 } as any)
-const MarketChatThreadIdRoute = MarketChatThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => MarketChatRoute,
+const ConsoleActivityRoute = ConsoleActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => ConsoleRoute,
 } as any)
-const MarketDashboardIndexRoute = MarketDashboardIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => MarketDashboardRoute,
+const ConsoleChatRoute = ConsoleChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => ConsoleRoute,
+} as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const MarketStoreIndexRoute = MarketStoreIndexRouteImport.update({
   id: '/',
@@ -86,105 +104,189 @@ const MarketStoreAppIdRoute = MarketStoreAppIdRouteImport.update({
   path: '/$appId',
   getParentRoute: () => MarketStoreRoute,
 } as any)
-const MarketDashboardAppsAppIdRoute =
-  MarketDashboardAppsAppIdRouteImport.update({
-    id: '/apps/$appId',
-    path: '/apps/$appId',
-    getParentRoute: () => MarketDashboardRoute,
-  } as any)
+const ConsoleChatIndexRoute = ConsoleChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ConsoleChatRoute,
+} as any)
+const ConsoleChatThreadIdRoute = ConsoleChatThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ConsoleChatRoute,
+} as any)
+const ConsoleRunAppIdRoute = ConsoleRunAppIdRouteImport.update({
+  id: '/run/$appId',
+  path: '/run/$appId',
+  getParentRoute: () => ConsoleRoute,
+} as any)
+const ConsoleRunsInvocationIdRoute = ConsoleRunsInvocationIdRouteImport.update({
+  id: '/runs/$invocationId',
+  path: '/runs/$invocationId',
+  getParentRoute: () => ConsoleRoute,
+} as any)
+const ConsoleStudioIndexRoute = ConsoleStudioIndexRouteImport.update({
+  id: '/studio/',
+  path: '/studio/',
+  getParentRoute: () => ConsoleRoute,
+} as any)
+const DashboardAppsAppIdRoute = DashboardAppsAppIdRouteImport.update({
+  id: '/dashboard/apps/$appId',
+  path: '/dashboard/apps/$appId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsoleStudioAppsAppIdRoute = ConsoleStudioAppsAppIdRouteImport.update({
+  id: '/studio/apps/$appId',
+  path: '/studio/apps/$appId',
+  getParentRoute: () => ConsoleRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof MarketIndexRoute
+  '/app': typeof AppRoute
+  '/console': typeof ConsoleRouteWithChildren
+  '/run': typeof RunRoute
   '/agents': typeof MarketAgentsRoute
-  '/app': typeof MarketAppRoute
-  '/chat': typeof MarketChatRouteWithChildren
-  '/dashboard': typeof MarketDashboardRouteWithChildren
-  '/run': typeof MarketRunRoute
   '/store': typeof MarketStoreRouteWithChildren
-  '/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/chat/$threadId': typeof ChatThreadIdRoute
+  '/console/activity': typeof ConsoleActivityRoute
+  '/console/chat': typeof ConsoleChatRouteWithChildren
+  '/chat/': typeof ChatIndexRoute
+  '/console/': typeof ConsoleIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
-  '/chat/': typeof MarketChatIndexRoute
-  '/dashboard/': typeof MarketDashboardIndexRoute
+  '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
+  '/console/run/$appId': typeof ConsoleRunAppIdRoute
+  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
+  '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store/': typeof MarketStoreIndexRoute
-  '/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
+  '/console/chat/': typeof ConsoleChatIndexRoute
+  '/console/studio/': typeof ConsoleStudioIndexRoute
+  '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRoutesByTo {
+  '/app': typeof AppRoute
+  '/run': typeof RunRoute
   '/agents': typeof MarketAgentsRoute
-  '/app': typeof MarketAppRoute
-  '/run': typeof MarketRunRoute
+  '/chat/$threadId': typeof ChatThreadIdRoute
+  '/console/activity': typeof ConsoleActivityRoute
   '/': typeof MarketIndexRoute
-  '/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/chat': typeof ChatIndexRoute
+  '/console': typeof ConsoleIndexRoute
+  '/dashboard': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
-  '/chat': typeof MarketChatIndexRoute
-  '/dashboard': typeof MarketDashboardIndexRoute
+  '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
+  '/console/run/$appId': typeof ConsoleRunAppIdRoute
+  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
+  '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store': typeof MarketStoreIndexRoute
-  '/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
+  '/console/chat': typeof ConsoleChatIndexRoute
+  '/console/studio': typeof ConsoleStudioIndexRoute
+  '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_market': typeof MarketRouteWithChildren
+  '/app': typeof AppRoute
+  '/console': typeof ConsoleRouteWithChildren
+  '/run': typeof RunRoute
   '/_market/agents': typeof MarketAgentsRoute
-  '/_market/app': typeof MarketAppRoute
-  '/_market/chat': typeof MarketChatRouteWithChildren
-  '/_market/dashboard': typeof MarketDashboardRouteWithChildren
-  '/_market/run': typeof MarketRunRoute
   '/_market/store': typeof MarketStoreRouteWithChildren
+  '/chat/$threadId': typeof ChatThreadIdRoute
+  '/console/activity': typeof ConsoleActivityRoute
+  '/console/chat': typeof ConsoleChatRouteWithChildren
   '/_market/': typeof MarketIndexRoute
-  '/_market/chat/$threadId': typeof MarketChatThreadIdRoute
+  '/chat/': typeof ChatIndexRoute
+  '/console/': typeof ConsoleIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
   '/_market/store/$appId': typeof MarketStoreAppIdRoute
-  '/_market/chat/': typeof MarketChatIndexRoute
-  '/_market/dashboard/': typeof MarketDashboardIndexRoute
+  '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
+  '/console/run/$appId': typeof ConsoleRunAppIdRoute
+  '/console/runs/$invocationId': typeof ConsoleRunsInvocationIdRoute
+  '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/_market/store/': typeof MarketStoreIndexRoute
-  '/_market/dashboard/apps/$appId': typeof MarketDashboardAppsAppIdRoute
+  '/console/chat/': typeof ConsoleChatIndexRoute
+  '/console/studio/': typeof ConsoleStudioIndexRoute
+  '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/agents'
     | '/app'
-    | '/chat'
-    | '/dashboard'
+    | '/console'
     | '/run'
+    | '/agents'
     | '/store'
     | '/chat/$threadId'
-    | '/store/$appId'
+    | '/console/activity'
+    | '/console/chat'
     | '/chat/'
+    | '/console/'
     | '/dashboard/'
-    | '/store/'
+    | '/store/$appId'
+    | '/console/chat/$threadId'
+    | '/console/run/$appId'
+    | '/console/runs/$invocationId'
     | '/dashboard/apps/$appId'
+    | '/store/'
+    | '/console/chat/'
+    | '/console/studio/'
+    | '/console/studio/apps/$appId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/agents'
     | '/app'
     | '/run'
-    | '/'
+    | '/agents'
     | '/chat/$threadId'
-    | '/store/$appId'
+    | '/console/activity'
+    | '/'
     | '/chat'
+    | '/console'
     | '/dashboard'
-    | '/store'
+    | '/store/$appId'
+    | '/console/chat/$threadId'
+    | '/console/run/$appId'
+    | '/console/runs/$invocationId'
     | '/dashboard/apps/$appId'
+    | '/store'
+    | '/console/chat'
+    | '/console/studio'
+    | '/console/studio/apps/$appId'
   id:
     | '__root__'
     | '/_market'
+    | '/app'
+    | '/console'
+    | '/run'
     | '/_market/agents'
-    | '/_market/app'
-    | '/_market/chat'
-    | '/_market/dashboard'
-    | '/_market/run'
     | '/_market/store'
+    | '/chat/$threadId'
+    | '/console/activity'
+    | '/console/chat'
     | '/_market/'
-    | '/_market/chat/$threadId'
+    | '/chat/'
+    | '/console/'
+    | '/dashboard/'
     | '/_market/store/$appId'
-    | '/_market/chat/'
-    | '/_market/dashboard/'
+    | '/console/chat/$threadId'
+    | '/console/run/$appId'
+    | '/console/runs/$invocationId'
+    | '/dashboard/apps/$appId'
     | '/_market/store/'
-    | '/_market/dashboard/apps/$appId'
+    | '/console/chat/'
+    | '/console/studio/'
+    | '/console/studio/apps/$appId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   MarketRoute: typeof MarketRouteWithChildren
+  AppRoute: typeof AppRoute
+  ConsoleRoute: typeof ConsoleRouteWithChildren
+  RunRoute: typeof RunRoute
+  ChatThreadIdRoute: typeof ChatThreadIdRoute
+  ChatIndexRoute: typeof ChatIndexRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
+  DashboardAppsAppIdRoute: typeof DashboardAppsAppIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -194,6 +296,27 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof MarketRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/console': {
+      id: '/console'
+      path: '/console'
+      fullPath: '/console'
+      preLoaderRoute: typeof ConsoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/run': {
+      id: '/run'
+      path: '/run'
+      fullPath: '/run'
+      preLoaderRoute: typeof RunRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_market/': {
@@ -210,34 +333,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketAgentsRouteImport
       parentRoute: typeof MarketRoute
     }
-    '/_market/app': {
-      id: '/_market/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof MarketAppRouteImport
-      parentRoute: typeof MarketRoute
-    }
-    '/_market/chat': {
-      id: '/_market/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof MarketChatRouteImport
-      parentRoute: typeof MarketRoute
-    }
-    '/_market/dashboard': {
-      id: '/_market/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof MarketDashboardRouteImport
-      parentRoute: typeof MarketRoute
-    }
-    '/_market/run': {
-      id: '/_market/run'
-      path: '/run'
-      fullPath: '/run'
-      preLoaderRoute: typeof MarketRunRouteImport
-      parentRoute: typeof MarketRoute
-    }
     '/_market/store': {
       id: '/_market/store'
       path: '/store'
@@ -245,26 +340,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketStoreRouteImport
       parentRoute: typeof MarketRoute
     }
-    '/_market/chat/': {
-      id: '/_market/chat/'
-      path: '/'
+    '/chat/': {
+      id: '/chat/'
+      path: '/chat'
       fullPath: '/chat/'
-      preLoaderRoute: typeof MarketChatIndexRouteImport
-      parentRoute: typeof MarketChatRoute
+      preLoaderRoute: typeof ChatIndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_market/chat/$threadId': {
-      id: '/_market/chat/$threadId'
-      path: '/$threadId'
+    '/chat/$threadId': {
+      id: '/chat/$threadId'
+      path: '/chat/$threadId'
       fullPath: '/chat/$threadId'
-      preLoaderRoute: typeof MarketChatThreadIdRouteImport
-      parentRoute: typeof MarketChatRoute
+      preLoaderRoute: typeof ChatThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_market/dashboard/': {
-      id: '/_market/dashboard/'
+    '/console/': {
+      id: '/console/'
       path: '/'
+      fullPath: '/console/'
+      preLoaderRoute: typeof ConsoleIndexRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/console/activity': {
+      id: '/console/activity'
+      path: '/activity'
+      fullPath: '/console/activity'
+      preLoaderRoute: typeof ConsoleActivityRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/console/chat': {
+      id: '/console/chat'
+      path: '/chat'
+      fullPath: '/console/chat'
+      preLoaderRoute: typeof ConsoleChatRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/dashboard'
       fullPath: '/dashboard/'
-      preLoaderRoute: typeof MarketDashboardIndexRouteImport
-      parentRoute: typeof MarketDashboardRoute
+      preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_market/store/': {
       id: '/_market/store/'
@@ -280,43 +396,57 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketStoreAppIdRouteImport
       parentRoute: typeof MarketStoreRoute
     }
-    '/_market/dashboard/apps/$appId': {
-      id: '/_market/dashboard/apps/$appId'
-      path: '/apps/$appId'
+    '/console/chat/': {
+      id: '/console/chat/'
+      path: '/'
+      fullPath: '/console/chat/'
+      preLoaderRoute: typeof ConsoleChatIndexRouteImport
+      parentRoute: typeof ConsoleChatRoute
+    }
+    '/console/chat/$threadId': {
+      id: '/console/chat/$threadId'
+      path: '/$threadId'
+      fullPath: '/console/chat/$threadId'
+      preLoaderRoute: typeof ConsoleChatThreadIdRouteImport
+      parentRoute: typeof ConsoleChatRoute
+    }
+    '/console/run/$appId': {
+      id: '/console/run/$appId'
+      path: '/run/$appId'
+      fullPath: '/console/run/$appId'
+      preLoaderRoute: typeof ConsoleRunAppIdRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/console/runs/$invocationId': {
+      id: '/console/runs/$invocationId'
+      path: '/runs/$invocationId'
+      fullPath: '/console/runs/$invocationId'
+      preLoaderRoute: typeof ConsoleRunsInvocationIdRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/console/studio/': {
+      id: '/console/studio/'
+      path: '/studio'
+      fullPath: '/console/studio/'
+      preLoaderRoute: typeof ConsoleStudioIndexRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/dashboard/apps/$appId': {
+      id: '/dashboard/apps/$appId'
+      path: '/dashboard/apps/$appId'
       fullPath: '/dashboard/apps/$appId'
-      preLoaderRoute: typeof MarketDashboardAppsAppIdRouteImport
-      parentRoute: typeof MarketDashboardRoute
+      preLoaderRoute: typeof DashboardAppsAppIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/console/studio/apps/$appId': {
+      id: '/console/studio/apps/$appId'
+      path: '/studio/apps/$appId'
+      fullPath: '/console/studio/apps/$appId'
+      preLoaderRoute: typeof ConsoleStudioAppsAppIdRouteImport
+      parentRoute: typeof ConsoleRoute
     }
   }
 }
-
-interface MarketChatRouteChildren {
-  MarketChatThreadIdRoute: typeof MarketChatThreadIdRoute
-  MarketChatIndexRoute: typeof MarketChatIndexRoute
-}
-
-const MarketChatRouteChildren: MarketChatRouteChildren = {
-  MarketChatThreadIdRoute: MarketChatThreadIdRoute,
-  MarketChatIndexRoute: MarketChatIndexRoute,
-}
-
-const MarketChatRouteWithChildren = MarketChatRoute._addFileChildren(
-  MarketChatRouteChildren,
-)
-
-interface MarketDashboardRouteChildren {
-  MarketDashboardIndexRoute: typeof MarketDashboardIndexRoute
-  MarketDashboardAppsAppIdRoute: typeof MarketDashboardAppsAppIdRoute
-}
-
-const MarketDashboardRouteChildren: MarketDashboardRouteChildren = {
-  MarketDashboardIndexRoute: MarketDashboardIndexRoute,
-  MarketDashboardAppsAppIdRoute: MarketDashboardAppsAppIdRoute,
-}
-
-const MarketDashboardRouteWithChildren = MarketDashboardRoute._addFileChildren(
-  MarketDashboardRouteChildren,
-)
 
 interface MarketStoreRouteChildren {
   MarketStoreAppIdRoute: typeof MarketStoreAppIdRoute
@@ -334,20 +464,12 @@ const MarketStoreRouteWithChildren = MarketStoreRoute._addFileChildren(
 
 interface MarketRouteChildren {
   MarketAgentsRoute: typeof MarketAgentsRoute
-  MarketAppRoute: typeof MarketAppRoute
-  MarketChatRoute: typeof MarketChatRouteWithChildren
-  MarketDashboardRoute: typeof MarketDashboardRouteWithChildren
-  MarketRunRoute: typeof MarketRunRoute
   MarketStoreRoute: typeof MarketStoreRouteWithChildren
   MarketIndexRoute: typeof MarketIndexRoute
 }
 
 const MarketRouteChildren: MarketRouteChildren = {
   MarketAgentsRoute: MarketAgentsRoute,
-  MarketAppRoute: MarketAppRoute,
-  MarketChatRoute: MarketChatRouteWithChildren,
-  MarketDashboardRoute: MarketDashboardRouteWithChildren,
-  MarketRunRoute: MarketRunRoute,
   MarketStoreRoute: MarketStoreRouteWithChildren,
   MarketIndexRoute: MarketIndexRoute,
 }
@@ -355,8 +477,52 @@ const MarketRouteChildren: MarketRouteChildren = {
 const MarketRouteWithChildren =
   MarketRoute._addFileChildren(MarketRouteChildren)
 
+interface ConsoleChatRouteChildren {
+  ConsoleChatThreadIdRoute: typeof ConsoleChatThreadIdRoute
+  ConsoleChatIndexRoute: typeof ConsoleChatIndexRoute
+}
+
+const ConsoleChatRouteChildren: ConsoleChatRouteChildren = {
+  ConsoleChatThreadIdRoute: ConsoleChatThreadIdRoute,
+  ConsoleChatIndexRoute: ConsoleChatIndexRoute,
+}
+
+const ConsoleChatRouteWithChildren = ConsoleChatRoute._addFileChildren(
+  ConsoleChatRouteChildren,
+)
+
+interface ConsoleRouteChildren {
+  ConsoleActivityRoute: typeof ConsoleActivityRoute
+  ConsoleChatRoute: typeof ConsoleChatRouteWithChildren
+  ConsoleIndexRoute: typeof ConsoleIndexRoute
+  ConsoleRunAppIdRoute: typeof ConsoleRunAppIdRoute
+  ConsoleRunsInvocationIdRoute: typeof ConsoleRunsInvocationIdRoute
+  ConsoleStudioIndexRoute: typeof ConsoleStudioIndexRoute
+  ConsoleStudioAppsAppIdRoute: typeof ConsoleStudioAppsAppIdRoute
+}
+
+const ConsoleRouteChildren: ConsoleRouteChildren = {
+  ConsoleActivityRoute: ConsoleActivityRoute,
+  ConsoleChatRoute: ConsoleChatRouteWithChildren,
+  ConsoleIndexRoute: ConsoleIndexRoute,
+  ConsoleRunAppIdRoute: ConsoleRunAppIdRoute,
+  ConsoleRunsInvocationIdRoute: ConsoleRunsInvocationIdRoute,
+  ConsoleStudioIndexRoute: ConsoleStudioIndexRoute,
+  ConsoleStudioAppsAppIdRoute: ConsoleStudioAppsAppIdRoute,
+}
+
+const ConsoleRouteWithChildren =
+  ConsoleRoute._addFileChildren(ConsoleRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   MarketRoute: MarketRouteWithChildren,
+  AppRoute: AppRoute,
+  ConsoleRoute: ConsoleRouteWithChildren,
+  RunRoute: RunRoute,
+  ChatThreadIdRoute: ChatThreadIdRoute,
+  ChatIndexRoute: ChatIndexRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
+  DashboardAppsAppIdRoute: DashboardAppsAppIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
