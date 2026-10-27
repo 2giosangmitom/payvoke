@@ -17,16 +17,21 @@ export const KEY_SCOPES = [
   "events:ack",
   "reports:write",
   "files:write",
+  "messages:write",
+  "offers:write",
 ] as const;
 export type KeyScope = (typeof KEY_SCOPES)[number];
 
 const visibilities = ["PUBLIC", "PRIVATE"];
+export const APP_KINDS = ["TOOL", "AGENT"] as const;
+export type AppKind = (typeof APP_KINDS)[number];
 
 export type NewAppBody = {
   name: string;
   description?: string;
   payoutAddress: string;
   visibility?: string;
+  kind?: string;
   clientRequestId: string;
 };
 export type AppPatchBody = {
@@ -41,16 +46,21 @@ export type CommandBody = {
   description: string;
   options: unknown;
   positionalParameter?: string | null;
-  grossAmount: string;
+  // TOOL: the fixed price. AGENT: the range provider offers must fall within.
+  grossAmount?: string;
+  minGrossAmount?: string;
+  maxGrossAmount?: string;
   terms: unknown;
   outputSchema?: unknown;
   expectedRevisionId?: string;
 };
 
 export function parseNewApp(body: Partial<NewAppBody> | undefined) {
-  const { name, description, payoutAddress, visibility, clientRequestId } = body ?? {};
+  const { name, description, payoutAddress, visibility, kind, clientRequestId } = body ?? {};
   const visible = visibility ?? "PUBLIC";
+  const appKind = kind ?? "TOOL";
   if (
+    !(APP_KINDS as readonly string[]).includes(appKind) ||
     !text(name, 120) ||
     (description !== undefined && typeof description !== "string") ||
     (description && description.length > 2000) ||
@@ -66,6 +76,7 @@ export function parseNewApp(body: Partial<NewAppBody> | undefined) {
       description: description?.trim() || null,
       payoutAddress: getAddress(payoutAddress as string),
       visibility: visible,
+      kind: appKind as AppKind,
     },
   };
 }
@@ -117,9 +128,32 @@ export function parseKeyRequest(body: KeyRequestBody | undefined, now = Date.now
   return { scopes, expiresAt: expiry };
 }
 
+const UINT256_MAX = (1n << 256n) - 1n;
+const atomicAmount = (value: unknown) =>
+  typeof value === "string" && /^[1-9]\d*$/.test(value) && BigInt(value) <= UINT256_MAX;
+
+// A TOOL command has exactly one fixed price; an AGENT command has none and
+// publishes an inclusive range instead.
+function parsePricing(input: CommandBody, kind: AppKind) {
+  const { grossAmount, minGrossAmount, maxGrossAmount } = input;
+  if (kind === "TOOL") {
+    if (!atomicAmount(grossAmount) || minGrossAmount !== undefined || maxGrossAmount !== undefined)
+      return null;
+    return { grossAmount: grossAmount!, minGrossAmount: null, maxGrossAmount: null };
+  }
+  if (
+    grossAmount !== undefined ||
+    !atomicAmount(minGrossAmount) ||
+    !atomicAmount(maxGrossAmount) ||
+    BigInt(minGrossAmount!) > BigInt(maxGrossAmount!)
+  )
+    return null;
+  return { grossAmount: null, minGrossAmount: minGrossAmount!, maxGrossAmount: maxGrossAmount! };
+}
+
 // Request-only checks of a command definition. Deployment policy and name
 // uniqueness are checked by the command service against the database.
-export function parseCommandBody(body: CommandBody | undefined) {
+export function parseCommandBody(body: CommandBody | undefined, kind: AppKind) {
   const options = parseCommandOptions(body?.options);
   if (!options || !validCommandName(body!.name) || !text(body!.description, 2000))
     throw new BadRequestError("INVALID_COMMAND");
@@ -137,12 +171,8 @@ export function parseCommandBody(body: CommandBody | undefined) {
     throw new BadRequestError("INVALID_POSITIONAL_PARAMETER");
   if (input.outputSchema !== undefined && !validateCommandInputSchema(input.outputSchema))
     throw new BadRequestError("INVALID_OUTPUT_SCHEMA");
-  if (
-    !/^[1-9]\d*$/.test(input.grossAmount) ||
-    BigInt(input.grossAmount) > (1n << 256n) - 1n ||
-    !validateTerms(input.terms)
-  )
-    throw new BadRequestError("INVALID_TERMS");
+  const pricing = parsePricing(input, kind);
+  if (!pricing || !validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
   const terms = normalizeTerms(input.terms as Record<string, unknown>);
   return {
     name: input.name.trim(),
@@ -152,7 +182,7 @@ export function parseCommandBody(body: CommandBody | undefined) {
       inputSchema,
       outputSchema: input.outputSchema,
       positionalParameter: positional,
-      grossAmount: input.grossAmount,
+      ...pricing,
       terms,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,

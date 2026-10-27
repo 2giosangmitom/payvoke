@@ -21,10 +21,57 @@ import {
   errorMessage,
   plural,
 } from "./page-kit";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { VisibilityField } from "./visibility-field";
 import { WalletAccess } from "./wallet-access";
 import { authClient } from "@/src/lib/auth-client";
-import { createProviderApp, listProviderApps } from "@/src/lib/apps";
+import { createProviderApp, listProviderApps, type AppKind } from "@/src/lib/apps";
+
+const KINDS: { value: AppKind; title: string; description: string }[] = [
+  {
+    value: "TOOL",
+    title: "Tool",
+    description: "Fixed price per command. Buyers fill in a form generated from your inputs.",
+  },
+  {
+    value: "AGENT",
+    title: "Agent",
+    description:
+      "Buyers chat with your worker for free; you send an offer within each command's price range.",
+  },
+];
+
+// The kind decides pricing and the buyer surface; it can't change later.
+function KindField({ value, onChange }: { value: AppKind; onChange: (value: AppKind) => void }) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="mb-2 font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
+        App kind
+      </legend>
+      <RadioGroup
+        value={value}
+        onValueChange={(next) => onChange(next as AppKind)}
+        className="grid gap-2 sm:grid-cols-2"
+      >
+        {KINDS.map((kind) => (
+          <label
+            key={kind.value}
+            className="flex cursor-pointer items-start gap-3 border border-border bg-background-deep p-4 transition-colors hover:border-border-strong has-data-checked:border-primary has-data-checked:bg-primary-soft"
+          >
+            <RadioGroupItem value={kind.value} className="mt-0.5" />
+            <span className="grid gap-1">
+              <strong className="text-sm font-semibold">{kind.title}</strong>
+              <small className="text-xs leading-relaxed text-muted-foreground">
+                {kind.description}
+              </small>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
+      <small className="text-xs text-faint">The kind can&apos;t be changed after creation.</small>
+    </fieldset>
+  );
+}
 
 export function DashboardHome() {
   const queryClient = useQueryClient();
@@ -34,6 +81,7 @@ export function DashboardHome() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PRIVATE");
+  const [kind, setKind] = useState<AppKind>("TOOL");
   const [payout, setPayout] = useState("");
   const [error, setError] = useState("");
   const apps = useQuery({
@@ -49,6 +97,7 @@ export function DashboardHome() {
         description: description.trim() || undefined,
         payoutAddress: (payout || address || "").trim(),
         visibility,
+        kind,
       }),
     onSuccess: () => {
       setName("");
@@ -79,7 +128,7 @@ export function DashboardHome() {
       <PageHeader
         eyebrow="Studio"
         title="Your apps"
-        description="Each app is one chat surface. You define its slash commands, keep one active API key for its worker, and decide whether it's listed in the store."
+        description="A tool sells fixed-price commands through a form; an agent chats with buyers and sends offers. You define commands, keep one active API key for the worker, and decide whether the app is listed in the store."
         actions={
           <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
             <Plus /> New app
@@ -151,6 +200,7 @@ export function DashboardHome() {
                   className="font-mono"
                 />
               </FormField>
+              <KindField value={kind} onChange={setKind} />
               <VisibilityField
                 value={visibility}
                 onChange={setVisibility}
@@ -199,7 +249,7 @@ export function DashboardHome() {
             {items.map((app, index) => (
               <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
                 <Link
-                  to="/dashboard/apps/$appId"
+                  to="/console/studio/apps/$appId"
                   params={{ appId: app.id }}
                   className="group flex flex-col justify-between gap-4 border-b border-border py-6 transition-colors hover:bg-card sm:flex-row sm:items-center sm:px-4"
                 >
@@ -213,6 +263,7 @@ export function DashboardHome() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <Tag>{app.kind.toLowerCase()}</Tag>
                     <Tag>{app.visibility.toLowerCase()}</Tag>
                     <Tag>
                       <Radio className="size-3" /> {app.status.toLowerCase()}

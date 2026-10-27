@@ -22,7 +22,10 @@ export type CommandRevision = {
   inputSchema: unknown;
   outputSchema: unknown | null;
   positionalParameter: string | null;
-  grossAmount: string;
+  // TOOL commands carry a fixed price; AGENT commands a range for offers.
+  grossAmount: string | null;
+  minGrossAmount: string | null;
+  maxGrossAmount: string | null;
   terms: {
     deliverySeconds: number;
     reviewSeconds: number;
@@ -40,10 +43,12 @@ export type ThreadCommand = {
   description: string;
   revision: CommandRevision | null;
 };
+export type AppKind = "TOOL" | "AGENT";
 export type ThreadApp = {
   id: string;
   name: string;
   description: string | null;
+  kind: AppKind;
   visibility: "PUBLIC" | "PRIVATE";
   status: string;
   availability: "AVAILABLE" | "UNAVAILABLE" | "SUSPENDED";
@@ -51,7 +56,13 @@ export type ThreadApp = {
 export type ThreadSummary = {
   id: string;
   title: string | null;
-  app: { id: string; name: string; description: string | null; availability: string };
+  app: {
+    id: string;
+    name: string;
+    description: string | null;
+    kind: AppKind;
+    availability: string;
+  };
   lastMessageAt: string;
   archivedAt: string | null;
   createdAt: string;
@@ -68,6 +79,40 @@ export type ThreadDetail = {
   chatTextParameter: string | null;
   revisionPolicy: RevisionPolicy | null;
   commands: ThreadCommand[];
+  // Free pre-sale messages left in an AGENT thread; null for tools.
+  presale: { limit: number; remaining: number } | null;
+};
+export type FileManifest = {
+  fileId: string;
+  name: string;
+  contentType: string;
+  size: number;
+  sha256: string;
+};
+export type ConversationMessage = {
+  id: string;
+  seq: number;
+  role: "BUYER" | "PROVIDER";
+  content: string;
+  commandId: string | null;
+  arguments: Record<string, unknown> | null;
+  files: FileManifest[];
+  createdAt: string;
+};
+export type OfferStatus = "OPEN" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "SUPERSEDED" | "EXPIRED";
+export type Offer = {
+  id: string;
+  threadId: string;
+  commandRevisionId: string;
+  arguments: Record<string, unknown>;
+  grossAmount: string;
+  deliverySeconds: number;
+  summary: string;
+  messageSeq: number;
+  status: OfferStatus;
+  expiresAt: string;
+  quoteId: string | null;
+  createdAt: string;
 };
 // Whole OpenUI Lang program for one surface; each snapshot replaces the last.
 export type OpenUISurfaceContent = { source: string; invocationId?: string; surfaceId?: string };
@@ -118,12 +163,19 @@ export type ChatSnapshot = {
   questions: ChatQuestion[];
   answers: ChatAnswer[];
   revisions: ChatRevision[];
+  conversation: ConversationMessage[];
+  offers: Offer[];
 };
 
-export const getThreads = (query?: string) =>
-  api<{ items: ThreadSummary[]; nextCursor: string | null }>(
-    `/v1/threads${query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
+export const getThreads = (query?: string, kind?: AppKind) => {
+  const params = new URLSearchParams();
+  if (query?.trim()) params.set("q", query.trim());
+  if (kind) params.set("kind", kind);
+  const search = params.toString();
+  return api<{ items: ThreadSummary[]; nextCursor: string | null }>(
+    `/v1/threads${search ? `?${search}` : ""}`,
   );
+};
 export const newThread = (appId: string, clientRequestId = crypto.randomUUID()) =>
   api<{ id: string; appId: string; title: string | null }>("/v1/threads", "POST", {
     appId,
@@ -165,26 +217,77 @@ export const requestRevision = (invocationId: string, reason: string, clientRequ
     { "idempotency-key": clientRequestId },
   );
 
-export async function quoteFor(
-  thread: ThreadDetail,
-  commandId: string,
-  args: Record<string, unknown>,
-  fileIds: string[] = [],
-) {
+// TOOL apps quote a command and arguments; AGENT apps quote an open offer.
+export type QuoteSource =
+  | { commandId: string; arguments: Record<string, unknown> }
+  | { offerId: string };
+
+export async function quoteFor(threadId: string, source: QuoteSource, fileIds: string[] = []) {
   const clientRequestId = crypto.randomUUID();
   return api<QuoteDocument>(
     "/v1/quotes",
     "POST",
     {
-      threadId: thread.id,
-      commandId,
-      arguments: args,
+      threadId,
+      ...source,
       contextSelection: { messageIds: [], briefVersionId: null, fileIds },
       clientRequestId,
     },
     { "idempotency-key": clientRequestId },
   );
 }
+
+// Free pre-sale message to an AGENT app; a slash command adds its arguments.
+export const sendMessage = (
+  threadId: string,
+  body: {
+    content: string;
+    commandId?: string;
+    arguments?: Record<string, unknown>;
+    fileIds?: string[];
+  },
+  clientRequestId = crypto.randomUUID(),
+) =>
+  api<ConversationMessage>(`/v1/threads/${encodeURIComponent(threadId)}/messages`, "POST", {
+    ...body,
+    clientRequestId,
+  });
+export const declineOffer = (threadId: string, offerId: string) =>
+  api<Offer>(
+    `/v1/threads/${encodeURIComponent(threadId)}/offers/${encodeURIComponent(offerId)}/declines`,
+    "POST",
+  );
+
+export type ActivityItem = {
+  invocationId: string;
+  threadId: string;
+  app: { id: string; name: string; kind: AppKind };
+  commandName: string | null;
+  grossAmount: string;
+  paymentStatus: string;
+  executionStatus: string;
+  financialStatus: string | null;
+  deliveryDeadline: number;
+  releaseNotBefore: number;
+  resolveBy: number;
+  createdAt: string;
+};
+export const getActivity = (cursor?: string) =>
+  api<{ items: ActivityItem[]; nextCursor: string | null }>(
+    `/v1/invocations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+  );
+export type InvocationStatus = {
+  invocationId: string;
+  threadId: string;
+  paymentStatus: string;
+  executionStatus: string;
+  financial: { status: string } | null;
+  delivery: { evidenceLevel: string; artifactVersion: number } | null;
+  transaction: string | null;
+  nextActions: string[];
+};
+export const getInvocation = (id: string) =>
+  api<InvocationStatus>(`/v1/invocations/${encodeURIComponent(id)}`);
 
 export type WalletGrant = {
   signer: Address;

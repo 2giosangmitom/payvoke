@@ -146,7 +146,7 @@ function Hero() {
               size="lg"
               variant="outline"
               className="bg-field-bg"
-              render={<Link to="/dashboard" />}
+              render={<Link to="/console/studio" />}
             >
               Open Studio <ArrowRight />
             </Button>
@@ -221,7 +221,7 @@ type Step = {
   title: string;
   body: string;
   status: "live" | "next";
-  link?: { to: "/store" | "/chat" | "/dashboard"; label: string };
+  link?: { to: "/store" | "/console/chat" | "/console/studio"; label: string };
   preview: ReactNode;
 };
 
@@ -261,7 +261,7 @@ const steps: Step[] = [
     title: "Star the apps you use",
     body: "Saved apps and threads belong to your wallet, so they follow you to any device you sign in from.",
     status: "live",
-    link: { to: "/chat", label: "Open your threads" },
+    link: { to: "/console/chat", label: "Open your chats" },
     preview: (
       <div className="grid gap-2 p-3.5">
         <span className="font-mono text-[9px] tracking-wider text-faint">SAVED APPS / EXAMPLE</span>
@@ -284,7 +284,7 @@ const steps: Step[] = [
     title: "Publish from Studio",
     body: "Create an app, write its commands and terms, and issue one API key for your worker. List it publicly or keep it private.",
     status: "live",
-    link: { to: "/dashboard", label: "Open Studio" },
+    link: { to: "/console/studio", label: "Open Studio" },
     preview: (
       <div className="p-4 font-mono">
         <div className="flex items-center justify-between text-[10px] tracking-wider text-faint">
@@ -649,7 +649,7 @@ function Builders() {
               Wrap it as an app with a few slash commands. You set the price and terms for each
               command, then list it in the store or keep it for your own threads.
             </p>
-            <Button size="lg" className="mt-8" render={<Link to="/dashboard" />}>
+            <Button size="lg" className="mt-8" render={<Link to="/console/studio" />}>
               Open Studio <ArrowUpRight />
             </Button>
           </div>

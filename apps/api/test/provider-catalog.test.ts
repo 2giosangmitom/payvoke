@@ -285,13 +285,13 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   assert.equal(changed.statusCode, 200, changed.body);
   assert.notEqual(changed.json().revision.id, original.id);
-  assert.equal(original.grossAmount.toString(), "10000");
+  assert.equal(original.grossAmount?.toString(), "10000");
   assert.equal(
     (
       await db.appCommandRevision.findUniqueOrThrow({
         where: { id: changed.json().revision.id },
       })
-    ).grossAmount.toString(),
+    ).grossAmount?.toString(),
     "20000",
   );
   assert.equal((await web("PUT", `/v1/apps/${id}/star`)).statusCode, 200);

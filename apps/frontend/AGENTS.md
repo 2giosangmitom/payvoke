@@ -20,15 +20,22 @@ Payvoke is a marketplace for discovering AI agents/tools, saving starred listing
 
 Current route map:
 
-| URL        | Route file                      | Responsibility                                                      |
-| ---------- | ------------------------------- | ------------------------------------------------------------------- |
-| `/`        | `src/routes/index.tsx`          | Public marketing page; custom hero and site header                  |
-| (pathless) | `src/routes/_market.tsx`        | Shared platform header, nav, wallet entry, `<Outlet />`             |
-| `/agents`  | `src/routes/_market.agents.tsx` | Searchable, public agent/tool directory                             |
-| `/app`     | `src/routes/_market.app.tsx`    | Signed-in workspace and anonymous sign-in gate                      |
-| (document) | `src/routes/__root.tsx`         | `<html>`, metadata, `HeadContent`, providers, `<Outlet>`, `Scripts` |
+| URL                                   | Route file                                  | Responsibility                                                                      |
+| ------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
+| (pathless)                            | `src/routes/_market.tsx`                    | Public site chrome: marketing header (Home, Store, Console) + footer                |
+| `/`                                   | `src/routes/_market.index.tsx`              | Landing page                                                                        |
+| `/store`, `/store/$appId`             | `src/routes/_market.store.*.tsx`            | Public directory and app detail; CTA opens a chat (agent) or form (tool)            |
+| `/console`                            | `src/routes/console.tsx`                    | Signed-in app shell (`ConsoleShell`): collapsible sidebar, breadcrumb, sign-in gate |
+| `/console/`                           | `src/routes/console.index.tsx`              | Console home: items needing attention, running work, recent chats                   |
+| `/console/chat/...`                   | `src/routes/console.chat*.tsx`              | Agent chats: thread list + `ThreadChat` (pre-sale messages, offers)                 |
+| `/console/run/$appId`                 | `src/routes/console.run.$appId.tsx`         | Tool form generated from the command input schema                                   |
+| `/console/runs/$invocationId`         | `src/routes/console.runs.$invocationId.tsx` | One tool run: status, verified result, files, questions, revisions                  |
+| `/console/activity`                   | `src/routes/console.activity.tsx`           | Every paid invocation with hold state and next deadline                             |
+| `/console/studio/...`                 | `src/routes/console.studio.*.tsx`           | Provider Studio: apps, commands, keys                                               |
+| `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx`  | Redirects from old URLs into the console                                            |
+| (document)                            | `src/routes/__root.tsx`                     | `<html>`, metadata, `HeadContent`, providers, `<Outlet>`, `Scripts`                 |
 
-- Add platform pages as children of `_market` (`_market.<name>.tsx`, or nested routes using TanStack's file route conventions). Keep the public landing separate so its header and presentation can differ.
+- Public, browse-only pages are children of `_market`; anything signed-in (chat, runs, payments, Studio) is a child of `console`. Do not put marketing chrome around working surfaces.
 - Use a new pathless layout for a distinct shell (for example a future immersive chat surface) instead of sprinkling `pathname` conditionals through every page. Keep layout concerns in the parent and page concerns in the child.
 - Nested pages must render through `<Outlet />`. Share nav, account controls, page width and other repeated chrome in layouts/components. Each page owns its `<main>` and its own content hierarchy.
 - Use `createFileRoute`, typed `Link`, `useNavigate`, route-level `head`, and typed route search validation. Use router links for internal navigation; anchor links for external URLs and same-page hashes.

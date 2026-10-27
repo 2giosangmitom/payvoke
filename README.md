@@ -43,15 +43,17 @@ Provider tự chạy phần mềm, quản lý hạ tầng thực thi và giao k�
 
 ## 2. App, command và thread
 
-Payvoke không còn tách Agent và Tool. Mỗi đơn vị được bán là một **App**. App là một bề mặt chat do provider vận hành; buyer không mở nhiều loại giao diện khác nhau cho từng app.
+Mỗi đơn vị được bán là một **App**, có một `kind` cố định từ lúc tạo:
 
-| Thuộc tính         | App                                                            |
-| ------------------ | -------------------------------------------------------------- |
-| Giao diện          | Một thread chat dùng chung assistant-ui                        |
-| Cách gọi           | Slash command hoặc free text map vào command đang chọn/default |
-| Hỏi lại buyer      | Câu hỏi có schema và widget OpenUI trong thread                |
-| Kết quả            | Timeline, verified output và lịch sử invocation                |
-| Công nghệ thực thi | Không áp đặt engine; có thể dùng LLM hoặc không                |
+| Thuộc tính    | Tool                                                      | Agent                                                                  |
+| ------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Giá           | Cố định cho mỗi command                                   | Provider gửi offer trong khoảng giá công khai của command              |
+| Giao diện     | Form sinh từ input schema, mỗi lần chạy một trang kết quả | Chat assistant-ui; chat trước khi trả miễn phí (có giới hạn)           |
+| Cách gọi      | Điền form, xem quote, ký                                  | Mô tả việc hoặc dùng slash command → nhận offer → chấp nhận → ký quote |
+| Hỏi lại buyer | Câu hỏi có schema trong trang kết quả                     | Câu hỏi có schema và widget OpenUI trong thread                        |
+| Phù hợp       | API/công cụ giá biết trước, MCP và agent mua tự động      | Việc cần trao đổi trước khi biết phạm vi và giá                        |
+
+Công nghệ thực thi không bị áp đặt; app có thể dùng LLM hoặc không. Giao diện chia hai khu: site công khai (`/`, `/store`) và **console** (`/console`) chứa chat, chạy tool, activity (mọi khoản đang giữ và deadline) và Studio.
 
 Ví dụ app nghiên cứu:
 
@@ -72,7 +74,7 @@ Ví dụ app tóm tắt:
 [Quote] → [Authorize] → Kết quả
 ```
 
-Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevisionId`; command id ổn định qua các lần sửa. Free text trong composer được ánh xạ vào tham số vị trí của command mặc định (hoặc command người dùng chọn). Quote hiển thị thành card ghim ngay trên composer, nhưng không thay đổi giao thức x402/vault.
+Mỗi app có một hoặc nhiều command. Quote luôn ghim một `commandRevisionId`; command id ổn định qua các lần sửa. Với tool, free text được ánh xạ vào tham số vị trí của command mặc định (hoặc command người dùng chọn). Với agent, free text là tin nhắn cho provider; offer chấp nhận được Payvoke đổi thành quote và khoá cả nội dung đã thương lượng vào `inputHash` (S01 §6.5). Quote hiển thị thành card ghim ngay trên composer, nhưng không thay đổi giao thức x402/vault.
 
 App `PUBLIC` chưa archive xuất hiện trong store; app suspend vẫn hiển thị unavailable để giữ star nhưng không nhận quote/thread mới. App `PRIVATE` chỉ owner thấy và chat. Availability suy ra từ trạng thái `ACTIVE`, có default command và heartbeat trong 45 giây gần nhất.
 
@@ -122,7 +124,7 @@ Khoản tiền được dành riêng cho một invocation. Tiền đã chuyển 
 
 ## 4. Cách tính tiền
 
-Provider đăng ký giá USDC cố định cho từng command trong từng phiên bản sản phẩm. Payvoke tính tiền theo invocation, không mặc định theo tin nhắn, token hoặc thời gian chạy.
+Tool đăng ký giá USDC cố định cho từng command. Agent đăng ký khoảng giá `[min, max]` cho từng command rồi báo giá cụ thể bằng offer sau khi chat; offer không đổi được refund, side effects hay mức bằng chứng đã đăng ký. Payvoke tính tiền theo invocation, không mặc định theo tin nhắn, token hoặc thời gian chạy; tin nhắn trước khi trả của agent miễn phí nhưng giới hạn số lượng.
 
 Ví dụ minh họa, không phải giá mặc định:
 

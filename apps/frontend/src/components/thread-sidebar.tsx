@@ -32,7 +32,7 @@ function ThreadRow({
       )}
     >
       <Link
-        to="/chat/$threadId"
+        to="/console/chat/$threadId"
         params={{ threadId: thread.id }}
         aria-current={active ? "page" : undefined}
         className="grid min-w-0 flex-1 gap-1 py-2.5 pr-2 pl-3"
@@ -79,8 +79,9 @@ export function ThreadSidebar() {
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const threads = useQuery({
-    queryKey: ["threads", session?.user.id, search],
-    queryFn: () => getThreads(search),
+    queryKey: ["threads", session?.user.id, "AGENT", search],
+    // Tool runs are one thread each and live in Activity instead.
+    queryFn: () => getThreads(search, "AGENT"),
     enabled: Boolean(session),
     staleTime: 10_000,
   });
@@ -96,7 +97,7 @@ export function ThreadSidebar() {
     mutationFn: archiveThread,
     onSuccess: async (_, id) => {
       await queryClient.invalidateQueries({ queryKey: ["threads"] });
-      if (pathname === `/chat/${id}`) await navigate({ to: "/chat" });
+      if (pathname === `/console/chat/${id}`) await navigate({ to: "/console/chat" });
     },
     onError: (cause) => setError(errorMessage(cause, "Archive failed.")),
   });
@@ -105,11 +106,11 @@ export function ThreadSidebar() {
   return (
     <aside
       aria-label="Threads"
-      className="flex max-h-[45dvh] min-h-0 flex-col border border-border bg-background-deep p-3.5 md:max-h-none"
+      className="flex max-h-[45dvh] min-h-0 flex-col border-border bg-background-deep p-3.5 max-md:border-b md:max-h-none md:border-r"
     >
       <div className="flex items-center justify-between gap-2">
         <Eyebrow>Threads</Eyebrow>
-        <Button render={<Link to="/chat" />} variant="outline" size="sm">
+        <Button render={<Link to="/console/chat" />} variant="outline" size="sm">
           <Plus /> New
         </Button>
       </div>
@@ -138,7 +139,7 @@ export function ThreadSidebar() {
           {errorMessage(threads.error, "Could not load threads.")}
         </p>
       ) : (threads.data?.items.length ?? 0) === 0 ? (
-        <p className={note}>No threads yet. Pick an app from the store to start one.</p>
+        <p className={note}>No chats yet. Start one with an agent from the store.</p>
       ) : (
         <nav
           aria-label="Your threads"
@@ -148,7 +149,7 @@ export function ThreadSidebar() {
             <ThreadRow
               key={thread.id}
               thread={thread}
-              active={pathname === `/chat/${thread.id}`}
+              active={pathname === `/console/chat/${thread.id}`}
               busy={archive.isPending && archive.variables === thread.id}
               onRename={() => {
                 setError("");
@@ -162,16 +163,6 @@ export function ThreadSidebar() {
             />
           ))}
         </nav>
-      )}
-      {session && (
-        <div className="mt-auto flex flex-wrap gap-x-4 gap-y-2 border-t border-border pt-4 font-mono text-[10px] text-faint">
-          <Link to="/store" className="hover:text-primary">
-            Browse store
-          </Link>
-          <Link to="/dashboard" className="hover:text-primary">
-            Manage apps
-          </Link>
-        </div>
       )}
       {error && (
         <p className={cn(note, "text-destructive")} role="alert">

@@ -92,6 +92,15 @@ archived appear in the store without operator review; availability requires
 `ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
 can star apps.
 
+Apps have a fixed `kind`. `TOOL` commands carry a fixed `grossAmount`;
+`AGENT` commands publish `minGrossAmount`/`maxGrossAmount` instead. Buyers chat
+with an agent for free (`PRESALE_MESSAGE_LIMIT` messages per thread between
+paid invocations); the provider receives `thread.message` events, replies with
+`messages:write` and proposes offers with `offers:write`. A quote is prepared
+from `commandId + arguments` for tools or from an open `offerId` for agents; see
+[S01 §6.5](../../docs/specs/01-api-and-provider-protocol.md#65-chat-trước-khi-trả-và-offer-agent-28102026).
+`GET /v1/invocations` lists the buyer's paid invocations for the console.
+
 Files (buyer inputs and provider artifacts) use presigned S3 uploads, a
 server-side completion that copies and re-hashes the bytes, and per-request
 download URLs; see [S01 §5.4](../../docs/specs/01-api-and-provider-protocol.md#54-file).

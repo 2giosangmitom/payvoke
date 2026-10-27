@@ -21,6 +21,7 @@ import { cn } from "@/src/lib/utils";
 import { authClient } from "@/src/lib/auth-client";
 import {
   formatUsdc,
+  formatUsdcRange,
   getStars,
   listStoreApps,
   starApp,
@@ -71,9 +72,17 @@ function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; c
         </p>
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 font-mono text-[11px] text-faint">
-        <span>{plural(app.commandCount, "command")}</span>
+        <span>
+          {app.kind === "AGENT" ? "agent" : "tool"} · {plural(app.commandCount, "command")}
+        </span>
         <span className="text-primary">
-          {app.fromPrice ? `from ${formatUsdc(app.fromPrice)}` : "No price yet"}
+          {app.kind === "AGENT"
+            ? app.priceRange
+              ? `offers ${formatUsdcRange(app.priceRange.min, app.priceRange.max)}`
+              : "No price yet"
+            : app.fromPrice
+              ? `from ${formatUsdc(app.fromPrice)}`
+              : "No price yet"}
         </span>
         <ArrowUpRight
           size={15}
@@ -116,8 +125,8 @@ export function StoreDirectory() {
     <PageShell>
       <PageHeader
         eyebrow="Store"
-        title="Apps you can call from a chat thread"
-        description="Each app publishes slash commands with a fixed price. Open a thread with one and you pay per request, only after you approve the quote."
+        title="Tools to run, agents to hire"
+        description="Tools have a fixed price per run and open as a form. Agents chat with you for free and send an offer. Either way you approve a quote before anything is held, and the vault refunds work that isn't delivered."
       />
       <div className="sticky top-0 z-10 -mx-1 flex flex-col gap-3 bg-background/90 px-1 py-4 backdrop-blur sm:flex-row sm:items-center">
         <label className="relative flex-1">
@@ -169,7 +178,7 @@ export function StoreDirectory() {
                 Show all apps
               </Button>
             ) : (
-              <Button render={<Link to="/dashboard" />}>Publish an app in Studio</Button>
+              <Button render={<Link to="/console/studio" />}>Publish an app in Studio</Button>
             )
           }
         >

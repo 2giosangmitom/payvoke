@@ -341,7 +341,8 @@ Số trong fixture chỉ là dữ liệu test. T089 phải có cấu hình cụ 
 - Redis làm nơi lưu trạng thái. **Quyết định 26/10/2026:** Redis/BullMQ chỉ được dùng để (1) đánh thức SSE buyer/provider bằng pub/sub, (2) lưu rate-limit dùng chung giữa các bản API, (3) chạy job không giữ key trong `apps/job-worker` (xác minh delivery), (4) đánh thức settlement/finance worker và hẹn giờ theo deadline của hold. Postgres journal, lease và nonce lane vẫn là nguồn sự thật; mọi consumer giữ vòng quét DB dự phòng nên Redis mất dữ liệu hoặc sập chỉ làm chậm, không làm sai.
 - Remote MCP paid signer, arbitrary provider code execution trong Payvoke, tool gọi chéo agent trong cùng phiên.
 - LLM tự phân xử tranh chấp hoặc tự xác nhận đồng ý chi tiền thay người dùng.
-- Phí theo token/parameter động trái giá cố định command, mainnet rollout hoặc hỗ trợ token tùy ý.
+- Phí theo token/parameter động trái giá cố định command (tool) hoặc ngoài offer đã chấp nhận (agent), mainnet rollout hoặc hỗ trợ token tùy ý. **Cập nhật 28/10/2026:** app AGENT báo giá bằng offer trong khoảng giá công khai (S01 §6.5); đó vẫn là một giá cố định cho mỗi invocation, chỉ được chốt sau khi chat.
+- Tính phí theo sự kiện kèm mức trần (pay-per-event, như Apify): buyer khoá trước một mức trần, provider báo dần chi phí thực tế, khi settle thì trả phần đã báo và hoàn phần còn lại. Contract đã có `applyDecision{refundAmount, releaseRemainder}` nên về mặt on-chain hỗ trợ settle một phần; còn thiếu: finance policy chia tiền, report chi phí có chữ ký và cách kiểm chứng chi phí provider báo. Để sau MVP; cũng là hướng xử lý huỷ giữa chừng theo phần việc đã làm.
 
 ## 16. Năm task đầu tiên để bắt tay vào làm
 

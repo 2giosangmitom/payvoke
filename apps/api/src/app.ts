@@ -12,6 +12,7 @@ import { authGuard } from "./modules/auth/guard";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { catalogRoutes } from "./modules/catalog/catalog.routes";
 import { fileRoutes } from "./modules/files/file.routes";
+import { presaleRoutes } from "./modules/presale/presale.routes";
 import { quoteRoutes } from "./modules/quotes/quote.routes";
 import { paymentRoutes } from "./modules/payments/payments.routes";
 import { providerRoutes } from "./modules/provider/provider.routes";
@@ -62,6 +63,7 @@ export function createApp(
       await instance.register(runRoutes);
       await instance.register(openuiRoutes);
       await instance.register(fileRoutes);
+      await instance.register(presaleRoutes);
     }),
   );
   return app;

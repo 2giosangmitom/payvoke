@@ -1,4 +1,3 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import type { Cradle } from "@fastify/awilix";
 import { hashSnapshot, type Json } from "@payvoke/protocol";
 import { ASSET, validateQuoteDocument, type QuoteDocument } from "@payvoke/x402";
@@ -17,6 +16,9 @@ import type { AccountIdentity } from "../auth/auth.service";
 import { isAvailable, threadSlotReleased } from "../apps/schema";
 import { buildQuoteDocument } from "./quote-document";
 import type { PrepareQuoteBody } from "./quote.schemas";
+import { conversation, conversationHash } from "../presale/conversation";
+import { offerStatus } from "../presale/presale.service";
+import { effectiveArguments } from "./arguments";
 import { loadTranscript } from "./transcript";
 
 type StoredQuote = { requestHash: string; document: Prisma.JsonValue };
@@ -127,37 +129,19 @@ export class QuoteService {
     if (product.status !== "ACTIVE" || product.archivedAt)
       throw new ConflictError("APP_UNAVAILABLE");
     if (!isAvailable(product)) throw new ConflictError("APP_OFFLINE");
-    const command = await tx.appCommand.findFirst({
-      where: {
-        id: body.commandId,
-        appId: product.id,
-        archivedAt: null,
-        activeRevisionId: { not: null },
-      },
-      include: { activeRevision: true },
-    });
-    if (!command) throw new NotFoundError("COMMAND_NOT_FOUND");
-    const revision = command.activeRevision;
-    if (!revision) throw new ConflictError("COMMAND_NOT_READY");
     const policy = await tx.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
     if (!policy || getAddress(policy.vault) !== vault)
       throw new ServiceUnavailableError("POLICY_NOT_CONFIGURED");
-    // A floor raised after the revision was published still blocks new sales.
-    if (revision.grossAmount.lessThan(policy.minGrossAmount))
-      throw new ConflictError("PRICE_BELOW_FLOOR");
+    const floor = BigInt(policy.minGrossAmount.toFixed(0));
+    const priced =
+      product.kind === "AGENT"
+        ? await this.offerTerms(tx, thread.id, product.id, body)
+        : await this.commandTerms(tx, product.id, body);
+    const { commandId, revision, grossAmount, deliverySeconds, offer } = priced;
+    // A floor raised after publication or an offer still blocks new sales.
+    if (grossAmount < floor) throw new ConflictError("PRICE_BELOW_FLOOR");
     const schema = revision.inputSchema;
-    if (!schema || typeof schema !== "object" || Array.isArray(schema) || "$async" in schema)
-      throw new ServiceUnavailableError("INVALID_COMMAND_SCHEMA");
-    const effectiveArguments = structuredClone(body.arguments);
-    // Do not retain freshly loaded schema object identities in an unbounded
-    // process-wide Ajv cache. This is preparation, not the paid hot path.
-    const validate = new Ajv2020({
-      useDefaults: true,
-      coerceTypes: false,
-      removeAdditional: false,
-      strict: true,
-    }).compile(schema);
-    if (!validate(effectiveArguments)) throw new BadRequestError("INVALID_ARGUMENTS");
+    const effective = effectiveArguments(schema, priced.arguments);
     if (
       revision.deliverySeconds <= 0 ||
       revision.reviewSeconds < 0 ||
@@ -181,11 +165,14 @@ export class QuoteService {
       buyer: buyer.walletAddress,
       threadId: thread.id,
       product,
-      commandId: command.id,
+      commandId,
       revision,
+      grossAmount,
+      deliverySeconds,
+      offer,
       policy,
       schema: schema as Json,
-      effectiveArguments,
+      effectiveArguments: effective,
       history: await loadTranscript(tx, thread.id),
       files: await this.files.contextFiles(tx, buyer.id, thread.id, body.contextSelection.fileIds),
       now,
@@ -207,7 +194,80 @@ export class QuoteService {
       where: { id: thread.id },
       data: { activeQuoteId: quote.quoteId },
     });
+    if (offer) {
+      // Single use: the conditional transition fails for a concurrent accept.
+      const accepted = await tx.offer.updateMany({
+        where: { id: offer.offerId, status: "OPEN" },
+        data: { status: "ACCEPTED", quoteId: quote.quoteId },
+      });
+      if (!accepted.count) throw new ConflictError("OFFER_NOT_OPEN");
+    }
     return quote;
+  }
+
+  // TOOL: the command's fixed price at its active revision.
+  private async commandTerms(tx: Prisma.TransactionClient, appId: string, body: PrepareQuoteBody) {
+    if (body.offerId || !body.commandId) throw new BadRequestError("APP_KIND_MISMATCH");
+    const command = await tx.appCommand.findFirst({
+      where: { id: body.commandId, appId, archivedAt: null, activeRevisionId: { not: null } },
+      include: { activeRevision: true },
+    });
+    if (!command) throw new NotFoundError("COMMAND_NOT_FOUND");
+    const revision = command.activeRevision;
+    if (!revision) throw new ConflictError("COMMAND_NOT_READY");
+    if (!revision.grossAmount) throw new ServiceUnavailableError("INVALID_COMMAND_PRICE");
+    return {
+      commandId: command.id,
+      revision,
+      grossAmount: BigInt(revision.grossAmount.toFixed(0)),
+      deliverySeconds: revision.deliverySeconds,
+      arguments: body.arguments,
+      offer: null,
+    };
+  }
+
+  // AGENT: an open offer of this thread, re-checked against the revision it
+  // pins and the conversation it was made for.
+  private async offerTerms(
+    tx: Prisma.TransactionClient,
+    threadId: string,
+    appId: string,
+    body: PrepareQuoteBody,
+  ) {
+    if (!body.offerId) throw new BadRequestError("OFFER_REQUIRED");
+    const offer = await tx.offer.findFirst({
+      where: { id: body.offerId, threadId, appId },
+      include: { commandRevision: { include: { command: true } } },
+    });
+    if (!offer) throw new NotFoundError("OFFER_NOT_FOUND");
+    if (offerStatus(offer) !== "OPEN") throw new ConflictError("OFFER_NOT_OPEN");
+    const revision = offer.commandRevision;
+    if (revision.command.archivedAt) throw new NotFoundError("COMMAND_NOT_FOUND");
+    const grossAmount = BigInt(offer.grossAmount.toFixed(0));
+    if (
+      !revision.minGrossAmount ||
+      !revision.maxGrossAmount ||
+      grossAmount < BigInt(revision.minGrossAmount.toFixed(0)) ||
+      grossAmount > BigInt(revision.maxGrossAmount.toFixed(0)) ||
+      offer.deliverySeconds > revision.deliverySeconds
+    )
+      throw new ConflictError("OFFER_INVALID");
+    const entries = await conversation(tx, threadId, offer.messageSeq);
+    if (conversationHash(entries) !== offer.conversationHash)
+      throw new ConflictError("OFFER_INVALID");
+    return {
+      commandId: revision.commandId,
+      revision,
+      grossAmount,
+      deliverySeconds: offer.deliverySeconds,
+      arguments: offer.arguments,
+      offer: {
+        offerId: offer.id,
+        summary: offer.summary,
+        conversation: entries as unknown as Json,
+        conversationHash: offer.conversationHash,
+      },
+    };
   }
 
   // Restores an unpaid authorization after a tab refresh. Paid or expired

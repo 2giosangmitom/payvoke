@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { useFinancialJson } from "../../http/financial-json";
 import type {
   FinancialIntentRoute,
+  InvocationListRoute,
   InvocationRoute,
   SubmitInvocationRoute,
 } from "./payments.controller";
@@ -34,6 +35,11 @@ export async function paymentRoutes(app: FastifyInstance) {
     );
   });
 
+  app.get<InvocationListRoute>(
+    "/v1/invocations",
+    { ...noStore, preHandler: app.requireAccount },
+    c.list,
+  );
   app.get<InvocationRoute>(
     "/v1/invocations/:id",
     { ...noStore, preHandler: app.requireAccount, schema: invocationStatusSchema },

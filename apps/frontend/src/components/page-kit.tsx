@@ -96,7 +96,13 @@ export function SectionHeader({
   );
 }
 
-export function BackLink({ to, children }: { to: "/store" | "/dashboard"; children: ReactNode }) {
+export function BackLink({
+  to,
+  children,
+}: {
+  to: "/store" | "/console" | "/console/studio" | "/console/activity";
+  children: ReactNode;
+}) {
   return (
     <Link
       to={to}

@@ -16,6 +16,10 @@ export async function eventStream(
 ) {
   reply.hijack();
   const raw = reply.raw;
+  // Hijacking skips Fastify's header flush, so carry over what hooks set on
+  // the reply (CORS for credentialed browser EventSource, security headers).
+  for (const [name, value] of Object.entries(reply.getHeaders()))
+    if (value !== undefined) raw.setHeader(name, value as string | number | string[]);
   raw.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": cacheControl,

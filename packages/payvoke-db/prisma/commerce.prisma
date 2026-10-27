@@ -1,5 +1,6 @@
 // Active marketplace model: an app is a provider-owned bot with slash commands.
-// Buyer conversations live in threads; every app exposes the same chat surface.
+// Kind is TOOL (fixed-price commands run from a form) or AGENT (free pre-sale
+// chat where the provider proposes an offer the buyer accepts); it never changes.
 // App status is ACTIVE | SUSPENDED | ARCHIVED. Visibility is PUBLIC | PRIVATE.
 // Availability is derived from lastHeartbeatAt, never stored as a mutable field.
 
@@ -9,6 +10,7 @@ model App {
   clientRequestId  String
   name             String
   description      String?
+  kind             String    @default("TOOL")
   visibility       String    @default("PUBLIC")
   status           String    @default("ACTIVE")
   payoutAddress    String
@@ -25,6 +27,7 @@ model App {
   stars          AppStar[]
   quotes         Quote[]
   files          FileAsset[]
+  offers         Offer[]
 
   @@unique([ownerId, clientRequestId])
   @@index([visibility, status, id])
@@ -79,7 +82,11 @@ model AppCommandRevision {
   inputSchema         Json
   outputSchema        Json?
   positionalParameter String?
-  grossAmount         Decimal  @db.Decimal(78, 0)
+  // TOOL revisions carry a fixed grossAmount; AGENT revisions instead publish
+  // the range every provider offer for this command must fall within.
+  grossAmount         Decimal? @db.Decimal(78, 0)
+  minGrossAmount      Decimal? @db.Decimal(78, 0)
+  maxGrossAmount      Decimal? @db.Decimal(78, 0)
   terms               Json
   deliverySeconds     Int
   reviewSeconds       Int
@@ -88,6 +95,7 @@ model AppCommandRevision {
   command   AppCommand  @relation("CommandRevisions", fields: [commandId], references: [id], onDelete: Cascade)
   activeFor AppCommand? @relation("CommandActiveRevision")
   quotes    Quote[]
+  offers    Offer[]
 
   @@index([commandId, createdAt])
   @@map("app_command_revisions")
@@ -106,9 +114,11 @@ model ChatThread {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  app    App     @relation(fields: [appId], references: [id], onDelete: Restrict)
-  quotes Quote[]
-  files  FileAsset[]
+  app      App             @relation(fields: [appId], references: [id], onDelete: Restrict)
+  quotes   Quote[]
+  files    FileAsset[]
+  messages ThreadMessage[]
+  offers   Offer[]
 
   @@unique([buyerId, clientRequestId])
   @@index([buyerId, archivedAt, updatedAt])
@@ -162,9 +172,68 @@ model Quote {
   app             App                 @relation(fields: [appId], references: [id], onDelete: Restrict)
   commandRevision AppCommandRevision? @relation(fields: [commandRevisionId], references: [id], onDelete: SetNull)
   invocation      Invocation?
+  offer           Offer?
 
   @@unique([buyerId, clientRequestId])
   @@index([threadId, validUntil])
   @@index([appId])
   @@map("quotes")
+}
+
+// Free pre-sale conversation of an AGENT thread. Nothing here is paid; the
+// provider sees content (and file manifests, never file bytes) before a hold.
+model ThreadMessage {
+  id              String    @id @default(uuid())
+  threadId        String
+  seq             Int
+  role            String
+  content         String
+  commandId       String?
+  arguments       Json?
+  fileManifest    Json?
+  clientRequestId String
+  // Provider acknowledgement of the thread.message event (buyer messages only).
+  acknowledgedAt  DateTime?
+  createdAt       DateTime  @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+
+  @@unique([threadId, seq])
+  @@unique([threadId, role, clientRequestId])
+  @@index([threadId, role, acknowledgedAt])
+  @@map("thread_messages")
+}
+
+// A provider's priced proposal. Immutable once created; status is
+// OPEN | ACCEPTED | DECLINED | WITHDRAWN | SUPERSEDED. Expiry is read from
+// expiresAt. Accepting turns it into exactly one Quote.
+model Offer {
+  id                String   @id @default(uuid())
+  threadId          String
+  appId             String
+  commandRevisionId String
+  arguments         Json
+  grossAmount       Decimal  @db.Decimal(78, 0)
+  deliverySeconds   Int
+  summary           String
+  // Hash of the conversation up to and including messageSeq.
+  messageSeq        Int
+  conversationHash  String
+  status            String   @default("OPEN")
+  expiresAt         DateTime
+  quoteId           String?  @unique
+  clientRequestId   String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  thread          ChatThread         @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  app             App                @relation(fields: [appId], references: [id], onDelete: Restrict)
+  commandRevision AppCommandRevision @relation(fields: [commandRevisionId], references: [id], onDelete: Restrict)
+  quote           Quote?             @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+
+  @@unique([appId, clientRequestId])
+  @@index([threadId, createdAt])
+  // A thread has at most one open offer.
+  @@unique([threadId], where: raw("\"status\" = 'OPEN'"), map: "offers_one_open_per_thread")
+  @@map("offers")
 }
