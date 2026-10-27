@@ -9,7 +9,7 @@ import { object } from "../runs/protocol";
 import { revisionPolicy } from "../runs/run-rules";
 
 export type NewThreadBody = { appId: string; clientRequestId: string; title?: string };
-export type ThreadQuery = { q?: string; cursor?: string; archived?: string };
+export type ThreadQuery = { q?: string; cursor?: string; archived?: string; kind?: string };
 
 const PAGE = 50;
 const HISTORY_LIMIT = 100000;
@@ -80,12 +80,17 @@ export class ThreadService {
     return { created: true, thread: serialize(thread) };
   }
 
-  async list(buyerId: string, { q, cursor, archived }: ThreadQuery) {
-    if ((q && q.length > 100) || (cursor && cursor.length > 128))
+  async list(buyerId: string, { q, cursor, archived, kind }: ThreadQuery) {
+    if (
+      (q && q.length > 100) ||
+      (cursor && cursor.length > 128) ||
+      (kind !== undefined && kind !== "AGENT" && kind !== "TOOL")
+    )
       throw new BadRequestError("INVALID_THREAD_QUERY");
     const rows = await this.db.chatThread.findMany({
       where: {
         buyerId,
+        ...(kind ? { app: { kind } } : {}),
         ...(archived === "1" ? { archivedAt: { not: null } } : { archivedAt: null }),
         ...(q
           ? {

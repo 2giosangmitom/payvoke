@@ -378,6 +378,11 @@ it("delivers free pre-sale messages to the provider feed with bounded abuse", as
   await say(threadId, { content: "fourth" });
   assert.equal((await say(threadId, { content: "fifth" })).json().error, "PRESALE_LIMIT_REACHED");
 
+  // Browsers open this stream cross-origin with credentials.
+  const stream = await web("GET", `/v1/threads/${threadId}/ag-ui/events?once=1`);
+  assert.equal(stream.headers["access-control-allow-origin"], origin);
+  assert.equal(stream.headers["access-control-allow-credentials"], "true");
+
   const snapshot = (await web("GET", `/v1/threads/${threadId}/ag-ui/snapshot`)).json();
   assert.equal(snapshot.conversation.length, 9);
   assert.deepEqual(snapshot.conversation.map((m: { role: string }) => m.role).slice(0, 3), [
