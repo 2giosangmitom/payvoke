@@ -1,5 +1,5 @@
 import type { Prisma } from "#core/db";
-import { availabilityLabel } from "./schema";
+import { availabilityLabel, type CommandOption, type CommandTerms } from "./schema";
 
 type Revision = {
   id: string;
@@ -22,11 +22,14 @@ type Command = {
 
 const amount = (value: Prisma.Decimal | null) => value?.toFixed(0) ?? null;
 
-// Decimal prices leave the API as base-unit integer strings.
+// Decimal prices leave the API as base-unit integer strings. Options and terms
+// are stored only after validation, so their JSON has these shapes.
 export function serializeRevision(revision: Revision | null) {
   return revision
     ? {
         ...revision,
+        options: revision.options as CommandOption[],
+        terms: revision.terms as CommandTerms,
         maxGrossAmount: amount(revision.maxGrossAmount),
       }
     : null;

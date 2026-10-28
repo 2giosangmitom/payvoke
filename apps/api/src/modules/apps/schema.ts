@@ -311,6 +311,17 @@ export function fileFields(schema: unknown): FileField[] {
   return fields;
 }
 
+// A command's signed terms, as validateTerms and normalizeTerms leave them.
+export type CommandTerms = {
+  deliverySeconds: number;
+  reviewSeconds: number;
+  revisionPolicy: { maxIncluded: number; description: string };
+  refundPolicy: string;
+  sideEffects: string;
+  dataUse: string;
+  verification: { minEvidence: MinEvidence };
+};
+
 export function validateTerms(value: unknown): value is Record<string, unknown> {
   if (!record(value)) return false;
   const revision = value.revisionPolicy;

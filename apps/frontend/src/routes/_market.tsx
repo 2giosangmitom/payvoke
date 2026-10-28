@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
-import { SiteFooter, SiteHeader, type SiteSection } from "@/src/components/site-chrome";
+import { SiteFooter, SiteHeader, type SiteSection } from "@/src/components/layout/site-chrome";
 
 // Pathless layout for the public site: landing and store share the marketing
 // header and footer. Working surfaces live in the /console layout instead.

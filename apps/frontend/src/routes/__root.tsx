@@ -1,33 +1,24 @@
-import { createRootRoute, Outlet, Scripts, HeadContent, Link } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  HeadContent,
+  Link,
+  Outlet,
+  Scripts,
+} from "@tanstack/react-router";
+import { UnheadProvider } from "@unhead/react/client";
 import { type ReactNode } from "react";
-import { AppProviders } from "@/src/components/app-providers";
+import { useDocumentHead, usePageMeta, useRouteMeta } from "@/src/app/head";
+import { AppProviders } from "@/src/app/providers";
 import { Button } from "@/src/components/ui/button";
 import { themeScript } from "@/src/lib/theme";
-import { preloads } from "fontless/runtime";
+import type { RouterContext } from "@/src/router";
 
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#f4f7f5" },
-      { title: "Payvoke · Slash-command apps, paid per request" },
-      {
-        name: "description",
-        content:
-          "Find apps with slash commands, keep your threads in one list, and publish your own. Building on Avalanche Fuji.",
-      },
-    ],
-    links: [
-      { rel: "icon", href: "/logo.svg", type: "image/svg+xml" },
-      ...preloads.map(({ crossorigin, ...attributes }) => ({
-        ...attributes,
-        crossOrigin: crossorigin,
-      })),
-    ],
-  }),
+// Document tags come from unhead (src/app/head.ts); HeadContent still emits
+// the stylesheets and preloads Start's build manifest asks for.
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
   notFoundComponent() {
+    usePageMeta({ title: "Page not found" });
     return (
       <main className="container-page grid min-h-dvh place-items-center py-24">
         <div className="max-w-lg">
@@ -48,14 +39,19 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const { head } = Route.useRouteContext();
   return (
-    <RootDocument>
-      <Outlet />
-    </RootDocument>
+    <UnheadProvider value={head}>
+      <RootDocument>
+        <Outlet />
+      </RootDocument>
+    </UnheadProvider>
   );
 }
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+  useDocumentHead();
+  useRouteMeta();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

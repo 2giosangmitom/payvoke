@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OpenUISurface, surfaceQuestionIds } from "../src/components/openui-surface";
-import type { ChatQuestion } from "../src/lib/paid-chat";
+import { OpenUISurface, surfaceQuestionIds } from "@/src/features/chat/openui-surface";
+import type { ChatQuestion } from "@/src/features/chat/api";
 
 const question = (overrides: Partial<ChatQuestion> = {}): ChatQuestion => ({
   id: "q1",
@@ -41,8 +41,8 @@ it("renders an OpenUI Lang program with the latest definition of each statement"
   assert.doesNotMatch(html, /Draft/);
   assert.match(html, /Score/);
   assert.match(html, />90</);
-  assert.match(html, /<th>region<\/th>/);
-  assert.match(html, /<td>120<\/td>/);
+  assert.match(html, /<th[^>]*>region<\/th>/);
+  assert.match(html, /<td[^>]*>120<\/td>/);
   assert.match(html, /aria-label="Trend"/);
 });
 
@@ -75,7 +75,7 @@ it("nests cards and places an open question form inline", () => {
       ].join("\n")}
     />,
   );
-  assert.match(html, /<h3>Result<\/h3>/);
+  assert.match(html, /<h3[^>]*>Result<\/h3>/);
   assert.match(html, /Nested text/);
   assert.match(html, /Pick a format/);
   assert.match(html, /Which format\?/);
