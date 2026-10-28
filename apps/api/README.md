@@ -132,7 +132,7 @@ holds no key: it verifies payments and, with `SETTLEMENT_ENABLED`, journals an
 intent the settlement worker picks up. Its startup checks (vault code hash,
 relayer role, approved deployment policy) gate `app.ready()`.
 
-**Routes are documented by code only.** This README and `docs/` describe rules,
+**Routes are documented by code only.** This README describes rules,
 not method/path/body catalogs. Read the route registrations in `src/modules/*`
 (or an OpenAPI document generated from them) for the current HTTP surface.
 
@@ -145,18 +145,18 @@ archived appear in the store without operator review; availability requires
 `ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
 can star apps.
 
-Apps have a fixed `kind`. `TOOL` commands carry a fixed `grossAmount`;
-`AGENT` commands publish `minGrossAmount`/`maxGrossAmount` instead. Buyers chat
-with an agent for free (`PRESALE_MESSAGE_LIMIT` messages per thread between
-paid invocations); the provider receives `thread.message` events, replies with
-`messages:write` and proposes offers with `offers:write`. A quote is prepared
-from `commandId + arguments` for tools or from an open `offerId` for agents; see
-[S01 §6.5](../../docs/specs/01-api-and-provider-protocol.md#65-chat-trước-khi-trả-và-offer-agent-28102026).
+Every app is a chat bot. Buyers message it for free (`PRESALE_MESSAGE_LIMIT`
+messages per thread between paid invocations); the provider receives
+`thread.message` events, replies with `messages:write` (text or a one-shot form)
+and proposes priced offers with `offers:write`. Commands may declare a
+`maxAmount` ceiling; the price itself always comes from an offer. A quote is
+prepared from an open `offerId`, which freezes the negotiated arguments into the
+input hash.
 `GET /v1/invocations` lists the buyer's paid invocations for the console.
 
 Files (buyer inputs and provider artifacts) use presigned S3 uploads, a
 server-side completion that copies and re-hashes the bytes, and per-request
-download URLs; see [S01 §5.4](../../docs/specs/01-api-and-provider-protocol.md#54-file).
+download URLs.
 
 Protected routes chain the `requireAccount` middleware and read `c.var.account`.
 Prisma is the data layer; no generic repository layer sits between services and

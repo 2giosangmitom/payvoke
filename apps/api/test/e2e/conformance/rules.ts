@@ -1,7 +1,7 @@
-// x402 conformance manifest (roadmap R01). Each rule from the 2026 x402 security
-// research (docs/specs/02-x402-and-vault.md §11) names the existing negative tests
-// that prove it. `bun run test:conformance` fails when a rule has no passing test or
-// when a listed test is renamed, skipped or missing, so coverage cannot pass silently.
+// x402 conformance manifest. Each rule from the 2026 x402 security research names
+// the existing negative tests that prove it. `bun run test:conformance` fails when
+// a rule has no passing test or when a listed test is renamed, skipped or missing,
+// so coverage cannot pass silently.
 
 export type Suite = "backend" | "protocol" | "vault";
 export type Evidence = { suite: Suite; test: string };
@@ -201,7 +201,7 @@ export const rules: Rule[] = [
     source: "P3",
     requirement: "Discovery resists steering by fake metadata, Sybil providers and injection",
     evidence: [],
-    deferred: "Store ranking is roadmap R06, outside the payment scope",
+    deferred: "Store ranking is outside the payment scope",
   },
   {
     id: "PII",

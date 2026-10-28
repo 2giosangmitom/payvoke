@@ -14,7 +14,7 @@ import { readQuote } from "@payvoke/shared/x402";
 import { matchingHold, mockVault } from "#test/kit/vault-reader";
 
 const vector = JSON.parse(
-  readFileSync(new URL("../../../docs/specs/fixtures/x402-v1.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../../packages/shared/test/fixtures/x402-v1.json", import.meta.url), "utf8"),
 );
 const vault = getAddress(vector.domain.verifyingContract);
 const relayer = privateKeyToAccount(generatePrivateKey());

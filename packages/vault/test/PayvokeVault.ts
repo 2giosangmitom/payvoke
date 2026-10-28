@@ -382,7 +382,7 @@ describe("PayvokeVault / viem session authorization", async () => {
 
   it("matches the exact published vector at its fixed domain address and Fuji chain ID", async () => {
     const vector = JSON.parse(
-      readFileSync(new URL("../../../docs/specs/fixtures/x402-v1.json", import.meta.url), "utf8"),
+      readFileSync(new URL("../../shared/test/fixtures/x402-v1.json", import.meta.url), "utf8"),
     );
     const connection = await network.create({ override: { chainId: 43113 } });
     try {

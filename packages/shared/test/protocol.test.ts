@@ -28,7 +28,7 @@ import {
 } from "../src/protocol";
 
 const fixture = JSON.parse(
-  readFileSync(new URL("../../../docs/specs/fixtures/x402-v1.json", import.meta.url), "utf8"),
+  readFileSync(new URL("./fixtures/x402-v1.json", import.meta.url), "utf8"),
 );
 const quote: InvocationQuote = {
   ...fixture.quote,
