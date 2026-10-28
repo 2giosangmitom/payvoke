@@ -10,11 +10,11 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { verifyStructuredDeliveries } from "@payvoke/payments/delivery";
-import { expireStaleUploads } from "@payvoke/payments/files";
-import { MemoryStorage } from "@payvoke/storage";
+import { PrismaClient } from "@/core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
+import { verifyStructuredDeliveries } from "@/core/payments/delivery";
+import { expireStaleUploads } from "@/core/payments/files";
+import { MemoryStorage } from "@/core/storage";
 
 const origin = "https://app.payvoke.test";
 const schema = `files_test_${randomUUID().replaceAll("-", "")}`;

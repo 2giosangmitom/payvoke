@@ -1,6 +1,6 @@
 import type { Cradle } from "@fastify/awilix";
-import type { App, Offer, Prisma, ThreadMessage } from "@payvoke/db";
-import { channels } from "@payvoke/queue";
+import type { App, Offer, Prisma, ThreadMessage } from "@/core/db";
+import { channels } from "@/core/queue";
 import {
   BadRequestError,
   ConflictError,

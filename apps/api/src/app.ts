@@ -1,9 +1,9 @@
 import fastify, { LogController } from "fastify";
 import fp from "fastify-plugin";
 import { fastifyAwilixPlugin } from "@fastify/awilix";
-import { logRedaction } from "@payvoke/server";
-import { createDatabase, type PrismaClient } from "@payvoke/db";
-import { createStorage, type ObjectStorage } from "@payvoke/storage";
+import { logRedaction } from "@/core/runtime";
+import { createDatabase, type PrismaClient } from "@/core/db";
+import { createStorage, type ObjectStorage } from "@/core/storage";
 import type { Config } from "./config";
 import { createAppContainer } from "./container";
 import { registerHttp } from "./plugins/http";

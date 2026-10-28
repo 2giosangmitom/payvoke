@@ -1,5 +1,5 @@
 import Ajv2020 from "ajv/dist/2020.js";
-import { minEvidenceLevels, type MinEvidence } from "@payvoke/payments/evidence";
+import { minEvidenceLevels, type MinEvidence } from "@/core/payments/evidence";
 
 export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN", "FILE"] as const;
 export type CommandOptionType = (typeof COMMAND_OPTION_TYPES)[number];

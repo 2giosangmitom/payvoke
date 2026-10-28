@@ -1,6 +1,6 @@
 import type { Cradle } from "@fastify/awilix";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { channels } from "@payvoke/queue";
+import { channels } from "@/core/queue";
 import { eventStream } from "../../http/sse";
 import type { KeyScope } from "../provider/provider.validation";
 import type { AnswerBody, RevisionBody } from "./continuation.service";

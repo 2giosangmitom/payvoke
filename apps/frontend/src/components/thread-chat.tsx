@@ -19,7 +19,7 @@ import {
   Slash,
   X,
 } from "lucide-react";
-import type { QuoteDocument } from "@payvoke/x402";
+import type { QuoteDocument } from "@payvoke/shared/x402";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";

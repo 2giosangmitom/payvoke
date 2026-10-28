@@ -1,6 +1,6 @@
 import type { Cradle } from "@fastify/awilix";
-import { vaultFinanceAbi } from "@payvoke/protocol";
-import type { QuoteDocument } from "@payvoke/x402";
+import { vaultFinanceAbi } from "@payvoke/shared/protocol";
+import type { QuoteDocument } from "@payvoke/shared/x402";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 

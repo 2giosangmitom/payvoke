@@ -12,7 +12,7 @@ import {
   componentList,
   type ComponentName,
   type ComponentProps,
-} from "@payvoke/openui-components";
+} from "@payvoke/shared/openui";
 import { ChatWidget } from "./chat-widget";
 import { QuestionForm } from "./question-form";
 import { cn } from "@/src/lib/utils";

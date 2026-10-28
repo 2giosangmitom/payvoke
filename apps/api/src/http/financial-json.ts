@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { parseFinancialJson } from "@payvoke/server";
+import { parseFinancialJson } from "@/core/runtime";
 import { BadRequestError } from "../errors";
 
 // Call inside an encapsulated scope only: it replaces the JSON parser for that

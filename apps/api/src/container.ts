@@ -1,9 +1,9 @@
 import { asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import type { Cradle } from "@fastify/awilix";
 import type { FastifyBaseLogger } from "fastify";
-import type { PrismaClient } from "@payvoke/db";
-import type { Doorbell, Jobs } from "@payvoke/queue";
-import type { ObjectStorage } from "@payvoke/storage";
+import type { PrismaClient } from "@/core/db";
+import type { Doorbell, Jobs } from "@/core/queue";
+import type { ObjectStorage } from "@/core/storage";
 import type { Config } from "./config";
 import type { Signals } from "./signals";
 import { createAuth } from "./modules/auth/auth";

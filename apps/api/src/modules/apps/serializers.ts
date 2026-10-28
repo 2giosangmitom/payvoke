@@ -1,4 +1,4 @@
-import type { Prisma } from "@payvoke/db";
+import type { Prisma } from "@/core/db";
 import { availabilityLabel } from "./schema";
 
 type Revision = {

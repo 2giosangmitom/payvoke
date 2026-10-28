@@ -6,16 +6,16 @@ import {
   vaultDomain,
   type InvocationQuote,
   type Json,
-} from "@payvoke/protocol";
+} from "@payvoke/shared/protocol";
 import {
   ASSET,
   NETWORK,
   validateQuoteDocument,
   wireQuote,
   type QuoteDocument,
-} from "@payvoke/x402";
-import type { AppCommandRevision, DeploymentPolicy } from "@payvoke/db";
-import type { FileManifestEntry } from "@payvoke/payments/files";
+} from "@payvoke/shared/x402";
+import type { AppCommandRevision, DeploymentPolicy } from "@/core/db";
+import type { FileManifestEntry } from "@/core/payments/files";
 import { getAddress, type Address } from "viem";
 import { ServiceUnavailableError } from "../../errors";
 import type { TranscriptMessage } from "./transcript";

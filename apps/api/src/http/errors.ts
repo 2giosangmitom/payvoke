@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { HttpError } from "@fastify/sensible";
-import { Prisma } from "@payvoke/db";
+import { Prisma } from "@/core/db";
 import { AppError } from "../errors";
 
 type PublicError = { status: number; code: string; expected: boolean };

@@ -1,0 +1,29 @@
+{
+  "name": "@payvoke/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./protocol": "./src/protocol/index.ts",
+    "./x402": "./src/x402/index.ts",
+    "./x402/chain": "./src/x402/chain.ts",
+    "./x402/facilitator": "./src/x402/facilitator.ts",
+    "./x402/settlement": "./src/x402/settlement.ts",
+    "./openui": "./src/openui/index.ts"
+  },
+  "scripts": {
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@x402/core": "2.28.0",
+    "abitype": "1.2.3",
+    "canonicalize": "3.0.0",
+    "viem": "2.57.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

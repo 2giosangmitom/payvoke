@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
-import { loadEnv } from "@payvoke/server";
-import { storageEnv } from "@payvoke/storage";
+import { loadEnv } from "@/core/runtime";
+import { storageEnv } from "@/core/storage";
 
 const schema = Type.Object({
   HOST: Type.String({ default: "127.0.0.1" }),

@@ -1,5 +1,5 @@
 import Ajv2020 from "ajv/dist/2020.js";
-import type { InvocationExecutionStatus } from "@payvoke/db";
+import type { InvocationExecutionStatus } from "@/core/db";
 import { BadRequestError, ConflictError } from "../../errors";
 import { identifier, object } from "./protocol";
 

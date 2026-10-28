@@ -1,8 +1,7 @@
-import "dotenv/config";
 import closeWithGrace from "close-with-grace";
 import type { FastifyBaseLogger } from "fastify";
-import { errorTag } from "@payvoke/server";
-import { throttled } from "@payvoke/queue";
+import { errorTag } from "@/core/runtime";
+import { throttled } from "@/core/queue";
 import { createApp } from "./app";
 import { loadConfig } from "./config";
 import { connectSignals } from "./signals";

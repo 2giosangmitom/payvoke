@@ -12,8 +12,11 @@
     "apps/api": {
       "name": "api",
       "dependencies": {
+        "@aws-sdk/client-s3": "3.1149.0",
+        "@aws-sdk/s3-request-presigner": "3.1149.0",
         "@better-auth/prisma-adapter": "1.7.11",
         "@fastify/awilix": "8.3.1",
+        "@fastify/bearer-auth": "10.1.4",
         "@fastify/cookie": "^11.1.3",
         "@fastify/cors": "^11.3.1",
         "@fastify/helmet": "^13.2.0",
@@ -24,79 +27,34 @@
         "@fastify/swagger-ui": "^6.1.2",
         "@fastify/type-provider-typebox": "^6.3.0",
         "@openuidev/lang-core": "^1.0.1",
-        "@payvoke/db": "workspace:*",
-        "@payvoke/openui-components": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/storage": "workspace:*",
-        "@payvoke/x402": "workspace:*",
+        "@payvoke/shared": "workspace:*",
+        "@prisma/adapter-pg": "^7.10.1",
+        "@prisma/client": "^7.10.1",
         "@x402/core": "2.28.0",
         "ajv": "8.20.0",
         "awilix": "13.0.5",
         "better-auth": "1.7.11",
+        "bullmq": "6.3.13",
         "close-with-grace": "^2.5.0",
-        "dotenv": "^18.0.9",
+        "env-schema": "^8.0.1",
         "fastify": "^5.12.7",
         "fastify-plugin": "^6.0.1",
+        "ioredis": "6.0.0",
+        "jsonc-parser": "3.3.1",
+        "pg": "^8.23.1",
+        "prisma": "^7.10.1",
         "typebox": "^1.4.3",
         "viem": "2.57.7",
         "zod": "^4.6.7",
       },
       "devDependencies": {
-        "@payvoke/testkit": "workspace:*",
-        "@prisma/adapter-pg": "^7.10.1",
+        "@electric-sql/pglite": "0.4.3",
+        "@electric-sql/pglite-socket": "0.1.3",
         "@types/bun": "^1.4.4",
         "@types/emscripten": "^1.41.6",
         "@types/node": "^26.6.5",
         "@types/pg": "^8.23.1",
-        "pg": "^8.23.1",
-        "typescript": "^7.0.2",
-      },
-    },
-    "apps/facilitator": {
-      "name": "facilitator",
-      "dependencies": {
-        "@fastify/bearer-auth": "10.1.4",
-        "@fastify/helmet": "^13.2.0",
-        "@fastify/rate-limit": "^11.2.1",
-        "@fastify/sensible": "^6.0.7",
-        "@payvoke/db": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "@x402/core": "2.28.0",
-        "close-with-grace": "^2.5.0",
         "dotenv": "^18.0.9",
-        "fastify": "^5.12.7",
-        "typebox": "^1.4.3",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@payvoke/testkit": "workspace:*",
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "apps/finance-worker": {
-      "name": "finance-worker",
-      "dependencies": {
-        "@payvoke/db": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "bullmq": "6.3.13",
-        "close-with-grace": "^2.5.0",
-        "dotenv": "^18.0.9",
-        "typebox": "^1.4.3",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
         "typescript": "^7.0.2",
       },
     },
@@ -108,9 +66,7 @@
         "@base-ui/react": "^1.9.0",
         "@metamask/connect-evm": "^2.1.1",
         "@openuidev/react-lang": "^1.0.1",
-        "@payvoke/openui-components": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/x402": "workspace:*",
+        "@payvoke/shared": "workspace:*",
         "@streamdown/code": "^1.1.1",
         "@tanstack/react-query": "^5.104.5",
         "@tanstack/react-router": "^1.170.46",
@@ -143,43 +99,6 @@
         "vite": "^8.3.5",
       },
     },
-    "apps/job-worker": {
-      "name": "job-worker",
-      "dependencies": {
-        "@payvoke/db": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/storage": "workspace:*",
-        "bullmq": "6.3.13",
-        "close-with-grace": "^2.5.0",
-        "dotenv": "^18.0.9",
-        "typebox": "^1.4.3",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "apps/settlement-worker": {
-      "name": "settlement-worker",
-      "dependencies": {
-        "@payvoke/db": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "bullmq": "6.3.13",
-        "close-with-grace": "^2.5.0",
-        "dotenv": "^18.0.9",
-        "typebox": "^1.4.3",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
     "apps/slide": {
       "name": "@payvoke/slide",
       "dependencies": {
@@ -193,116 +112,23 @@
         "typescript": "^7.0.2",
       },
     },
-    "packages/openui-components": {
-      "name": "@payvoke/openui-components",
+    "packages/shared": {
+      "name": "@payvoke/shared",
       "dependencies": {
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-db": {
-      "name": "@payvoke/db",
-      "dependencies": {
-        "@prisma/adapter-pg": "^7.10.1",
-        "@prisma/client": "^7.10.1",
-        "pg": "^8.23.1",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "@types/pg": "^8.23.1",
-        "dotenv": "^18.0.9",
-        "prisma": "^7.10.1",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-payments": {
-      "name": "@payvoke/payments",
-      "dependencies": {
-        "@payvoke/db": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/storage": "workspace:*",
-        "@payvoke/x402": "workspace:*",
         "@x402/core": "2.28.0",
-        "ajv": "8.20.0",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-protocol": {
-      "name": "@payvoke/protocol",
-      "dependencies": {
         "abitype": "1.2.3",
         "canonicalize": "3.0.0",
         "viem": "2.57.7",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
-        "@types/node": "^22.20.5",
-        "typescript": "~6.0.3",
-      },
-    },
-    "packages/payvoke-queue": {
-      "name": "@payvoke/queue",
-      "dependencies": {
-        "bullmq": "6.3.13",
-        "ioredis": "6.0.0",
-      },
-      "devDependencies": {
+        "@types/bun": "^1.4.4",
         "@types/node": "^26.6.5",
         "typescript": "^7.0.2",
       },
     },
-    "packages/payvoke-server": {
-      "name": "@payvoke/server",
-      "dependencies": {
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "env-schema": "^8.0.1",
-        "jsonc-parser": "3.3.1",
-        "typebox": "^1.4.3",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-storage": {
-      "name": "@payvoke/storage",
-      "dependencies": {
-        "@aws-sdk/client-s3": "3.1149.0",
-        "@aws-sdk/s3-request-presigner": "3.1149.0",
-        "@payvoke/server": "workspace:*",
-        "typebox": "^1.4.3",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-testkit": {
-      "name": "@payvoke/testkit",
-      "dependencies": {
-        "@electric-sql/pglite": "0.4.3",
-        "@electric-sql/pglite-socket": "0.1.3",
-        "@payvoke/db": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/emscripten": "^1.41.6",
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "packages/payvoke-vault": {
-      "name": "packages",
+    "packages/vault": {
+      "name": "@payvoke/vault",
       "version": "1.0.0",
       "dependencies": {
         "@openzeppelin/contracts": "5.6.1",
@@ -310,49 +136,11 @@
       "devDependencies": {
         "@nomicfoundation/hardhat-ignition": "^3.1.9",
         "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/x402": "workspace:*",
+        "@payvoke/shared": "workspace:*",
         "@types/node": "^22.20.5",
         "forge-std": "github:foundry-rs/forge-std#v1.16.2",
         "hardhat": "3.20.0",
         "typescript": "~6.0.3",
-        "viem": "2.57.7",
-      },
-    },
-    "packages/payvoke-x402": {
-      "name": "@payvoke/x402",
-      "dependencies": {
-        "@payvoke/protocol": "workspace:*",
-        "@x402/core": "2.28.0",
-        "viem": "2.57.7",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.5",
-        "typescript": "^7.0.2",
-      },
-    },
-    "tests/payments-e2e": {
-      "name": "payments-e2e",
-      "devDependencies": {
-        "@electric-sql/pglite": "0.4.3",
-        "@payvoke/db": "workspace:*",
-        "@payvoke/payments": "workspace:*",
-        "@payvoke/protocol": "workspace:*",
-        "@payvoke/queue": "workspace:*",
-        "@payvoke/server": "workspace:*",
-        "@payvoke/testkit": "workspace:*",
-        "@payvoke/x402": "workspace:*",
-        "@prisma/adapter-pg": "^7.10.1",
-        "@types/bun": "^1.4.4",
-        "@types/emscripten": "^1.41.6",
-        "@types/node": "^26.6.5",
-        "@types/pg": "^8.23.1",
-        "@x402/core": "2.28.0",
-        "api": "workspace:*",
-        "facilitator": "workspace:*",
-        "fastify": "^5.12.7",
-        "pg": "^8.23.1",
-        "typescript": "^7.0.2",
         "viem": "2.57.7",
       },
     },
@@ -891,25 +679,11 @@
 
     "@paulmillr/qr": ["@paulmillr/qr@0.2.1", "", {}, "sha512-IHnV6A+zxU7XwmKFinmYjUcwlyK9+xkG3/s9KcQhI9BjQKycrJ1JRO+FbNYPwZiPKW3je/DR0k7w8/gLa5eaxQ=="],
 
-    "@payvoke/db": ["@payvoke/db@workspace:packages/payvoke-db"],
-
-    "@payvoke/openui-components": ["@payvoke/openui-components@workspace:packages/openui-components"],
-
-    "@payvoke/payments": ["@payvoke/payments@workspace:packages/payvoke-payments"],
-
-    "@payvoke/protocol": ["@payvoke/protocol@workspace:packages/payvoke-protocol"],
-
-    "@payvoke/queue": ["@payvoke/queue@workspace:packages/payvoke-queue"],
-
-    "@payvoke/server": ["@payvoke/server@workspace:packages/payvoke-server"],
+    "@payvoke/shared": ["@payvoke/shared@workspace:packages/shared"],
 
     "@payvoke/slide": ["@payvoke/slide@workspace:apps/slide"],
 
-    "@payvoke/storage": ["@payvoke/storage@workspace:packages/payvoke-storage"],
-
-    "@payvoke/testkit": ["@payvoke/testkit@workspace:packages/payvoke-testkit"],
-
-    "@payvoke/x402": ["@payvoke/x402@workspace:packages/payvoke-x402"],
+    "@payvoke/vault": ["@payvoke/vault@workspace:packages/vault"],
 
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
 
@@ -1375,7 +1149,7 @@
 
     "ansi-colors": ["ansi-colors@4.1.3", "", {}, "sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw=="],
 
-    "ansi-regex": ["ansi-regex@6.4.0", "", {}, "sha512-KzTVk2tCWAHtYrvvvaP8bJKJq2pVinhLcGEQdtLIYPbmNGNyYe8QwNaTUYQp2J7/vIsUKt5QCqAfUkYyG9DkOw=="],
+    "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 
     "ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg=="],
 
@@ -1613,7 +1387,7 @@
 
     "entities": ["entities@6.0.1", "", {}, "sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g=="],
 
-    "env-paths": ["env-paths@2.2.1", "", {}, "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A=="],
+    "env-paths": ["env-paths@4.0.0", "", { "dependencies": { "is-safe-filename": "^0.1.0" } }, "sha512-pxP8eL2SwwaTRi/KHYwLYXinDs7gL3jxFcBYmEdYfZmZXbaVDvdppd0XBU8qVz03rDfKZMXg1omHCbsJjZrMsw=="],
 
     "env-runner": ["env-runner@0.2.3", "", { "dependencies": { "crossws": "^0.4.12", "exsolve": "^1.1.1", "httpxy": "^0.5.5", "srvx": "^1.0.5" }, "bin": { "env-runner": "./dist/cli.mjs" } }, "sha512-S8EFBKyznRwPVwayK187cYjvnpgC92xy+q0BIF++V965pfjMVVRbQ/HoTYGA/1EHmZ7E68k6Heq+4WnvVhOL5w=="],
 
@@ -1644,8 +1418,6 @@
     "exsolve": ["exsolve@1.2.0", "", {}, "sha512-h1pQPR9XoeSMdntRNCjyTznaume4UpfXrULBnlkZ2CUM/G5eSa+pBByGldO5uR8dxbPC+OuJXsPPNf+JZ81ADg=="],
 
     "extend": ["extend@3.0.2", "", {}, "sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g=="],
-
-    "facilitator": ["facilitator@workspace:apps/facilitator"],
 
     "fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
 
@@ -1680,8 +1452,6 @@
     "figures": ["figures@6.1.0", "", { "dependencies": { "is-unicode-supported": "^2.0.0" } }, "sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg=="],
 
     "fill-range": ["fill-range@7.1.1", "", { "dependencies": { "to-regex-range": "^5.0.1" } }, "sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg=="],
-
-    "finance-worker": ["finance-worker@workspace:apps/finance-worker"],
 
     "find-my-way": ["find-my-way@9.7.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-querystring": "^1.0.0", "safe-regex2": "^5.0.0" } }, "sha512-f2JHn75x2JlwUwLenZypgczR7YWMb/uO9BvUXtus+JMgkbIkLADd38cI4EiV+OQqrGo1Zlq6V8wnqMJ8e62wUQ=="],
 
@@ -1844,8 +1614,6 @@
     "jest-diff": ["jest-diff@30.5.2", "", { "dependencies": { "@jest/diff-sequences": "30.5.0", "@jest/get-type": "30.5.0", "chalk": "^4.1.2", "pretty-format": "30.5.1" } }, "sha512-rBtHnI6BWTiWj3lM7fOLVfChx7R9B0u9VV3PRHawKs79x6ZjW1QoSrKenaigNGWlvhtoi2BqvDbABDie+Os3xQ=="],
 
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
-
-    "job-worker": ["job-worker@workspace:apps/job-worker"],
 
     "jose": ["jose@6.2.13", "", {}, "sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ=="],
 
@@ -2129,8 +1897,6 @@
 
     "p-try": ["p-try@2.2.0", "", {}, "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ=="],
 
-    "packages": ["packages@workspace:packages/payvoke-vault"],
-
     "pako": ["pako@2.2.0", "", {}, "sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w=="],
 
     "parse-entities": ["parse-entities@4.0.2", "", { "dependencies": { "@types/unist": "^2.0.0", "character-entities-legacy": "^3.0.0", "character-reference-invalid": "^2.0.0", "decode-named-character-reference": "^1.0.0", "is-alphanumerical": "^2.0.0", "is-decimal": "^2.0.0", "is-hexadecimal": "^2.0.0" } }, "sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw=="],
@@ -2148,8 +1914,6 @@
     "path-scurry": ["path-scurry@2.0.2", "", { "dependencies": { "lru-cache": "^11.0.0", "minipass": "^7.1.2" } }, "sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg=="],
 
     "pathe": ["pathe@2.0.3", "", {}, "sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w=="],
-
-    "payments-e2e": ["payments-e2e@workspace:tests/payments-e2e"],
 
     "perfect-debounce": ["perfect-debounce@2.1.0", "", {}, "sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g=="],
 
@@ -2337,8 +2101,6 @@
 
     "setprototypeof": ["setprototypeof@1.2.0", "", {}, "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw=="],
 
-    "settlement-worker": ["settlement-worker@workspace:apps/settlement-worker"],
-
     "shadcn": ["shadcn@4.23.0", "", { "dependencies": { "@babel/core": "^7.28.0", "@babel/parser": "^7.28.0", "@babel/plugin-transform-typescript": "^7.28.0", "@babel/preset-typescript": "^7.27.1", "@dotenvx/dotenvx": "^1.48.4", "@modelcontextprotocol/server": "^2.3.1", "@shadcn/registry": "0.2.1", "@types/validate-npm-package-name": "^4.0.2", "browserslist": "^4.29.3", "cn": "^0.2.4", "commander": "^14.0.0", "dedent": "^1.6.0", "deepmerge": "^4.3.1", "diff": "^8.0.2", "execa": "^9.6.0", "fast-glob": "^3.3.3", "fs-extra": "^11.3.1", "fuzzysort": "^3.1.0", "kleur": "^4.1.5", "open": "^11.0.4", "ora": "^8.2.0", "postcss": "^8.5.23", "postcss-selector-parser": "^7.1.6", "prompts": "^2.4.2", "recast": "^0.23.11", "socks": "^2.8.8", "stringify-object": "^5.0.0", "ts-morph": "^26.0.0", "tsconfig-paths": "^4.2.0", "undici": "^7.30.1", "validate-npm-package-name": "^7.0.1", "zod": "^4.2.0" }, "bin": { "shadcn": "dist/index.js" } }, "sha512-lKgq7QPFgkV/6EOrMCwvEn7ZAw/YnM/grhxzJmK4cZdw3E4F3Ut2EmWvrn2E+vzJp1y/76mxU185OSkXo9Ff+Q=="],
 
     "shebang-command": ["shebang-command@2.0.0", "", { "dependencies": { "shebang-regex": "^3.0.0" } }, "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA=="],
@@ -2391,7 +2153,7 @@
 
     "stringify-object": ["stringify-object@5.0.0", "", { "dependencies": { "get-own-enumerable-keys": "^1.0.0", "is-obj": "^3.0.0", "is-regexp": "^3.1.0" } }, "sha512-zaJYxz2FtcMb4f+g60KsRNFOpVMUyuJgA51Zi5Z1DOTC3S59+OQiVOzE9GZt0x72uBGWKsQIuBKeF9iusmKFsg=="],
 
-    "strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
+    "strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 
     "strip-bom": ["strip-bom@3.0.0", "", {}, "sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA=="],
 
@@ -2573,6 +2335,8 @@
 
     "@dotenvx/dotenvx/dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
 
+    "@dotenvx/dotenvx/env-paths": ["env-paths@2.2.1", "", {}, "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A=="],
+
     "@dotenvx/dotenvx/execa": ["execa@5.1.1", "", { "dependencies": { "cross-spawn": "^7.0.3", "get-stream": "^6.0.0", "human-signals": "^2.1.0", "is-stream": "^2.0.0", "merge-stream": "^2.0.0", "npm-run-path": "^4.0.1", "onetime": "^5.1.2", "signal-exit": "^3.0.3", "strip-final-newline": "^2.0.0" } }, "sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg=="],
 
     "@dotenvx/dotenvx/open": ["open@8.4.2", "", { "dependencies": { "define-lazy-prop": "^2.0.0", "is-docker": "^2.1.1", "is-wsl": "^2.2.0" } }, "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ=="],
@@ -2603,8 +2367,6 @@
 
     "@nomicfoundation/hardhat-node-test-runner/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
-    "@nomicfoundation/hardhat-utils/env-paths": ["env-paths@4.0.0", "", { "dependencies": { "is-safe-filename": "^0.1.0" } }, "sha512-pxP8eL2SwwaTRi/KHYwLYXinDs7gL3jxFcBYmEdYfZmZXbaVDvdppd0XBU8qVz03rDfKZMXg1omHCbsJjZrMsw=="],
-
     "@nomicfoundation/hardhat-verify/@nomicfoundation/hardhat-zod-utils": ["@nomicfoundation/hardhat-zod-utils@3.0.8", "", { "dependencies": { "@nomicfoundation/hardhat-errors": "^3.0.13", "@nomicfoundation/hardhat-utils": "^5.0.0" }, "peerDependencies": { "zod": "^3.23.8" } }, "sha512-BMg06ZY7HxfOW1FoUKlSs1QmYmqxPHRsihxl3DeRSiFO0UUDVPrVoVhlWRKUB99LGSVLDF+97wGfIlI49tKTYg=="],
 
     "@nomicfoundation/hardhat-verify/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
@@ -2613,9 +2375,9 @@
 
     "@openuidev/devtools/lucide-react": ["lucide-react@0.575.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-VuXgKZrk0uiDlWjGGXmKV6MSk9Yy4l10qgVvzGn2AWBx1Ylt0iBexKOAoA6I7JO3m+M9oeovJd3yYENfkUbOeg=="],
 
-    "@payvoke/protocol/@types/node": ["@types/node@22.20.5", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA=="],
+    "@payvoke/vault/@types/node": ["@types/node@22.20.5", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA=="],
 
-    "@payvoke/protocol/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
+    "@payvoke/vault/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "@prisma/engines/@prisma/get-platform": ["@prisma/get-platform@7.10.1", "", { "dependencies": { "@prisma/debug": "7.10.1" } }, "sha512-iVnghHne5vcaobBjPVCMEjh5r/1UCj394EIGTUclasFRatpR/MQwcM2veLv5kgoFSyYP54nch/lNFCQRYcDxvg=="],
 
@@ -2671,6 +2433,8 @@
 
     "conf/ajv-formats": ["ajv-formats@2.1.1", "", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA=="],
 
+    "conf/env-paths": ["env-paths@2.2.1", "", {}, "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A=="],
+
     "cross-spawn/which": ["which@2.0.2", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "./bin/node-which" } }, "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA=="],
 
     "dot-prop/is-obj": ["is-obj@2.0.0", "", {}, "sha512-drqDG3cbczxxEJRoOXcOjtdp1J/lyp1mNn0xaznRs8+muBhgQcrnbspox5X5fOw0HnMnbfDzvnEMEtqDEJEo8w=="],
@@ -2680,8 +2444,6 @@
     "eciesjs/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
     "eciesjs/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw=="],
-
-    "enquirer/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 
     "ethereum-cryptography/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
@@ -2731,11 +2493,9 @@
 
     "ora/chalk": ["chalk@5.6.2", "", {}, "sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA=="],
 
+    "ora/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
+
     "ox/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
-
-    "packages/@types/node": ["@types/node@22.20.5", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA=="],
-
-    "packages/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "parse-entities/@types/unist": ["@types/unist@2.0.11", "", {}, "sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA=="],
 
@@ -2764,6 +2524,8 @@
     "shadcn/cn": ["cn@0.2.6", "", { "bin": { "cn": "bin/cn.mjs" } }, "sha512-+i4L0zUGgRcEnhsxueVrP7iBGxBx5iD0WOTYg1MwFEu2ZyCmH5Ov2V1cul2Ht5UchRQQgftCf4be/RxspuW6QQ=="],
 
     "shadcn/commander": ["commander@14.0.3", "", {}, "sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw=="],
+
+    "string-width/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
 
     "unifont/std-env": ["std-env@4.3.0", "", {}, "sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag=="],
 
@@ -2807,7 +2569,7 @@
 
     "@open-slide/core/@base-ui/react/@base-ui/utils": ["@base-ui/utils@0.3.1", "", { "dependencies": { "@babel/runtime": "^7.29.2", "@floating-ui/utils": "^0.2.11", "reselect": "^5.2.0", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-gFFiltORVmW/N6IILTGxizP3PBpVpysqML1ALY5Vk0mH+7faVkCknOU31goYHN5Aoek2dkjxva1XOD2Ce9WuIg=="],
 
-    "@payvoke/protocol/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+    "@payvoke/vault/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@radix-ui/react-toggle/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
 
@@ -2839,11 +2601,11 @@
 
     "cross-spawn/which/isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
-    "enquirer/strip-ansi/ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
-
     "ethers/@types/node/undici-types": ["undici-types@6.19.8", "", {}, "sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw=="],
 
-    "packages/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+    "ora/strip-ansi/ansi-regex": ["ansi-regex@6.4.0", "", {}, "sha512-KzTVk2tCWAHtYrvvvaP8bJKJq2pVinhLcGEQdtLIYPbmNGNyYe8QwNaTUYQp2J7/vIsUKt5QCqAfUkYyG9DkOw=="],
+
+    "string-width/strip-ansi/ansi-regex": ["ansi-regex@6.4.0", "", {}, "sha512-KzTVk2tCWAHtYrvvvaP8bJKJq2pVinhLcGEQdtLIYPbmNGNyYe8QwNaTUYQp2J7/vIsUKt5QCqAfUkYyG9DkOw=="],
 
     "@ethereumjs/tx/ethereum-cryptography/@scure/bip32/@scure/base": ["@scure/base@1.1.9", "", {}, "sha512-8YKhl8GHiNI/pU2VMaofa2Tor7PJRAjwQLBBuilkJ9L5+13yVbC7JO/wS7piioAvPSwR3JKM1IJ/u4xQzbcXKg=="],
 

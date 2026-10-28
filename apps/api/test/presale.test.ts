@@ -9,9 +9,9 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { hashSnapshot, type Json } from "@payvoke/protocol";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
+import { PrismaClient } from "@/core/db";
+import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
 
 const origin = "https://app.payvoke.test";
 const schema = `presale_test_${randomUUID().replaceAll("-", "")}`;

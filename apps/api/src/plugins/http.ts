@@ -4,7 +4,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import type { FastifyInstance } from "fastify";
-import type { Redis } from "@payvoke/queue";
+import type { Redis } from "@/core/queue";
 import type { Config } from "../config";
 import { registerErrorHandler } from "../http/errors";
 

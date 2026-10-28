@@ -5,14 +5,13 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*",
-    "tests/*"
+    "packages/*"
   ],
   "scripts": {
     "fmt": "oxfmt",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "postinstall": "bun --filter @payvoke/db generate"
+    "postinstall": "bun --filter api generate"
   },
   "devDependencies": {
     "oxfmt": "^0.73.0",

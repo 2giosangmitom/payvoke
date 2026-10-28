@@ -10,10 +10,10 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { pendingVerifications, verifyStructuredDeliveries } from "@payvoke/payments/delivery";
-import { MemoryDoorbell, MemoryJobs } from "@payvoke/queue";
+import { PrismaClient } from "@/core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
+import { pendingVerifications, verifyStructuredDeliveries } from "@/core/payments/delivery";
+import { MemoryDoorbell, MemoryJobs } from "@/core/queue";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;

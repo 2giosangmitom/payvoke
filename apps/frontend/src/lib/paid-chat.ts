@@ -1,6 +1,6 @@
 import { api, apiOrigin } from "./api";
-import { paymentRequirements, validateQuoteDocument, type QuoteDocument } from "@payvoke/x402";
-import { paymentTypes, vaultAdmissionAbi, vaultDomain } from "@payvoke/protocol";
+import { paymentRequirements, validateQuoteDocument, type QuoteDocument } from "@payvoke/shared/x402";
+import { paymentTypes, vaultAdmissionAbi, vaultDomain } from "@payvoke/shared/protocol";
 import type { Address, Hex } from "viem";
 
 export type CommandOptionType = "STRING" | "INTEGER" | "NUMBER" | "BOOLEAN" | "FILE";

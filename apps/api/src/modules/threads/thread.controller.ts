@@ -1,7 +1,7 @@
 import type { Cradle } from "@fastify/awilix";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { BadRequestError } from "../../errors";
-import { channels } from "@payvoke/queue";
+import { channels } from "@/core/queue";
 import { eventStream } from "../../http/sse";
 import type { NewThreadBody, ThreadQuery } from "./thread.service";
 

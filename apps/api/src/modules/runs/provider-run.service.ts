@@ -1,8 +1,8 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { StringDecoder } from "node:string_decoder";
 import type { Cradle } from "@fastify/awilix";
-import type { Prisma } from "@payvoke/db";
-import { channels } from "@payvoke/queue";
+import type { Prisma } from "@/core/db";
+import { channels } from "@/core/queue";
 import {
   BadRequestError,
   ConflictError,

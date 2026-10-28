@@ -10,7 +10,7 @@ import {
   componentList,
   promptExamples,
   promptRules,
-} from "@payvoke/openui-components";
+} from "@payvoke/shared/openui";
 
 // The host library has no renderers; it only supplies the JSON Schema the
 // parser validates provider programs against.

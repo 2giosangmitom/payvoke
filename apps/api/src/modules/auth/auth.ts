@@ -6,7 +6,7 @@ import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { getAddress, isHex, verifyMessage } from "viem";
 import { parseSiweMessage, validateSiweMessage } from "viem/siwe";
 import type { Config } from "../../config";
-import type { PrismaClient } from "@payvoke/db";
+import type { PrismaClient } from "@/core/db";
 
 export function createAuth(
   config: Pick<Config, "API_ORIGIN" | "WEB_ORIGIN" | "BETTER_AUTH_SECRET">,

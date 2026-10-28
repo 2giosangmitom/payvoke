@@ -5,7 +5,7 @@ import { CircleDollarSign, ShieldCheck, X } from "lucide-react";
 import { useConnection, usePublicClient, useSignTypedData } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
 import { isHex, type Address, type Hex } from "viem";
-import type { QuoteDocument } from "@payvoke/x402";
+import type { QuoteDocument } from "@payvoke/shared/x402";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ErrorNotice, FormField } from "./page-kit";

@@ -9,8 +9,8 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
+import { PrismaClient } from "@/core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
 
 describe("Better Auth SIWE / Prisma + Fastify", () => {
   const wallet = privateKeyToAccount(generatePrivateKey());
