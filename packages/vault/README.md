@@ -5,9 +5,9 @@ Hardhat 3, Solidity unit/fuzz tests and viem integration tests.
 Run from this directory:
 
 ```shell
-pnpm compile
-pnpm test
-pnpm typecheck
+bun run compile
+bun run test
+bun run typecheck
 ```
 
 The vault supports deposits, grants, holds, partial/full refunds, release,
@@ -32,7 +32,7 @@ Once the vault is ready for Fuji deployment, configure `FUJI_RPC_URL` and
 `FUJI_PRIVATE_KEY` using environment variables or the Hardhat keystore, then run:
 
 ```shell
-pnpm exec hardhat ignition deploy ignition/modules/PayvokeVault.ts --network fuji --build-profile production --parameters /path/to/parameters.json
+bunx hardhat ignition deploy ignition/modules/PayvokeVault.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
 
 Then grant the backend roles with `ignition/modules/PayvokeVaultRoles.ts`, signed by the
@@ -40,7 +40,7 @@ admin key. Add a `PayvokeVaultRoles` object with `relayer` (settlement worker),
 `financeApprover` and `financeExecutor` (finance worker) to the same parameters file:
 
 ```shell
-pnpm exec hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuji --build-profile production --parameters /path/to/parameters.json
+bunx hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
 
 The current Fuji deployment (`ignition/deployments/chain-43113`, block 60042827) matches

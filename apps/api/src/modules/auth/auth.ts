@@ -45,7 +45,7 @@ export function createAuth(
       useSecureCookies: secure,
       defaultCookieAttributes: { httpOnly: true, secure, sameSite: "lax", path: "/" },
     },
-    // Fastify owns rate limits and sanitized logs; do not log adapter errors here.
+    // The API owns rate limits and sanitized logs; do not log adapter errors here.
     rateLimit: { enabled: false },
     logger: { disabled: true },
     plugins: [

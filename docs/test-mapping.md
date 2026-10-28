@@ -16,9 +16,9 @@ Mỗi mục ghi nguồn, ca hợp lệ/ca phải chặn, test surface và task c
 ### Test surfaces dự kiến
 
 - **UNIT**: hàm/schema/codec thuần trong package protocol/client dự kiến ở T009/T016; dùng table-driven/golden/mutation tests. Không cần DB hoặc chain.
-- **VAULT**: Solidity unit/negative/fuzz/invariant trong `packages/payvoke-vault/contracts/*.t.sol`; TypeScript orchestration trong `packages/payvoke-vault/test/`. Compile trước typecheck; dùng simulated chain và mock USDC 6 decimals, không RPC Fuji cho suite local.
-- **DB**: integration transaction/constraints/migrations trong `apps/api` và `tests/payments-e2e` (đường dẫn cụ thể chốt ở T006/T007); hai connection/worker độc lập để kiểm tra race, không mutex RAM hoặc mock DB.
-- **HTTP**: contract/auth/ownership qua Fastify injection và DB thật; kiểm chứng DTO/status/error/headers với OpenAPI cùng nguồn schema. Không dùng server listen thật nếu không cần transport.
+- **VAULT**: Solidity unit/negative/fuzz/invariant trong `packages/vault/contracts/*.t.sol`; TypeScript orchestration trong `packages/vault/test/`. Compile trước typecheck; dùng simulated chain và mock USDC 6 decimals, không RPC Fuji cho suite local.
+- **DB**: integration transaction/constraints/migrations trong `apps/api` và `apps/api/test/e2e` (đường dẫn cụ thể chốt ở T006/T007); hai connection/worker độc lập để kiểm tra race, không mutex RAM hoặc mock DB.
+- **HTTP**: contract/auth/ownership qua `app.request()` của Hono và DB thật; kiểm chứng DTO/status/error/headers với OpenAPI cùng nguồn schema. Không dùng server listen thật nếu không cần transport.
 - **FLOW**: HTTP/SSE thật + local chain + PostgreSQL + provider fixture ngoài tiến trình. Dùng process restart/failpoints, không mock phần hold/finality/outbox cần chứng minh.
 - **WEB**: browser component/parser tests và browser E2E trong `apps/frontend`; kiểm tra DOM/role/focus, không chỉ screenshot. E2E tài chính dùng backend thật.
 - **MCP**: policy/codec/keychain-adapter tests và integration qua tiến trình stdio trong app MCP dự kiến T110; fake signer/secure-storage có đếm calls cho negative tests, API/chain thật ở acceptance gate.

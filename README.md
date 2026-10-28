@@ -235,7 +235,7 @@ Scheme riêng này cần ba adapter; client/facilitator x402 bên ngoài không 
 
 `payTo` là vault, không phải ví payout của provider. Settlement thành công nghĩa là hold đã thực thi và được xác nhận; payout/refund là lifecycle riêng.
 
-Facilitator không giữ khóa buyer. Nó giữ khóa relayer để trả gas và gửi giao dịch được phép; buyer chỉ gửi chứng từ đã ký.
+Facilitator không giữ khóa nào: nó kiểm tra chứng từ và ghi settlement intent. Settlement worker giữ khóa relayer để trả gas và gửi giao dịch được phép; buyer chỉ gửi chứng từ đã ký.
 
 Flow upfront của SDK không bảo đảm gọi `/verify` trước `/settle`. Vì vậy `/settle` phải kiểm tra đầy đủ, không tin dữ liệu đã được xác minh trước đó.
 
@@ -245,7 +245,7 @@ Luồng chính: chuẩn bị quote trả `quoteId`, `invocationId` và snapshots
 
 Paid submit dùng `Idempotency-Key` bằng `invocationId`; bước submit không nhận input/giá mới để thay quote. Các request đọc trạng thái, kết quả và continuation đúng phạm vi không thực hiện debit mới.
 
-Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter tích hợp ở Fastify `preHandler`; dùng stock middleware settle ở `onRequest` có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
+Auth, body validation và kiểm tra ownership/quote phải chạy trước settlement. Adapter tích hợp trong handler Hono, sau middleware auth và zod validator; settle sớm hơn (ở middleware đầu chuỗi) có thể khiến request sai nghiệp vụ vẫn bị thu tiền.
 
 Pending có thể vẫn trả HTTP 402 kèm transaction receipt. Client phải đọc trạng thái và reconcile, không coi mọi 402 là chưa trả tiền. Không tự fallback sang scheme `exact`, chain khác hoặc public facilitator.
 
@@ -638,15 +638,14 @@ Bridge không hỗ trợ remote paid signing, tự đọc filesystem/upload file
 Web frontend                         Local MCP bridge
        └──────────────┬─────────────────────┘
                       ↓
-                Fastify API
+         API (Hono trên Bun, một process)
+               ├── x402 gateway + facilitator
+               └── Workers (bật bằng env)
+                    ├── Settlement + chain indexing/recovery
+                    ├── Finance (hoàn tiền/giải ngân)
+                    └── Jobs (verification, dọn upload)
                       ↕
                  PostgreSQL
-                      ↕
-              Worker processes
-               ├── Settlement
-               ├── Chain indexing/recovery
-               ├── Provider outbox delivery
-               └── Verification/finance workflows
 
 Settlement ↔ Avalanche Fuji / PayvokeVault
 Provider   ↔ SSE + ACK/reports API
@@ -655,52 +654,57 @@ Files      ↔ Object storage
 
 Stack:
 
-- **Fastify:** API.
+- **Hono trên Bun:** API, validation bằng zod (`@hono/zod-validator`), Hono RPC cho frontend.
 - **PostgreSQL + Prisma:** persistence.
 - **Solidity + Hardhat:** vault và contract tests.
 - **viem:** EVM và typed data.
-- **React/TanStack:** frontend.
+- **React/TanStack Start + unhead:** frontend.
+- **Bun:** runtime, package manager (workspaces) và test runner.
 - **Local stdio MCP bridge:** tích hợp ứng dụng AI.
 - **S3-compatible storage:** khi bật file.
 
-Điều phối dùng PostgreSQL outbox, transaction, lease và fencing, không cần Redis/Kafka. API process và process giữ khóa settlement phải tách quyền; facilitator không nhận yêu cầu relay tùy ý từ bên ngoài.
+Điều phối dùng PostgreSQL outbox, transaction, lease và fencing, không cần Redis/Kafka. Facilitator chạy trong process API và không có endpoint HTTP nào, nên không nhận yêu cầu relay từ bên ngoài. Khi bật settlement/finance worker thì process API công khai cũng giữ khóa ký; xem phần deploy.
 
 ### Layout repository
 
-| Đường dẫn                    | Vai trò                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| `apps/api`                   | API Fastify cho frontend và provider (auth, catalog, quote, x402 gateway, AG-UI) |
-| `apps/facilitator`           | Facilitator x402 nội bộ, không giữ khóa                                          |
-| `apps/settlement-worker`     | Worker gửi `reserveHold`, giữ khóa relayer                                       |
-| `apps/finance-worker`        | Worker tự động hoàn tiền/giải ngân, giữ khóa approver và executor                |
-| `packages/payvoke-db`        | Prisma schema, migrations và client dùng chung                                   |
-| `packages/payvoke-payments`  | Domain thanh toán: journal, admission, settlement, finance                       |
-| `packages/payvoke-server`    | Env loader, redaction, cấu hình deployment vault dùng chung cho service          |
-| `packages/payvoke-testkit`   | Fixture test: PGlite, local EVM, vault reader                                    |
-| `tests/payments-e2e`         | Test tích hợp xuyên service và conformance x402                                  |
-| `packages/payvoke-vault`     | Solidity, tests, deployment và ABI                                               |
-| `apps/frontend`              | Web UI: store, chat, Studio                                                      |
-| `apps/slide`                 | Slide pitch                                                                      |
-| `docs`                       | Modules, specs và nghiên cứu                                                     |
-| `packages/payvoke-protocol`  | Schemas, snapshots, typed data và codecs dùng chung                              |
-| `packages/payvoke-x402`      | Adapter client/server/facilitator của scheme `payvoke-vault`                     |
-| `packages/openui-components` | Catalog OpenUI dùng chung backend/frontend                                       |
+| Đường dẫn           | Vai trò                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `apps/api`          | API Hono: auth, catalog, quote, x402 gateway và facilitator, AG-UI, các worker                  |
+| `apps/api/src/core` | Phần không phụ thuộc HTTP: db (Prisma), queue, storage, payments, facilitator, env và redaction |
+| `apps/api/prisma`   | Prisma schema và migrations                                                                     |
+| `apps/api/test`     | Test API, e2e thanh toán, conformance x402 (`test/e2e`) và fixture (`test/kit`)                 |
+| `apps/frontend`     | Web UI: store, chat, Studio                                                                     |
+| `apps/slide`        | Slide pitch                                                                                     |
+| `packages/shared`   | `@payvoke/shared`: protocol (typed data, snapshots), adapter x402, catalog OpenUI               |
+| `packages/vault`    | Solidity, tests, deployment và ABI                                                              |
+| `docs`              | Modules, specs và nghiên cứu                                                                    |
 
 ### Services và deploy
 
-Mỗi service có Dockerfile riêng (build context là root repo) và đọc `.env` của chính nó; copy từ `.env.example` cùng thư mục.
+Backend là một service: `apps/api` chạy API, facilitator x402 và các worker trong cùng process. Cấu hình nằm trong `apps/api/.env` (copy từ `apps/api/.env.example`).
 
-| Service                  | Lệnh local                            | Dockerfile                          | Giữ khóa                                                       |
-| ------------------------ | ------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
-| `apps/frontend`          | `pnpm --filter frontend dev`          | `apps/frontend/Dockerfile`          | Không                                                          |
-| `apps/api`               | `pnpm --filter api dev`               | `apps/api/Dockerfile`               | Không                                                          |
-| `apps/facilitator`       | `pnpm --filter facilitator dev`       | `apps/facilitator/Dockerfile`       | Không (chỉ `RELAYER_ADDRESS`)                                  |
-| `apps/settlement-worker` | `pnpm --filter settlement-worker dev` | `apps/settlement-worker/Dockerfile` | `RELAYER_PRIVATE_KEY`                                          |
-| `apps/finance-worker`    | `pnpm --filter finance-worker dev`    | `apps/finance-worker/Dockerfile`    | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
-| `apps/job-worker`        | `pnpm --filter job-worker dev`        | `apps/job-worker/Dockerfile`        | Không                                                          |
-| migrations (one-shot)    | `pnpm --filter @payvoke/db migrate`   | `packages/payvoke-db/Dockerfile`    | Không                                                          |
+```sh
+bun install                              # cả workspace; postinstall generate Prisma client
+bun run --cwd apps/api migrate           # áp migrations
+bun run --cwd apps/api dev               # API + worker đang bật, http://localhost:3001
+bun run --cwd apps/frontend dev          # web, http://localhost:3000
+bun run --cwd apps/api test              # test API, e2e thanh toán, queue, storage
+bun run --cwd packages/shared test       # test protocol
+```
 
-`compose.yml` là stack production tự host: Postgres, Redis, RustFS (S3), migrate, các service trên và web.
+| Worker     | Bật bằng                            | Giữ khóa                                                       |
+| ---------- | ----------------------------------- | -------------------------------------------------------------- |
+| Job        | `JOB_WORKER_ENABLED` (mặc định bật) | Không                                                          |
+| Settlement | `SETTLEMENT_WORKER_ENABLED`         | `RELAYER_PRIVATE_KEY`                                          |
+| Finance    | `FINANCE_WORKER_ENABLED`            | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
+
+Worker tắt thì không bao giờ được khởi tạo, nên khóa của nó không được đọc. Worker bật mà cấu hình sai thì API không khởi động. Mỗi worker ký có ngân sách gas riêng (`SETTLEMENT_GAS_*`, `FINANCE_GAS_*`).
+
+- **Chỉ chạy đúng một replica của API**: settlement và finance mỗi bên giữ một làn nonce trong process.
+- Khi bật settlement hoặc finance worker, process API công khai giữ khóa ký. Chỉ nạp vào các ví này lượng AVAX vừa đủ và giữ trần gas.
+- Shutdown chờ tới 150 giây để worker hoàn tất giao dịch đang gửi; đặt thời gian drain của nền tảng deploy tương ứng.
+
+`compose.yml` là stack production tự host: Postgres, Redis, RustFS (S3), migrate, API và web. Image API bundle server bằng `bun build`, chỉ giữ thêm Prisma CLI để chạy `bun run migrate`.
 
 ```sh
 cp .env.example .env          # POSTGRES_PASSWORD, S3 keys, WEB_ORIGIN/API_ORIGIN/S3_PUBLIC_ENDPOINT
@@ -709,13 +713,13 @@ docker build -f apps/api/Dockerfile -t payvoke-api .   # build riêng một serv
 ```
 
 - Chỉ web, API và RustFS được publish (trên `BIND_ADDRESS`, mặc định loopback); đặt reverse proxy TLS phía trước. Postgres không publish; Redis chỉ mở trên loopback của host.
-- Facilitator chạy container riêng, không publish; API gọi `http://facilitator:3002` trong mạng nội bộ của compose. Deploy tách máy thì facilitator phải đặt sau TLS. `FACILITATOR_TOKEN` phải giống nhau giữa API và facilitator; `RELAYER_ADDRESS` giống nhau giữa facilitator và worker.
-- Compose ghi đè `DATABASE_URL`, `REDIS_URL`, `API_ORIGIN` và `S3_*` trong `.env` của từng service để mọi container dùng hạ tầng của stack.
-- **DB mới cần một deployment policy đã duyệt** (vault, phí, giá sàn, thời gian giữ tiền) trong bảng `deployment_policies` với `activeSlot = 'active'`. Thiếu bản ghi này thì facilitator từ chối khởi động (`deployment_policy_mismatch`) và API chờ theo.
+- Compose ghi đè `DATABASE_URL`, `REDIS_URL`, `API_ORIGIN` và `S3_*` trong `apps/api/.env` để container dùng hạ tầng của stack.
+- Trên Railway: một service từ `apps/api/Dockerfile` với pre-deploy command `bun run migrate`, một service từ `apps/frontend/Dockerfile`, cộng Postgres và Redis.
+- **DB mới cần một deployment policy đã duyệt** (vault, phí, giá sàn, thời gian giữ tiền) trong bảng `deployment_policies` với `activeSlot = 'active'`. Khi `PAYMENTS_ENABLED=true` mà thiếu bản ghi này, API từ chối khởi động (`deployment_policy_mismatch`).
 
 ### Vai trò của Prisma schema
 
-[Prisma schema](packages/payvoke-db/prisma/schema.prisma) bao phủ:
+[Prisma schema](apps/api/prisma/schema.prisma) bao phủ:
 
 | Nhóm              | Models tiêu biểu                                                              |
 | ----------------- | ----------------------------------------------------------------------------- |
@@ -786,7 +790,7 @@ Ngoài phạm vi:
 - [S02 — x402 và PayvokeVault](docs/specs/02-x402-and-vault.md).
 - [S03 — MCP client](docs/specs/03-mcp-client.md).
 - [S04 — AG-UI chat streaming và OpenUI widgets](docs/specs/04-ag-ui-a2ui-streaming.md).
-- [Prisma schema](packages/payvoke-db/prisma/schema.prisma).
+- [Prisma schema](apps/api/prisma/schema.prisma).
 - [Nghiên cứu kiến trúc x402](docs/research/x402-integration-architecture.md).
 - [Nghiên cứu agentic payments áp dụng cho Payvoke](docs/research/agentic-payments-literature.md).
 - [Ma trận bằng chứng thanh toán](docs/payment-acceptance.md).

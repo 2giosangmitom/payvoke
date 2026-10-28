@@ -39,7 +39,7 @@ export const routes = new Hono<AppEnv>()
 
 export type AppType = typeof routes;
 
-// Fastify's former default; every route sets a tighter limit of its own.
+// The limit for a route that sets none; most set a tighter one.
 const DEFAULT_BODY_LIMIT = 1048576;
 
 // The server passes Redis-backed signals; tests default to in-process ones.

@@ -768,7 +768,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(invocationStatus.json().executionStatus, "VERIFYING");
   const unverified = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(unverified.json().invocations[0].output, null);
-  // The job-worker sweep finds the run even if the enqueue above was lost.
+  // The job worker sweep finds the run even if the enqueue above was lost.
   assert.deepEqual(await pendingVerifications(db), [
     { invocationId: quoted.invocationId, artifactVersion: 1 },
   ]);

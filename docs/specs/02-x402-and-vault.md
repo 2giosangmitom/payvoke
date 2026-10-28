@@ -204,7 +204,7 @@ Dùng `@x402/core` revision đã pin trong research, không fork core. Ba adapte
 
 ### 6.2 Resource server
 
-Auth → schema validation → owner/product/quote/input gate ở Fastify `preHandler` → core processHTTPRequest → receipt HELD → SQL commit payment+outbox → 202. `@x402/fastify` source đang settle ở onRequest nên không gắn stock middleware lẫn adapter vào cùng route.
+Auth → zod validation → owner/product/quote/input gate trong middleware và handler Hono → core processHTTPRequest → receipt HELD → SQL commit payment+outbox → 202. `@x402/fastify` source đang settle ở onRequest nên không gắn stock middleware lẫn adapter vào cùng route.
 
 Với upfront, SDK không gọi facilitator verify; check bắt buộc không đặt chỉ ở verify/hook. `beforeHandlerSettlement` phải được giữ và truyền cho processSettlement để echo, không settle lại. Hooks thường nuốt exception; fail-closed gates phải có kết quả/lỗi thực sự ở orchestration/mechanism, không chỉ `throw` trong after hook.
 
@@ -236,7 +236,7 @@ At-most-once debit là bất biến contract; một logical job là uniqueness D
 
 ## 8. Interface contract đề xuất
 
-Tên dưới đây là ABI mục tiêu; `packages/payvoke-vault/contracts/PayvokeVault.sol` hiện thực interface này và được kiểm tra parity ABI/selector trong `packages/payvoke-protocol/test/payment.test.ts`. Nếu code và đặc tả lệch nhau, sửa một trong hai kèm test, không âm thầm chấp nhận. Solidity struct types ở §4 phải dùng chung, không đổi field order để tiết kiệm gas mà không tăng scheme/domain version.
+Tên dưới đây là ABI mục tiêu; `packages/vault/contracts/PayvokeVault.sol` hiện thực interface này và được kiểm tra parity ABI/selector trong `packages/shared/test/protocol.test.ts`. Nếu code và đặc tả lệch nhau, sửa một trong hai kèm test, không âm thầm chấp nhận. Solidity struct types ở §4 phải dùng chung, không đổi field order để tiết kiệm gas mà không tăng scheme/domain version.
 
 ```solidity
 function deposit(uint256 amount) external;
@@ -309,7 +309,7 @@ ResolutionDecision ký EIP-712 cùng domain, primaryType `ResolutionDecision`, �
 
 ### 8.5 Policy hoàn tiền/giải ngân tự động
 
-Payvoke không phân xử chất lượng nội dung. `apps/finance-worker` quyết định mỗi hold đang mở theo đúng một trong các quy tắc sau, dựa trên evidence mới nhất, execution status và deadline trong hold đã finalized:
+Payvoke không phân xử chất lượng nội dung. finance worker (`apps/api/src/workers/finance.ts`) quyết định mỗi hold đang mở theo đúng một trong các quy tắc sau, dựa trên evidence mới nhất, execution status và deadline trong hold đã finalized:
 
 | Điều kiện                                                                                     | Decision                   |
 | --------------------------------------------------------------------------------------------- | -------------------------- |
@@ -393,7 +393,7 @@ Bảng dưới ánh xạ các quy tắc, bất biến và biện pháp trong ngh
 | [P3] M5, [P4] P16, [P5]    | Không cache/log header; không PII trong metadata     | §5, S01 §2               | Local                           |
 | [P4] P4, P6                | Hold/refund/release/reclaim cùng tham chiếu hold     | §8.3, §9                 | Local                           |
 
-**Conformance suite (R01):** `pnpm --dir tests/payments-e2e test:conformance` chạy backend, protocol và vault suites một lần rồi đối chiếu từng mã ở cột "Nguồn" với các ca âm tính trong manifest `tests/payments-e2e/test/conformance/rules.ts`. Suite fail nếu một quy tắc không có ca pass, hoặc nếu một ca trong manifest bị đổi tên, skip hay fail. M6 (chống steering ở discovery) được báo là DEFERRED vì thuộc R06, không được tính là pass. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
+**Conformance suite (R01):** `bun run --cwd apps/api test:conformance` chạy backend, protocol và vault suites một lần rồi đối chiếu từng mã ở cột "Nguồn" với các ca âm tính trong manifest `apps/api/test/e2e/conformance/rules.ts`. Suite fail nếu một quy tắc không có ca pass, hoặc nếu một ca trong manifest bị đổi tên, skip hay fail. M6 (chống steering ở discovery) được báo là DEFERRED vì thuộc R06, không được tính là pass. Các paper khảo sát scheme `exact`/`upto` công khai; bảng này chỉ khẳng định scheme `payvoke-vault` có yêu cầu và test tương ứng, không khẳng định đã được bên thứ ba kiểm toán.
 
 ## Nguồn
 

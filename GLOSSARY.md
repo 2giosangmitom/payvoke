@@ -96,7 +96,7 @@ Phần quote được ký/đưa vào thanh toán, giữ các field dây cũ như
 Giao thức event cho stream hội thoại giữa provider và UI buyer. Payvoke dùng để phát text tăng dần, trạng thái chạy và widget.
 
 **OpenUI Lang**:
-Ngôn ngữ giao diện khai báo theo dòng (`identifier = Component(...)`), thay A2UI v0.9.1 từ 25/10/2026. Provider stream các statement hoàn chỉnh trong `CUSTOM payvoke.openui`; Payvoke kiểm tra bằng parser `@openuidev/lang-core` theo catalog `packages/openui-components` rồi chiếu thành surface trong thread. OpenUI Lang không cấp quyền thực thi, gọi tool hoặc thanh toán.
+Ngôn ngữ giao diện khai báo theo dòng (`identifier = Component(...)`), thay A2UI v0.9.1 từ 25/10/2026. Provider stream các statement hoàn chỉnh trong `CUSTOM payvoke.openui`; Payvoke kiểm tra bằng parser `@openuidev/lang-core` theo catalog `packages/shared/src/openui` rồi chiếu thành surface trong thread. OpenUI Lang không cấp quyền thực thi, gọi tool hoặc thanh toán.
 
 **Continuation**:
 Chu kỳ chạy mới trong cùng invocation sau khi buyer trả lời câu hỏi hoặc yêu cầu revision. Continuation dùng runId mới nhưng không tạo quote/hold mới.

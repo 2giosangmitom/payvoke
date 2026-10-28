@@ -30,20 +30,20 @@ Nền tảng → contract → backend/API → x402 và recovery → provider/job
 
 - Backend Fastify có auth SIWE (Better Auth), catalog/store/star, provider app/key/command revision, thread, quote, x402 gateway, facilitator riêng, settlement worker, finance, AG-UI/OpenUI stream và công cụ vận hành Fuji. 10 migration Prisma; `pnpm --dir apps/backend test` 112 pass, 6 skip (EVM/PostgreSQL cần cờ riêng). `tsc --noEmit` đầy đủ đã pass; lỗi `thread-stream` ghi ở baseline không còn.
 - `PayvokeVault.sol` đã thay Counter sample: 78 test pass (66 Solidity gồm adversarial/fuzz/invariant, 12 Node.js) và Ignition module deploy + cấp role.
-- `packages/payvoke-protocol` (8 test vectors/ABI), `packages/payvoke-x402`, `packages/openui-components` đã tồn tại.
+- `packages/shared/src/protocol` (8 test vectors/ABI), `packages/shared/src/x402`, `packages/shared/src/openui` đã tồn tại.
 - Frontend có store, chat, Studio, renderer OpenUI và ký thanh toán; build pass; 4 test renderer chạy được bằng tsx nhưng chưa có script `test`.
 - Chưa có: deployment Fuji, endpoint file/acceptance/cancellation/pending-events, OpenAPI sinh từ code, CI, Dockerfile/cấu hình deploy backend, `apps/mcp`, `packages/payvoke-client`. `oxfmt --check` còn lỗi format ở một số file.
 
 Thứ tự thực tế lệch roadmap: frontend đã được làm trước gate T092. Điều này không làm các gate cũ mất hiệu lực; T092/T109 vẫn phải có bằng chứng trước khi coi là đạt. Checkbox bên dưới chưa được đánh dấu vì chưa đối chiếu đủ acceptance từng task; khi đánh dấu phải kèm commit và lệnh kiểm tra như §1. [Baseline T001](baseline.md) giữ trạng thái ngày 20/10 để làm lịch sử.
 
-Các vùng hiện có:
+Các vùng hiện có (cập nhật 28/10/2026 sau khi chuyển sang Bun, Hono và gộp service):
 
-- `packages/payvoke-vault`: Solidity, contract tests, deployment, ABI export.
-- `apps/api`, `apps/facilitator`, `apps/settlement-worker`, `apps/finance-worker`: mỗi process là một app deploy riêng; domain dùng chung nằm ở `packages/payvoke-payments` và `packages/payvoke-db`.
+- `packages/vault`: Solidity, contract tests, deployment, ABI export.
+- `apps/api`: một process Hono trên Bun gồm API, facilitator in-process (`src/core/facilitator`) và các worker settlement, finance, job (`src/workers`), bật bằng env; domain thanh toán ở `src/core/payments`, schema ở `prisma`.
 - `apps/frontend`: web UI (store, chat, Studio).
-- `packages/payvoke-protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; không xây framework đa chain.
-- `packages/payvoke-x402`: adapter client/server/facilitator của scheme `payvoke-vault`.
-- `packages/openui-components`: catalog OpenUI dùng chung backend/frontend.
+- `packages/shared/src/protocol`: schemas, canonical snapshots, typed data, codes và codec dùng chung; không xây framework đa chain.
+- `packages/shared/src/x402`: adapter client/server/facilitator của scheme `payvoke-vault`.
+- `packages/shared/src/openui`: catalog OpenUI dùng chung backend/frontend.
 - Đề xuất `packages/payvoke-client`: phần client ký/gửi x402 dùng lại cho headless/browser/MCP; bắt đầu hẹp ở T016, không chứa UI hay khóa hardcode.
 - Đề xuất `apps/mcp`: local stdio bridge, chỉ bắt đầu sau core buyer API; không là server custody từ xa.
 - Provider fixture chạy ngoài tiến trình Payvoke, giao tiếp qua HTTP/SSE như provider thật; không chạy code provider trong backend.
@@ -338,7 +338,7 @@ Số trong fixture chỉ là dữ liệu test. T089 phải có cấu hình cụ 
 
 - Multi-chain/custom Avalanche L1, smart-account/bundler/paymaster bắt buộc, ZK/TEE và batch-settlement/payment channel.
 - Kafka/RabbitMQ trước khi Postgres outbox/worker đã được đo và thấy không đáp ứng.
-- Redis làm nơi lưu trạng thái. **Quyết định 26/10/2026:** Redis/BullMQ chỉ được dùng để (1) đánh thức SSE buyer/provider bằng pub/sub, (2) lưu rate-limit dùng chung giữa các bản API, (3) chạy job không giữ key trong `apps/job-worker` (xác minh delivery), (4) đánh thức settlement/finance worker và hẹn giờ theo deadline của hold. Postgres journal, lease và nonce lane vẫn là nguồn sự thật; mọi consumer giữ vòng quét DB dự phòng nên Redis mất dữ liệu hoặc sập chỉ làm chậm, không làm sai.
+- Redis làm nơi lưu trạng thái. **Quyết định 26/10/2026:** Redis/BullMQ chỉ được dùng để (1) đánh thức SSE buyer/provider bằng pub/sub, (2) lưu rate-limit dùng chung giữa các bản API, (3) chạy job không giữ key trong job worker (`apps/api/src/workers/job.ts`) (xác minh delivery), (4) đánh thức settlement/finance worker và hẹn giờ theo deadline của hold. Postgres journal, lease và nonce lane vẫn là nguồn sự thật; mọi consumer giữ vòng quét DB dự phòng nên Redis mất dữ liệu hoặc sập chỉ làm chậm, không làm sai.
 - Remote MCP paid signer, arbitrary provider code execution trong Payvoke, tool gọi chéo agent trong cùng phiên.
 - LLM tự phân xử tranh chấp hoặc tự xác nhận đồng ý chi tiền thay người dùng.
 - Phí theo token/parameter động trái giá cố định command (tool) hoặc ngoài offer đã chấp nhận (agent), mainnet rollout hoặc hỗ trợ token tùy ý. **Cập nhật 28/10/2026:** app AGENT báo giá bằng offer trong khoảng giá công khai (S01 §6.5); đó vẫn là một giá cố định cho mỗi invocation, chỉ được chốt sau khi chat.
