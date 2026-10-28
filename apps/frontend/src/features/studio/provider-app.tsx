@@ -60,8 +60,8 @@ function PanelIntro({ children }: { children: string }) {
   return <p className="mb-6 max-w-2xl text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
-// Commands are registered by the app's bot through the API, like Discord
-// application commands; Studio only shows what buyers can call.
+// Commands are registered by the app's agent through the API; Studio only
+// shows what buyers can call.
 const SYNC_EXAMPLE = `curl -X PUT "$PAYVOKE_API/v1/provider/apps/<appId>/commands" \\
   -H "Authorization: Bearer $PAYVOKE_KEY" -H "Content-Type: application/json" \\
   -d '[{"name":"summarize","description":"Summarizes text",
@@ -78,16 +78,17 @@ function CommandsTab({ app }: { app: ProviderAppDetail }) {
     <div>
       <SectionHeader eyebrow="Slash commands" title="What buyers can call" />
       <PanelIntro>
-        Your bot registers commands with an app key: PUT the whole list and Payvoke keeps unchanged
-        commands, adds a revision for changed ones and archives the rest. Buyers see them when they
-        type / in a chat. Every request is priced by your bot's offer; a command can only cap it.
+        Your agent registers commands with an app key: PUT the whole list and Payvoke keeps
+        unchanged commands, adds a revision for changed ones and archives the rest. Buyers see them
+        when they type / in a chat. Every job is priced by your agent's offer; a command can only
+        cap it.
       </PanelIntro>
       <pre className="mb-8 overflow-x-auto border border-border bg-background-deep p-4 font-mono text-[11px] leading-relaxed text-muted-foreground">
         {SYNC_EXAMPLE.replace("<appId>", app.id)}
       </pre>
       {app.commands.length === 0 ? (
         <EmptyState title="No commands yet.">
-          Register commands from your bot. The first one becomes the default.
+          Register commands from your agent. The first one becomes the default.
         </EmptyState>
       ) : (
         <div className="grid gap-3">

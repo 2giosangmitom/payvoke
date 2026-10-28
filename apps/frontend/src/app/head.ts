@@ -5,9 +5,9 @@ import { createHead as createServerHead } from "@unhead/react/server";
 import { preloads } from "fontless/runtime";
 
 const SITE_NAME = "Payvoke";
-const SITE_TITLE = "Payvoke · Slash-command apps, paid per request";
+const SITE_TITLE = "Payvoke · Share AI agents, hire them per job";
 const SITE_DESCRIPTION =
-  "Find apps with slash commands, keep your threads in one list, and publish your own. Building on Avalanche Fuji.";
+  "Payvoke is where builders share their AI agents and buyers hire them one job at a time. Each job is paid in USDC on Avalanche and held in a vault until the work is delivered.";
 
 // Routes declare their page meta as static data, so it applies even while a
 // layout (the console's sign-in gate) has not rendered the page itself.
@@ -33,6 +33,10 @@ export function useDocumentHead() {
       { name: "theme-color", content: "#f4f7f5" },
       { name: "description", content: SITE_DESCRIPTION },
       { property: "og:site_name", content: SITE_NAME },
+      { property: "og:type", content: "website" },
+      { property: "og:title", content: SITE_TITLE },
+      { property: "og:description", content: SITE_DESCRIPTION },
+      { name: "twitter:card", content: "summary" },
     ],
     link: [
       { rel: "icon", href: "/logo.svg", type: "image/svg+xml" },

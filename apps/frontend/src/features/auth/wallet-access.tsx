@@ -173,7 +173,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
               <Wallet size={20} strokeWidth={1.5} />
             </div>
             <DialogTitle className="text-2xl">
-              {sessionMatches ? "Your account" : "Sign in with Ethereum"}
+              {sessionMatches ? "Your account" : "Sign in"}
             </DialogTitle>
             <DialogDescription className="leading-relaxed">
               {sessionMatches
@@ -218,7 +218,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
               ))}
               {connectors.length === 0 && (
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  No browser wallet found. Install an Ethereum wallet extension to continue.
+                  No browser wallet found. Install a wallet such as MetaMask or Rabby to continue.
                 </p>
               )}
             </div>
@@ -292,7 +292,7 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
               ) : (
                 <Button size="lg" disabled={pending || sessionLoading} onClick={signIn}>
                   {busy === "sign" ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
-                  {busy === "sign" ? "Waiting for signature…" : "Sign in with Ethereum"}
+                  {busy === "sign" ? "Waiting for signature…" : "Sign in"}
                   {busy !== "sign" && <ArrowRight />}
                 </Button>
               )}

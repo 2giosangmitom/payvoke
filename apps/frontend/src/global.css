@@ -68,25 +68,18 @@
   --radius-3xl: 0px;
   --radius-4xl: 0px;
 
-  --animate-marquee: marquee var(--duration) infinite linear;
-  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
   --animate-shiny-text: shiny-text 8s infinite;
   --animate-music-ring: music-ring 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 
-  @keyframes marquee {
-    from {
-      transform: translateX(0);
+  @keyframes shiny-text {
+    0%,
+    90%,
+    100% {
+      background-position: calc(-100% - var(--shiny-width)) 0;
     }
-    to {
-      transform: translateX(calc(-100% - var(--gap)));
-    }
-  }
-  @keyframes marquee-vertical {
-    from {
-      transform: translateY(0);
-    }
-    to {
-      transform: translateY(calc(-100% - var(--gap)));
+    30%,
+    60% {
+      background-position: calc(100% + var(--shiny-width)) 0;
     }
   }
   @keyframes music-ring {
@@ -98,17 +91,6 @@
     100% {
       opacity: 0;
       scale: 1.14;
-    }
-  }
-  @keyframes shiny-text {
-    0%,
-    90%,
-    100% {
-      background-position: calc(-100% - var(--shiny-width)) 0;
-    }
-    30%,
-    60% {
-      background-position: calc(100% + var(--shiny-width)) 0;
     }
   }
 }

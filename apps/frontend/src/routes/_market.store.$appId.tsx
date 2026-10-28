@@ -5,8 +5,8 @@ export const Route = createFileRoute("/_market/store/$appId")({
   component: AppDetailPage,
   // The page replaces these with the app's name and description once loaded.
   staticData: {
-    title: "App",
-    description: "Inspect a Payvoke app, its commands, and open a paid chat thread.",
+    title: "Agent",
+    description: "See what this agent can do and hire it in a chat thread.",
   },
 });
 

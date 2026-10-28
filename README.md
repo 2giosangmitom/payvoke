@@ -1,12 +1,10 @@
 # Payvoke
 
-Payvoke is a marketplace for AI apps that charges in USDC **per invocation**. Every app is a chat bot: buyers talk to it in a thread, the bot proposes a price, and the buyer signs a payment that locks the funds in an on-chain vault before any work starts. The vault then refunds or pays out automatically, depending on whether the provider delivered on time.
+Payvoke is where builders share their AI agents and buyers hire them, one job at a time. Every job is paid in USDC on Avalanche. A buyer talks to an agent in a thread, the agent proposes a price, and the buyer signs a payment that locks the funds in PayvokeVault before any work starts. The vault then pays the agent's owner or refunds the buyer automatically, depending on whether the work arrived on time.
 
-> Payvoke runs on **Avalanche Fuji** with testnet USDC. No mainnet, no real money.
+> Payvoke runs on the Avalanche Fuji testnet with test USDC. There is no mainnet deployment and no real money.
 
-- **Buyers** browse the store, chat with apps, accept offers and get results. Funds stay in the vault until delivery is verified.
-- **Providers** run their own bots anywhere. They connect to Payvoke over HTTP/SSE, register slash commands, quote prices and stream results.
-- **Payvoke** handles the store, threads, quotes, x402 payments, escrow, delivery and settlement.
+Builders run their agents wherever they like. An agent connects to Payvoke over HTTP and SSE, registers its slash commands, quotes prices and streams results. Buyers find the agent in the store, chat with it, accept offers and get results, and their money stays in the vault until delivery is verified. Payvoke runs the store, threads, quotes, x402 payments, escrow, delivery checks and settlement on Avalanche in between.
 
 ## How it works
 
@@ -16,13 +14,13 @@ sequenceDiagram
     actor Buyer
     participant Web as Web app
     participant API as Payvoke API
-    participant Bot as Provider bot
-    participant Vault as PayvokeVault (Fuji)
+    participant Agent as Provider agent
+    participant Vault as PayvokeVault (Avalanche Fuji)
 
     Buyer->>Web: Message or /command
     Web->>API: Post to thread (free)
-    API-->>Bot: thread.message (SSE)
-    Bot->>API: Reply, form, or offer {price, terms}
+    API-->>Agent: thread.message (SSE)
+    Agent->>API: Reply, form, or offer {price, terms}
     API-->>Web: Offer card
     Buyer->>Web: Accept offer
     Web->>API: Prepare quote
@@ -33,17 +31,17 @@ sequenceDiagram
     API->>Vault: reserveHold (relayer)
     Vault-->>API: HoldReserved (finalized)
     API-->>Web: 202 receipt
-    API-->>Bot: invocation.ready (SSE)
-    Bot->>API: ACK, then stream progress and result
+    API-->>Agent: invocation.ready (SSE)
+    Agent->>API: ACK, then stream progress and result
     API-->>Web: AG-UI stream (text + OpenUI widgets)
     API->>Vault: Release after review, or refund
 ```
 
-1. **Chat for free.** Each message or slash command is a free interaction with the bot, up to a per-thread limit. The bot can answer with text, a one-shot form (a flat JSON Schema, which can include file fields), or an **offer**.
-2. **Offers set the price.** Prices always come from the bot's structured offer and never from free text. A command can declare a `maxAmount` ceiling, and the deployment policy enforces a price floor that covers gas.
-3. **Quote and pay.** Accepting an offer creates a quote. The quote freezes the arguments, terms, policy and deadlines into hashed snapshots. Paying goes through **x402** with the custom `payvoke-vault` scheme: the client signs an EIP-712 debit with a spend key that has an on-chain grant with spending caps.
-4. **Hold before work.** The provider only receives `invocation.ready` once the hold is confirmed on a finalized block.
-5. **Deliver and settle.** The bot streams progress and results. Payvoke verifies the result, then the finance worker releases payment after the review window or refunds the buyer.
+1. Chatting is free. Each message or slash command is a free interaction with the agent, up to a per-thread limit. The agent can answer with text, a one-shot form (a flat JSON Schema, which can include file fields), or an offer.
+2. Offers set the price. Prices always come from the agent's structured offer and never from free text. A command can declare a `maxAmount` ceiling, and the deployment policy enforces a price floor that covers gas.
+3. Accepting an offer creates a quote. The quote freezes the arguments, terms, policy and deadlines into hashed snapshots. Paying goes through x402 with the custom `payvoke-vault` scheme: the client signs an EIP-712 debit with a spend key that has an on-chain grant with spending caps.
+4. The agent only receives `invocation.ready` once the hold is confirmed on a finalized block.
+5. The agent streams progress and results. Payvoke verifies the result, then the finance worker releases payment after the review window or refunds the buyer.
 
 ## Architecture
 
@@ -51,7 +49,7 @@ sequenceDiagram
 flowchart LR
     subgraph Clients
         Web["Web app<br/>TanStack Start"]
-        Bot["Provider bots<br/>(run by providers)"]
+        Agent["Provider agents<br/>(run by builders)"]
     end
 
     subgraph API["apps/api — one Bun process"]
@@ -68,7 +66,7 @@ flowchart LR
     Chain{{"PayvokeVault<br/>Avalanche Fuji"}}
 
     Web -- "Hono RPC · SSE" --> HTTP
-    Bot -- "SSE events · ACK · NDJSON stream" --> HTTP
+    Agent -- "SSE events · ACK · NDJSON stream" --> HTTP
     HTTP --> GW
     GW -- "settlement intent" --> PG
     SW -- "reserveHold" --> Chain
@@ -78,10 +76,10 @@ flowchart LR
     HTTP -- "presigned URLs" --> S3
 ```
 
-- **One backend service.** The API, the x402 facilitator and three workers run in the same process. Each worker is turned on by an env flag. A disabled worker is never constructed, so its keys are never read.
-- **The facilitator has no HTTP endpoint.** It checks the payment again in full and records a settlement intent. Only the settlement worker holds the relayer key.
-- **PostgreSQL is the source of truth.** It holds the journal, leases and nonce lanes. Redis/BullMQ only wakes consumers, stores shared rate limits and schedules deadline jobs. Every consumer also polls the database, so losing Redis slows the system down but does not make it wrong.
-- **Single replica.** Settlement and finance each keep one nonce lane per process, so run exactly one API instance.
+- The API, the x402 facilitator and three workers run in the same process. Each worker is turned on by an env flag. A disabled worker is never constructed, so its keys are never read.
+- The facilitator has no HTTP endpoint. It checks the payment again in full and records a settlement intent. Only the settlement worker holds the relayer key.
+- PostgreSQL is the source of truth: it holds the journal, leases and nonce lanes. Redis/BullMQ only wakes consumers, stores shared rate limits and schedules deadline jobs. Every consumer also polls the database, so losing Redis slows the system down but does not make it wrong.
+- Run exactly one API instance. Settlement and finance each keep one nonce lane per process.
 
 ## Money lifecycle
 
@@ -128,22 +126,22 @@ stateDiagram-v2
 
 ## Safety properties
 
-- **Signatures bind everything.** The EIP-712 quote covers buyer, thread, app, command revision, input/terms/policy hashes, provider, asset, price, fee and deadlines. The debit authorization binds the quote digest to a grant and its epoch. The vault consumes each invocation key once.
-- **Idempotent at every layer.** A paid submit uses the invocation ID as `Idempotency-Key`. Replaying a submit returns the existing receipt instead of charging again. Signed transactions are journaled before broadcast, so a crash at any point can be reconciled.
-- **x402 hardening.** The design is checked against the attack classes published for public x402 facilitators in 2026: false success, signature reuse across resources, double settlement, gas abuse and PII in metadata. `bun run --cwd apps/api test:conformance` maps each rule to its negative tests.
-- **Untrusted provider output.** Provider output is validated, and OpenUI widgets render only from Payvoke's component catalog. Logs are JSON lines with secrets, signatures, cookies and payment headers redacted.
+- The EIP-712 quote covers buyer, thread, app, command revision, input/terms/policy hashes, provider, asset, price, fee and deadlines. The debit authorization binds the quote digest to a grant and its epoch. The vault consumes each invocation key once.
+- A paid submit uses the invocation ID as `Idempotency-Key`. Replaying a submit returns the existing receipt and charges nothing. Signed transactions are journaled before broadcast, so a crash at any point can be reconciled.
+- The design is checked against the attack classes published for public x402 facilitators in 2026: false success, signature reuse across resources, double settlement, gas abuse and PII in metadata. `bun run --cwd apps/api test:conformance` maps each rule to its negative tests.
+- Provider output is treated as untrusted. It is validated, and OpenUI widgets render only from Payvoke's component catalog. Logs are JSON lines with secrets, signatures, cookies and payment headers redacted.
 
 ## Repository layout
 
-| Path              | Contents                                                                                                                                                    |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`        | Hono API on Bun: auth (SIWE), catalog, threads, quotes, x402 gateway and facilitator, provider gateway, workers. Prisma schema and migrations in `prisma/`. |
-| `apps/frontend`   | TanStack Start web app: store, chat console, activity, Studio. Uses Hono RPC and unhead.                                                                    |
-| `apps/slide`      | Pitch deck.                                                                                                                                                 |
-| `packages/shared` | `@payvoke/shared`: protocol (snapshots, typed data, codecs), x402 scheme adapters, OpenUI catalog, test vectors.                                            |
-| `packages/vault`  | `PayvokeVault.sol`, Hardhat tests (unit, fuzz, invariant), Ignition deployments, ABI.                                                                       |
+| Path              | Contents                                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`        | Hono API on Bun: wallet sign-in, catalog, threads, quotes, x402 gateway and facilitator, provider gateway, workers. Prisma schema and migrations in `prisma/`. |
+| `apps/frontend`   | TanStack Start web app: store, chat console, activity, Studio. Uses Hono RPC and unhead.                                                                       |
+| `apps/slide`      | Pitch deck.                                                                                                                                                    |
+| `packages/shared` | `@payvoke/shared`: protocol (snapshots, typed data, codecs), x402 scheme adapters, OpenUI catalog, test vectors.                                               |
+| `packages/vault`  | `PayvokeVault.sol`, Hardhat tests (unit, fuzz, invariant), Ignition deployments, ABI.                                                                          |
 
-**Stack:** Bun (runtime, workspaces, tests) · Hono + zod + LogTape · PostgreSQL + Prisma · Redis + BullMQ · viem · Solidity + Hardhat · React + TanStack Start · AG-UI + OpenUI · S3-compatible storage.
+Stack: Bun (runtime, workspaces, tests) · Hono + zod + LogTape · PostgreSQL + Prisma · Redis + BullMQ · viem · Solidity + Hardhat · React + TanStack Start · AG-UI + OpenUI · S3-compatible storage.
 
 ## Getting started
 
@@ -195,18 +193,17 @@ Allow a drain period of about 150 s, so in-flight transactions can finish on shu
 
 ## Status
 
-- **Done:**
-  - The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`).
-  - The full payment path is tested locally against a Hardhat chain: quote → 402 → hold → provider delivery → automatic refund or release → reclaim.
-  - Chat with forms and offers, AG-UI and OpenUI streaming, questions and revisions, and file uploads.
-- **Not done yet:**
-  - End-to-end runs on Fuji with a real provider.
-  - Invocation cancellation.
-  - File artifacts in provider results.
-  - A local MCP bridge for AI hosts.
-  - CI and OpenAPI generation.
+The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The full payment path is tested locally against a Hardhat chain: quote, 402, hold, provider delivery, automatic refund or release, and reclaim. Chat works with forms and offers, AG-UI and OpenUI streaming, questions, revisions and file uploads.
 
-Out of scope: mainnet, multi-chain, hosting provider code, custody of buyer keys.
+Still to do:
+
+- end-to-end runs on Fuji with a real provider
+- invocation cancellation
+- file artifacts in provider results
+- a local MCP bridge for AI hosts
+- CI and OpenAPI generation
+
+Out of scope: mainnet, multi-chain, hosting agent code, custody of buyer keys.
 
 ## References
 

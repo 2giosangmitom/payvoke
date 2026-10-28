@@ -5,6 +5,7 @@ export const Route = createFileRoute("/_market/store/")({
   component: StoreDirectory,
   staticData: {
     title: "Store",
-    description: "Discover public Payvoke apps, their slash commands, and per-request prices.",
+    description:
+      "Find AI agents to hire on Payvoke. Each job is priced by an offer and paid in USDC on Avalanche.",
   },
 });

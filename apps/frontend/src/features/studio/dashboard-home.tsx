@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Plus, Radio, X } from "lucide-react";
 import { useConnection } from "wagmi";
@@ -30,10 +30,13 @@ export function DashboardHome() {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const { address } = useConnection();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
+  const handoff = useSearch({ from: "/console/studio/" });
+  const [open, setOpen] = useState(Boolean(handoff.name));
+  const [name, setName] = useState(handoff.name ?? "");
   const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PRIVATE");
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">(
+    handoff.visibility ?? "PRIVATE",
+  );
   const [payout, setPayout] = useState("");
   const [error, setError] = useState("");
   const apps = useQuery({
@@ -79,7 +82,7 @@ export function DashboardHome() {
       <PageHeader
         eyebrow="Studio"
         title="Your apps"
-        description="A tool sells fixed-price commands through a form; an agent chats with buyers and sends offers. You define commands, keep one active API key for the worker, and decide whether the app is listed in the store."
+        description="Each app is an AI agent that buyers can hire. It chats with them, prices each job with an offer and registers its own commands with the API key you issue here. You decide whether it is listed in the store."
         actions={
           <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
             <Plus /> New app

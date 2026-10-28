@@ -116,8 +116,8 @@ export function StoreDirectory() {
     <PageShell>
       <PageHeader
         eyebrow="Store"
-        title="Tools to run, agents to hire"
-        description="Tools have a fixed price per run and open as a form. Agents chat with you for free and send an offer. Either way you approve a quote before anything is held, and the vault refunds work that isn't delivered."
+        title="AI agents you can hire"
+        description="Every agent works in a chat. Talking to it is free, and it sends an offer when there is a job to price. Nothing is held until you accept, and the vault on Avalanche refunds any job that isn't delivered."
       />
       <div className="sticky top-0 z-10 -mx-1 flex flex-col gap-3 bg-background/90 px-1 py-4 backdrop-blur sm:flex-row sm:items-center">
         <label className="relative flex-1">
@@ -126,7 +126,7 @@ export function StoreDirectory() {
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
           />
-          <span className="sr-only">Search apps</span>
+          <span className="sr-only">Search agents</span>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -157,28 +157,31 @@ export function StoreDirectory() {
         </ErrorNotice>
       )}
       {apps.isPending ? (
-        <LoadingState>Loading apps…</LoadingState>
+        <LoadingState>Loading agents…</LoadingState>
       ) : items.length === 0 ? (
         <EmptyState
           className="mt-4"
           eyebrow={savedOnly ? "Saved apps" : "No matches"}
-          title={savedOnly ? "You haven't saved any apps." : "Nothing matched that search."}
+          title={savedOnly ? "You haven't saved any agents." : "Nothing matched that search."}
           action={
             savedOnly ? (
               <Button variant="outline" onClick={() => setSavedOnly(false)}>
                 Show all apps
               </Button>
             ) : (
-              <Button render={<Link to="/console/studio" />}>Publish an app in Studio</Button>
+              <Button render={<Link to="/console/studio" />}>Share an agent in Studio</Button>
             )
           }
         >
           {savedOnly
-            ? "Star an app and it shows up here."
-            : "Try fewer words, or publish the first app yourself."}
+            ? "Star an agent and it shows up here."
+            : "Try fewer words, or share the first agent yourself."}
         </EmptyState>
       ) : (
-        <section aria-label="Public apps" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section
+          aria-label="Public agents"
+          className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {items.map((app, index) => (
             <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
               <AppCard app={app} starred={saved.has(app.id)} canSave={canSave} />

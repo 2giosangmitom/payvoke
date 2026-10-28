@@ -132,10 +132,10 @@ export function StoreAppDetail({ appId }: { appId: string }) {
             </Button>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {suspended
-                ? "The owner has suspended this app. Old threads stay readable, but it can't take new requests."
+                ? "The owner has suspended this agent. Old threads stay readable, but it can't take new jobs."
                 : offline
-                  ? "The app's worker isn't responding, so new requests are paused. Old threads stay readable."
-                  : "Chatting and commands are free. The app replies with an offer; nothing is charged until you accept it and approve the quote."}
+                  ? "This agent isn't responding, so new jobs are paused. Old threads stay readable."
+                  : "Chatting and commands are free. The agent replies with an offer, and nothing is charged until you accept it and approve the quote."}
             </p>
           </aside>
         }
@@ -147,12 +147,12 @@ export function StoreAppDetail({ appId }: { appId: string }) {
         <SectionHeader
           id="commands-title"
           eyebrow="Slash commands"
-          title="What this app can do"
+          title="What this agent can do"
           aside="Type / in the chat to run one."
         />
         {app.commands.length === 0 ? (
           <EmptyState title="No commands yet.">
-            This app has no active command, so it can't quote a price yet.
+            This agent has no active command, so it can't quote a price yet.
           </EmptyState>
         ) : (
           <div className="grid gap-3">

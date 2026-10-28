@@ -88,6 +88,10 @@ interface TextAnimateProps extends Omit<MotionProps, "children"> {
    * Whether to enable accessibility features (default: true)
    */
   accessible?: boolean;
+  /**
+   * Element id, for headings named by `aria-labelledby`
+   */
+  id?: string;
 }
 
 const staggerTimings: Record<AnimationType, number> = {
