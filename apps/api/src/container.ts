@@ -4,7 +4,7 @@ import type { Doorbell, Jobs } from "#core/queue";
 import type { ObjectStorage } from "#core/storage";
 import type { Config } from "./config";
 import type { Facilitator } from "#core/facilitator";
-import type { Logger } from "./http/context";
+import type { Logger } from "./logging";
 import type { RateStore } from "./http/limits";
 import type { Signals } from "./signals";
 import { createAuth } from "./modules/auth/auth";

@@ -1,9 +1,6 @@
 import type { Context } from "hono";
-import type { Logger as PinoLogger } from "pino";
 import type { Cradle } from "../container";
 import type { AccountIdentity } from "../modules/auth/auth.service";
-
-export type Logger = Pick<PinoLogger, "error" | "warn" | "info" | "debug">;
 
 // Per-request values every route can read through `c.var`.
 export type AppEnv = {

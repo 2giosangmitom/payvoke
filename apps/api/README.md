@@ -94,6 +94,24 @@ JSON is 400 `INVALID_JSON`, an oversized body 413 `PAYLOAD_TOO_LARGE`, a rate
 limit 429 `RATE_LIMITED`. Anything else is 500 `INTERNAL_ERROR`, logged with the
 error type only, because driver messages can contain SQL or credentials.
 
+### Logging
+
+Logging uses [LogTape](https://logtape.org). Code takes a logger from
+`logger(...category)` in `src/logging.ts` (categories under `payvoke`) and
+logs a message template with properties:
+`log.error("Settlement tick failed ({error})", { error: errorTag(error) })`.
+Only `server.ts` calls `configureLogging(LOG_LEVEL)`; before that LogTape
+discards records, so tests and tools are silent. Output is JSON lines on
+stdout, through `redactByField` with `redactedLogFields` (secrets, tokens,
+keys, signatures, cookies, payment headers, bodies, connection URLs): a
+property with such a name is written as `[REDACTED]` at any depth. Log error
+tags, never error messages, since those can carry SQL or signed payloads.
+
+`@logtape/hono` writes one `payvoke.http` record per request (method, path
+without the query string, status, time; level error only for 5xx) and gives
+every record written during the request the same `requestId`, also returned as
+`x-request-id`.
+
 ## Workers
 
 | Worker     | Enabled by                          | Holds                                                          |

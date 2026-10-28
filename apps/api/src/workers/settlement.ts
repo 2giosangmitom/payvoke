@@ -12,14 +12,16 @@ import { channels, connectRedis, queues, QueueJobs, ring, serial, throttled } fr
 import { errorTag, vaultDeployment } from "#core/runtime";
 import type { InvocationJob } from "#core/queue";
 import { deploymentConfig, gasBudget, type Config } from "../config";
-import type { Logger } from "../http/context";
+import { logger } from "../logging";
 
 // `settle` jobs wake the worker as soon as the facilitator journals an intent;
 // the sweep still finds deferred operations and any job Redis lost.
 const SWEEP_MS = 5000;
 
+const log = logger("worker", "settlement");
+
 // Signs and sends reserveHold. The only code path that uses RELAYER_PRIVATE_KEY.
-export async function startSettlementWorker(config: Config, db: PrismaClient, log: Logger) {
+export async function startSettlementWorker(config: Config, db: PrismaClient) {
   const budget = gasBudget(config, "SETTLEMENT");
   validateGasPolicy(budget);
   const deployment = vaultDeployment(deploymentConfig(config));
@@ -37,7 +39,7 @@ export async function startSettlementWorker(config: Config, db: PrismaClient, lo
   await admission.initialize({ requireRelayerRole: false });
   await chain.finalized();
   const onError = throttled(
-    (error) => log.error({ error: errorTag(error) }, "Settlement worker Redis error"),
+    (error) => log.error("Settlement worker Redis error ({error})", { error: errorTag(error) }),
     errorTag,
   );
   const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
@@ -61,7 +63,9 @@ export async function startSettlementWorker(config: Config, db: PrismaClient, lo
     { connection: consumer, concurrency: 1 },
   );
   settler.on("failed", (_job, error) =>
-    log.error({ error: errorTag(error) }, "Settlement job failed; durable state retained"),
+    log.error("Settlement job failed; durable state retained ({error})", {
+      error: errorTag(error),
+    }),
   );
   settler.on("error", onError);
 
@@ -72,7 +76,9 @@ export async function startSettlementWorker(config: Config, db: PrismaClient, lo
       try {
         busy = await lane(() => worker.tick());
       } catch (error) {
-        log.error({ error: errorTag(error) }, "Settlement tick failed; durable state retained");
+        log.error("Settlement tick failed; durable state retained ({error})", {
+          error: errorTag(error),
+        });
       }
       if (!stopping) {
         try {
@@ -87,7 +93,9 @@ export async function startSettlementWorker(config: Config, db: PrismaClient, lo
           // Keep scanning without a pause while finalized blocks are still behind.
           if (!lifecycle.caughtUp && !("reason" in lifecycle)) busy = true;
         } catch (error) {
-          log.error({ error: errorTag(error) }, "Settlement backfill failed; cursor retained");
+          log.error("Settlement backfill failed; cursor retained ({error})", {
+            error: errorTag(error),
+          });
         }
       }
       if (!stopping && !busy) await delay(SWEEP_MS);

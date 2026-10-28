@@ -6,10 +6,12 @@ import { connectRedis, queues, QueueJobs, throttled, type InvocationJob } from "
 import { errorTag } from "#core/runtime";
 import type { ObjectStorage } from "#core/storage";
 import type { Config } from "../config";
-import type { Logger } from "../http/context";
+import { logger } from "../logging";
 
 // Re-adds verification jobs whose producer crashed between commit and enqueue.
 const SWEEP_MS = 60000;
+
+const log = logger("worker", "job");
 
 // Keyless, idempotent jobs: host-side delivery verification (JSON and file
 // results) and upload cleanup.
@@ -19,10 +21,9 @@ export async function startJobWorker(
   // Null when files are disabled: file results then stay unverified, so the
   // finance worker refunds them at the delivery deadline.
   storage: ObjectStorage | null,
-  log: Logger,
 ) {
   const onError = throttled(
-    (error) => log.error({ error: errorTag(error) }, "Job worker Redis error"),
+    (error) => log.error("Job worker Redis error ({error})", { error: errorTag(error) }),
     errorTag,
   );
   const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
@@ -48,7 +49,7 @@ export async function startJobWorker(
     { connection: consumer, concurrency: 4 },
   );
   verifier.on("failed", (_job, error) =>
-    log.warn({ error: errorTag(error) }, "Delivery verification failed; will retry"),
+    log.warn("Delivery verification failed; will retry ({error})", { error: errorTag(error) }),
   );
   verifier.on("error", onError);
   const delivery = new Queue(queues.delivery, { connection: producer });

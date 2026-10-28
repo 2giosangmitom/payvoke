@@ -3,7 +3,8 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { Prisma } from "#core/db";
 import { AppError } from "../errors";
-import type { AppEnv, Logger } from "./context";
+import type { Logger } from "../logging";
+import type { AppEnv } from "./context";
 
 type PublicError = { status: ContentfulStatusCode; code: string; expected: boolean };
 
@@ -37,8 +38,9 @@ export function errorHandler(log: Logger): ErrorHandler<AppEnv> {
     const { status, code, expected } = publicError(error);
     // Prisma/adapter errors may contain SQL or credentials: log the type, never
     // the message, and never send anything but the public code.
-    if (!expected) log.error({ type: (error as Error | undefined)?.name }, "Request failed");
-    else if (status >= 500) log.warn({ code }, "Request unavailable");
+    if (!expected)
+      log.error("Request failed ({type})", { type: (error as Error | undefined)?.name });
+    else if (status >= 500) log.warn("Request unavailable ({code})", { code });
     return c.json({ error: code }, status);
   };
 }

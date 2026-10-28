@@ -55,9 +55,8 @@ import {
 import { createApp } from "../../src/app";
 import { loadConfig } from "../../src/config";
 import { offerFixture } from "#test/offer-fixture";
-import { logRedaction } from "#core/runtime";
-import pino from "pino";
-import { Writable } from "node:stream";
+import { configure, jsonLinesFormatter, reset } from "@logtape/logtape";
+import { logger, redacting } from "../../src/logging";
 import { PrismaClient } from "#core/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 import { SettlementJournal } from "#core/payments/journal";
@@ -707,26 +706,23 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.match(String(intent.headers["cache-control"]), /no-store/);
     // The production redaction policy removes payment headers, cookies and bodies.
     const lines: string[] = [];
-    const logger = pino(
-      { level: "trace", redact: logRedaction },
-      new Writable({
-        write(chunk, _encoding, done) {
-          lines.push(String(chunk));
-          done();
-        },
-      }),
-    );
+    await configure({
+      reset: true,
+      sinks: { memory: redacting((record) => lines.push(jsonLinesFormatter(record))) },
+      loggers: [{ category: ["payvoke"], lowestLevel: "trace", sinks: ["memory"] }],
+    });
     const signature = JSON.stringify(signed);
-    logger.info(
-      {
+    try {
+      logger("test").info("payment request", {
         req: {
           headers: { "payment-signature": signature, cookie, authorization: "Bearer pvk_x" },
           body: { arguments: { text: secret } },
         },
         signature,
-      },
-      "payment request",
-    );
+      });
+    } finally {
+      await reset();
+    }
     const output = lines.join("");
     assert.match(output, /payment request/);
     for (const leaked of [secret, signature, cookie, "pvk_x"])

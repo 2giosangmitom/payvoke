@@ -1,5 +1,8 @@
 import type { Context } from "hono";
 import { errorTag } from "#core/runtime";
+import { logger } from "../logging";
+
+const log = logger("http", "sse");
 
 export type EventStream = {
   readonly open: boolean;
@@ -56,7 +59,7 @@ export function eventStream(
   };
   write(": connected\n\n");
   run(stream)
-    .catch((error) => console.error(`Event stream failed (${errorTag(error)})`))
+    .catch((error) => log.error("Event stream failed ({error})", { error: errorTag(error) }))
     .finally(() => {
       closed = true;
       try {

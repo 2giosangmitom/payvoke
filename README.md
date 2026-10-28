@@ -654,7 +654,7 @@ Files      ↔ Object storage
 
 Stack:
 
-- **Hono trên Bun:** API, validation bằng zod (`@hono/zod-validator`), Hono RPC cho frontend.
+- **Hono trên Bun:** API, validation bằng zod (`@hono/zod-validator`), Hono RPC cho frontend, log bằng LogTape (`@logtape/hono`).
 - **PostgreSQL + Prisma:** persistence.
 - **Solidity + Hardhat:** vault và contract tests.
 - **viem:** EVM và typed data.

@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import pino from "pino";
+import { honoLogger } from "@logtape/hono";
 import { createDatabase, type PrismaClient } from "#core/db";
 import { createFacilitator, type Facilitator } from "#core/facilitator";
-import { logRedaction } from "#core/runtime";
 import { createStorage, type ObjectStorage } from "#core/storage";
 import { deploymentConfig, type Config } from "./config";
 import { createAppContainer } from "./container";
 import type { AppEnv } from "./http/context";
+import { logger } from "./logging";
 import { errorHandler, notFound } from "./http/errors";
 import { defaultBodyLimit, memoryRateStore, redisRateStore } from "./http/limits";
 import { authRoutes } from "./modules/auth/auth.routes";
@@ -52,7 +52,7 @@ export function createApp(
   storage: ObjectStorage | null = createStorage(config),
   facilitator?: Facilitator | null,
 ) {
-  const log = pino({ level: config.LOG_LEVEL, redact: logRedaction });
+  const log = logger("api");
   const db = database ?? createDatabase(config.DATABASE_URL);
   const payments =
     facilitator !== undefined
@@ -70,6 +70,25 @@ export function createApp(
   const cradle = container.cradle;
 
   const app = new Hono<AppEnv>()
+    // One access record per request, with a request ID (x-request-id) that
+    // every log record written while handling it carries. The path only:
+    // query strings can carry bearer URLs or tokens.
+    .use(
+      honoLogger({
+        category: ["payvoke", "http"],
+        format: (c, responseTime) => ({
+          method: c.req.method,
+          // The message template reads `url`; it is the path here too.
+          url: c.req.path,
+          path: c.req.path,
+          status: c.res.status,
+          responseTime,
+        }),
+        // Expected failures (4xx) reach the error handler too; only 5xx is an error.
+        completionLevel: (_c, { status }) => (status >= 500 ? "error" : "info"),
+        context: true,
+      }),
+    )
     .use(async (c, next) => {
       c.set("cradle", cradle);
       c.set("account", null);

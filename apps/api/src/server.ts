@@ -3,9 +3,11 @@ import { errorTag } from "#core/runtime";
 import { throttled } from "#core/queue";
 import { createApp, type App } from "./app";
 import { loadConfig } from "./config";
-import type { Logger } from "./http/context";
+import { configureLogging, logger } from "./logging";
 import { connectSignals } from "./signals";
 import { startWorkers } from "./workers";
+
+const log = logger("server");
 
 // SSE streams send a keep-alive every 15 seconds; idle sockets close after 120.
 const IDLE_TIMEOUT_SECONDS = 120;
@@ -15,36 +17,34 @@ let signals: Awaited<ReturnType<typeof connectSignals>> | undefined;
 let workers: Awaited<ReturnType<typeof startWorkers>> | undefined;
 try {
   const config = loadConfig();
+  await configureLogging(config.LOG_LEVEL);
   // Redis must be reachable at startup; later outages are logged and tolerated.
-  // The logger exists only once the app does.
-  const late: { log?: Logger } = {};
   signals = await connectSignals(
     config.REDIS_URL,
     throttled(
-      (error) => late.log?.warn({ error: errorTag(error) }, "Redis signal failed"),
+      (error) => log.warn("Redis signal failed ({error})", { error: errorTag(error) }),
       errorTag,
     ),
   );
   app = createApp(config, undefined, signals);
-  late.log = app.log;
   await app.ready();
   const running = app;
-  workers = await startWorkers(config, running.cradle.db, running.cradle.storage, running.log);
+  workers = await startWorkers(config, running.cradle.db, running.cradle.storage);
   const server = Bun.serve({
     hostname: config.HOST,
     port: config.PORT,
     idleTimeout: IDLE_TIMEOUT_SECONDS,
     fetch: running.fetch,
   });
-  running.log.info({ url: server.url.href }, "Server listening");
+  log.info("Server listening on {url}", { url: server.url.href });
 
   const opened = { signals, workers };
   closeWithGrace(
     // Settlement and finance finish an in-flight transaction before exiting.
-    { delay: 150000, logger: { error: () => running.log.error("Graceful shutdown failed") } },
+    { delay: 150000, logger: { error: () => log.error("Graceful shutdown failed") } },
     async ({ signal, err }) => {
-      if (err) running.log.error("Server closing after an unhandled error");
-      else running.log.info({ signal }, "Server closing");
+      if (err) log.error("Server closing after an unhandled error");
+      else log.info("Server closing on {signal}", { signal });
       await server.stop();
       await opened.workers.close();
       await running.close();

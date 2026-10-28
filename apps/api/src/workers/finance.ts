@@ -10,15 +10,17 @@ import { validateGasPolicy } from "#core/payments/worker";
 import { connectRedis, queues, serial, throttled } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
 import { deploymentConfig, gasBudget, type Config } from "../config";
-import type { Logger } from "../http/context";
+import { logger } from "../logging";
 
 // Jobs wake finance on new evidence, failed runs and hold deadlines; the sweep
 // only backs up wake-ups Redis lost.
 const SWEEP_MS = 30000;
 
+const log = logger("worker", "finance");
+
 // Automatic refunds of undelivered, failed or late invocations and releases of
 // verified deliveries after the review window.
-export async function startFinanceWorker(config: Config, db: PrismaClient, log: Logger) {
+export async function startFinanceWorker(config: Config, db: PrismaClient) {
   const budget = gasBudget(config, "FINANCE");
   validateGasPolicy(budget);
   const deployment = vaultDeployment(deploymentConfig(config));
@@ -37,7 +39,7 @@ export async function startFinanceWorker(config: Config, db: PrismaClient, log: 
   const chain = new SettlementChain(client, deployment);
   await chain.finalized();
   const onError = throttled(
-    (error) => log.error({ error: errorTag(error) }, "Finance worker Redis error"),
+    (error) => log.error("Finance worker Redis error ({error})", { error: errorTag(error) }),
     errorTag,
   );
   const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
@@ -56,7 +58,7 @@ export async function startFinanceWorker(config: Config, db: PrismaClient, log: 
     });
   const waker = new Worker(queues.finance, () => cycle(), { connection: consumer, concurrency: 1 });
   waker.on("failed", (_job, error) =>
-    log.error({ error: errorTag(error) }, "Finance job failed; durable state retained"),
+    log.error("Finance job failed; durable state retained ({error})", { error: errorTag(error) }),
   );
   waker.on("error", onError);
   const loop = (async () => {
@@ -64,7 +66,9 @@ export async function startFinanceWorker(config: Config, db: PrismaClient, log: 
       try {
         await cycle();
       } catch (error) {
-        log.error({ error: errorTag(error) }, "Finance tick failed; durable state retained");
+        log.error("Finance tick failed; durable state retained ({error})", {
+          error: errorTag(error),
+        });
       }
       if (!stopping) await delay(SWEEP_MS);
     }
