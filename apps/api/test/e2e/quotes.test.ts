@@ -7,7 +7,17 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { after, afterEach, before, beforeEach, describe, it } from "node:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  it,
+  mock,
+  onTestFinished,
+  spyOn,
+} from "bun:test";
 import type { PGlite } from "@electric-sql/pglite";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -75,6 +85,7 @@ import { AutoFinance, autoOutcome } from "#core/payments/finance-policy";
 import { vaultFinanceAbi } from "@payvoke/shared/protocol";
 
 describe("quotes, x402 and isolated settlement", () => {
+  afterEach(() => mock.restore());
   const origin = "https://app.payvoke.test";
   const api = "https://api.payvoke.test";
   const vault = "0x1111111111111111111111111111111111111111";
@@ -98,7 +109,7 @@ describe("quotes, x402 and isolated settlement", () => {
   let commandId: string;
   let journal: SettlementJournal;
 
-  before(async () => {
+  beforeAll(async () => {
     // Embedded PGlite by default. PAYMENTS_TEST_DATABASE_URL opts into a real,
     // disposable Postgres for cross-process races; DATABASE_URL is never read.
     // Each run owns a fresh random schema.
@@ -268,7 +279,7 @@ describe("quotes, x402 and isolated settlement", () => {
   afterEach(async () => {
     await app?.close();
   });
-  after(async () => {
+  afterAll(async () => {
     if (pool) {
       try {
         await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
@@ -1205,21 +1216,24 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.settlementAttempt.count(), 0);
   });
 
-  it("allows at most one claim across independent Docker PostgreSQL worker processes", async (t) => {
-    if (embedded)
-      return t.skip("Set PAYMENTS_TEST_DATABASE_URL for real cross-process concurrency");
-    const q = await quote();
-    await pending(q);
-    const run = promisify(execFile);
-    const claim = fileURLToPath(new URL("./fixtures/claim.ts", import.meta.url));
-    // process.execPath is bun, which runs the TypeScript fixture directly.
-    const outputs = await Promise.all(
-      ["one", "two"].map((owner) => run(process.execPath, [claim, schema, q.invocationId, owner])),
-    );
-    const claims = outputs.map((o) => JSON.parse(o.stdout));
-    assert.equal(claims.filter(Boolean).length, 1);
-    assert.equal((await db.settlementOperation.findFirstOrThrow()).leaseEpoch, 1n);
-  });
+  it.skipIf(!process.env.PAYMENTS_TEST_DATABASE_URL)(
+    "allows at most one claim across independent Docker PostgreSQL worker processes",
+    async () => {
+      const q = await quote();
+      await pending(q);
+      const run = promisify(execFile);
+      const claim = fileURLToPath(new URL("./fixtures/claim.ts", import.meta.url));
+      // process.execPath is bun, which runs the TypeScript fixture directly.
+      const outputs = await Promise.all(
+        ["one", "two"].map((owner) =>
+          run(process.execPath, [claim, schema, q.invocationId, owner]),
+        ),
+      );
+      const claims = outputs.map((o) => JSON.parse(o.stdout));
+      assert.equal(claims.filter(Boolean).length, 1);
+      assert.equal((await db.settlementOperation.findFirstOrThrow()).leaseEpoch, 1n);
+    },
+  );
 
   it("exposes no facilitator endpoint over HTTP; only the in-process gateway settles", async () => {
     const q = await quote();
@@ -1607,30 +1621,31 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.invocationReady.count(), 0);
   });
 
-  it("rolls back HELD, lane release and outbox if the handoff insert fails", async (t) => {
-    const q = await quote();
-    const f = await execution(q);
-    await f.makeWorker().tick();
-    // Force a real database failure *inside* finalize, not a mock transaction.
-    await db.invocationReady.create({ data: { invocationId: q.invocationId, quoteId: q.quoteId } });
-    if (embedded) {
-      // PGlite's socket bridge cannot recover from extended-query constraint errors.
+  // PGlite's socket bridge cannot recover from extended-query constraint errors,
+  // so the atomic rollback is exercised on Docker PostgreSQL only.
+  it.skipIf(!process.env.PAYMENTS_TEST_DATABASE_URL)(
+    "rolls back HELD, lane release and outbox if the handoff insert fails",
+    async () => {
+      const q = await quote();
+      const f = await execution(q);
+      await f.makeWorker().tick();
+      // Force a real database failure *inside* finalize, not a mock transaction.
+      await db.invocationReady.create({
+        data: { invocationId: q.invocationId, quoteId: q.quoteId },
+      });
+      await f.due();
+      await f.makeWorker().tick();
+      assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
+      assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "BROADCAST");
+      assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, q.invocationId);
       await db.invocationReady.deleteMany();
-      t.skip("Atomic SQL rollback is exercised on Docker PostgreSQL");
-      return;
-    }
-    await f.due();
-    await f.makeWorker().tick();
-    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "PENDING");
-    assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "BROADCAST");
-    assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, q.invocationId);
-    await db.invocationReady.deleteMany();
-    await f.due();
-    await f.makeWorker().tick();
-    assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
-    assert.equal(await db.invocationReady.count(), 1);
-    assert.equal(f.state.sent.length, 1);
-  });
+      await f.due();
+      await f.makeWorker().tick();
+      assert.equal((await db.settlementOperation.findFirstOrThrow()).state, "HELD");
+      assert.equal(await db.invocationReady.count(), 1);
+      assert.equal(f.state.sent.length, 1);
+    },
+  );
 
   it("runs SDK upfront through the gateway, preserving pending/finalized receipts and expired replay", async () => {
     const q = await quote();
@@ -1705,23 +1720,22 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(mock.state.sent.length, 1);
   });
 
-  it("resumes after crashing with an unsigned reservation or persisted signature", async (t) => {
+  it("resumes after crashing with an unsigned reservation or persisted signature", async () => {
     const q = await quote();
     const f = await execution(q);
     const persist = SettlementJournal.prototype.persistSigned;
     let crashed = false;
-    t.mock.method(
-      SettlementJournal.prototype,
-      "persistSigned",
-      async function (this: SettlementJournal, ...args: Parameters<typeof persist>) {
-        const stored = await persist.apply(this, args);
-        if (!crashed) {
-          crashed = true;
-          throw new Error("Worker died after signature persistence");
-        }
-        return stored;
-      },
-    );
+    spyOn(SettlementJournal.prototype, "persistSigned").mockImplementation(async function (
+      this: SettlementJournal,
+      ...args: Parameters<typeof persist>
+    ) {
+      const stored = await persist.apply(this, args);
+      if (!crashed) {
+        crashed = true;
+        throw new Error("Worker died after signature persistence");
+      }
+      return stored;
+    });
     await f.makeWorker().tick();
     const attempt = await db.settlementAttempt.findFirstOrThrow();
     assert.equal(attempt.state, "SIGNED");
@@ -1732,7 +1746,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.settlementAttempt.count(), 1);
   });
 
-  it("fences a stale signer when a replacement worker resumes the same reservation", async (t) => {
+  it("fences a stale signer when a replacement worker resumes the same reservation", async () => {
     const q = await quote();
     const f = await execution(q);
     const sign = relayer.signTransaction.bind(relayer);
@@ -1745,14 +1759,16 @@ describe("quotes, x402 and isolated settlement", () => {
       release = resolve;
     });
     let first = true;
-    t.mock.method(relayer, "signTransaction", async (args: Parameters<typeof sign>[0]) => {
-      if (first) {
-        first = false;
-        entered();
-        await blocked;
-      }
-      return sign(args);
-    });
+    spyOn(relayer, "signTransaction").mockImplementation(
+      async (args: Parameters<typeof sign>[0]) => {
+        if (first) {
+          first = false;
+          entered();
+          await blocked;
+        }
+        return sign(args);
+      },
+    );
     const oldTick = f.makeWorker().tick();
     await waiting;
     await db.settlementOperation.updateMany({
@@ -1860,16 +1876,16 @@ describe("quotes, x402 and isolated settlement", () => {
       assert.equal(f.state.sent.length, 1);
     });
 
-  it("does not finalize a changed snapshot or sign when finalized RPC is unavailable", async (t) => {
+  it("does not finalize a changed snapshot or sign when finalized RPC is unavailable", async () => {
     const q = await quote();
     const f = await execution(q);
     const finalized = f.chain.finalized.bind(f.chain);
-    const fail = t.mock.method(f.chain, "finalized", async () => {
+    const fail = spyOn(f.chain, "finalized").mockImplementation(async () => {
       throw new Error("finalized tag not supported");
     });
     await f.makeWorker().tick();
     assert.equal(await db.settlementAttempt.count(), 0);
-    fail.mock.restore();
+    fail.mockRestore();
     await f.due();
     await f.makeWorker().tick();
     f.state.snapshotChanged = true;
@@ -1883,1171 +1899,1170 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.ok(await finalized());
   });
 
-  it("holds real local USDC through HTTP/SDK + worker + finalized receipt and durable backfill", async (t) => {
-    if (process.env.PAYMENTS_TEST_EVM !== "1") {
-      t.skip("Run test:payments:evm for isolated real-EVM settlement");
-      return;
-    }
-    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
-    t.after(evm.stop);
-    const buyerClient = createWalletClient({
-      account: wallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    const buyerVault = getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    const buyerUsdc = getContract({
-      address: ASSET,
-      abi: evm.token.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    await buyerUsdc.write.approve([evm.vault, 10000000n]);
-    await buyerVault.write.deposit([10000000n]);
-    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
-    await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
-    const local = createFacilitator(
-      {
-        ...facilitatorOptions(true, { RPC_URL: evm.rpc }),
-        VAULT_ADDRESS: evm.vault,
-        EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
-      },
-      db,
-      new MemoryJobs(),
-      evm.admission as VaultChain,
-    );
-    await app.close();
-    app = createApp(
-      { ...config, VAULT_ADDRESS: evm.vault, PAYMENTS_ENABLED: true },
-      db,
-      undefined,
-      undefined,
-      local,
-    );
-    await app.ready();
-    const q = await quote();
-    const p = await payment(q);
-    const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
-    const queued = await submit(q, headers);
-    assert.equal(queued.statusCode, 503, queued.body);
-    const worker = new SettlementWorker(
-      db,
-      evm.admission,
-      evm.settlement,
-      relayer,
-      `${api}/v1/invocations`,
-      gasPolicy,
-    );
-    if (!embedded) {
-      const args = [
-        fileURLToPath(new URL("./fixtures/worker-tick.ts", import.meta.url)),
-        schema,
-        evm.rpc,
-        evm.vault,
-        evm.admission.deployment.expectedCodeHash,
-        relayerKey,
-      ];
-      const run = promisify(execFile);
-      await Promise.all([run(process.execPath, args), run(process.execPath, args)]);
-    } else await worker.tick();
-    const attempt = await db.settlementAttempt.findFirstOrThrow();
-    assert.equal(attempt.state, "BROADCAST");
-    assert.equal(await evm.contract.read.totalHeld(), 100000n);
-    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
-    assert.equal(await db.invocationReady.count(), 0);
-    // Backfill must wake reconciliation without help from a browser request.
-    await scanFinalizedHolds(db, evm.settlement, evm.startBlock);
-    await worker.tick();
-    const operation = await db.settlementOperation.findFirstOrThrow();
-    assert.equal(operation.state, "HELD", operation.errorReason ?? "");
-    assert.equal(await db.invocationReady.count(), 1);
-    assert.ok((await db.settlementAttempt.findFirstOrThrow()).finalizedBlockHash);
-    const result = await submit(q, headers);
-    assert.equal(result.statusCode, 202, result.body);
-    const receipt = JSON.parse(
-      Buffer.from(result.headers["payment-response"] as string, "base64").toString(),
-    );
-    assert.equal(receipt.success, true);
-    assert.equal(receipt.transaction, attempt.transactionHash);
-    const status = await inject(app, {
-      url: `/v1/invocations/${q.invocationId}`,
-      headers: { cookie },
-    });
-    assert.equal(status.json().receipt.transaction, attempt.transactionHash);
-    await buyerVault.write.revokeGrant([`0x${"a".repeat(64)}`]);
-    const replay = await submit(q, headers);
-    assert.equal(replay.statusCode, 202, replay.body);
-    assert.equal(await evm.contract.read.totalHeld(), 100000n);
-    assert.equal(await db.settlementAttempt.count(), 1);
-    assert.equal(await db.invocationReady.count(), 1);
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "holds real local USDC through HTTP/SDK + worker + finalized receipt and durable backfill",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      const buyerClient = createWalletClient({
+        account: wallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
+      });
+      const buyerVault = getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      });
+      const buyerUsdc = getContract({
+        address: ASSET,
+        abi: evm.token.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      });
+      await buyerUsdc.write.approve([evm.vault, 10000000n]);
+      await buyerVault.write.deposit([10000000n]);
+      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+      const local = createFacilitator(
+        {
+          ...facilitatorOptions(true, { RPC_URL: evm.rpc }),
+          VAULT_ADDRESS: evm.vault,
+          EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
+        },
+        db,
+        new MemoryJobs(),
+        evm.admission as VaultChain,
+      );
+      await app.close();
+      app = createApp(
+        { ...config, VAULT_ADDRESS: evm.vault, PAYMENTS_ENABLED: true },
+        db,
+        undefined,
+        undefined,
+        local,
+      );
+      await app.ready();
+      const q = await quote();
+      const p = await payment(q);
+      const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
+      const queued = await submit(q, headers);
+      assert.equal(queued.statusCode, 503, queued.body);
+      const worker = new SettlementWorker(
+        db,
+        evm.admission,
+        evm.settlement,
+        relayer,
+        `${api}/v1/invocations`,
+        gasPolicy,
+      );
+      if (!embedded) {
+        const args = [
+          fileURLToPath(new URL("./fixtures/worker-tick.ts", import.meta.url)),
+          schema,
+          evm.rpc,
+          evm.vault,
+          evm.admission.deployment.expectedCodeHash,
+          relayerKey,
+        ];
+        const run = promisify(execFile);
+        await Promise.all([run(process.execPath, args), run(process.execPath, args)]);
+      } else await worker.tick();
+      const attempt = await db.settlementAttempt.findFirstOrThrow();
+      assert.equal(attempt.state, "BROADCAST");
+      assert.equal(await evm.contract.read.totalHeld(), 100000n);
+      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+      assert.equal(await db.invocationReady.count(), 0);
+      // Backfill must wake reconciliation without help from a browser request.
+      await scanFinalizedHolds(db, evm.settlement, evm.startBlock);
+      await worker.tick();
+      const operation = await db.settlementOperation.findFirstOrThrow();
+      assert.equal(operation.state, "HELD", operation.errorReason ?? "");
+      assert.equal(await db.invocationReady.count(), 1);
+      assert.ok((await db.settlementAttempt.findFirstOrThrow()).finalizedBlockHash);
+      const result = await submit(q, headers);
+      assert.equal(result.statusCode, 202, result.body);
+      const receipt = JSON.parse(
+        Buffer.from(result.headers["payment-response"] as string, "base64").toString(),
+      );
+      assert.equal(receipt.success, true);
+      assert.equal(receipt.transaction, attempt.transactionHash);
+      const status = await inject(app, {
+        url: `/v1/invocations/${q.invocationId}`,
+        headers: { cookie },
+      });
+      assert.equal(status.json().receipt.transaction, attempt.transactionHash);
+      await buyerVault.write.revokeGrant([`0x${"a".repeat(64)}`]);
+      const replay = await submit(q, headers);
+      assert.equal(replay.statusCode, 202, replay.body);
+      assert.equal(await evm.contract.read.totalHeld(), 100000n);
+      assert.equal(await db.settlementAttempt.count(), 1);
+      assert.equal(await db.invocationReady.count(), 1);
 
-    // Real revoke-after-preview race: the reserved transaction is mined reverted,
-    // including when Hardhat reports send as an RPC error after executing it.
-    const grantB = `0x${"b".repeat(64)}` as const;
-    await buyerVault.write.registerGrant([grantB, evm.grant]);
-    sessionId = randomUUID();
-    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
-    const second = await quote();
-    const challenge = decodePaymentRequiredHeader(
-      (await submit(second)).headers["payment-required"] as string,
-    );
-    const secondPayment = await new x402Client()
-      .register(NETWORK, client(second, { grantId: grantB }))
-      .createPaymentPayload(challenge);
-    const secondHeaders = { "payment-signature": encodePaymentSignatureHeader(secondPayment) };
-    assert.equal((await submit(second, secondHeaders)).statusCode, 503);
-    const sign = relayer.signTransaction.bind(relayer);
-    const signHook = t.mock.method(
-      relayer,
-      "signTransaction",
-      async (args: Parameters<typeof sign>[0]) => {
-        const serialized = await sign(args);
-        await buyerVault.write.revokeGrant([grantB]);
-        return serialized;
-      },
-    );
-    await worker.tick();
-    signHook.mock.restore();
-    await db.settlementOperation.updateMany({
-      where: { state: "PENDING" },
-      data: { nextCheckAt: new Date(0) },
-    });
-    await worker.tick();
-    const rejected = await db.settlementOperation.findUniqueOrThrow({
-      where: { invocationId: second.invocationId },
-      include: { attempt: true },
-    });
-    assert.equal(rejected.state, "REJECTED", rejected.errorReason ?? "");
-    assert.equal(rejected.attempt?.state, "REVERTED");
-    assert.equal(await db.invocationReady.count(), 1);
-    assert.equal(await evm.contract.read.totalHeld(), 100000n);
-
-    // With no finance decision, the buyer recovers the held funds directly.
-    const holdId = q.protocolQuote.invocationKey as `0x${string}`;
-    await assert.rejects(
-      buyerVault.simulate.reclaim([holdId], { account: wallet }),
-      /ReclaimTooEarly/,
-    );
-    await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
-    await evm.test.mine({ blocks: 1 });
-    await buyerVault.write.reclaim([holdId]);
-    await buyerVault.write.withdrawAvailable([10000000n]);
-    assert.equal(await evm.contract.read.totalHeld(), 0n);
-    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
-    assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
-  });
-
-  it("completes financial lifecycle on real local USDC with approval separation, recovery and finalized projections", async (t) => {
-    if (process.env.PAYMENTS_TEST_EVM !== "1") {
-      t.skip("Run isolated financial lifecycle EVM test");
-      return;
-    }
-    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
-    t.after(evm.stop);
-    const executor = privateKeyToAccount(generatePrivateKey()),
-      approver = privateKeyToAccount(generatePrivateKey());
-    const providerWallet = privateKeyToAccount(generatePrivateKey()),
-      platformWallet = privateKeyToAccount(generatePrivateKey());
-    await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
-    await evm.test.setBalance({ address: providerWallet.address, value: 10n ** 20n });
-    await evm.test.setBalance({ address: platformWallet.address, value: 10n ** 20n });
-    const buyerClient = createWalletClient({
-      account: wallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    const buyerVault = getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    const buyerUsdc = getContract({
-      address: ASSET,
-      abi: evm.token.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    await buyerUsdc.write.approve([evm.vault, 10000000n]);
-    await buyerVault.write.deposit([10000000n]);
-    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
-    for (const [role, account] of [
-      ["FINANCE_EXECUTOR_ROLE", executor.address],
-      ["REFUND_APPROVER_ROLE", approver.address],
-      ["RELEASE_APPROVER_ROLE", approver.address],
-      ["PAUSER_ROLE", evm.adminWallet.account.address],
-    ] as const) {
-      await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
-    }
-    await db.deploymentPolicy.updateMany({
-      data: { vault: evm.vault, feeRecipient: platformWallet.address },
-    });
-    await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
-    await app.close();
-    app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
-    await app.ready();
-    journal = new SettlementJournal(db, { vault: evm.vault, resourceUrl: `${api}/v1/invocations` });
-    const worker = new SettlementWorker(
-      db,
-      evm.admission,
-      evm.settlement,
-      relayer,
-      `${api}/v1/invocations`,
-      gasPolicy,
-    );
-    async function held() {
+      // Real revoke-after-preview race: the reserved transaction is mined reverted,
+      // including when Hardhat reports send as an RPC error after executing it.
+      const grantB = `0x${"b".repeat(64)}` as const;
+      await buyerVault.write.registerGrant([grantB, evm.grant]);
       sessionId = randomUUID();
       await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
-      const q = await quote();
-      await pending(q);
+      const second = await quote();
+      const challenge = decodePaymentRequiredHeader(
+        (await submit(second)).headers["payment-required"] as string,
+      );
+      const secondPayment = await new x402Client()
+        .register(NETWORK, client(second, { grantId: grantB }))
+        .createPaymentPayload(challenge);
+      const secondHeaders = { "payment-signature": encodePaymentSignatureHeader(secondPayment) };
+      assert.equal((await submit(second, secondHeaders)).statusCode, 503);
+      const sign = relayer.signTransaction.bind(relayer);
+      const signHook = spyOn(relayer, "signTransaction").mockImplementation(
+        async (args: Parameters<typeof sign>[0]) => {
+          const serialized = await sign(args);
+          await buyerVault.write.revokeGrant([grantB]);
+          return serialized;
+        },
+      );
       await worker.tick();
+      signHook.mockRestore();
       await db.settlementOperation.updateMany({
         where: { state: "PENDING" },
         data: { nextCheckAt: new Date(0) },
       });
       await worker.tick();
-      assert.equal(
-        (
-          await db.settlementOperation.findUniqueOrThrow({
-            where: { invocationId: q.invocationId },
-          })
-        ).state,
-        "HELD",
+      const rejected = await db.settlementOperation.findUniqueOrThrow({
+        where: { invocationId: second.invocationId },
+        include: { attempt: true },
+      });
+      assert.equal(rejected.state, "REJECTED", rejected.errorReason ?? "");
+      assert.equal(rejected.attempt?.state, "REVERTED");
+      assert.equal(await db.invocationReady.count(), 1);
+      assert.equal(await evm.contract.read.totalHeld(), 100000n);
+
+      // With no finance decision, the buyer recovers the held funds directly.
+      const holdId = q.protocolQuote.invocationKey as `0x${string}`;
+      await assert.rejects(
+        buyerVault.simulate.reclaim([holdId], { account: wallet }),
+        /ReclaimTooEarly/,
       );
-      return q;
-    }
-    // Prepare all quotes before local time advancement; production never time-travels.
-    const first = await held(),
-      second = await held(),
-      third = await held(),
-      fourth = await held(),
-      fifth = await held(),
-      sixth = await held(),
-      seventh = await held();
-    // A revision promising REC evidence: schema-signed (SIGN) output cannot release it.
-    const signOnly = await db.appCommandRevision.findFirstOrThrow({ where: { commandId } });
-    await db.appCommandRevision.update({
-      where: { id: signOnly.id },
-      data: {
-        terms: {
-          ...(signOnly.terms as Record<string, unknown>),
-          verification: { minEvidence: "REC" },
-        },
-      },
-    });
-    const eighth = await held();
-    await db.appCommandRevision.update({
-      where: { id: signOnly.id },
-      data: { terms: signOnly.terms as object },
-    });
-    assert.equal(
-      (eighth.termsSnapshot as { definition: { verification: { minEvidence: string } } }).definition
-        .verification.minEvidence,
-      "REC",
-    );
-    const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-    await sync();
-    assert.equal(await db.vaultHoldProjection.count(), 8);
-    const service = () => new FinanceService(db, evm.settlement, executor.address, gasPolicy);
-    assert.throws(
-      () => new FinanceService(db, evm.settlement, relayer.address, gasPolicy),
-      /dedicated/,
-    );
-    async function approvalFor(
-      q: QuoteDocument,
-      refund: string,
-      release = false,
-      evidenceId: string | null = null,
-    ): Promise<FinanceApproval> {
-      const hold = await evm.client.readContract({
+      await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
+      await evm.test.mine({ blocks: 1 });
+      await buyerVault.write.reclaim([holdId]);
+      await buyerVault.write.withdrawAvailable([10000000n]);
+      assert.equal(await evm.contract.read.totalHeld(), 0n);
+      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
+    },
+  );
+
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "completes financial lifecycle on real local USDC with approval separation, recovery and finalized projections",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      const executor = privateKeyToAccount(generatePrivateKey()),
+        approver = privateKeyToAccount(generatePrivateKey());
+      const providerWallet = privateKeyToAccount(generatePrivateKey()),
+        platformWallet = privateKeyToAccount(generatePrivateKey());
+      await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
+      await evm.test.setBalance({ address: providerWallet.address, value: 10n ** 20n });
+      await evm.test.setBalance({ address: platformWallet.address, value: 10n ** 20n });
+      const buyerClient = createWalletClient({
+        account: wallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
+      });
+      const buyerVault = getContract({
         address: evm.vault,
-        abi: vaultFinanceAbi,
-        functionName: "getHold",
-        args: [q.protocolQuote.invocationKey as `0x${string}`],
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: buyerClient },
       });
-      const decision: WireDecision = {
-        holdId: q.protocolQuote.invocationKey,
-        decisionId: `0x${randomBytes(32).toString("hex")}`,
-        expectedVersion: hold.version.toString(),
-        refundAmount: refund,
-        releaseRemainder: release,
-        validUntil: String(q.resolveBy - 1),
-      };
-      const signature = await approver.signTypedData({
-        domain: vaultDomain(evm.vault),
-        types: paymentTypes,
-        primaryType: "ResolutionDecision",
-        message: {
-          ...decision,
-          holdId: decision.holdId as `0x${string}`,
-          decisionId: decision.decisionId as `0x${string}`,
-          expectedVersion: BigInt(decision.expectedVersion),
-          refundAmount: BigInt(decision.refundAmount),
-          validUntil: Number(decision.validUntil),
-        },
+      const buyerUsdc = getContract({
+        address: ASSET,
+        abi: evm.token.abi,
+        client: { public: evm.client, wallet: buyerClient },
       });
-      return {
-        decision,
-        approver: approver.address,
-        signature,
-        evidenceId,
-        reason: "Controlled financial lifecycle verification",
-      };
-    }
-    async function finish(a: FinanceApproval) {
-      await service().enqueue(a);
-      await service().tick(a.decision.decisionId, executor);
-      await db.financeDecision.updateMany({
-        where: { id: a.decision.decisionId },
-        data: { nextCheckAt: new Date(0) },
+      await buyerUsdc.write.approve([evm.vault, 10000000n]);
+      await buyerVault.write.deposit([10000000n]);
+      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      for (const [role, account] of [
+        ["FINANCE_EXECUTOR_ROLE", executor.address],
+        ["REFUND_APPROVER_ROLE", approver.address],
+        ["RELEASE_APPROVER_ROLE", approver.address],
+        ["PAUSER_ROLE", evm.adminWallet.account.address],
+      ] as const) {
+        await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
+      }
+      await db.deploymentPolicy.updateMany({
+        data: { vault: evm.vault, feeRecipient: platformWallet.address },
       });
-      await service().tick(a.decision.decisionId, executor);
-      const row = await db.financeDecision.findUniqueOrThrow({
-        where: { id: a.decision.decisionId },
+      await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
+      await app.close();
+      app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
+      await app.ready();
+      journal = new SettlementJournal(db, {
+        vault: evm.vault,
+        resourceUrl: `${api}/v1/invocations`,
       });
-      assert.equal(row.state, "FINALIZED", row.errorReason ?? "");
-      assert.ok(row.actualGasCost);
-      assert.ok(row.receipt);
-      assert.equal((await db.financeLane.findFirstOrThrow()).activeDecisionId, null);
-      await sync();
-      return row;
-    }
-    const partial = await approvalFor(first, "20000");
-    await Promise.all([service().enqueue(partial), service().enqueue(partial)]);
-    await assert.rejects(service().enqueue({ ...partial, reason: "Changed reason" }), /conflict/);
-    const noSendBudget = new FinanceService(db, evm.settlement, executor.address, {
-      ...gasPolicy,
-      maxGasLimit: 1n,
-    });
-    await noSendBudget.tick(partial.decision.decisionId, executor);
-    assert.equal(
-      (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
-        .signedTransaction,
-      null,
-    );
-    await db.financeDecision.updateMany({ data: { nextCheckAt: new Date(0) } });
-    const send = evm.client.sendRawTransaction.bind(evm.client);
-    const timeout = t.mock.method(
-      evm.client,
-      "sendRawTransaction",
-      async (args: Parameters<typeof send>[0]) => {
-        await send(args);
-        throw new Error("timeout after chain execution");
-      },
-    );
-    await service().tick(partial.decision.decisionId, executor);
-    timeout.mock.restore();
-    assert.equal(
-      (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
-        .state,
-      "UNKNOWN",
-    );
-    if (!embedded) {
-      await db.$executeRawUnsafe(
-        `ALTER TABLE finance_decisions ADD CONSTRAINT test_finance_finalize_failure CHECK (state <> 'FINALIZED')`,
+      const worker = new SettlementWorker(
+        db,
+        evm.admission,
+        evm.settlement,
+        relayer,
+        `${api}/v1/invocations`,
+        gasPolicy,
       );
-      try {
-        await db.financeDecision.updateMany({
-          where: { id: partial.decision.decisionId },
+      async function held() {
+        sessionId = randomUUID();
+        await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+        const q = await quote();
+        await pending(q);
+        await worker.tick();
+        await db.settlementOperation.updateMany({
+          where: { state: "PENDING" },
           data: { nextCheckAt: new Date(0) },
         });
-        await service().tick(partial.decision.decisionId, executor);
-        const retained = await db.financeDecision.findUniqueOrThrow({
-          where: { id: partial.decision.decisionId },
-        });
-        assert.equal(retained.state, "UNKNOWN");
-        assert.equal(retained.finalizedAt, null);
+        await worker.tick();
         assert.equal(
-          (await db.financeLane.findFirstOrThrow()).activeDecisionId,
-          partial.decision.decisionId,
+          (
+            await db.settlementOperation.findUniqueOrThrow({
+              where: { invocationId: q.invocationId },
+            })
+          ).state,
+          "HELD",
         );
-      } finally {
-        await db.$executeRawUnsafe(
-          `ALTER TABLE finance_decisions DROP CONSTRAINT test_finance_finalize_failure`,
-        );
+        return q;
       }
-    }
-    await finish(partial);
-    assert.equal(
-      (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
-        .broadcastCount,
-      1,
-    );
-    assert.equal(
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: first.protocolQuote.invocationKey },
-        })
-      ).status,
-      "PARTIALLY_REFUNDED",
-    );
-    const fencedRefund = await approvalFor(fifth, "100000");
-    await service().enqueue(fencedRefund);
-    const sign = executor.signTransaction.bind(executor);
-    let entered!: () => void, releaseSigner!: () => void;
-    const signing = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const blocked = new Promise<void>((resolve) => {
-      releaseSigner = resolve;
-    });
-    let firstSigner = true;
-    const blockedSign = t.mock.method(
-      executor,
-      "signTransaction",
-      async (args: Parameters<typeof sign>[0]) => {
-        if (firstSigner) {
-          firstSigner = false;
-          entered();
-          await blocked;
-        }
-        return sign(args);
-      },
-    );
-    const stale = service().tick(fencedRefund.decision.decisionId, executor);
-    await signing;
-    await db.financeDecision.update({
-      where: { id: fencedRefund.decision.decisionId },
-      data: { leaseExpiresAt: new Date(0), nextCheckAt: new Date(0) },
-    });
-    try {
-      await service().tick(fencedRefund.decision.decisionId, executor);
-    } finally {
-      releaseSigner();
-    }
-    await stale;
-    blockedSign.mock.restore();
-    await finish(fencedRefund);
-    assert.equal(
-      (
-        await db.financeDecision.findUniqueOrThrow({
-          where: { id: fencedRefund.decision.decisionId },
-        })
-      ).broadcastCount,
-      1,
-    );
-    const revoked = await approvalFor(sixth, "100000");
-    await service().enqueue(revoked);
-    const refundRole = keccak256(stringToHex("REFUND_APPROVER_ROLE"));
-    const revokeDuringSend = t.mock.method(
-      evm.client,
-      "sendRawTransaction",
-      async (args: Parameters<typeof send>[0]) => {
-        await evm.contract.write.revokeRole([refundRole, approver.address]);
-        return send(args);
-      },
-    );
-    await service().tick(revoked.decision.decisionId, executor);
-    revokeDuringSend.mock.restore();
-    await db.financeDecision.update({
-      where: { id: revoked.decision.decisionId },
-      data: { nextCheckAt: new Date(0) },
-    });
-    await service().tick(revoked.decision.decisionId, executor);
-    const reverted = await db.financeDecision.findUniqueOrThrow({
-      where: { id: revoked.decision.decisionId },
-    });
-    assert.equal(reverted.state, "REVERTED");
-    assert.ok(reverted.actualGasCost);
-    assert.equal((await db.financeLane.findFirstOrThrow()).activeDecisionId, null);
-    assert.equal(await service().tick(revoked.decision.decisionId, executor), false);
-    await evm.contract.write.grantRole([refundRole, approver.address]);
-    await finish(await approvalFor(sixth, "100000"));
-    await assert.rejects(
-      service().enqueue(await approvalFor(first, "0", true)),
-      /verified_delivery/,
-    );
-    const evidence = await recordPaymentDelivery(db, {
-      id: "verified-first-result",
-      invocationId: first.invocationId,
-      artifactVersion: 1,
-      outputHash: `0x${"1".repeat(64)}`,
-      verifier: "isolated-test-output-verifier",
-      accessInterruptionSeconds: 0,
-      evidenceLevel: "SIGN" as const,
-    });
-    assert.equal(
-      (
-        await recordPaymentDelivery(db, {
-          id: evidence.id,
-          invocationId: first.invocationId,
-          artifactVersion: 1,
-          outputHash: `0x${"1".repeat(64)}`,
-          verifier: "isolated-test-output-verifier",
-          accessInterruptionSeconds: 0,
-          evidenceLevel: "SIGN" as const,
-        })
-      ).id,
-      evidence.id,
-    );
-    await assert.rejects(
-      service().enqueue(await approvalFor(first, "0", true, evidence.id)),
-      /business_review/,
-    );
-    await evm.test.setNextBlockTimestamp({
-      timestamp: BigInt(
-        Math.max(
-          first.releaseNotBefore,
-          second.releaseNotBefore,
-          third.releaseNotBefore,
-          fourth.releaseNotBefore,
-        ),
-      ),
-    });
-    await evm.test.mine({ blocks: 1 });
-    const signed = await recordPaymentDelivery(db, {
-      id: "eighth-schema-only",
-      invocationId: eighth.invocationId,
-      artifactVersion: 1,
-      outputHash: `0x${"2".repeat(64)}`,
-      verifier: "isolated-test-output-verifier",
-      accessInterruptionSeconds: 0,
-      evidenceLevel: "SIGN" as const,
-    });
-    await assert.rejects(
-      service().enqueue(await approvalFor(eighth, "0", true, signed.id)),
-      /evidence_below_minimum/,
-    );
-    const witnessed = await recordPaymentDelivery(db, {
-      id: "eighth-buyer-witness",
-      invocationId: eighth.invocationId,
-      artifactVersion: 1,
-      outputHash: `0x${"2".repeat(64)}`,
-      verifier: "isolated-test-output-verifier",
-      accessInterruptionSeconds: 0,
-      evidenceLevel: "WIT" as const,
-    });
-    // WIT and REC are incomparable: buyer agreement does not prove file receipt.
-    await assert.rejects(
-      service().enqueue(await approvalFor(eighth, "0", true, witnessed.id)),
-      /evidence_below_minimum/,
-    );
-    const staleRelease = await approvalFor(first, "0", true, evidence.id);
-    await service().enqueue(staleRelease);
-    const correctedEvidence = await recordPaymentDelivery(db, {
-      id: "verified-first-access-correction",
-      invocationId: first.invocationId,
-      artifactVersion: 1,
-      outputHash: `0x${"1".repeat(64)}`,
-      verifier: "isolated-test-output-verifier",
-      accessInterruptionSeconds: 1,
-      evidenceLevel: "SIGN" as const,
-    });
-    await service().tick(staleRelease.decision.decisionId, executor);
-    const rejectedRelease = await db.financeDecision.findUniqueOrThrow({
-      where: { id: staleRelease.decision.decisionId },
-    });
-    assert.equal(rejectedRelease.state, "REJECTED");
-    assert.equal(rejectedRelease.transactionHash, null);
-    const release = await approvalFor(first, "0", true, correctedEvidence.id);
-    await finish(release);
-    assert.equal(
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: first.protocolQuote.invocationKey },
-        })
-      ).status,
-      "RELEASED",
-    );
-    assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 79200n);
-    assert.equal(await evm.contract.read.platformClaimable([platformWallet.address]), 800n);
-    assert.equal(await service().tick(release.decision.decisionId, executor), false);
-    await finish(await approvalFor(second, "100000"));
-    assert.equal(
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: second.protocolQuote.invocationKey },
-        })
-      ).status,
-      "REFUNDED",
-    );
-    await finish(await approvalFor(third, "100000"));
-    const corrupted = await approvalFor(seventh, "100000");
-    await service().enqueue(corrupted);
-    const offline = t.mock.method(evm.client, "sendRawTransaction", async () => {
-      throw new Error("connection failed before send");
-    });
-    await service().tick(corrupted.decision.decisionId, executor);
-    offline.mock.restore();
-    const wrongBytes = (
-      await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } })
-    ).signedTransaction!;
-    await db.financeDecision.update({
-      where: { id: corrupted.decision.decisionId },
-      data: { signedTransaction: wrongBytes, nextCheckAt: new Date(0) },
-    });
-    const noResend = t.mock.method(evm.client, "sendRawTransaction", async () => {
-      throw new Error("must not send mismatched bytes");
-    });
-    await service().tick(corrupted.decision.decisionId, executor);
-    assert.equal(noResend.mock.callCount(), 0);
-    noResend.mock.restore();
-    assert.equal(
-      (await db.financeDecision.findUniqueOrThrow({ where: { id: corrupted.decision.decisionId } }))
-        .state,
-      "QUARANTINED",
-    );
-    assert.equal(
-      (await db.financeLane.findFirstOrThrow()).activeDecisionId,
-      corrupted.decision.decisionId,
-    );
-    const readyCount = await db.invocationReady.count();
-    assert.equal(readyCount, 8);
-    const providerClient = createWalletClient({
-      account: providerWallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    const platformClient = createWalletClient({
-      account: platformWallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    await getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: providerClient },
-    }).write.withdrawProvider([79200n]);
-    await getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: platformClient },
-    }).write.withdrawPlatform([800n]);
-    assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 79200n);
-    assert.equal(await evm.usdc.read.balanceOf([platformWallet.address]), 800n);
-    await evm.test.setNextBlockTimestamp({
-      timestamp: BigInt(Math.max(fourth.resolveBy, seventh.resolveBy, eighth.resolveBy)),
-    });
-    await evm.test.mine({ blocks: 1 });
-    await evm.contract.write.pause();
-    const reclaim = await inject(app, {
-      method: "POST",
-      url: `/v1/invocations/${fourth.invocationId}/financial-intents`,
-      headers: { cookie, origin },
-      payload: { action: "reclaim" },
-    });
-    assert.equal(reclaim.statusCode, 200, reclaim.body);
-    await buyerClient.sendTransaction({ to: evm.vault, data: reclaim.json().data });
-    await buyerVault.write.reclaim([seventh.protocolQuote.invocationKey]);
-    // Evidence never reached the promised REC floor before resolveBy: the buyer
-    // reclaims instead of the provider being paid on weaker evidence.
-    await buyerVault.write.reclaim([eighth.protocolQuote.invocationKey]);
-    await buyerVault.write.withdrawAvailable([9920000n]);
-    await sync();
-    assert.equal(
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: fourth.protocolQuote.invocationKey },
-        })
-      ).status,
-      "RECLAIMED",
-    );
-    assert.equal(await evm.contract.read.totalHeld(), 0n);
-    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
-    const count = await db.vaultFinancialEvent.count();
-    await sync();
-    assert.equal(await db.vaultFinancialEvent.count(), count);
-    assert.equal(await db.invocationReady.count(), readyCount);
-    const status = await inject(app, {
-      url: `/v1/invocations/${first.invocationId}`,
-      headers: { cookie },
-    });
-    assert.equal(
-      status.json().paymentStatus,
-      "HELD",
-      "original payment receipt remains true after payout",
-    );
-    assert.equal(status.json().financial.status, "RELEASED");
-    assert.equal(status.json().receipt.success, true);
-    const grant = (await evm.contract.read.getGrant([wallet.address, `0x${"a".repeat(64)}`])) as {
-      spentTotal: bigint;
-    };
-    assert.equal(grant.spentTotal, 800000n, "refund/reclaim never resets grant spend");
-    const cursor = await db.settlementScanCursor.findUniqueOrThrow({
-      where: { id: `finance:43113:${evm.vault.toLowerCase()}` },
-    });
-    await evm.test.mine({ blocks: 1 });
-    const read = evm.client.readContract.bind(evm.client);
-    const inconsistentRead = t.mock.method(evm.client, "readContract", ((
-      args: Parameters<typeof read>[0],
-    ) =>
-      args.functionName === "totalHeld"
-        ? Promise.resolve(1n)
-        : read(args)) as typeof evm.client.readContract);
-    await assert.rejects(sync(), /vault_insolvent/);
-    inconsistentRead.mock.restore();
-    assert.equal(
-      (await db.settlementScanCursor.findUniqueOrThrow({ where: { id: cursor.id } })).blockNumber,
-      cursor.blockNumber,
-    );
-    assert.equal(
-      (
-        await db.vaultFinancialHealth.findUniqueOrThrow({
-          where: { id: `43113:${evm.vault.toLowerCase()}` },
-        })
-      ).blocked,
-      true,
-    );
-    await sync();
-    assert.equal(
-      (
-        await db.vaultFinancialHealth.findUniqueOrThrow({
-          where: { id: `43113:${evm.vault.toLowerCase()}` },
-        })
-      ).blocked,
-      true,
-      "successful scans never silently clear an incident",
-    );
-  });
-
-  it("closes finance crash and deadline race gaps on real local USDC", async (t) => {
-    if (process.env.PAYMENTS_TEST_EVM !== "1") {
-      t.skip("Run isolated financial lifecycle EVM test");
-      return;
-    }
-    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
-    t.after(evm.stop);
-    const approver = privateKeyToAccount(generatePrivateKey());
-    const buyerClient = createWalletClient({
-      account: wallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    const buyerVault = getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    const buyerUsdc = getContract({
-      address: ASSET,
-      abi: evm.token.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    await buyerUsdc.write.approve([evm.vault, 10000000n]);
-    await buyerVault.write.deposit([10000000n]);
-    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
-    for (const role of ["REFUND_APPROVER_ROLE", "RELEASE_APPROVER_ROLE"])
-      await evm.contract.write.grantRole([keccak256(stringToHex(role)), approver.address]);
-    await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
-    await app.close();
-    app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
-    await app.ready();
-    journal = new SettlementJournal(db, { vault: evm.vault, resourceUrl: `${api}/v1/invocations` });
-    const worker = new SettlementWorker(
-      db,
-      evm.admission,
-      evm.settlement,
-      relayer,
-      `${api}/v1/invocations`,
-      gasPolicy,
-    );
-    const quotes: QuoteDocument[] = [];
-    for (let i = 0; i < 11; i++) {
-      sessionId = randomUUID();
-      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
-      const q = await quote();
-      await pending(q);
-      await worker.tick();
-      await db.settlementOperation.updateMany({
-        where: { state: "PENDING" },
-        data: { nextCheckAt: new Date(0) },
+      // Prepare all quotes before local time advancement; production never time-travels.
+      const first = await held(),
+        second = await held(),
+        third = await held(),
+        fourth = await held(),
+        fifth = await held(),
+        sixth = await held(),
+        seventh = await held();
+      // A revision promising REC evidence: schema-signed (SIGN) output cannot release it.
+      const signOnly = await db.appCommandRevision.findFirstOrThrow({ where: { commandId } });
+      await db.appCommandRevision.update({
+        where: { id: signOnly.id },
+        data: {
+          terms: {
+            ...(signOnly.terms as Record<string, unknown>),
+            verification: { minEvidence: "REC" },
+          },
+        },
       });
-      await worker.tick();
+      const eighth = await held();
+      await db.appCommandRevision.update({
+        where: { id: signOnly.id },
+        data: { terms: signOnly.terms as object },
+      });
       assert.equal(
-        (
-          await db.settlementOperation.findUniqueOrThrow({
-            where: { invocationId: q.invocationId },
-          })
-        ).state,
-        "HELD",
+        (eighth.termsSnapshot as { definition: { verification: { minEvidence: string } } })
+          .definition.verification.minEvidence,
+        "REC",
       );
-      quotes.push(q);
-    }
-    const due = (id: string) =>
-      db.financeDecision.update({ where: { id }, data: { nextCheckAt: new Date(0) } });
-    const row = (id: string) => db.financeDecision.findUniqueOrThrow({ where: { id } });
-    async function fixture(q: QuoteDocument, signer = privateKeyToAccount(generatePrivateKey())) {
-      await evm.test.setBalance({ address: signer.address, value: 10n ** 20n });
-      await evm.contract.write.grantRole([
-        keccak256(stringToHex("FINANCE_EXECUTOR_ROLE")),
-        signer.address,
-      ]);
-      const service = () => new FinanceService(db, evm.settlement, signer.address, gasPolicy);
-      const hold = await evm.client.readContract({
-        address: evm.vault,
-        abi: vaultFinanceAbi,
-        functionName: "getHold",
-        args: [q.protocolQuote.invocationKey as `0x${string}`],
-      });
-      const decision: WireDecision = {
-        holdId: q.protocolQuote.invocationKey,
-        decisionId: `0x${randomBytes(32).toString("hex")}`,
-        expectedVersion: hold.version.toString(),
-        refundAmount: "100000",
-        releaseRemainder: false,
-        validUntil: String(q.resolveBy),
-      };
-      const approval: FinanceApproval = {
-        decision,
-        approver: approver.address,
-        signature: await approver.signTypedData({
+      const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+      await sync();
+      assert.equal(await db.vaultHoldProjection.count(), 8);
+      const service = () => new FinanceService(db, evm.settlement, executor.address, gasPolicy);
+      assert.throws(
+        () => new FinanceService(db, evm.settlement, relayer.address, gasPolicy),
+        /dedicated/,
+      );
+      async function approvalFor(
+        q: QuoteDocument,
+        refund: string,
+        release = false,
+        evidenceId: string | null = null,
+      ): Promise<FinanceApproval> {
+        const hold = await evm.client.readContract({
+          address: evm.vault,
+          abi: vaultFinanceAbi,
+          functionName: "getHold",
+          args: [q.protocolQuote.invocationKey as `0x${string}`],
+        });
+        const decision: WireDecision = {
+          holdId: q.protocolQuote.invocationKey,
+          decisionId: `0x${randomBytes(32).toString("hex")}`,
+          expectedVersion: hold.version.toString(),
+          refundAmount: refund,
+          releaseRemainder: release,
+          validUntil: String(q.resolveBy - 1),
+        };
+        const signature = await approver.signTypedData({
           domain: vaultDomain(evm.vault),
           types: paymentTypes,
           primaryType: "ResolutionDecision",
-          message: parseDecision(decision),
-        }),
-        evidenceId: null,
-        reason: "Local crash/race acceptance proof",
-      };
-      await service().enqueue(approval);
-      const tick = async () => {
-        await due(decision.decisionId);
-        await service().tick(decision.decisionId, signer);
-        return row(decision.decisionId);
-      };
-      const lane = () =>
-        db.financeLane.findUniqueOrThrow({
-          where: { id: `43113:${signer.address.toLowerCase()}` },
+          message: {
+            ...decision,
+            holdId: decision.holdId as `0x${string}`,
+            decisionId: decision.decisionId as `0x${string}`,
+            expectedVersion: BigInt(decision.expectedVersion),
+            refundAmount: BigInt(decision.refundAmount),
+            validUntil: Number(decision.validUntil),
+          },
         });
-      return { signer, service, approval, id: decision.decisionId, tick, lane };
-    }
-    const scenario = async (name: string, run: () => Promise<void>) => {
-      t.diagnostic(name);
-      await run();
-    };
-    await scenario(
-      "concurrent decisions and duplicate ticks finalize only one version",
-      async () => {
-        const a = await fixture(quotes[0]);
-        const decision = {
-          ...a.approval.decision,
-          decisionId: `0x${randomBytes(32).toString("hex")}`,
-        };
-        const b = {
-          ...a.approval,
+        return {
           decision,
+          approver: approver.address,
+          signature,
+          evidenceId,
+          reason: "Controlled financial lifecycle verification",
+        };
+      }
+      async function finish(a: FinanceApproval) {
+        await service().enqueue(a);
+        await service().tick(a.decision.decisionId, executor);
+        await db.financeDecision.updateMany({
+          where: { id: a.decision.decisionId },
+          data: { nextCheckAt: new Date(0) },
+        });
+        await service().tick(a.decision.decisionId, executor);
+        const row = await db.financeDecision.findUniqueOrThrow({
+          where: { id: a.decision.decisionId },
+        });
+        assert.equal(row.state, "FINALIZED", row.errorReason ?? "");
+        assert.ok(row.actualGasCost);
+        assert.ok(row.receipt);
+        assert.equal((await db.financeLane.findFirstOrThrow()).activeDecisionId, null);
+        await sync();
+        return row;
+      }
+      const partial = await approvalFor(first, "20000");
+      await Promise.all([service().enqueue(partial), service().enqueue(partial)]);
+      await assert.rejects(service().enqueue({ ...partial, reason: "Changed reason" }), /conflict/);
+      const noSendBudget = new FinanceService(db, evm.settlement, executor.address, {
+        ...gasPolicy,
+        maxGasLimit: 1n,
+      });
+      await noSendBudget.tick(partial.decision.decisionId, executor);
+      assert.equal(
+        (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
+          .signedTransaction,
+        null,
+      );
+      await db.financeDecision.updateMany({ data: { nextCheckAt: new Date(0) } });
+      const send = evm.client.sendRawTransaction.bind(evm.client);
+      const timeout = spyOn(evm.client, "sendRawTransaction").mockImplementation(
+        async (args: Parameters<typeof send>[0]) => {
+          await send(args);
+          throw new Error("timeout after chain execution");
+        },
+      );
+      await service().tick(partial.decision.decisionId, executor);
+      timeout.mockRestore();
+      assert.equal(
+        (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
+          .state,
+        "UNKNOWN",
+      );
+      if (!embedded) {
+        await db.$executeRawUnsafe(
+          `ALTER TABLE finance_decisions ADD CONSTRAINT test_finance_finalize_failure CHECK (state <> 'FINALIZED')`,
+        );
+        try {
+          await db.financeDecision.updateMany({
+            where: { id: partial.decision.decisionId },
+            data: { nextCheckAt: new Date(0) },
+          });
+          await service().tick(partial.decision.decisionId, executor);
+          const retained = await db.financeDecision.findUniqueOrThrow({
+            where: { id: partial.decision.decisionId },
+          });
+          assert.equal(retained.state, "UNKNOWN");
+          assert.equal(retained.finalizedAt, null);
+          assert.equal(
+            (await db.financeLane.findFirstOrThrow()).activeDecisionId,
+            partial.decision.decisionId,
+          );
+        } finally {
+          await db.$executeRawUnsafe(
+            `ALTER TABLE finance_decisions DROP CONSTRAINT test_finance_finalize_failure`,
+          );
+        }
+      }
+      await finish(partial);
+      assert.equal(
+        (await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } }))
+          .broadcastCount,
+        1,
+      );
+      assert.equal(
+        (
+          await db.vaultHoldProjection.findUniqueOrThrow({
+            where: { holdId: first.protocolQuote.invocationKey },
+          })
+        ).status,
+        "PARTIALLY_REFUNDED",
+      );
+      const fencedRefund = await approvalFor(fifth, "100000");
+      await service().enqueue(fencedRefund);
+      const sign = executor.signTransaction.bind(executor);
+      let entered!: () => void, releaseSigner!: () => void;
+      const signing = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        releaseSigner = resolve;
+      });
+      let firstSigner = true;
+      const blockedSign = spyOn(executor, "signTransaction").mockImplementation(
+        async (args: Parameters<typeof sign>[0]) => {
+          if (firstSigner) {
+            firstSigner = false;
+            entered();
+            await blocked;
+          }
+          return sign(args);
+        },
+      );
+      const stale = service().tick(fencedRefund.decision.decisionId, executor);
+      await signing;
+      await db.financeDecision.update({
+        where: { id: fencedRefund.decision.decisionId },
+        data: { leaseExpiresAt: new Date(0), nextCheckAt: new Date(0) },
+      });
+      try {
+        await service().tick(fencedRefund.decision.decisionId, executor);
+      } finally {
+        releaseSigner();
+      }
+      await stale;
+      blockedSign.mockRestore();
+      await finish(fencedRefund);
+      assert.equal(
+        (
+          await db.financeDecision.findUniqueOrThrow({
+            where: { id: fencedRefund.decision.decisionId },
+          })
+        ).broadcastCount,
+        1,
+      );
+      const revoked = await approvalFor(sixth, "100000");
+      await service().enqueue(revoked);
+      const refundRole = keccak256(stringToHex("REFUND_APPROVER_ROLE"));
+      const revokeDuringSend = spyOn(evm.client, "sendRawTransaction").mockImplementation(
+        async (args: Parameters<typeof send>[0]) => {
+          await evm.contract.write.revokeRole([refundRole, approver.address]);
+          return send(args);
+        },
+      );
+      await service().tick(revoked.decision.decisionId, executor);
+      revokeDuringSend.mockRestore();
+      await db.financeDecision.update({
+        where: { id: revoked.decision.decisionId },
+        data: { nextCheckAt: new Date(0) },
+      });
+      await service().tick(revoked.decision.decisionId, executor);
+      const reverted = await db.financeDecision.findUniqueOrThrow({
+        where: { id: revoked.decision.decisionId },
+      });
+      assert.equal(reverted.state, "REVERTED");
+      assert.ok(reverted.actualGasCost);
+      assert.equal((await db.financeLane.findFirstOrThrow()).activeDecisionId, null);
+      assert.equal(await service().tick(revoked.decision.decisionId, executor), false);
+      await evm.contract.write.grantRole([refundRole, approver.address]);
+      await finish(await approvalFor(sixth, "100000"));
+      await assert.rejects(
+        service().enqueue(await approvalFor(first, "0", true)),
+        /verified_delivery/,
+      );
+      const evidence = await recordPaymentDelivery(db, {
+        id: "verified-first-result",
+        invocationId: first.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"1".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 0,
+        evidenceLevel: "SIGN" as const,
+      });
+      assert.equal(
+        (
+          await recordPaymentDelivery(db, {
+            id: evidence.id,
+            invocationId: first.invocationId,
+            artifactVersion: 1,
+            outputHash: `0x${"1".repeat(64)}`,
+            verifier: "isolated-test-output-verifier",
+            accessInterruptionSeconds: 0,
+            evidenceLevel: "SIGN" as const,
+          })
+        ).id,
+        evidence.id,
+      );
+      await assert.rejects(
+        service().enqueue(await approvalFor(first, "0", true, evidence.id)),
+        /business_review/,
+      );
+      await evm.test.setNextBlockTimestamp({
+        timestamp: BigInt(
+          Math.max(
+            first.releaseNotBefore,
+            second.releaseNotBefore,
+            third.releaseNotBefore,
+            fourth.releaseNotBefore,
+          ),
+        ),
+      });
+      await evm.test.mine({ blocks: 1 });
+      const signed = await recordPaymentDelivery(db, {
+        id: "eighth-schema-only",
+        invocationId: eighth.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"2".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 0,
+        evidenceLevel: "SIGN" as const,
+      });
+      await assert.rejects(
+        service().enqueue(await approvalFor(eighth, "0", true, signed.id)),
+        /evidence_below_minimum/,
+      );
+      const witnessed = await recordPaymentDelivery(db, {
+        id: "eighth-buyer-witness",
+        invocationId: eighth.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"2".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 0,
+        evidenceLevel: "WIT" as const,
+      });
+      // WIT and REC are incomparable: buyer agreement does not prove file receipt.
+      await assert.rejects(
+        service().enqueue(await approvalFor(eighth, "0", true, witnessed.id)),
+        /evidence_below_minimum/,
+      );
+      const staleRelease = await approvalFor(first, "0", true, evidence.id);
+      await service().enqueue(staleRelease);
+      const correctedEvidence = await recordPaymentDelivery(db, {
+        id: "verified-first-access-correction",
+        invocationId: first.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"1".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 1,
+        evidenceLevel: "SIGN" as const,
+      });
+      await service().tick(staleRelease.decision.decisionId, executor);
+      const rejectedRelease = await db.financeDecision.findUniqueOrThrow({
+        where: { id: staleRelease.decision.decisionId },
+      });
+      assert.equal(rejectedRelease.state, "REJECTED");
+      assert.equal(rejectedRelease.transactionHash, null);
+      const release = await approvalFor(first, "0", true, correctedEvidence.id);
+      await finish(release);
+      assert.equal(
+        (
+          await db.vaultHoldProjection.findUniqueOrThrow({
+            where: { holdId: first.protocolQuote.invocationKey },
+          })
+        ).status,
+        "RELEASED",
+      );
+      assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 79200n);
+      assert.equal(await evm.contract.read.platformClaimable([platformWallet.address]), 800n);
+      assert.equal(await service().tick(release.decision.decisionId, executor), false);
+      await finish(await approvalFor(second, "100000"));
+      assert.equal(
+        (
+          await db.vaultHoldProjection.findUniqueOrThrow({
+            where: { holdId: second.protocolQuote.invocationKey },
+          })
+        ).status,
+        "REFUNDED",
+      );
+      await finish(await approvalFor(third, "100000"));
+      const corrupted = await approvalFor(seventh, "100000");
+      await service().enqueue(corrupted);
+      const offline = spyOn(evm.client, "sendRawTransaction").mockImplementation(async () => {
+        throw new Error("connection failed before send");
+      });
+      await service().tick(corrupted.decision.decisionId, executor);
+      offline.mockRestore();
+      const wrongBytes = (
+        await db.financeDecision.findUniqueOrThrow({ where: { id: partial.decision.decisionId } })
+      ).signedTransaction!;
+      await db.financeDecision.update({
+        where: { id: corrupted.decision.decisionId },
+        data: { signedTransaction: wrongBytes, nextCheckAt: new Date(0) },
+      });
+      const noResend = spyOn(evm.client, "sendRawTransaction").mockImplementation(async () => {
+        throw new Error("must not send mismatched bytes");
+      });
+      await service().tick(corrupted.decision.decisionId, executor);
+      assert.equal(noResend.mock.calls.length, 0);
+      noResend.mockRestore();
+      assert.equal(
+        (
+          await db.financeDecision.findUniqueOrThrow({
+            where: { id: corrupted.decision.decisionId },
+          })
+        ).state,
+        "QUARANTINED",
+      );
+      assert.equal(
+        (await db.financeLane.findFirstOrThrow()).activeDecisionId,
+        corrupted.decision.decisionId,
+      );
+      const readyCount = await db.invocationReady.count();
+      assert.equal(readyCount, 8);
+      const providerClient = createWalletClient({
+        account: providerWallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
+      });
+      const platformClient = createWalletClient({
+        account: platformWallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
+      });
+      await getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: providerClient },
+      }).write.withdrawProvider([79200n]);
+      await getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: platformClient },
+      }).write.withdrawPlatform([800n]);
+      assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 79200n);
+      assert.equal(await evm.usdc.read.balanceOf([platformWallet.address]), 800n);
+      await evm.test.setNextBlockTimestamp({
+        timestamp: BigInt(Math.max(fourth.resolveBy, seventh.resolveBy, eighth.resolveBy)),
+      });
+      await evm.test.mine({ blocks: 1 });
+      await evm.contract.write.pause();
+      const reclaim = await inject(app, {
+        method: "POST",
+        url: `/v1/invocations/${fourth.invocationId}/financial-intents`,
+        headers: { cookie, origin },
+        payload: { action: "reclaim" },
+      });
+      assert.equal(reclaim.statusCode, 200, reclaim.body);
+      await buyerClient.sendTransaction({ to: evm.vault, data: reclaim.json().data });
+      await buyerVault.write.reclaim([seventh.protocolQuote.invocationKey]);
+      // Evidence never reached the promised REC floor before resolveBy: the buyer
+      // reclaims instead of the provider being paid on weaker evidence.
+      await buyerVault.write.reclaim([eighth.protocolQuote.invocationKey]);
+      await buyerVault.write.withdrawAvailable([9920000n]);
+      await sync();
+      assert.equal(
+        (
+          await db.vaultHoldProjection.findUniqueOrThrow({
+            where: { holdId: fourth.protocolQuote.invocationKey },
+          })
+        ).status,
+        "RECLAIMED",
+      );
+      assert.equal(await evm.contract.read.totalHeld(), 0n);
+      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
+      const count = await db.vaultFinancialEvent.count();
+      await sync();
+      assert.equal(await db.vaultFinancialEvent.count(), count);
+      assert.equal(await db.invocationReady.count(), readyCount);
+      const status = await inject(app, {
+        url: `/v1/invocations/${first.invocationId}`,
+        headers: { cookie },
+      });
+      assert.equal(
+        status.json().paymentStatus,
+        "HELD",
+        "original payment receipt remains true after payout",
+      );
+      assert.equal(status.json().financial.status, "RELEASED");
+      assert.equal(status.json().receipt.success, true);
+      const grant = (await evm.contract.read.getGrant([wallet.address, `0x${"a".repeat(64)}`])) as {
+        spentTotal: bigint;
+      };
+      assert.equal(grant.spentTotal, 800000n, "refund/reclaim never resets grant spend");
+      const cursor = await db.settlementScanCursor.findUniqueOrThrow({
+        where: { id: `finance:43113:${evm.vault.toLowerCase()}` },
+      });
+      await evm.test.mine({ blocks: 1 });
+      const read = evm.client.readContract.bind(evm.client);
+      const inconsistentRead = spyOn(evm.client, "readContract").mockImplementation(((
+        args: Parameters<typeof read>[0],
+      ) =>
+        args.functionName === "totalHeld"
+          ? Promise.resolve(1n)
+          : read(args)) as typeof evm.client.readContract);
+      await assert.rejects(sync(), /vault_insolvent/);
+      inconsistentRead.mockRestore();
+      assert.equal(
+        (await db.settlementScanCursor.findUniqueOrThrow({ where: { id: cursor.id } })).blockNumber,
+        cursor.blockNumber,
+      );
+      assert.equal(
+        (
+          await db.vaultFinancialHealth.findUniqueOrThrow({
+            where: { id: `43113:${evm.vault.toLowerCase()}` },
+          })
+        ).blocked,
+        true,
+      );
+      await sync();
+      assert.equal(
+        (
+          await db.vaultFinancialHealth.findUniqueOrThrow({
+            where: { id: `43113:${evm.vault.toLowerCase()}` },
+          })
+        ).blocked,
+        true,
+        "successful scans never silently clear an incident",
+      );
+    },
+  );
+
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "closes finance crash and deadline race gaps on real local USDC",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      const approver = privateKeyToAccount(generatePrivateKey());
+      const buyerClient = createWalletClient({
+        account: wallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
+      });
+      const buyerVault = getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      });
+      const buyerUsdc = getContract({
+        address: ASSET,
+        abi: evm.token.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      });
+      await buyerUsdc.write.approve([evm.vault, 10000000n]);
+      await buyerVault.write.deposit([10000000n]);
+      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      for (const role of ["REFUND_APPROVER_ROLE", "RELEASE_APPROVER_ROLE"])
+        await evm.contract.write.grantRole([keccak256(stringToHex(role)), approver.address]);
+      await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+      await app.close();
+      app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
+      await app.ready();
+      journal = new SettlementJournal(db, {
+        vault: evm.vault,
+        resourceUrl: `${api}/v1/invocations`,
+      });
+      const worker = new SettlementWorker(
+        db,
+        evm.admission,
+        evm.settlement,
+        relayer,
+        `${api}/v1/invocations`,
+        gasPolicy,
+      );
+      const quotes: QuoteDocument[] = [];
+      for (let i = 0; i < 11; i++) {
+        sessionId = randomUUID();
+        await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+        const q = await quote();
+        await pending(q);
+        await worker.tick();
+        await db.settlementOperation.updateMany({
+          where: { state: "PENDING" },
+          data: { nextCheckAt: new Date(0) },
+        });
+        await worker.tick();
+        assert.equal(
+          (
+            await db.settlementOperation.findUniqueOrThrow({
+              where: { invocationId: q.invocationId },
+            })
+          ).state,
+          "HELD",
+        );
+        quotes.push(q);
+      }
+      const due = (id: string) =>
+        db.financeDecision.update({ where: { id }, data: { nextCheckAt: new Date(0) } });
+      const row = (id: string) => db.financeDecision.findUniqueOrThrow({ where: { id } });
+      async function fixture(q: QuoteDocument, signer = privateKeyToAccount(generatePrivateKey())) {
+        await evm.test.setBalance({ address: signer.address, value: 10n ** 20n });
+        await evm.contract.write.grantRole([
+          keccak256(stringToHex("FINANCE_EXECUTOR_ROLE")),
+          signer.address,
+        ]);
+        const service = () => new FinanceService(db, evm.settlement, signer.address, gasPolicy);
+        const hold = await evm.client.readContract({
+          address: evm.vault,
+          abi: vaultFinanceAbi,
+          functionName: "getHold",
+          args: [q.protocolQuote.invocationKey as `0x${string}`],
+        });
+        const decision: WireDecision = {
+          holdId: q.protocolQuote.invocationKey,
+          decisionId: `0x${randomBytes(32).toString("hex")}`,
+          expectedVersion: hold.version.toString(),
+          refundAmount: "100000",
+          releaseRemainder: false,
+          validUntil: String(q.resolveBy),
+        };
+        const approval: FinanceApproval = {
+          decision,
+          approver: approver.address,
           signature: await approver.signTypedData({
             domain: vaultDomain(evm.vault),
             types: paymentTypes,
             primaryType: "ResolutionDecision",
             message: parseDecision(decision),
           }),
+          evidenceId: null,
+          reason: "Local crash/race acceptance proof",
         };
-        await a.service().enqueue(b);
-        // Independent services/connections contend on durable leases and sender lane.
-        await Promise.all([
-          a.service().tick(a.id, a.signer),
-          a.service().tick(a.id, a.signer),
-          a.service().tick(decision.decisionId, a.signer),
-        ]);
-        const attempts = await db.financeDecision.findMany({
-          where: { id: { in: [a.id, decision.decisionId] } },
-        });
-        const sent = attempts.filter((r) => r.signedTransaction);
-        assert.equal(sent.length, 1);
-        const winner = sent[0].id,
-          loser = attempts.find((r) => r.id !== winner)!.id;
-        await due(winner);
-        await a.service().tick(winner, a.signer);
-        await due(loser);
-        await a.service().tick(loser, a.signer);
-        assert.equal((await row(winner)).state, "FINALIZED");
-        assert.equal((await row(winner)).broadcastCount, 1);
-        assert.equal((await row(loser)).state, "REJECTED");
-        assert.equal((await row(loser)).nonce, null);
-        assert.equal((await a.lane()).activeDecisionId, null);
-      },
-    );
-    await scenario(
-      "restart after unsigned reservation preserves nonce and fee ceilings",
-      async () => {
-        const f = await fixture(quotes[1]);
-        const failed = t.mock.method(f.signer, "signTransaction", async () => {
-          throw new Error("signer unavailable");
-        });
-        await f.tick();
-        failed.mock.restore();
-        const reserved = await row(f.id);
-        assert.equal(reserved.state, "RESERVED");
-        assert.equal(reserved.signedTransaction, null);
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-        await f.tick();
-        const signed = await row(f.id);
-        assert.equal(signed.nonce, reserved.nonce);
-        assert.equal(signed.gasLimit, reserved.gasLimit);
-        assert.equal(signed.maxFeePerGas!.toFixed(0), reserved.maxFeePerGas!.toFixed(0));
-        assert.equal((await f.tick()).state, "FINALIZED");
-        const cost = (await row(f.id)).actualGasCost!;
-        assert.ok(BigInt(cost.toFixed(0)) > 0n);
-        const next = await fixture(quotes[8], f.signer);
-        const stopSigning = t.mock.method(f.signer, "signTransaction", async () => {
-          throw new Error("signer unavailable");
-        });
-        await next.tick();
-        stopSigning.mock.restore();
-        const held = await row(next.id);
-        const ceiling = held.gasLimit! * BigInt(held.maxFeePerGas!.toFixed(0));
-        const windowLimited = new FinanceService(db, evm.settlement, f.signer.address, {
-          ...gasPolicy,
-          maxTransactionCost: ceiling,
-          maxWindowCost: ceiling,
-        });
-        await due(next.id);
-        await windowLimited.tick(next.id, f.signer);
-        assert.equal((await row(next.id)).errorReason, "finance_gas_budget_exceeded");
-        assert.equal((await row(next.id)).signedTransaction, null);
-        assert.equal((await next.lane()).activeDecisionId, next.id);
-        await next.tick();
-        assert.equal((await next.tick()).state, "FINALIZED");
-      },
-    );
-    await scenario(
-      "persisted signature survives RPC loss; bounded retries never sign replacements",
-      async () => {
-        const f = await fixture(quotes[2]);
-        const finalized = evm.settlement.finalized.bind(evm.settlement);
-        const sign = f.signer.signTransaction.bind(f.signer);
-        let signed = false;
-        const counted = t.mock.method(
-          f.signer,
-          "signTransaction",
-          async (args: Parameters<typeof sign>[0]) => {
-            signed = true;
-            return sign(args);
-          },
-        );
-        const outage = t.mock.method(evm.settlement, "finalized", async () => {
-          if (signed) throw new Error("RPC unavailable");
-          return finalized();
-        });
-        await f.tick();
-        outage.mock.restore();
-        const persisted = await row(f.id);
-        assert.equal(persisted.state, "SIGNED");
-        assert.equal(persisted.broadcastCount, 0);
-        assert.ok(persisted.signedTransaction);
-        assert.ok(persisted.transactionHash);
-        const failedSend = t.mock.method(
-          evm.client,
-          "sendRawTransaction",
-          async (args: Parameters<typeof evm.client.sendRawTransaction>[0]) => {
-            assert.equal(args.serializedTransaction, persisted.signedTransaction);
-            throw new Error("timeout before network send");
-          },
-        );
-        for (let i = 0; i < 4; i++) await f.tick();
-        assert.equal(failedSend.mock.callCount(), 3);
-        failedSend.mock.restore();
-        assert.equal(counted.mock.callCount(), 1);
-        counted.mock.restore();
-        assert.equal((await row(f.id)).broadcastCount, 3);
-        assert.equal((await row(f.id)).errorReason, "finance_broadcast_limit_reached");
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-        // Local recovery evidence only: mine the original bytes, not a new attempt.
-        await evm.client.sendRawTransaction({
-          serializedTransaction: persisted.signedTransaction as `0x02${string}`,
-        });
-        assert.equal((await f.tick()).state, "FINALIZED");
-        assert.equal((await row(f.id)).transactionHash, persisted.transactionHash);
-      },
-    );
-    await scenario("mined receipt cannot release lane before finalized RPC recovers", async () => {
-      const f = await fixture(quotes[3]);
-      const head = await evm.settlement.finalized();
-      await f.tick();
-      const persisted = await row(f.id);
-      const lag = t.mock.method(evm.settlement, "finalized", async () => head);
-      await f.tick();
-      lag.mock.restore();
-      assert.equal((await row(f.id)).finalizedAt, null);
-      assert.equal((await f.lane()).activeDecisionId, f.id);
-      const unavailable = t.mock.method(evm.client, "getTransactionReceipt", async () => {
-        throw new Error("receipt RPC unavailable");
-      });
-      await f.tick();
-      unavailable.mock.restore();
-      assert.equal((await row(f.id)).broadcastCount, 1);
-      assert.equal((await row(f.id)).transactionHash, persisted.transactionHash);
-      assert.equal((await f.tick()).state, "FINALIZED");
-    });
-    await scenario(
-      "pre-finality reorg recovers the original signed transaction and scanner rollback is atomic",
-      async () => {
-        // Index everything before this decision so only its event is pending.
-        await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-        const f = await fixture(quotes[7]);
-        const head = await evm.settlement.finalized();
-        const snapshot = await evm.test.snapshot();
-        const sign = f.signer.signTransaction.bind(f.signer);
-        const counted = t.mock.method(f.signer, "signTransaction", sign);
-        const lag = t.mock.method(evm.settlement, "finalized", async () => head);
-        await f.tick();
-        const original = await row(f.id);
-        await f.tick();
-        assert.equal((await row(f.id)).finalizedAt, null);
-        await evm.test.revert({ id: snapshot });
-        await evm.test.mine({ blocks: 1 });
-        await f.tick();
-        lag.mock.restore();
-        assert.equal((await row(f.id)).transactionHash, original.transactionHash);
-        assert.equal((await row(f.id)).signedTransaction, original.signedTransaction);
-        assert.equal((await row(f.id)).broadcastCount, 2);
-        assert.equal(counted.mock.callCount(), 1);
-        counted.mock.restore();
-        assert.equal((await f.tick()).state, "FINALIZED");
-        const cursorId = `finance:43113:${evm.vault.toLowerCase()}`;
-        const before = await db.settlementScanCursor.findUniqueOrThrow({ where: { id: cursorId } });
-        const count = await db.vaultFinancialEvent.count();
-        if (!embedded) {
-          await db.$executeRawUnsafe(
-            `ALTER TABLE vault_financial_events ADD CONSTRAINT test_finance_scan_failure CHECK (name <> 'DecisionApplied') NOT VALID`,
-          );
-          try {
-            await assert.rejects(scanFinancialLifecycle(db, evm.settlement, evm.startBlock));
-            assert.equal(
-              (await db.settlementScanCursor.findUniqueOrThrow({ where: { id: cursorId } }))
-                .blockNumber,
-              before.blockNumber,
-            );
-            assert.equal(await db.vaultFinancialEvent.count(), count);
-            assert.equal(
-              (
-                await db.vaultHoldProjection.findUniqueOrThrow({
-                  where: { holdId: quotes[7].protocolQuote.invocationKey },
-                })
-              ).status,
-              "HELD",
-            );
-          } finally {
-            await db.$executeRawUnsafe(
-              `ALTER TABLE vault_financial_events DROP CONSTRAINT test_finance_scan_failure`,
-            );
-          }
+        await service().enqueue(approval);
+        const tick = async () => {
+          await due(decision.decisionId);
+          await service().tick(decision.decisionId, signer);
+          return row(decision.decisionId);
+        };
+        const lane = () =>
+          db.financeLane.findUniqueOrThrow({
+            where: { id: `43113:${signer.address.toLowerCase()}` },
+          });
+        return { signer, service, approval, id: decision.decisionId, tick, lane };
+      }
+      // A failure names the scenario it happened in.
+      const scenario = async (name: string, run: () => Promise<void>) => {
+        try {
+          await run();
+        } catch (error) {
+          throw new Error(`Scenario failed: ${name}`, { cause: error });
         }
-        await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-        assert.equal(
-          (
-            await db.vaultHoldProjection.findUniqueOrThrow({
-              where: { holdId: quotes[7].protocolQuote.invocationKey },
-            })
-          ).status,
-          "REFUNDED",
-        );
-      },
-    );
-    await scenario(
-      "contradictory transaction block identity quarantines without freeing liability",
-      async () => {
-        const f = await fixture(quotes[5]);
-        await f.tick();
-        const read = evm.client.getTransaction.bind(evm.client);
-        const mismatch = t.mock.method(
-          evm.client,
-          "getTransaction",
-          async (args: Parameters<typeof read>[0]) => {
+      };
+      await scenario(
+        "concurrent decisions and duplicate ticks finalize only one version",
+        async () => {
+          const a = await fixture(quotes[0]);
+          const decision = {
+            ...a.approval.decision,
+            decisionId: `0x${randomBytes(32).toString("hex")}`,
+          };
+          const b = {
+            ...a.approval,
+            decision,
+            signature: await approver.signTypedData({
+              domain: vaultDomain(evm.vault),
+              types: paymentTypes,
+              primaryType: "ResolutionDecision",
+              message: parseDecision(decision),
+            }),
+          };
+          await a.service().enqueue(b);
+          // Independent services/connections contend on durable leases and sender lane.
+          await Promise.all([
+            a.service().tick(a.id, a.signer),
+            a.service().tick(a.id, a.signer),
+            a.service().tick(decision.decisionId, a.signer),
+          ]);
+          const attempts = await db.financeDecision.findMany({
+            where: { id: { in: [a.id, decision.decisionId] } },
+          });
+          const sent = attempts.filter((r) => r.signedTransaction);
+          assert.equal(sent.length, 1);
+          const winner = sent[0].id,
+            loser = attempts.find((r) => r.id !== winner)!.id;
+          await due(winner);
+          await a.service().tick(winner, a.signer);
+          await due(loser);
+          await a.service().tick(loser, a.signer);
+          assert.equal((await row(winner)).state, "FINALIZED");
+          assert.equal((await row(winner)).broadcastCount, 1);
+          assert.equal((await row(loser)).state, "REJECTED");
+          assert.equal((await row(loser)).nonce, null);
+          assert.equal((await a.lane()).activeDecisionId, null);
+        },
+      );
+      await scenario(
+        "restart after unsigned reservation preserves nonce and fee ceilings",
+        async () => {
+          const f = await fixture(quotes[1]);
+          const failed = spyOn(f.signer, "signTransaction").mockImplementation(async () => {
+            throw new Error("signer unavailable");
+          });
+          await f.tick();
+          failed.mockRestore();
+          const reserved = await row(f.id);
+          assert.equal(reserved.state, "RESERVED");
+          assert.equal(reserved.signedTransaction, null);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+          await f.tick();
+          const signed = await row(f.id);
+          assert.equal(signed.nonce, reserved.nonce);
+          assert.equal(signed.gasLimit, reserved.gasLimit);
+          assert.equal(signed.maxFeePerGas!.toFixed(0), reserved.maxFeePerGas!.toFixed(0));
+          assert.equal((await f.tick()).state, "FINALIZED");
+          const cost = (await row(f.id)).actualGasCost!;
+          assert.ok(BigInt(cost.toFixed(0)) > 0n);
+          const next = await fixture(quotes[8], f.signer);
+          const stopSigning = spyOn(f.signer, "signTransaction").mockImplementation(async () => {
+            throw new Error("signer unavailable");
+          });
+          await next.tick();
+          stopSigning.mockRestore();
+          const held = await row(next.id);
+          const ceiling = held.gasLimit! * BigInt(held.maxFeePerGas!.toFixed(0));
+          const windowLimited = new FinanceService(db, evm.settlement, f.signer.address, {
+            ...gasPolicy,
+            maxTransactionCost: ceiling,
+            maxWindowCost: ceiling,
+          });
+          await due(next.id);
+          await windowLimited.tick(next.id, f.signer);
+          assert.equal((await row(next.id)).errorReason, "finance_gas_budget_exceeded");
+          assert.equal((await row(next.id)).signedTransaction, null);
+          assert.equal((await next.lane()).activeDecisionId, next.id);
+          await next.tick();
+          assert.equal((await next.tick()).state, "FINALIZED");
+        },
+      );
+      await scenario(
+        "persisted signature survives RPC loss; bounded retries never sign replacements",
+        async () => {
+          const f = await fixture(quotes[2]);
+          const finalized = evm.settlement.finalized.bind(evm.settlement);
+          const sign = f.signer.signTransaction.bind(f.signer);
+          let signed = false;
+          const counted = spyOn(f.signer, "signTransaction").mockImplementation(
+            async (args: Parameters<typeof sign>[0]) => {
+              signed = true;
+              return sign(args);
+            },
+          );
+          const outage = spyOn(evm.settlement, "finalized").mockImplementation(async () => {
+            if (signed) throw new Error("RPC unavailable");
+            return finalized();
+          });
+          await f.tick();
+          outage.mockRestore();
+          const persisted = await row(f.id);
+          assert.equal(persisted.state, "SIGNED");
+          assert.equal(persisted.broadcastCount, 0);
+          assert.ok(persisted.signedTransaction);
+          assert.ok(persisted.transactionHash);
+          const failedSend = spyOn(evm.client, "sendRawTransaction").mockImplementation(
+            async (args: Parameters<typeof evm.client.sendRawTransaction>[0]) => {
+              assert.equal(args.serializedTransaction, persisted.signedTransaction);
+              throw new Error("timeout before network send");
+            },
+          );
+          for (let i = 0; i < 4; i++) await f.tick();
+          assert.equal(failedSend.mock.calls.length, 3);
+          failedSend.mockRestore();
+          assert.equal(counted.mock.calls.length, 1);
+          counted.mockRestore();
+          assert.equal((await row(f.id)).broadcastCount, 3);
+          assert.equal((await row(f.id)).errorReason, "finance_broadcast_limit_reached");
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+          // Local recovery evidence only: mine the original bytes, not a new attempt.
+          await evm.client.sendRawTransaction({
+            serializedTransaction: persisted.signedTransaction as `0x02${string}`,
+          });
+          assert.equal((await f.tick()).state, "FINALIZED");
+          assert.equal((await row(f.id)).transactionHash, persisted.transactionHash);
+        },
+      );
+      await scenario(
+        "mined receipt cannot release lane before finalized RPC recovers",
+        async () => {
+          const f = await fixture(quotes[3]);
+          const head = await evm.settlement.finalized();
+          await f.tick();
+          const persisted = await row(f.id);
+          const lag = spyOn(evm.settlement, "finalized").mockImplementation(async () => head);
+          await f.tick();
+          lag.mockRestore();
+          assert.equal((await row(f.id)).finalizedAt, null);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+          const unavailable = spyOn(evm.client, "getTransactionReceipt").mockImplementation(
+            async () => {
+              throw new Error("receipt RPC unavailable");
+            },
+          );
+          await f.tick();
+          unavailable.mockRestore();
+          assert.equal((await row(f.id)).broadcastCount, 1);
+          assert.equal((await row(f.id)).transactionHash, persisted.transactionHash);
+          assert.equal((await f.tick()).state, "FINALIZED");
+        },
+      );
+      await scenario(
+        "pre-finality reorg recovers the original signed transaction and scanner rollback is atomic",
+        async () => {
+          // Index everything before this decision so only its event is pending.
+          await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+          const f = await fixture(quotes[7]);
+          const head = await evm.settlement.finalized();
+          const snapshot = await evm.test.snapshot();
+          const sign = f.signer.signTransaction.bind(f.signer);
+          const counted = spyOn(f.signer, "signTransaction").mockImplementation(sign);
+          const lag = spyOn(evm.settlement, "finalized").mockImplementation(async () => head);
+          await f.tick();
+          const original = await row(f.id);
+          await f.tick();
+          assert.equal((await row(f.id)).finalizedAt, null);
+          await evm.test.revert({ id: snapshot });
+          await evm.test.mine({ blocks: 1 });
+          await f.tick();
+          lag.mockRestore();
+          assert.equal((await row(f.id)).transactionHash, original.transactionHash);
+          assert.equal((await row(f.id)).signedTransaction, original.signedTransaction);
+          assert.equal((await row(f.id)).broadcastCount, 2);
+          assert.equal(counted.mock.calls.length, 1);
+          counted.mockRestore();
+          assert.equal((await f.tick()).state, "FINALIZED");
+          const cursorId = `finance:43113:${evm.vault.toLowerCase()}`;
+          const before = await db.settlementScanCursor.findUniqueOrThrow({
+            where: { id: cursorId },
+          });
+          const count = await db.vaultFinancialEvent.count();
+          if (!embedded) {
+            await db.$executeRawUnsafe(
+              `ALTER TABLE vault_financial_events ADD CONSTRAINT test_finance_scan_failure CHECK (name <> 'DecisionApplied') NOT VALID`,
+            );
+            try {
+              await assert.rejects(scanFinancialLifecycle(db, evm.settlement, evm.startBlock));
+              assert.equal(
+                (await db.settlementScanCursor.findUniqueOrThrow({ where: { id: cursorId } }))
+                  .blockNumber,
+                before.blockNumber,
+              );
+              assert.equal(await db.vaultFinancialEvent.count(), count);
+              assert.equal(
+                (
+                  await db.vaultHoldProjection.findUniqueOrThrow({
+                    where: { holdId: quotes[7].protocolQuote.invocationKey },
+                  })
+                ).status,
+                "HELD",
+              );
+            } finally {
+              await db.$executeRawUnsafe(
+                `ALTER TABLE vault_financial_events DROP CONSTRAINT test_finance_scan_failure`,
+              );
+            }
+          }
+          await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+          assert.equal(
+            (
+              await db.vaultHoldProjection.findUniqueOrThrow({
+                where: { holdId: quotes[7].protocolQuote.invocationKey },
+              })
+            ).status,
+            "REFUNDED",
+          );
+        },
+      );
+      await scenario(
+        "contradictory transaction block identity quarantines without freeing liability",
+        async () => {
+          const f = await fixture(quotes[5]);
+          await f.tick();
+          const read = evm.client.getTransaction.bind(evm.client);
+          const mismatch = spyOn(evm.client, "getTransaction").mockImplementation((async (
+            args: Parameters<typeof read>[0],
+          ) => {
             const tx = await read(args);
             return { ...tx, blockNumber: tx.blockNumber! - 1n };
-          },
-        );
-        await f.tick();
-        mismatch.mock.restore();
-        assert.equal((await row(f.id)).state, "QUARANTINED");
-        assert.equal((await row(f.id)).actualGasCost, null);
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-      },
-    );
-    await scenario(
-      "externally consumed nonce quarantines the unresolved original transaction",
-      async () => {
-        const f = await fixture(quotes[9]);
-        const stopSend = t.mock.method(evm.client, "sendRawTransaction", async () => {
-          throw new Error("timeout before send");
-        });
-        await f.tick();
-        stopSend.mock.restore();
-        const original = await row(f.id);
-        // Deliberate local misuse of the dedicated sender to prove incident handling.
-        await createWalletClient({
-          account: f.signer,
-          chain: avalancheFuji,
-          transport: http(evm.rpc),
-        }).sendTransaction({ to: f.signer.address, value: 0n });
-        await f.tick();
-        assert.equal((await row(f.id)).state, "QUARANTINED");
-        assert.equal((await row(f.id)).errorReason, "finance_nonce_consumed");
-        assert.equal((await row(f.id)).transactionHash, original.transactionHash);
-        assert.equal((await row(f.id)).broadcastCount, 1);
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-      },
-    );
-    await scenario(
-      "successful receipt without the matching decision event cannot finalize",
-      async () => {
-        const f = await fixture(quotes[10]);
-        await f.tick();
-        const receipt = evm.client.getTransactionReceipt.bind(evm.client);
-        const missingEvent = t.mock.method(
-          evm.client,
-          "getTransactionReceipt",
-          async (args: Parameters<typeof receipt>[0]) => ({ ...(await receipt(args)), logs: [] }),
-        );
-        await f.tick();
-        missingEvent.mock.restore();
-        assert.equal((await row(f.id)).state, "QUARANTINED");
-        assert.equal((await row(f.id)).errorReason, "finance_evidence_inconsistent");
-        assert.equal((await row(f.id)).receipt, null);
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-      },
-    );
-    await scenario(
-      "at resolveBy an already signed decision cannot capture reclaimed funds",
-      async () => {
-        const q = quotes[6],
-          f = await fixture(q);
-        const sign = f.signer.signTransaction.bind(f.signer);
-        const advance = t.mock.method(
-          f.signer,
-          "signTransaction",
-          async (args: Parameters<typeof sign>[0]) => {
-            const bytes = await sign(args);
-            await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
-            await evm.test.mine({ blocks: 1 });
-            return bytes;
-          },
-        );
-        const noSend = t.mock.method(evm.client, "sendRawTransaction", async () => {
-          throw new Error("must not broadcast expired decision");
-        });
-        await f.tick();
-        advance.mock.restore();
-        assert.equal(noSend.mock.callCount(), 0);
-        noSend.mock.restore();
-        const expired = await row(f.id);
-        assert.equal(expired.state, "SIGNED");
-        assert.equal(expired.errorReason, "resolution_expired");
-        assert.equal(expired.broadcastCount, 0);
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-        await buyerVault.write.reclaim([q.protocolQuote.invocationKey]);
-        await f.tick();
-        assert.equal((await row(f.id)).transactionHash, expired.transactionHash);
-        assert.equal((await row(f.id)).broadcastCount, 0);
-        // Ambiguous signed reservations are not silently freed even after hold recovery.
-        assert.equal((await f.lane()).activeDecisionId, f.id);
-        await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-        assert.equal(
-          (
-            await db.vaultHoldProjection.findUniqueOrThrow({
-              where: { holdId: q.protocolQuote.invocationKey },
-            })
-          ).status,
-          "RECLAIMED",
-        );
-      },
-    );
-    assert.equal(await db.invocationReady.count(), 11);
-    assert.equal(await db.settlementAttempt.count(), 11);
-  });
+          }) as typeof evm.client.getTransaction);
+          await f.tick();
+          mismatch.mockRestore();
+          assert.equal((await row(f.id)).state, "QUARANTINED");
+          assert.equal((await row(f.id)).actualGasCost, null);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+        },
+      );
+      await scenario(
+        "externally consumed nonce quarantines the unresolved original transaction",
+        async () => {
+          const f = await fixture(quotes[9]);
+          const stopSend = spyOn(evm.client, "sendRawTransaction").mockImplementation(async () => {
+            throw new Error("timeout before send");
+          });
+          await f.tick();
+          stopSend.mockRestore();
+          const original = await row(f.id);
+          // Deliberate local misuse of the dedicated sender to prove incident handling.
+          await createWalletClient({
+            account: f.signer,
+            chain: avalancheFuji,
+            transport: http(evm.rpc),
+          }).sendTransaction({ to: f.signer.address, value: 0n });
+          await f.tick();
+          assert.equal((await row(f.id)).state, "QUARANTINED");
+          assert.equal((await row(f.id)).errorReason, "finance_nonce_consumed");
+          assert.equal((await row(f.id)).transactionHash, original.transactionHash);
+          assert.equal((await row(f.id)).broadcastCount, 1);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+        },
+      );
+      await scenario(
+        "successful receipt without the matching decision event cannot finalize",
+        async () => {
+          const f = await fixture(quotes[10]);
+          await f.tick();
+          const receipt = evm.client.getTransactionReceipt.bind(evm.client);
+          const missingEvent = spyOn(evm.client, "getTransactionReceipt").mockImplementation(
+            async (args: Parameters<typeof receipt>[0]) => ({ ...(await receipt(args)), logs: [] }),
+          );
+          await f.tick();
+          missingEvent.mockRestore();
+          assert.equal((await row(f.id)).state, "QUARANTINED");
+          assert.equal((await row(f.id)).errorReason, "finance_evidence_inconsistent");
+          assert.equal((await row(f.id)).receipt, null);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+        },
+      );
+      await scenario(
+        "at resolveBy an already signed decision cannot capture reclaimed funds",
+        async () => {
+          const q = quotes[6],
+            f = await fixture(q);
+          const sign = f.signer.signTransaction.bind(f.signer);
+          const advance = spyOn(f.signer, "signTransaction").mockImplementation(
+            async (args: Parameters<typeof sign>[0]) => {
+              const bytes = await sign(args);
+              await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
+              await evm.test.mine({ blocks: 1 });
+              return bytes;
+            },
+          );
+          const noSend = spyOn(evm.client, "sendRawTransaction").mockImplementation(async () => {
+            throw new Error("must not broadcast expired decision");
+          });
+          await f.tick();
+          advance.mockRestore();
+          assert.equal(noSend.mock.calls.length, 0);
+          noSend.mockRestore();
+          const expired = await row(f.id);
+          assert.equal(expired.state, "SIGNED");
+          assert.equal(expired.errorReason, "resolution_expired");
+          assert.equal(expired.broadcastCount, 0);
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+          await buyerVault.write.reclaim([q.protocolQuote.invocationKey]);
+          await f.tick();
+          assert.equal((await row(f.id)).transactionHash, expired.transactionHash);
+          assert.equal((await row(f.id)).broadcastCount, 0);
+          // Ambiguous signed reservations are not silently freed even after hold recovery.
+          assert.equal((await f.lane()).activeDecisionId, f.id);
+          await scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+          assert.equal(
+            (
+              await db.vaultHoldProjection.findUniqueOrThrow({
+                where: { holdId: q.protocolQuote.invocationKey },
+              })
+            ).status,
+            "RECLAIMED",
+          );
+        },
+      );
+      assert.equal(await db.invocationReady.count(), 11);
+      assert.equal(await db.settlementAttempt.count(), 11);
+    },
+  );
 
   it("automatic finance policy refunds failed or late work and releases verified on-time delivery", () => {
     const hold = { closed: false, deliveryDeadline: 100, releaseNotBefore: 130, resolveBy: 200 };
@@ -3087,128 +3102,130 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(outcome({ hold: { ...hold, closed: true }, now: 150n }), null);
   });
 
-  it("runs the automatic financial lifecycle on real local USDC without manual approval", async (t) => {
-    if (process.env.PAYMENTS_TEST_EVM !== "1") {
-      t.skip("Run isolated financial lifecycle EVM test");
-      return;
-    }
-    const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
-    t.after(evm.stop);
-    const executor = privateKeyToAccount(generatePrivateKey()),
-      approver = privateKeyToAccount(generatePrivateKey()),
-      providerWallet = privateKeyToAccount(generatePrivateKey());
-    await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
-    const buyerClient = createWalletClient({
-      account: wallet,
-      chain: avalancheFuji,
-      transport: http(evm.rpc),
-    });
-    const buyerVault = getContract({
-      address: evm.vault,
-      abi: evm.vaultArtifact.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    });
-    await getContract({
-      address: ASSET,
-      abi: evm.token.abi,
-      client: { public: evm.client, wallet: buyerClient },
-    }).write.approve([evm.vault, 10000000n]);
-    await buyerVault.write.deposit([10000000n]);
-    await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
-    for (const [role, account] of [
-      ["FINANCE_EXECUTOR_ROLE", executor.address],
-      ["REFUND_APPROVER_ROLE", approver.address],
-      ["RELEASE_APPROVER_ROLE", approver.address],
-    ] as const)
-      await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
-    await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
-    await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
-    await app.close();
-    app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
-    await app.ready();
-    journal = new SettlementJournal(db, { vault: evm.vault, resourceUrl: `${api}/v1/invocations` });
-    const worker = new SettlementWorker(
-      db,
-      evm.admission,
-      evm.settlement,
-      relayer,
-      `${api}/v1/invocations`,
-      gasPolicy,
-    );
-    async function held() {
-      sessionId = randomUUID();
-      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
-      const q = await quote();
-      await pending(q);
-      await worker.tick();
-      await db.settlementOperation.updateMany({
-        where: { state: "PENDING" },
-        data: { nextCheckAt: new Date(0) },
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "runs the automatic financial lifecycle on real local USDC without manual approval",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      const executor = privateKeyToAccount(generatePrivateKey()),
+        approver = privateKeyToAccount(generatePrivateKey()),
+        providerWallet = privateKeyToAccount(generatePrivateKey());
+      await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
+      const buyerClient = createWalletClient({
+        account: wallet,
+        chain: avalancheFuji,
+        transport: http(evm.rpc),
       });
-      await worker.tick();
-      return q;
-    }
-    const delivered = await held(),
-      failed = await held(),
-      silent = await held();
-    const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
-    const status = async (q: QuoteDocument) =>
-      (
-        await db.vaultHoldProjection.findUniqueOrThrow({
-          where: { holdId: q.protocolQuote.invocationKey },
-        })
-      ).status;
-    await sync();
-    const auto = new AutoFinance(
-      new FinanceService(db, evm.settlement, executor.address, gasPolicy),
-      approver,
-      executor,
-    );
-    async function settle() {
-      for (let i = 0; i < 8; i++) {
-        await auto.execute();
-        await db.financeDecision.updateMany({ data: { nextCheckAt: new Date(0) } });
+      const buyerVault = getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      });
+      await getContract({
+        address: ASSET,
+        abi: evm.token.abi,
+        client: { public: evm.client, wallet: buyerClient },
+      }).write.approve([evm.vault, 10000000n]);
+      await buyerVault.write.deposit([10000000n]);
+      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      for (const [role, account] of [
+        ["FINANCE_EXECUTOR_ROLE", executor.address],
+        ["REFUND_APPROVER_ROLE", approver.address],
+        ["RELEASE_APPROVER_ROLE", approver.address],
+      ] as const)
+        await evm.contract.write.grantRole([keccak256(stringToHex(role)), account]);
+      await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+      await db.app.updateMany({ data: { payoutAddress: providerWallet.address } });
+      await app.close();
+      app = createApp({ ...config, VAULT_ADDRESS: evm.vault }, db);
+      await app.ready();
+      journal = new SettlementJournal(db, {
+        vault: evm.vault,
+        resourceUrl: `${api}/v1/invocations`,
+      });
+      const worker = new SettlementWorker(
+        db,
+        evm.admission,
+        evm.settlement,
+        relayer,
+        `${api}/v1/invocations`,
+        gasPolicy,
+      );
+      async function held() {
+        sessionId = randomUUID();
+        await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+        const q = await quote();
+        await pending(q);
+        await worker.tick();
+        await db.settlementOperation.updateMany({
+          where: { state: "PENDING" },
+          data: { nextCheckAt: new Date(0) },
+        });
+        await worker.tick();
+        return q;
       }
+      const delivered = await held(),
+        failed = await held(),
+        silent = await held();
+      const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
+      const status = async (q: QuoteDocument) =>
+        (
+          await db.vaultHoldProjection.findUniqueOrThrow({
+            where: { holdId: q.protocolQuote.invocationKey },
+          })
+        ).status;
       await sync();
-    }
-    await recordPaymentDelivery(db, {
-      id: "auto-delivered",
-      invocationId: delivered.invocationId,
-      artifactVersion: 1,
-      outputHash: `0x${"1".repeat(64)}`,
-      verifier: "isolated-test-output-verifier",
-      accessInterruptionSeconds: 0,
-      evidenceLevel: "SIGN",
-    });
-    await db.invocation.update({
-      where: { id: failed.invocationId },
-      data: { executionStatus: "FAILED" },
-    });
-    // Before any deadline only the provider-reported failure is decidable.
-    assert.equal(await auto.propose(), 1);
-    assert.equal(await auto.propose(), 0, "one open decision per hold");
-    await settle();
-    assert.equal(await status(failed), "REFUNDED");
-    assert.equal(await status(delivered), "HELD");
-    assert.equal(await status(silent), "HELD");
-    await evm.test.setNextBlockTimestamp({
-      timestamp: BigInt(Math.max(delivered.releaseNotBefore, silent.releaseNotBefore)),
-    });
-    await evm.test.mine({ blocks: 1 });
-    assert.equal(await auto.propose(), 2);
-    await settle();
-    assert.equal(await status(delivered), "RELEASED");
-    assert.equal(await status(silent), "REFUNDED");
-    assert.equal(await evm.contract.read.totalHeld(), 0n);
-    assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 99000n);
-    assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
-    assert.equal(await auto.propose(), 0, "closed holds are never decided again");
-    const rows = await db.financeDecision.findMany();
-    assert.equal(rows.length, 3);
-    assert.ok(
-      rows.every((r) => r.state === "FINALIZED" && r.approver === approver.address.toLowerCase()),
-    );
-  });
+      const auto = new AutoFinance(
+        new FinanceService(db, evm.settlement, executor.address, gasPolicy),
+        approver,
+        executor,
+      );
+      async function settle() {
+        for (let i = 0; i < 8; i++) {
+          await auto.execute();
+          await db.financeDecision.updateMany({ data: { nextCheckAt: new Date(0) } });
+        }
+        await sync();
+      }
+      await recordPaymentDelivery(db, {
+        id: "auto-delivered",
+        invocationId: delivered.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"1".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 0,
+        evidenceLevel: "SIGN",
+      });
+      await db.invocation.update({
+        where: { id: failed.invocationId },
+        data: { executionStatus: "FAILED" },
+      });
+      // Before any deadline only the provider-reported failure is decidable.
+      assert.equal(await auto.propose(), 1);
+      assert.equal(await auto.propose(), 0, "one open decision per hold");
+      await settle();
+      assert.equal(await status(failed), "REFUNDED");
+      assert.equal(await status(delivered), "HELD");
+      assert.equal(await status(silent), "HELD");
+      await evm.test.setNextBlockTimestamp({
+        timestamp: BigInt(Math.max(delivered.releaseNotBefore, silent.releaseNotBefore)),
+      });
+      await evm.test.mine({ blocks: 1 });
+      assert.equal(await auto.propose(), 2);
+      await settle();
+      assert.equal(await status(delivered), "RELEASED");
+      assert.equal(await status(silent), "REFUNDED");
+      assert.equal(await evm.contract.read.totalHeld(), 0n);
+      assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 99000n);
+      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+      assert.equal(await auto.propose(), 0, "closed holds are never decided again");
+      const rows = await db.financeDecision.findMany();
+      assert.equal(rows.length, 3);
+      assert.ok(
+        rows.every((r) => r.state === "FINALIZED" && r.approver === approver.address.toLowerCase()),
+      );
+    },
+  );
 
   it("blocks new payment admission on a financial incident without hiding an existing receipt", async () => {
     const q = await quote(),

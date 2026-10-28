@@ -56,7 +56,7 @@ export const rules: Rule[] = [
         "does not queue before finality, then handles a pre-finality reorg without replacing the transaction",
       ),
       backend(
-        "works with HTTPFacilitatorClient auth and error parsing without manufacturing a transaction hash",
+        "serves x402 core in-process and maps errors without manufacturing a transaction hash",
       ),
       backend("records finalized revert and spent gas, never a ready event or second attempt"),
     ],

@@ -4,7 +4,7 @@ import { inject } from "#test/kit/http";
 import { requireAccount } from "../src/modules/auth/guard";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { after, afterEach, before, beforeEach, describe, it } from "node:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, onTestFinished } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -39,7 +39,7 @@ describe("Better Auth SIWE / Prisma + Hono", () => {
   const cookiePair = (cookie: { name: string; value: string }) =>
     `${cookie.name}=${encodeURIComponent(cookie.value)}`;
 
-  before(async () => {
+  beforeAll(async () => {
     postgres = await startTestPostgres(process.env.TEST_DATABASE_URL);
     connectionString = postgres.connectionString;
     pool = new Pool({
@@ -71,7 +71,7 @@ describe("Better Auth SIWE / Prisma + Hono", () => {
   afterEach(async () => {
     await app?.close();
   });
-  after(async () => {
+  afterAll(async () => {
     try {
       if (pool) {
         try {
@@ -417,11 +417,11 @@ describe("Better Auth SIWE / Prisma + Hono", () => {
     assert.equal((await inject(app, { url: "/protected", headers: { cookie } })).statusCode, 200);
   });
 
-  it("does not expose adapter exception details on a failed authentication", async (t) => {
+  it("does not expose adapter exception details on a failed authentication", async () => {
     const attempt = await signedAttempt();
     const transaction = db.$transaction;
     const secretUrl = "postgresql://private:password@secret-db/payvoke";
-    t.after(() => {
+    onTestFinished(() => {
       db.$transaction = transaction;
     });
     db.$transaction = async () => {

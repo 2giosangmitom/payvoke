@@ -33,16 +33,7 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
   );
   const process = spawn(
     "bunx",
-    [
-      "hardhat",
-      "node",
-      "--hostname",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--chain-id",
-      "43113",
-    ],
+    ["hardhat", "node", "--hostname", "127.0.0.1", "--port", String(port), "--chain-id", "43113"],
     {
       cwd: fileURLToPath(new URL("../../../../packages/vault", import.meta.url)),
       detached: true,

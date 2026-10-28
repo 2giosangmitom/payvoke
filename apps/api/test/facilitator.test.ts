@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { describe, it } from "bun:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { ContractFunctionRevertedError, encodeErrorResult, getAddress, zeroAddress } from "viem";
 import {

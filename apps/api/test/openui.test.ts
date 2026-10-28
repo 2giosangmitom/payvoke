@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { it } from "node:test";
+import { it } from "bun:test";
 import { applyOpenUIPatch, openuiCatalog } from "../src/modules/openui/validator";
 import { validateEvent } from "../src/modules/runs/protocol";
 

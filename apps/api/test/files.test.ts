@@ -3,7 +3,7 @@
 import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { after, before, it } from "node:test";
+import { afterAll, beforeAll, it } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -28,7 +28,7 @@ let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
 let config: ReturnType<typeof loadConfig>;
 
-before(async () => {
+beforeAll(async () => {
   postgres = await startTestPostgres();
   const { connectionString } = postgres;
   pool = new Pool({ connectionString, max: 1, options: `-c search_path=${schema}` });
@@ -56,7 +56,7 @@ before(async () => {
   app = createApp(config, db, undefined, storage);
   await app.ready();
 });
-after(async () => {
+afterAll(async () => {
   await app?.close();
   await pool?.query(`DROP SCHEMA "${schema}" CASCADE`);
   await pool?.end();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { it } from "node:test";
+import { it } from "bun:test";
 import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { attachment, createStorage, MemoryStorage } from "#core/storage";
 
@@ -58,7 +58,7 @@ it("memory storage copies, hashes and deletes", async () => {
 // Opt-in, against a disposable S3-compatible store (creates its own bucket):
 // TEST_S3_ENDPOINT=http://127.0.0.1:9000 bun test test/core/storage.test.ts
 const s3 = process.env.TEST_S3_ENDPOINT;
-it("round-trips presigned uploads against a real S3 endpoint", { skip: !s3 }, async () => {
+it.skipIf(!s3)("round-trips presigned uploads against a real S3 endpoint", async () => {
   const env = {
     ...complete,
     S3_ENDPOINT: s3!,
