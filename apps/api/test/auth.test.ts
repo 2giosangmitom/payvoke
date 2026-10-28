@@ -1,5 +1,7 @@
 /// <reference types="emscripten" />
 /// <reference types="bun" />
+import { inject } from "#test/kit/http";
+import { requireAccount } from "../src/modules/auth/guard";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
@@ -9,10 +11,10 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@/core/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
+import { PrismaClient } from "#core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 
-describe("Better Auth SIWE / Prisma + Fastify", () => {
+describe("Better Auth SIWE / Prisma + Hono", () => {
   const wallet = privateKeyToAccount(generatePrivateKey());
   const stranger = privateKeyToAccount(generatePrivateKey());
   const origin = "https://app.payvoke.test";
@@ -84,7 +86,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   });
 
   async function nonce(web = origin) {
-    const response = await app.inject({
+    const response = await inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/nonce",
       headers: { origin: web },
@@ -119,7 +121,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     cookie = attempt.cookie,
     web = origin,
   ) {
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/verify",
       headers: { origin: web, cookie },
@@ -149,7 +151,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
       Math.round((stored.expiresAt.getTime() - stored.createdAt.getTime()) / 1000),
       604800,
     );
-    const me = await app.inject({ url: "/v1/me", headers: { cookie } });
+    const me = await inject(app, { url: "/v1/me", headers: { cookie } });
     const user = await db.user.findFirstOrThrow();
     assert.equal(me.statusCode, 200);
     assert.deepEqual(me.json(), {
@@ -160,7 +162,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     assert.ok(!me.body.includes(stored.token));
     assert.equal(me.headers["cache-control"], "no-store");
     assert.equal(me.headers["x-content-type-options"], "nosniff");
-    const native = await app.inject({ url: "/v1/auth/get-session", headers: { cookie } });
+    const native = await inject(app, { url: "/v1/auth/get-session", headers: { cookie } });
     assert.equal(native.json().user.id, user.id);
   });
 
@@ -251,7 +253,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     await login();
     const attempt = await signedAttempt({ address: stranger.address });
     const signature = await stranger.signMessage({ message: attempt.message });
-    const response = await app.inject({
+    const response = await inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/verify",
       headers: {
@@ -270,7 +272,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   it("blocks absent, null and foreign Origins for nonce, verify and sign-out", async () => {
     for (const badOrigin of [undefined, "null", "https://evil.test", `${origin}.evil.test`]) {
       for (const path of ["siwe/nonce", "siwe/verify", "sign-out"]) {
-        const response = await app.inject({
+        const response = await inject(app, {
           method: "POST",
           url: `/v1/auth/${path}`,
           headers: badOrigin ? { origin: badOrigin } : {},
@@ -283,7 +285,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   });
 
   it("supports credentialed CORS preflight", async () => {
-    const response = await app.inject({
+    const response = await inject(app, {
       method: "OPTIONS",
       url: "/v1/auth/siwe/verify",
       headers: {
@@ -298,16 +300,16 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   });
 
   it("rejects absent, unsigned, expired and revoked sessions without cookie caching", async () => {
-    assert.equal((await app.inject({ url: "/v1/me" })).statusCode, 401);
+    assert.equal((await inject(app, { url: "/v1/me" })).statusCode, 401);
     const { cookie, session } = await login();
     const stored = await db.session.findFirstOrThrow();
     assert.equal(
-      (await app.inject({ url: "/v1/me", headers: { authorization: `Bearer ${stored.token}` } }))
+      (await inject(app, { url: "/v1/me", headers: { authorization: `Bearer ${stored.token}` } }))
         .statusCode,
       401,
     );
     assert.equal(
-      (await app.inject({ url: "/v1/me", headers: { cookie: `${session.name}=${stored.token}` } }))
+      (await inject(app, { url: "/v1/me", headers: { cookie: `${session.name}=${stored.token}` } }))
         .statusCode,
       401,
     );
@@ -315,11 +317,11 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
       where: { id: stored.id },
       data: { expiresAt: new Date(Date.now() - 1) },
     });
-    assert.equal((await app.inject({ url: "/v1/me", headers: { cookie } })).statusCode, 401);
+    assert.equal((await inject(app, { url: "/v1/me", headers: { cookie } })).statusCode, 401);
     const next = await login();
     await db.session.deleteMany();
     assert.equal(
-      (await app.inject({ url: "/v1/me", headers: { cookie: next.cookie } })).statusCode,
+      (await inject(app, { url: "/v1/me", headers: { cookie: next.cookie } })).statusCode,
       401,
     );
   });
@@ -327,7 +329,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   it("blocks suspended buyers on existing requests and new session creation", async () => {
     const { cookie } = await login();
     await db.user.updateMany({ data: { status: "SUSPENDED", suspendedAt: new Date() } });
-    assert.equal((await app.inject({ url: "/v1/me", headers: { cookie } })).statusCode, 403);
+    assert.equal((await inject(app, { url: "/v1/me", headers: { cookie } })).statusCode, 403);
     const sessions = await db.session.count();
     assert.equal((await verify(await signedAttempt())).statusCode, 403);
     assert.equal(await db.session.count(), sessions);
@@ -336,7 +338,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   it("signs out with Better Auth and clears/revokes its cookie", async () => {
     const { cookie } = await login();
     for (let i = 0; i < 2; i++) {
-      const response = await app.inject({
+      const response = await inject(app, {
         method: "POST",
         url: "/v1/auth/sign-out",
         headers: { origin, cookie },
@@ -350,7 +352,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
       );
     }
     assert.equal(await db.session.count(), 0);
-    assert.equal((await app.inject({ url: "/v1/me", headers: { cookie } })).statusCode, 401);
+    assert.equal((await inject(app, { url: "/v1/me", headers: { cookie } })).statusCode, 401);
   });
 
   it("initializes native auth tables without legacy tables/cookies/endpoints", async () => {
@@ -366,11 +368,15 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
       assert.ok(!names.includes(name));
     }
     assert.equal(
-      (await app.inject({ url: "/v1/me", headers: { cookie: "__Host-payvoke_session=old-token" } }))
-        .statusCode,
+      (
+        await inject(app, {
+          url: "/v1/me",
+          headers: { cookie: "__Host-payvoke_session=old-token" },
+        })
+      ).statusCode,
       401,
     );
-    const old = await app.inject({
+    const old = await inject(app, {
       method: "POST",
       url: "/v1/auth/challenges",
       headers: { origin },
@@ -379,8 +385,8 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     assert.equal(old.statusCode, 404);
   });
 
-  it("enforces body size and Fastify rate limits", async () => {
-    const oversized = await app.inject({
+  it("enforces body size and rate limits", async () => {
+    const oversized = await inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/verify",
       headers: { origin },
@@ -389,7 +395,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     assert.equal(oversized.statusCode, 413);
     let limited = false;
     for (let i = 0; i < 21; i++) {
-      const response = await app.inject({
+      const response = await inject(app, {
         method: "POST",
         url: "/v1/auth/siwe/nonce",
         headers: { origin },
@@ -404,17 +410,11 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     await app.close();
     const web = "http://localhost:3000";
     app = createApp(configFor(web, "http://localhost:3001"), db);
-    app.register(async (feature) => {
-      feature.get(
-        "/protected",
-        { preHandler: feature.requireAccount },
-        async (request) => request.account,
-      );
-    });
-    assert.equal((await app.inject({ url: "/protected" })).statusCode, 401);
+    app.hono.get("/protected", requireAccount, (c) => c.json(c.var.account));
+    assert.equal((await inject(app, { url: "/protected" })).statusCode, 401);
     const { cookie, session } = await login(web);
     assert.ok(!session.secure);
-    assert.equal((await app.inject({ url: "/protected", headers: { cookie } })).statusCode, 200);
+    assert.equal((await inject(app, { url: "/protected", headers: { cookie } })).statusCode, 200);
   });
 
   it("does not expose adapter exception details on a failed authentication", async (t) => {
@@ -437,7 +437,7 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
   it("does not allow client input to change User suspension fields", async () => {
     const { cookie } = await login();
     await db.user.updateMany({ data: { status: "SUSPENDED", suspendedAt: new Date() } });
-    const response = await app.inject({
+    const response = await inject(app, {
       method: "POST",
       url: "/v1/auth/update-user",
       headers: { origin, cookie },
@@ -447,6 +447,6 @@ describe("Better Auth SIWE / Prisma + Fastify", () => {
     const user = await db.user.findFirstOrThrow();
     assert.equal(user.status, "SUSPENDED");
     assert.ok(user.suspendedAt);
-    assert.equal((await app.inject({ url: "/v1/me", headers: { cookie } })).statusCode, 403);
+    assert.equal((await inject(app, { url: "/v1/me", headers: { cookie } })).statusCode, 403);
   });
 });

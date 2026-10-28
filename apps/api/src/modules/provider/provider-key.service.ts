@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "../../errors";
 import type { KeyScope } from "./provider.validation";
 

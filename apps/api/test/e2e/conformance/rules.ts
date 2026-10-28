@@ -165,7 +165,7 @@ export const rules: Rule[] = [
     requirement: "Only the authorized facilitator/relayer can settle a leaked header",
     evidence: [
       vault("test_OnlyRelayerCanReserve()"),
-      backend("protects every facilitator endpoint with service auth, not a browser cookie"),
+      backend("exposes no facilitator endpoint over HTTP; only the in-process gateway settles"),
     ],
   },
   {

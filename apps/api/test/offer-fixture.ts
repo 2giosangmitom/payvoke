@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Prisma, PrismaClient } from "@/core/db";
+import type { Prisma, PrismaClient } from "#core/db";
 import { conversation, conversationHash } from "../src/modules/presale/conversation";
 
 // Every quote is for a bot offer. Tests that are about payment rather than the

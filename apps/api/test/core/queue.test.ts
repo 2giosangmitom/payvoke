@@ -10,7 +10,7 @@ import {
   serial,
   throttled,
   type Doorbell,
-} from "@/core/queue";
+} from "#core/queue";
 
 // Redis-backed cases run only against a disposable Redis:
 // REDIS_TEST_URL=redis://… bun test test/core/queue.test.ts

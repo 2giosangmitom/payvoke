@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-import { migrationsDirectory } from "@/core/db";
+import { migrationsDirectory } from "#core/db";
 
 export type TestPostgres = {
   connectionString: string;

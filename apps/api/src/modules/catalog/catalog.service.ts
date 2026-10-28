@@ -1,4 +1,4 @@
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { NotFoundError } from "../../errors";
 import { availabilityLabel, isAvailable } from "../apps/schema";
 import { priceCap, serializeCommand } from "../apps/serializers";

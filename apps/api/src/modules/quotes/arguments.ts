@@ -1,5 +1,5 @@
 import type { Json } from "@payvoke/shared/protocol";
-import type { Prisma } from "@/core/db";
+import type { Prisma } from "#core/db";
 import { BadRequestError, ServiceUnavailableError } from "../../errors";
 import { inputValidator } from "../apps/schema";
 

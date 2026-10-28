@@ -1,5 +1,6 @@
 /// <reference types="emscripten" />
 /// <reference types="bun" />
+import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, it } from "node:test";
@@ -9,9 +10,9 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@/core/db";
+import { PrismaClient } from "#core/db";
 import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
+import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 
 const origin = "https://app.payvoke.test";
 const schema = `presale_test_${randomUUID().replaceAll("-", "")}`;
@@ -58,7 +59,7 @@ after(async () => {
 });
 
 async function login(account: typeof wallet) {
-  const nonce = await app.inject({
+  const nonce = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/nonce",
     headers: { origin },
@@ -76,7 +77,7 @@ async function login(account: typeof wallet) {
     issuedAt,
     expirationTime: new Date(issuedAt.getTime() + 300000),
   });
-  const verified = await app.inject({
+  const verified = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/verify",
     headers: { origin, cookie: `${binding.name}=${encodeURIComponent(binding.value)}` },
@@ -106,7 +107,7 @@ async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
   const web = (method: string, url: string, payload?: unknown, userCookie = cookie) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url,
       headers: { origin, cookie: userCookie },
@@ -150,7 +151,7 @@ async function marketplace() {
     const key = await web("POST", `/v1/provider/apps/${appId}/keys`, {});
     assert.equal(key.statusCode, 201, key.body);
     const worker = (method: string, url: string, payload?: unknown, secret = key.json().secret) =>
-      app.inject({
+      inject(app, {
         method: method as "GET",
         url: `/v1/provider/apps/${appId}${url}`,
         headers: { authorization: `Bearer ${secret}` },
@@ -164,7 +165,7 @@ async function marketplace() {
   const agent = await provider("Agent", { maxAmount: "50000" });
   const tool = await provider("Tool", {});
   const quote = (payload: Record<string, unknown>, userCookie = cookie, id = randomUUID()) =>
-    app.inject({
+    inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie: userCookie, "idempotency-key": id },

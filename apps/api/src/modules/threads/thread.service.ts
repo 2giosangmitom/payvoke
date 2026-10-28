@@ -1,6 +1,6 @@
-import type { Cradle } from "@fastify/awilix";
-import type { Prisma } from "@/core/db";
-import { parseManifest } from "@/core/payments/files";
+import type { Cradle } from "../../container";
+import type { Prisma } from "#core/db";
+import { parseManifest } from "#core/payments/files";
 import { BadRequestError, ConflictError, NotFoundError, PayloadTooLargeError } from "../../errors";
 import { availabilityLabel, threadSlotReleased } from "../apps/schema";
 import { serializeCommand } from "../apps/serializers";

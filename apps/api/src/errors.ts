@@ -1,4 +1,4 @@
-import { Prisma } from "@/core/db";
+import { Prisma } from "#core/db";
 
 // Expected failures carry a stable public code. Services throw these instead of
 // HTTP helpers; the error handler maps the class to a status and `{ error: code }`.

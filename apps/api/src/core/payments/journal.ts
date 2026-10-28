@@ -16,7 +16,7 @@ import {
   type Hex,
   type TransactionSerialized,
 } from "viem";
-import { Prisma, type PrismaClient } from "@/core/db";
+import { Prisma, type PrismaClient } from "#core/db";
 
 export class SettlementError extends Error {
   constructor(

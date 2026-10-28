@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { it } from "node:test";
 import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
-import { attachment, createStorage, MemoryStorage } from "@/core/storage";
+import { attachment, createStorage, MemoryStorage } from "#core/storage";
 
 const complete = {
   FILES_ENABLED: true,

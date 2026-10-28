@@ -1,9 +1,9 @@
 # Production stack: docker compose up -d --build
 #
-# Secrets and public URLs come from ./.env (copy .env.example). Each service
-# also reads its own apps/<service>/.env for keys, RPC and gas limits; the
-# values set here override those files so every container uses this stack's
-# Postgres, Redis and object storage.
+# Secrets and public URLs come from ./.env (copy .env.example). The API also
+# reads apps/api/.env for keys, RPC and gas limits; the values set here
+# override that file so the container uses this stack's Postgres, Redis and
+# object storage.
 #
 # Only the web app, the API and object storage (presigned URLs are fetched by
 # browsers) are published, on BIND_ADDRESS. Put a TLS reverse proxy in front.
@@ -22,12 +22,6 @@ x-storage: &storage
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
   S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
   S3_FORCE_PATH_STYLE: "true"
-
-x-backend: &backend
-  restart: unless-stopped
-  depends_on:
-    migrate: { condition: service_completed_successfully }
-    redis: { condition: service_healthy }
 
 services:
   db:
@@ -99,69 +93,31 @@ services:
     depends_on:
       rustfs: { condition: service_healthy }
 
-  # One-shot: applies pending Prisma migrations before any service starts.
+  # One-shot: applies pending Prisma migrations before the API starts.
   migrate:
-    build: { context: ., dockerfile: packages/payvoke-db/Dockerfile }
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["bun", "run", "migrate"]
     environment:
       DATABASE_URL: postgresql://payvoke:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/payvoke
     depends_on:
       db: { condition: service_healthy }
 
+  # API, in-process x402 facilitator and the workers apps/api/.env enables
+  # (JOB_WORKER_ENABLED, SETTLEMENT_WORKER_ENABLED, FINANCE_WORKER_ENABLED).
+  # Run exactly one replica: the signing workers keep one nonce lane each.
   api:
-    <<: *backend
     build: { context: ., dockerfile: apps/api/Dockerfile }
+    restart: unless-stopped
     env_file: [apps/api/.env]
     environment:
       <<: [*stack, *storage]
       WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN}
       HOST: 0.0.0.0
       PORT: 3001
-      FACILITATOR_URL: http://facilitator:3002
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3001}:3001"
-    depends_on:
-      facilitator: { condition: service_healthy }
-      storage-init: { condition: service_completed_successfully }
-
-  # Private: reachable only by name on the compose network, never published.
-  # Requires the active deployment policy row; see the README deploy section.
-  facilitator:
-    <<: *backend
-    build: { context: ., dockerfile: apps/facilitator/Dockerfile }
-    env_file: [apps/facilitator/.env]
-    environment:
-      <<: *stack
-      HOST: 0.0.0.0
-      PORT: 3002
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - require("net").connect(3002, "127.0.0.1").on("connect", () => process.exit(0)).on("error", () => process.exit(1))
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  settlement-worker:
-    <<: *backend
-    build: { context: ., dockerfile: apps/settlement-worker/Dockerfile }
-    env_file: [apps/settlement-worker/.env]
-    environment: *stack
-
-  finance-worker:
-    <<: *backend
-    build: { context: ., dockerfile: apps/finance-worker/Dockerfile }
-    env_file: [apps/finance-worker/.env]
-    environment: *stack
-
-  # Keyless BullMQ jobs: delivery verification (JSON and files), upload cleanup.
-  job-worker:
-    <<: *backend
-    build: { context: ., dockerfile: apps/job-worker/Dockerfile }
-    env_file: [apps/job-worker/.env]
-    environment:
-      <<: [*stack, *storage]
+    # Settlement and finance finish an in-flight transaction before exiting.
+    stop_grace_period: 160s
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

@@ -1,4 +1,4 @@
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { BadRequestError, ConflictError, GoneError, NotFoundError } from "../../errors";
 import type { AccountIdentity } from "../auth/auth.service";
 

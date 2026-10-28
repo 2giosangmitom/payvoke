@@ -1,13 +1,5 @@
-import { id } from "../quotes/quote.schemas";
-
-export type UploadBody = {
-  name: string;
-  contentType: string;
-  size: number;
-  sha256: string;
-  clientRequestId: string;
-};
-export type BuyerUploadBody = UploadBody & { threadId: string };
+import { z } from "zod";
+import { id } from "../schemas";
 
 // Downloads are always attachments, so the allowlist bounds what a buyer or
 // provider can hand the other side, not how a browser renders it.
@@ -31,27 +23,20 @@ export const CONTENT_TYPES = [
 ] as const;
 
 const upload = {
-  name: { type: "string", minLength: 1, maxLength: 255, pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$" },
-  contentType: { type: "string", enum: CONTENT_TYPES },
-  size: { type: "integer", minimum: 1 },
-  sha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
+  name: z
+    .string()
+    .min(1)
+    .max(255)
+    // Control characters and path separators never reach a stored filename.
+    // oxlint-disable-next-line no-control-regex
+    .regex(/^[^\x00-\x1f\x7f/\\]+$/),
+  contentType: z.enum(CONTENT_TYPES),
+  size: z.number().int().min(1),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
   clientRequestId: id,
-} as const;
-
-export const providerUploadSchema = {
-  body: {
-    type: "object",
-    additionalProperties: false,
-    required: ["name", "contentType", "size", "sha256", "clientRequestId"],
-    properties: upload,
-  },
 };
 
-export const buyerUploadSchema = {
-  body: {
-    type: "object",
-    additionalProperties: false,
-    required: ["threadId", "name", "contentType", "size", "sha256", "clientRequestId"],
-    properties: { ...upload, threadId: id },
-  },
-};
+export const providerUploadBody = z.object(upload).strict();
+export const buyerUploadBody = z.object({ ...upload, threadId: id }).strict();
+export type UploadBody = z.infer<typeof providerUploadBody>;
+export type BuyerUploadBody = z.infer<typeof buyerUploadBody>;

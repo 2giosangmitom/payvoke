@@ -1,7 +1,7 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
-import type { PrismaClient } from "@/core/db";
-import type { ObjectStorage } from "@/core/storage";
+import type { PrismaClient } from "#core/db";
+import type { ObjectStorage } from "#core/storage";
 import { parseManifest, storedFilesIntact } from "./files";
 import { recordPaymentDelivery } from "./finance";
 

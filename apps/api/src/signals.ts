@@ -7,7 +7,7 @@ import {
   type Doorbell,
   type Jobs,
   type Redis,
-} from "@/core/queue";
+} from "#core/queue";
 
 // Cross-process wake-ups and job producers. Postgres stays authoritative: a
 // Redis outage only delays SSE readers and workers until their next sweep.

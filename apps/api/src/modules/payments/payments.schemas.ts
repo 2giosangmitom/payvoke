@@ -1,30 +1,6 @@
-import { id } from "../quotes/quote.schemas";
+import { z } from "zod";
+import { id } from "../schemas";
 
-const invocationParams = {
-  type: "object",
-  required: ["id"],
-  properties: { id },
-} as const;
-
-export const submitInvocationSchema = {
-  body: {
-    type: "object",
-    additionalProperties: false,
-    required: ["quoteId"],
-    properties: { quoteId: id },
-  },
-};
-
-export const invocationStatusSchema = { params: invocationParams };
-
-export const financialIntentSchema = {
-  params: { ...invocationParams, additionalProperties: false },
-  body: {
-    type: "object",
-    required: ["action"],
-    additionalProperties: false,
-    properties: {
-      action: { enum: ["reclaim"] },
-    },
-  },
-};
+export const submitInvocationBody = z.object({ quoteId: id }).strict();
+export const financialIntentBody = z.object({ action: z.enum(["reclaim"]) }).strict();
+export const invocationListQuery = z.object({ cursor: z.string().max(128).optional() });

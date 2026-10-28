@@ -1,5 +1,5 @@
-import type { PrismaClient } from "@/core/db";
-import type { ObjectStorage } from "@/core/storage";
+import type { PrismaClient } from "#core/db";
+import type { ObjectStorage } from "#core/storage";
 
 // Immutable description of a READY file as frozen into a quote's context
 // manifest or a stored provider result. Never carries a URL.

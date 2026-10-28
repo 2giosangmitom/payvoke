@@ -1,4 +1,4 @@
-import type { Prisma } from "@/core/db";
+import type { Prisma } from "#core/db";
 
 export type TranscriptMessage = {
   role: "user" | "assistant";

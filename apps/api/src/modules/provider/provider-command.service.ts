@@ -1,5 +1,5 @@
-import type { Cradle } from "@fastify/awilix";
-import type { App, AppCommandRevision, Prisma } from "@/core/db";
+import type { Cradle } from "../../container";
+import type { App, AppCommandRevision, Prisma } from "#core/db";
 import { sameJson } from "@payvoke/shared/x402";
 import {
   BadRequestError,

@@ -14,8 +14,8 @@ import {
   wireQuote,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
-import type { AppCommandRevision, DeploymentPolicy } from "@/core/db";
-import type { FileManifestEntry } from "@/core/payments/files";
+import type { AppCommandRevision, DeploymentPolicy } from "#core/db";
+import type { FileManifestEntry } from "#core/payments/files";
 import { getAddress, type Address } from "viem";
 import { ServiceUnavailableError } from "../../errors";
 import type { TranscriptMessage } from "./transcript";

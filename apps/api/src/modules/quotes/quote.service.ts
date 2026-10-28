@@ -1,8 +1,8 @@
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
 import { ASSET, validateQuoteDocument, type QuoteDocument } from "@payvoke/shared/x402";
-import { termsMinEvidence } from "@/core/payments/evidence";
-import type { Prisma } from "@/core/db";
+import { termsMinEvidence } from "#core/payments/evidence";
+import type { Prisma } from "#core/db";
 import { getAddress, type Address } from "viem";
 import {
   BadRequestError,

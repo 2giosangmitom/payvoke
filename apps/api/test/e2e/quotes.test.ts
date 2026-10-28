@@ -1,5 +1,6 @@
 /// <reference types="emscripten" />
 /// <reference types="bun" />
+import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -24,7 +25,7 @@ import {
 import { avalancheFuji } from "viem/chains";
 import { hashSnapshot, paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/shared/protocol";
 import { x402Client } from "@x402/core/client";
-import { HTTPFacilitatorClient, resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
+import { resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
 import {
   decodePaymentRequiredHeader,
   decodePaymentSignatureHeader,
@@ -41,33 +42,36 @@ import {
   type AuthorizationRecord,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
-import { createApp } from "@/app";
-import { loadConfig } from "@/config";
-import { offerFixture } from "@test/offer-fixture";
-import { logRedaction } from "@/core/runtime";
-import fastify from "fastify";
+import { createApp } from "../../src/app";
+import { loadConfig } from "../../src/config";
+import { offerFixture } from "#test/offer-fixture";
+import { logRedaction } from "#core/runtime";
+import pino from "pino";
 import { Writable } from "node:stream";
-import { PrismaClient } from "@/core/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@test/kit/database";
-import { SettlementJournal } from "@/core/payments/journal";
-import { createFacilitatorApp } from "@/facilitator/app";
-import { loadFacilitatorConfig } from "@/facilitator/config";
-import { code, matchingHold, mockVault } from "@test/kit/vault-reader";
-import { mockSettlement } from "@test/kit/settlement-reader";
-import { SettlementWorker } from "@/core/payments/worker";
-import { createSettlementService } from "@/core/payments/settlement";
-import { scanFinalizedHolds } from "@/core/payments/scanner";
-import { localEvm } from "@test/kit/local-evm";
+import { PrismaClient } from "#core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
+import { SettlementJournal } from "#core/payments/journal";
+import { createFacilitator, type Facilitator } from "#core/facilitator";
+import { MemoryJobs } from "#core/queue";
+import { SettlementError } from "#core/payments/journal";
+import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
+import type { VaultChain } from "@payvoke/shared/x402/chain";
+import { code, matchingHold, mockVault } from "#test/kit/vault-reader";
+import { mockSettlement } from "#test/kit/settlement-reader";
+import { SettlementWorker } from "#core/payments/worker";
+import { createSettlementService } from "#core/payments/settlement";
+import { scanFinalizedHolds } from "#core/payments/scanner";
+import { localEvm } from "#test/kit/local-evm";
 import {
   FinanceService,
   parseDecision,
   recordPaymentDelivery,
   type FinanceApproval,
   type WireDecision,
-} from "@/core/payments/finance";
-import { scanFinancialLifecycle } from "@/core/payments/finance-ledger";
-import { serial } from "@/core/queue";
-import { AutoFinance, autoOutcome } from "@/core/payments/finance-policy";
+} from "#core/payments/finance";
+import { scanFinancialLifecycle } from "#core/payments/finance-ledger";
+import { serial } from "#core/queue";
+import { AutoFinance, autoOutcome } from "#core/payments/finance-policy";
 import { vaultFinanceAbi } from "@payvoke/shared/protocol";
 
 describe("quotes, x402 and isolated settlement", () => {
@@ -93,8 +97,6 @@ describe("quotes, x402 and isolated settlement", () => {
   let productId: string;
   let commandId: string;
   let journal: SettlementJournal;
-  let privateApps: ReturnType<typeof createFacilitatorApp>[];
-  const serviceToken = randomBytes(32).toString("hex");
 
   before(async () => {
     // Embedded PGlite by default. PAYMENTS_TEST_DATABASE_URL opts into a real,
@@ -127,7 +129,6 @@ describe("quotes, x402 and isolated settlement", () => {
     });
   });
   beforeEach(async () => {
-    privateApps = [];
     db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
     journal = new SettlementJournal(db, { vault, resourceUrl: `${api}/v1/invocations` });
     await db.financeDecision.deleteMany();
@@ -159,7 +160,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.verification.deleteMany();
     app = createApp(config, db);
     await app.ready();
-    const nonce = await app.inject({
+    const nonce = await inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/nonce",
       headers: { origin },
@@ -177,7 +178,7 @@ describe("quotes, x402 and isolated settlement", () => {
       issuedAt,
       expirationTime: new Date(issuedAt.getTime() + 300000),
     });
-    const login = await app.inject({
+    const login = await inject(app, {
       method: "POST",
       url: "/v1/auth/siwe/verify",
       headers: { origin, cookie: `${binding.name}=${encodeURIComponent(binding.value)}` },
@@ -265,7 +266,6 @@ describe("quotes, x402 and isolated settlement", () => {
     });
   });
   afterEach(async () => {
-    for (const privateApp of privateApps) await privateApp.close();
     await app?.close();
   });
   after(async () => {
@@ -313,7 +313,7 @@ describe("quotes, x402 and isolated settlement", () => {
   }
   async function prepare(payload = body(), headers: Record<string, string> = {}) {
     await db.app.updateMany({ data: { lastHeartbeatAt: new Date() } });
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": payload.clientRequestId, ...headers },
@@ -330,7 +330,7 @@ describe("quotes, x402 and isolated settlement", () => {
     extra: Record<string, string> = {},
     payload: object = { quoteId: q.quoteId },
   ) {
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/invocations",
       headers: { origin, cookie, "idempotency-key": q.invocationId, ...extra },
@@ -405,41 +405,52 @@ describe("quotes, x402 and isolated settlement", () => {
     });
   }
 
+  // The in-process facilitator, answering in the shape its HTTP endpoints
+  // used: the SDK response with 200, or `{ error }` with the failure status.
+  const facilitatorOptions = (enabled: boolean, overrides: Partial<{ RPC_URL: string }> = {}) => ({
+    API_ORIGIN: api,
+    RPC_URL: "https://rpc.payvoke.test",
+    VAULT_ADDRESS: vault,
+    RELAYER_ADDRESS: relayer.address,
+    EXPECTED_VAULT_CODE_HASH: keccak256(code),
+    VAULT_FEE_CAP_BPS: 500,
+    VAULT_MAX_QUOTE_LIFETIME_SECONDS: 3600,
+    VAULT_MAX_HOLD_SECONDS: 30 * 86400,
+    SETTLEMENT_ENABLED: enabled,
+    ...overrides,
+  });
+  async function facilitatorCall(
+    f: Facilitator,
+    operation: "verify" | "settle",
+    payload: unknown,
+    requirements: unknown,
+  ) {
+    const answer = (statusCode: number, value: unknown) => ({
+      statusCode,
+      body: JSON.stringify(value),
+      json: () => JSON.parse(JSON.stringify(value)),
+      headers: {} as Record<string, string | undefined>,
+    });
+    try {
+      return answer(200, await f[operation](payload as never, requirements as never));
+    } catch (error) {
+      if (error instanceof VaultValidationError)
+        return answer(error.statusCode, { error: error.code });
+      if (error instanceof SettlementError)
+        return answer(error.statusCode, { error: error.code.toLowerCase() });
+      return answer(500, { error: "internal_error" });
+    }
+  }
   async function facilitator(q: QuoteDocument, enabled = false) {
     const mock = mockVault(readQuote(q.protocolQuote), vault, grantSigner.address, relayer.address);
-    const f = createFacilitatorApp(
-      loadFacilitatorConfig({
-        DATABASE_URL: config.DATABASE_URL,
-        REDIS_URL: config.REDIS_URL,
-        API_ORIGIN: api,
-        RPC_URL: "https://rpc.payvoke.test",
-        FACILITATOR_TOKEN: serviceToken,
-        VAULT_ADDRESS: vault,
-        RELAYER_ADDRESS: relayer.address,
-        EXPECTED_VAULT_CODE_HASH: keccak256(code),
-        VAULT_FEE_CAP_BPS: "500",
-        VAULT_MAX_QUOTE_LIFETIME_SECONDS: "3600",
-        VAULT_MAX_HOLD_SECONDS: String(30 * 86400),
-        LOG_LEVEL: "silent",
-        SETTLEMENT_ENABLED: String(enabled),
-      }),
-      db,
-      mock.chain,
-    );
-    privateApps.push(f);
+    const f = createFacilitator(facilitatorOptions(enabled), db, new MemoryJobs(), mock.chain);
     await f.ready();
     mock.calls.length = 0;
     const call = (
       operation: "verify" | "settle",
       payload: unknown,
-      requirements = paymentRequirements(q),
-    ) =>
-      f.inject({
-        method: "POST",
-        url: `/${operation}`,
-        headers: { authorization: `Bearer ${serviceToken}` },
-        payload: { x402Version: 2, paymentPayload: payload, paymentRequirements: requirements },
-      });
+      requirements: unknown = paymentRequirements(q),
+    ) => facilitatorCall(f, operation, payload, requirements);
     return { f, call, ...mock };
   }
 
@@ -550,7 +561,7 @@ describe("quotes, x402 and isolated settlement", () => {
 
   it("rejects invalid args, selected unresolved context and unavailable products", async () => {
     const invalid = { ...body(), arguments: { text: 123 } };
-    const response = await app.inject({
+    const response = await inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": invalid.clientRequestId },
@@ -573,7 +584,7 @@ describe("quotes, x402 and isolated settlement", () => {
       JSON.stringify(payload).replace(`"${payload.offerId}"`, '"\\ud800"'),
       JSON.stringify(payload).replace(`"${payload.offerId}"`, "1e400"),
     ]) {
-      const response = await app.inject({
+      const response = await inject(app, {
         method: "POST",
         url: "/v1/quotes",
         headers: {
@@ -586,7 +597,7 @@ describe("quotes, x402 and isolated settlement", () => {
       });
       assert.equal(response.statusCode, 400, response.body);
     }
-    const tooLarge = await app.inject({
+    const tooLarge = await inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": payload.clientRequestId },
@@ -670,13 +681,13 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(String(unpaid.headers["payment-required"]).includes(secret), false);
     const signed = await payment(q);
     assert.equal(JSON.stringify(signed).includes(secret), false);
-    const status = await app.inject({
+    const status = await inject(app, {
       method: "GET",
       url: `/v1/invocations/${q.invocationId}`,
       headers: { origin, cookie },
     });
     assert.match(String(status.headers["cache-control"]), /no-store/);
-    const intent = await app.inject({
+    const intent = await inject(app, {
       method: "POST",
       url: `/v1/invocations/${q.invocationId}/financial-intents`,
       headers: { origin, cookie },
@@ -685,20 +696,17 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.match(String(intent.headers["cache-control"]), /no-store/);
     // The production redaction policy removes payment headers, cookies and bodies.
     const lines: string[] = [];
-    const logger = fastify({
-      logger: {
-        level: "trace",
-        redact: logRedaction,
-        stream: new Writable({
-          write(chunk, _encoding, done) {
-            lines.push(String(chunk));
-            done();
-          },
-        }),
-      },
-    });
+    const logger = pino(
+      { level: "trace", redact: logRedaction },
+      new Writable({
+        write(chunk, _encoding, done) {
+          lines.push(String(chunk));
+          done();
+        },
+      }),
+    );
     const signature = JSON.stringify(signed);
-    logger.log.info(
+    logger.info(
       {
         req: {
           headers: { "payment-signature": signature, cookie, authorization: "Bearer pvk_x" },
@@ -708,7 +716,6 @@ describe("quotes, x402 and isolated settlement", () => {
       },
       "payment request",
     );
-    await logger.close();
     const output = lines.join("");
     assert.match(output, /payment request/);
     for (const leaked of [secret, signature, cookie, "pvk_x"])
@@ -1131,7 +1138,7 @@ describe("quotes, x402 and isolated settlement", () => {
       ).state,
       "PENDING",
     );
-    const status = await app.inject({
+    const status = await inject(app, {
       url: `/v1/invocations/${q.invocationId}`,
       headers: { cookie },
     });
@@ -1141,10 +1148,10 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(status.json().transaction, keccak256(raw));
     assert.ok(!status.body.includes(raw));
     assert.ok(!status.body.includes(payload.payload.signature));
-    assert.equal((await app.inject({ url: `/v1/invocations/${q.invocationId}` })).statusCode, 401);
+    assert.equal((await inject(app, { url: `/v1/invocations/${q.invocationId}` })).statusCode, 401);
     await db.invocation.updateMany({ data: { buyerId: "different-user" } });
     assert.equal(
-      (await app.inject({ url: `/v1/invocations/${q.invocationId}`, headers: { cookie } }))
+      (await inject(app, { url: `/v1/invocations/${q.invocationId}`, headers: { cookie } }))
         .statusCode,
       404,
     );
@@ -1166,7 +1173,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(replayed.state, "REJECTED");
     assert.equal(await journal.claim(q.invocationId, "retry"), null);
     assert.equal((await prepare()).statusCode, 409, "the old authorization has not expired yet");
-    const busyThread = await app.inject({
+    const busyThread = await inject(app, {
       method: "GET",
       url: `/v1/threads/${sessionId}`,
       headers: { origin, cookie },
@@ -1174,7 +1181,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(busyThread.statusCode, 200, busyThread.body);
     assert.equal(busyThread.json().activeQuoteId, q.quoteId);
     await delay(Math.max(0, q.validUntil * 1000 - Date.now() + 20));
-    const freeThread = await app.inject({
+    const freeThread = await inject(app, {
       method: "GET",
       url: `/v1/threads/${sessionId}`,
       headers: { origin, cookie },
@@ -1207,37 +1214,28 @@ describe("quotes, x402 and isolated settlement", () => {
     const claim = fileURLToPath(new URL("./fixtures/claim.ts", import.meta.url));
     // process.execPath is bun, which runs the TypeScript fixture directly.
     const outputs = await Promise.all(
-      ["one", "two"].map((owner) =>
-        run(process.execPath, [claim, schema, q.invocationId, owner]),
-      ),
+      ["one", "two"].map((owner) => run(process.execPath, [claim, schema, q.invocationId, owner])),
     );
     const claims = outputs.map((o) => JSON.parse(o.stdout));
     assert.equal(claims.filter(Boolean).length, 1);
     assert.equal((await db.settlementOperation.findFirstOrThrow()).leaseEpoch, 1n);
   });
 
-  it("protects every facilitator endpoint with service auth, not a browser cookie", async () => {
+  it("exposes no facilitator endpoint over HTTP; only the in-process gateway settles", async () => {
     const q = await quote();
     const { f, calls } = await facilitator(q);
     for (const url of ["/supported", "/verify", "/settle"]) {
-      for (const headers of [{ cookie }, { authorization: "Bearer wrong" }, {}]) {
-        const response = await f.inject({
-          method: url === "/supported" ? "GET" : "POST",
-          url,
-          headers,
-          payload: url === "/supported" ? undefined : {},
-        });
-        assert.equal(response.statusCode, 401, response.body);
-        assert.match(response.headers["cache-control"] as string, /no-store/);
-      }
+      const response = await inject(app, {
+        method: url === "/supported" ? "GET" : "POST",
+        url,
+        headers: { origin, cookie },
+        payload: url === "/supported" ? undefined : {},
+      });
+      assert.equal(response.statusCode, 404, response.body);
     }
     assert.equal(calls.length, 0);
-    const supported = await f.inject({
-      url: "/supported",
-      headers: { authorization: `Bearer ${serviceToken}` },
-    });
-    assert.equal(supported.statusCode, 200, supported.body);
-    assert.deepEqual(supported.json().kinds, [
+    const supported = await f.getSupported();
+    assert.deepEqual(supported.kinds, [
       {
         x402Version: 2,
         scheme: "payvoke-vault",
@@ -1245,8 +1243,7 @@ describe("quotes, x402 and isolated settlement", () => {
         extra: { vault, schemeVersion: "1" },
       },
     ]);
-    assert.deepEqual(supported.json().signers, { "eip155:*": [relayer.address] });
-    assert.ok(!supported.headers["access-control-allow-origin"]);
+    assert.deepEqual(supported.signers, { "eip155:*": [relayer.address] });
   });
 
   it("verifies through the SDK facilitator without any journal side effects; settle revalidates", async () => {
@@ -1275,10 +1272,10 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.ok(!unavailable.headers["payment-response"]);
   });
 
-  it("rejects malformed, duplicate-key and oversized private requests before RPC", async () => {
+  it("rejects malformed facilitator requests before RPC", async () => {
     const q = await quote();
     const p = await payment(q);
-    const { f, calls, call } = await facilitator(q);
+    const { calls, call } = await facilitator(q);
     const altered = structuredClone(p);
     altered.accepted.amount = "1";
     const invalid = await call("verify", altered);
@@ -1288,18 +1285,6 @@ describe("quotes, x402 and isolated settlement", () => {
       (await call("verify", p, { ...paymentRequirements(q), network: "eip155:1" })).statusCode,
       400,
     );
-    for (const raw of [
-      '{"x402Version":2,"x402Version":1}',
-      JSON.stringify({ padding: "x".repeat(9000) }),
-    ]) {
-      const response = await f.inject({
-        method: "POST",
-        url: "/verify",
-        headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" },
-        payload: raw,
-      });
-      assert.ok([400, 413].includes(response.statusCode), response.body);
-    }
     assert.equal(calls.length, 0);
   });
 
@@ -1381,57 +1366,20 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.ok(!f.calls.some((c) => c.method === "simulate"));
   });
 
-  it("works with HTTPFacilitatorClient auth and error parsing without manufacturing a transaction hash", async (t) => {
+  it("serves x402 core in-process and maps errors without manufacturing a transaction hash", async () => {
     const q = await quote();
     const p = await payment(q);
-    const { f, state } = await facilitator(q);
-    t.mock.method(
-      globalThis,
-      "fetch",
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const headers: Record<string, string> = {};
-        new Headers(init?.headers).forEach((v, k) => {
-          headers[k] = v;
-        });
-        const response = await f.inject({
-          method: init?.method === "POST" ? "POST" : "GET",
-          url: new URL(String(input)).pathname,
-          headers,
-          payload: init?.body as string | undefined,
-        });
-        return new Response(response.body, {
-          status: response.statusCode,
-          headers: { "content-type": "application/json" },
-        });
-      },
-    );
-    const client = new HTTPFacilitatorClient({
-      url: "https://private-facilitator.test",
-      timeoutMs: 1000,
-      createAuthHeaders: async () => {
-        const auth = { Authorization: `Bearer ${serviceToken}` };
-        return { verify: auth, settle: auth, supported: auth };
-      },
-    });
-    assert.equal((await client.getSupported()).kinds[0].scheme, "payvoke-vault");
-    const resourceServer = new x402ResourceServer(client).register(
-      NETWORK,
-      new VaultServerScheme(q),
-    );
+    const { f, call, state } = await facilitator(q);
+    assert.equal((await f.getSupported()).kinds[0].scheme, "payvoke-vault");
+    const resourceServer = new x402ResourceServer(f).register(NETWORK, new VaultServerScheme(q));
     await resourceServer.initialize();
-    assert.equal((await client.verify(p, paymentRequirements(q))).isValid, true);
-    await assert.rejects(client.settle(p, paymentRequirements(q)), /503.*settlement_unavailable/);
+    assert.equal((await f.verify(p, paymentRequirements(q))).isValid, true);
+    await assert.rejects(f.settle(p, paymentRequirements(q)), /settlement_unavailable/i);
     state.rpcError = true;
-    const error = await f.inject({
-      method: "POST",
-      url: "/verify",
-      headers: { authorization: `Bearer ${serviceToken}` },
-      payload: { x402Version: 2, paymentPayload: p, paymentRequirements: paymentRequirements(q) },
-    });
+    const error = await call("verify", p);
     assert.equal(error.statusCode, 503);
     assert.deepEqual(error.json(), { error: "rpc_unavailable" });
     assert.ok(!error.body.includes("secret-rpc"));
-    assert.ok(!error.body.includes(serviceToken));
   });
 
   it("settles a durable intent once, commits HELD + ready atomically, and replays the receipt", async () => {
@@ -1461,7 +1409,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await f.makeWorker().tick();
     assert.equal(f.state.sent.length, 1);
     assert.equal(await db.invocationReady.count(), 1);
-    const status = await app.inject({
+    const status = await inject(app, {
       url: `/v1/invocations/${q.invocationId}`,
       headers: { cookie },
     });
@@ -1557,7 +1505,7 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal((await db.settlementAttempt.findFirstOrThrow()).state, "REVERTED");
     assert.equal(await db.invocationReady.count(), 0);
     assert.equal((await db.relayerLane.findFirstOrThrow()).activeInvocationId, null);
-    const thread = await app.inject({
+    const thread = await inject(app, {
       method: "GET",
       url: `/v1/threads/${sessionId}`,
       headers: { origin, cookie },
@@ -1684,44 +1632,20 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(f.state.sent.length, 1);
   });
 
-  it("runs SDK upfront through authenticated gateway, preserving pending/finalized receipts and expired replay", async (t) => {
+  it("runs SDK upfront through the gateway, preserving pending/finalized receipts and expired replay", async () => {
     const q = await quote();
     const p = await payment(q);
     const f = await facilitator(q, true);
     let settleCalls = 0;
-    t.mock.method(
-      globalThis,
-      "fetch",
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(String(input));
-        assert.equal(url.origin, "https://private-facilitator.test");
-        if (url.pathname === "/settle") settleCalls++;
-        const headers: Record<string, string> = {};
-        new Headers(init?.headers).forEach((v, k) => {
-          headers[k] = v;
-        });
-        const response = await f.f.inject({
-          method: init?.method === "POST" ? "POST" : "GET",
-          url: url.pathname,
-          headers,
-          payload: init?.body as string | undefined,
-        });
-        return new Response(response.body, {
-          status: response.statusCode,
-          headers: { "content-type": "application/json" },
-        });
+    const counted: Facilitator = {
+      ...f.f,
+      settle: (payload, requirements) => {
+        settleCalls++;
+        return f.f.settle(payload, requirements);
       },
-    );
+    };
     await app.close();
-    app = createApp(
-      {
-        ...config,
-        PAYMENTS_ENABLED: true,
-        FACILITATOR_URL: "https://private-facilitator.test",
-        FACILITATOR_TOKEN: serviceToken,
-      },
-      db,
-    );
+    app = createApp({ ...config, PAYMENTS_ENABLED: true }, db, undefined, undefined, counted);
     await app.ready();
     const bad = await submit(q, {
       cookie: "",
@@ -1985,57 +1909,23 @@ describe("quotes, x402 and isolated settlement", () => {
     await buyerVault.write.deposit([10000000n]);
     await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
     await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
-    const privateConfig = loadFacilitatorConfig({
-      DATABASE_URL: config.DATABASE_URL,
-      REDIS_URL: config.REDIS_URL,
-      API_ORIGIN: api,
-      RPC_URL: evm.rpc,
-      FACILITATOR_TOKEN: serviceToken,
-      VAULT_ADDRESS: evm.vault,
-      RELAYER_ADDRESS: relayer.address,
-      EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
-      VAULT_FEE_CAP_BPS: "500",
-      VAULT_MAX_QUOTE_LIFETIME_SECONDS: "3600",
-      VAULT_MAX_HOLD_SECONDS: String(30 * 86400),
-      LOG_LEVEL: "silent",
-      SETTLEMENT_ENABLED: "true",
-    });
-    const privateApp = createFacilitatorApp(privateConfig, db, evm.admission);
-    privateApps.push(privateApp);
-    await privateApp.ready();
-    const originalFetch = globalThis.fetch;
-    t.mock.method(
-      globalThis,
-      "fetch",
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(String(input));
-        if (url.origin !== "https://local-facilitator.test") return originalFetch(input, init);
-        const headers: Record<string, string> = {};
-        new Headers(init?.headers).forEach((v, k) => {
-          headers[k] = v;
-        });
-        const response = await privateApp.inject({
-          method: init?.method === "POST" ? "POST" : "GET",
-          url: url.pathname,
-          headers,
-          payload: init?.body as string | undefined,
-        });
-        return new Response(response.body, {
-          status: response.statusCode,
-          headers: { "content-type": "application/json" },
-        });
+    const local = createFacilitator(
+      {
+        ...facilitatorOptions(true, { RPC_URL: evm.rpc }),
+        VAULT_ADDRESS: evm.vault,
+        EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
       },
+      db,
+      new MemoryJobs(),
+      evm.admission as VaultChain,
     );
     await app.close();
     app = createApp(
-      {
-        ...config,
-        VAULT_ADDRESS: evm.vault,
-        PAYMENTS_ENABLED: true,
-        FACILITATOR_URL: "https://local-facilitator.test",
-        FACILITATOR_TOKEN: serviceToken,
-      },
+      { ...config, VAULT_ADDRESS: evm.vault, PAYMENTS_ENABLED: true },
       db,
+      undefined,
+      undefined,
+      local,
     );
     await app.ready();
     const q = await quote();
@@ -2082,7 +1972,7 @@ describe("quotes, x402 and isolated settlement", () => {
     );
     assert.equal(receipt.success, true);
     assert.equal(receipt.transaction, attempt.transactionHash);
-    const status = await app.inject({
+    const status = await inject(app, {
       url: `/v1/invocations/${q.invocationId}`,
       headers: { cookie },
     });
@@ -2631,7 +2521,7 @@ describe("quotes, x402 and isolated settlement", () => {
     });
     await evm.test.mine({ blocks: 1 });
     await evm.contract.write.pause();
-    const reclaim = await app.inject({
+    const reclaim = await inject(app, {
       method: "POST",
       url: `/v1/invocations/${fourth.invocationId}/financial-intents`,
       headers: { cookie, origin },
@@ -2659,7 +2549,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await sync();
     assert.equal(await db.vaultFinancialEvent.count(), count);
     assert.equal(await db.invocationReady.count(), readyCount);
-    const status = await app.inject({
+    const status = await inject(app, {
       url: `/v1/invocations/${first.invocationId}`,
       headers: { cookie },
     });
@@ -3335,16 +3225,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const next = await quote();
     const p = await payment(next);
     const preview = await facilitator(next);
-    const response = await preview.f.inject({
-      method: "POST",
-      url: "/verify",
-      headers: { authorization: `Bearer ${serviceToken}` },
-      payload: {
-        x402Version: 2,
-        paymentPayload: p,
-        paymentRequirements: paymentRequirements(next),
-      },
-    });
+    const response = await preview.call("verify", p, paymentRequirements(next));
     assert.equal(response.statusCode, 503, response.body);
     assert.equal(await db.settlementAttempt.count(), 1);
   });
@@ -3399,7 +3280,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const endpoint = `/v1/invocations/${q.invocationId}/financial-intents`;
     assert.equal(
       (
-        await app.inject({
+        await inject(app, {
           method: "POST",
           url: endpoint,
           headers: { origin },
@@ -3408,7 +3289,7 @@ describe("quotes, x402 and isolated settlement", () => {
       ).statusCode,
       401,
     );
-    const intent = await app.inject({
+    const intent = await inject(app, {
       method: "POST",
       url: endpoint,
       headers: { cookie, origin },
@@ -3426,14 +3307,14 @@ describe("quotes, x402 and isolated settlement", () => {
       }),
     );
     // There is no dispute path; the only buyer-side recovery is reclaim.
-    const dispute = await app.inject({
+    const dispute = await inject(app, {
       method: "POST",
       url: endpoint,
       headers: { cookie, origin },
       payload: { action: "dispute" },
     });
     assert.equal(dispute.statusCode, 400, dispute.body);
-    const status = await app.inject({
+    const status = await inject(app, {
       method: "GET",
       url: `/v1/invocations/${q.invocationId}`,
       headers: { cookie, origin },

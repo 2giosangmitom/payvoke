@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Type, type Static } from "typebox";
-import { isPrivateServiceUrl, isSafeServiceUrl } from "@/core/runtime";
+import { isPrivateServiceUrl, isSafeServiceUrl } from "#core/runtime";
 
 // A presigned request the uploader replays exactly: the signed headers are
 // part of the signature, so a different type or length is rejected by S3.

@@ -1,27 +1,28 @@
 import { setTimeout as delay } from "node:timers/promises";
-import closeWithGrace from "close-with-grace";
 import { Worker } from "bullmq";
 import { createPublicClient, getAddress, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { SettlementChain } from "@payvoke/shared/x402/settlement";
-import { createDatabase } from "@/core/db";
-import { connectRedis, queues, serial, throttled } from "@/core/queue";
-import { errorTag, vaultDeployment } from "@/core/runtime";
-import { FinanceService } from "@/core/payments/finance";
-import { AutoFinance } from "@/core/payments/finance-policy";
-import { financeGasPolicy, loadFinanceWorkerConfig } from "./config";
+import type { PrismaClient } from "#core/db";
+import { FinanceService } from "#core/payments/finance";
+import { AutoFinance } from "#core/payments/finance-policy";
+import { validateGasPolicy } from "#core/payments/worker";
+import { connectRedis, queues, serial, throttled } from "#core/queue";
+import { errorTag, vaultDeployment } from "#core/runtime";
+import { deploymentConfig, gasBudget, type Config } from "../config";
+import type { Logger } from "../http/context";
 
 // Jobs wake finance on new evidence, failed runs and hold deadlines; the sweep
 // only backs up wake-ups Redis lost.
 const SWEEP_MS = 30000;
 
-let db: ReturnType<typeof createDatabase> | undefined;
-try {
-  const config = loadFinanceWorkerConfig();
-  if (!config.EXECUTION_ENABLED) throw new Error("Worker execution is disabled");
-  const budget = financeGasPolicy(config);
-  const deployment = vaultDeployment(config);
-  const key = (value: string) => {
+// Automatic refunds of undelivered, failed or late invocations and releases of
+// verified deliveries after the review window.
+export async function startFinanceWorker(config: Config, db: PrismaClient, log: Logger) {
+  const budget = gasBudget(config, "FINANCE");
+  validateGasPolicy(budget);
+  const deployment = vaultDeployment(deploymentConfig(config));
+  const key = (value = "") => {
     if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error("Invalid signer configuration");
     return privateKeyToAccount(value as Hex);
   };
@@ -36,14 +37,12 @@ try {
   const chain = new SettlementChain(client, deployment);
   await chain.finalized();
   const onError = throttled(
-    (error) => console.error(`Finance worker Redis error (${errorTag(error)})`),
+    (error) => log.error({ error: errorTag(error) }, "Finance worker Redis error"),
     errorTag,
   );
   const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
-  db = createDatabase(config.DATABASE_URL);
-  const database = db;
   const auto = new AutoFinance(
-    new FinanceService(database, chain, executor.address, budget),
+    new FinanceService(db, chain, executor.address, budget),
     approver,
     executor,
   );
@@ -57,39 +56,26 @@ try {
     });
   const waker = new Worker(queues.finance, () => cycle(), { connection: consumer, concurrency: 1 });
   waker.on("failed", (_job, error) =>
-    console.error(`Finance job failed (${errorTag(error)}); durable state retained`),
+    log.error({ error: errorTag(error) }, "Finance job failed; durable state retained"),
   );
   waker.on("error", onError);
-  let finish!: () => void;
-  const done = new Promise<void>((resolve) => {
-    finish = resolve;
-  });
-  closeWithGrace(
-    { delay: 150000, logger: { error: () => console.error("Finance worker shutdown failed") } },
-    async () => {
-      stopping = true;
-      await waker.close();
-      await done;
-      consumer.disconnect();
-      await database.$disconnect();
-    },
-  );
-  try {
+  const loop = (async () => {
     while (!stopping) {
       try {
         await cycle();
       } catch (error) {
-        console.error(`Finance worker tick failed (${errorTag(error)}); durable state retained`);
+        log.error({ error: errorTag(error) }, "Finance tick failed; durable state retained");
       }
       if (!stopping) await delay(SWEEP_MS);
     }
-  } finally {
-    finish();
-  }
-} catch {
-  console.error(
-    "Finance worker startup failed: check execution policy, signer keys, database, RPC and Redis",
-  );
-  await db?.$disconnect().catch(() => {});
-  process.exitCode = 1;
+  })();
+
+  return {
+    async close() {
+      stopping = true;
+      await waker.close();
+      await loop;
+      consumer.disconnect();
+    },
+  };
 }

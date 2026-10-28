@@ -1,4 +1,4 @@
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { vaultFinanceAbi } from "@payvoke/shared/protocol";
 import type { QuoteDocument } from "@payvoke/shared/x402";
 import { encodeFunctionData, getAddress, type Hex } from "viem";

@@ -1,33 +1,72 @@
-import type { FastifyInstance } from "fastify";
-import type {
-  BuyerFileRoute,
-  BuyerUploadRoute,
-  ProviderFileRoute,
-  ProviderUploadRoute,
-} from "./file.controller";
-import { buyerUploadSchema, providerUploadSchema } from "./file.schemas";
+import { Hono } from "hono";
+import type { AppEnv, RouteContext } from "../../http/context";
+import { noStore } from "../../http/financial-json";
+import { maxBody, rateLimit } from "../../http/limits";
+import { validate } from "../../http/validate";
+import { requireAccount } from "../auth/guard";
+import type { KeyScope } from "../provider/provider.validation";
+import { buyerUploadBody, providerUploadBody } from "./file.schemas";
 
 const work = "/v1/provider/apps/:appId/invocations/:id/files";
 
-export async function fileRoutes(app: FastifyInstance) {
-  const { fileController: c } = app.diContainer.cradle;
-  const signedIn = { preHandler: app.requireAccount };
-  const uploads = { bodyLimit: 4096, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } };
-
-  app.post<BuyerUploadRoute>(
-    "/v1/files",
-    { ...signedIn, ...uploads, schema: buyerUploadSchema },
-    c.requestBuyerUpload,
-  );
-  app.post<BuyerFileRoute>("/v1/files/:fileId/completions", signedIn, c.completeBuyer);
-  app.get<BuyerFileRoute>("/v1/files/:fileId/download", signedIn, c.buyerDownload);
-
-  // Provider worker: app key auth in the controller, never a browser session.
-  app.post<ProviderUploadRoute>(
-    work,
-    { ...uploads, schema: providerUploadSchema },
-    c.requestProviderUpload,
-  );
-  app.post<ProviderFileRoute>(`${work}/:fileId/completions`, c.completeProvider);
-  app.get<ProviderFileRoute>(`${work}/:fileId/download`, c.providerDownload);
+// Provider routes accept only an app key with the given scope.
+async function providerWork(c: RouteContext, scope: KeyScope) {
+  const { providerKeyService, providerRunService } = c.var.cradle;
+  const appId = c.req.param("appId")!;
+  await providerKeyService.authenticate(c.req.header("authorization"), appId, scope);
+  return providerRunService.work(appId, c.req.param("id")!);
 }
+
+// Signed URLs are bearer credentials: never cache a response carrying one.
+export const fileRoutes = new Hono<AppEnv>()
+  .use("/v1/files/*", noStore)
+  .use("/v1/files", noStore)
+  .use(`${work}/*`, noStore)
+  .use(work, noStore)
+  .post(
+    "/v1/files",
+    rateLimit("uploads", 60),
+    maxBody(4096),
+    validate("json", buyerUploadBody, "INVALID_UPLOAD"),
+    requireAccount,
+    async (c) =>
+      c.json(
+        await c.var.cradle.fileService.requestBuyerUpload(c.var.account.id, c.req.valid("json")),
+      ),
+  )
+  .post("/v1/files/:fileId/completions", requireAccount, async (c) =>
+    c.json(await c.var.cradle.fileService.completeBuyer(c.var.account.id, c.req.param("fileId"))),
+  )
+  .get("/v1/files/:fileId/download", requireAccount, async (c) =>
+    c.json(await c.var.cradle.fileService.buyerDownload(c.var.account.id, c.req.param("fileId"))),
+  )
+  // Provider worker: app key auth, never a browser session.
+  .post(
+    work,
+    rateLimit("uploads", 60),
+    maxBody(4096),
+    validate("json", providerUploadBody, "INVALID_UPLOAD"),
+    async (c) =>
+      c.json(
+        await c.var.cradle.fileService.requestProviderUpload(
+          await providerWork(c, "files:write"),
+          c.req.valid("json"),
+        ),
+      ),
+  )
+  .post(`${work}/:fileId/completions`, async (c) =>
+    c.json(
+      await c.var.cradle.fileService.completeProvider(
+        await providerWork(c, "files:write"),
+        c.req.param("fileId"),
+      ),
+    ),
+  )
+  .get(`${work}/:fileId/download`, async (c) =>
+    c.json(
+      await c.var.cradle.fileService.providerDownload(
+        await providerWork(c, "events:read"),
+        c.req.param("fileId"),
+      ),
+    ),
+  );

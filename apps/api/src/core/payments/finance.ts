@@ -24,7 +24,7 @@ import {
   type Hex,
   type LocalAccount,
 } from "viem";
-import { Prisma, type PrismaClient, type FinanceDecision } from "@/core/db";
+import { Prisma, type PrismaClient, type FinanceDecision } from "#core/db";
 import {
   evidenceLevels,
   evidenceSatisfies,

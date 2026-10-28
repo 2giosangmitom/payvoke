@@ -1,50 +1,30 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
-import fp from "fastify-plugin";
+import { createMiddleware } from "hono/factory";
 import { ForbiddenError } from "../../errors";
-import type { AccountIdentity } from "./auth.service";
+import type { AppEnv, SignedInEnv } from "../../http/context";
 
-declare module "fastify" {
-  interface FastifyRequest {
-    account: AccountIdentity | null;
-  }
-  interface FastifyInstance {
-    requireAccount(request: FastifyRequest): Promise<void>;
-    optionalAccount(request: FastifyRequest): Promise<AccountIdentity | null>;
-  }
-}
+// Routes opt into a signed-in buyer; handlers then read `c.var.account`.
+export const requireAccount = createMiddleware<SignedInEnv>(async (c, next) => {
+  c.set("account", await c.var.cradle.authService.requireAccount(c.req.raw.headers));
+  await next();
+});
 
-// Register after the DI and HTTP plugins and before feature routes. Routes opt
-// into a signed-in buyer with `preHandler: app.requireAccount`.
-export const authGuard = fp(
-  async (app: FastifyInstance) => {
-    const { authService, config } = app.diContainer.cradle;
-    const webOrigin = new URL(config.WEB_ORIGIN).origin;
-
-    app.decorateRequest("account", null);
-    app.decorate("optionalAccount", (request: FastifyRequest) =>
-      authService.optionalAccount(request.headers),
-    );
-    app.decorate("requireAccount", async (request: FastifyRequest) => {
-      request.account = await authService.requireAccount(request.headers);
-    });
-
-    // Preserve the web-write policy, including pre-login endpoints. CORS alone
-    // is not CSRF protection; no Origin-less web writes are allowed.
-    app.addHook("onRequest", async (request, reply) => {
-      if (request.url.startsWith("/v1/auth/") || request.url.split("?")[0] === "/v1/me") {
-        reply.cacheControl("no-store");
-      }
-      const providerBearer =
-        request.url.startsWith("/v1/provider/apps/") &&
-        request.headers.authorization?.startsWith("Bearer pvk_");
-      if (
-        !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
-        !providerBearer &&
-        request.headers.origin !== webOrigin
-      ) {
-        throw new ForbiddenError("INVALID_ORIGIN");
-      }
-    });
-  },
-  { name: "payvoke-auth-guard", dependencies: ["@fastify/awilix", "@fastify/sensible"] },
-);
+// The web-write policy, including pre-login endpoints. CORS alone is not CSRF
+// protection; no Origin-less web writes are allowed. Provider workers write
+// with an app key instead of a browser session.
+export const originGuard = (webOrigin: string) => {
+  const allowed = new URL(webOrigin).origin;
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const providerBearer =
+      c.req.path.startsWith("/v1/provider/apps/") &&
+      c.req.header("authorization")?.startsWith("Bearer pvk_");
+    if (
+      !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
+      !providerBearer &&
+      c.req.header("origin") !== allowed
+    )
+      throw new ForbiddenError("INVALID_ORIGIN");
+    await next();
+    if (c.req.path.startsWith("/v1/auth/") || c.req.path === "/v1/me")
+      c.header("Cache-Control", "no-store");
+  });
+};
