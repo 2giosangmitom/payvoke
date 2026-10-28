@@ -93,9 +93,9 @@ export function ActivityPage() {
   return (
     <PageShell className="pt-10">
       <PageHeader
-        eyebrow="Activity"
-        title="Every paid request"
-        description="Each payment is held in the vault until the work is verified. This is where you see what is still running, what waits for your review and what you can reclaim."
+        compact
+        title="Activity"
+        description="Every job you paid for: what is still running, what waits for your review and what you can reclaim."
       />
       <div role="group" aria-label="Filter activity" className="mt-8 flex flex-wrap gap-2">
         {FILTERS.map(([value, label]) => (

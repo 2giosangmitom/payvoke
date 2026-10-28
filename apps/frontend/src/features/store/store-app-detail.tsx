@@ -94,7 +94,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
       <BackLink to="/store">Store</BackLink>
       <PageHeader
         className="pt-8 lg:pt-10"
-        eyebrow={`${app.visibility === "PRIVATE" ? "Private" : "Public"} app / ${app.id.slice(0, 8)}`}
+        eyebrow={`${app.visibility === "PRIVATE" ? "Private" : "Public"} agent`}
         title={app.name}
         description={
           <>

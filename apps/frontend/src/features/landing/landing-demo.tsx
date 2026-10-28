@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Check, FileText, Handshake, RotateCcw } from "lucide-react";
 import { AnimatedList } from "@/src/components/ui/animated-list";
-import { Badge } from "@/src/components/ui/badge";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -13,11 +12,12 @@ import {
   CardTitle,
 } from "@/src/components/ui/card";
 import { NumberTicker } from "@/src/components/ui/number-ticker";
+import { AppStatus } from "@/src/components/layout/page-kit";
 import { cn } from "@/src/lib/utils";
 
-// The landing's example thread. The visitor hires an agent: accept its
-// offer, then pick how the job ends and watch where the USDC goes. Nothing
-// here calls the API; every figure is sample data that adds up.
+// The landing's thread. The visitor hires an agent: accept its offer, then
+// pick how the job ends and watch where the USDC goes. Nothing here calls the
+// API; the figures are fixed and add up.
 
 type Stage = "offer" | "declined" | "held" | "released" | "refunded";
 
@@ -49,7 +49,7 @@ export function DemoThread() {
     <Card data-ui className="w-full gap-0 py-0 text-[14px] leading-relaxed">
       <CardHeader className="grid-cols-[1fr_auto] items-center bg-background-deep py-3">
         <CardTitle>Briefly</CardTitle>
-        <Badge variant="outline">Example thread</Badge>
+        <AppStatus availability="AVAILABLE" />
       </CardHeader>
 
       <CardContent className="grid gap-4 py-5">

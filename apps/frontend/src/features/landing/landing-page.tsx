@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ArrowUpRight, Lock, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Lock, RotateCcw } from "lucide-react";
 import { NetworkAvalancheFuji, TokenUSDC } from "@web3icons/react";
-import { motion, useScroll, useTransform, type MotionValue } from "motion/react";
+import { SiClaudecode, SiModelcontextprotocol } from "@icons-pack/react-simple-icons";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValueEvent,
+  useScroll,
+  useTransform,
+  type MotionValue,
+} from "motion/react";
 import {
   Accordion,
   AccordionContent,
@@ -13,24 +21,27 @@ import { AnimatedShinyText } from "@/src/components/ui/animated-shiny-text";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  type CarouselApi,
-} from "@/src/components/ui/carousel";
 import { HeroPixelField } from "@/src/components/ui/hero-pixel-field";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
+import { Marquee } from "@/src/components/ui/marquee";
+import { OrbitingCircles } from "@/src/components/ui/orbiting-circles";
 import { ParticleText } from "@/src/components/ui/particle-text";
 import { ScrollProgress } from "@/src/components/ui/scroll-progress";
 import { Switch } from "@/src/components/ui/switch";
+import { AnimatedSpan, Terminal, TypingAnimation } from "@/src/components/ui/terminal";
 import { TextAnimate } from "@/src/components/ui/text-animate";
 import { TextReveal } from "@/src/components/ui/text-reveal";
 import { ToggleGroup, ToggleGroupItem } from "@/src/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/src/components/ui/tooltip";
 import { WordRotate } from "@/src/components/ui/word-rotate";
+import { useMediaQuery } from "@/src/hooks/use-media-query";
+import { codingAgents } from "@/src/features/landing/coding-agents";
 import { landingAudio } from "@/src/features/landing/landing-audio";
 import { DemoThread } from "@/src/features/landing/landing-demo";
 import { fragments } from "@/src/features/landing/landing-fragments";
@@ -47,8 +58,10 @@ export function LandingPage() {
         and pays only when the work arrives. Payvoke is the store, the checkout and the vault in
         between, on Avalanche.
       </TextReveal>
+      <Jobs />
       <TryIt />
       <Showcase />
+      <CodingAgents />
       <Lifecycle />
       <Safeguards />
       <Questions />
@@ -104,7 +117,7 @@ function Hero() {
     <section
       id="top"
       ref={hero}
-      className="relative isolate flex min-h-[calc(100svh-4.5rem)] flex-col overflow-hidden bg-field-bg"
+      className="relative isolate flex min-h-[calc(100svh-4rem)] flex-col overflow-hidden bg-field-bg"
     >
       <HeroPixelField sample={(now) => landingAudio.sample(now)} />
 
@@ -202,25 +215,83 @@ function Hero() {
   );
 }
 
-/* The example thread: the visitor hires an agent. */
+/* Kinds of job, scrolling past in two rows. */
+
+const jobRows = [
+  [
+    ["/summarize", "a 40-page report"],
+    ["/review", "a pull request"],
+    ["/clean", "a messy CSV"],
+    ["/research", "a market"],
+    ["/translate", "product docs"],
+  ],
+  [
+    ["/audit", "a smart contract"],
+    ["/outline", "a talk"],
+    ["/compare", "two contracts"],
+    ["/transcribe", "a meeting"],
+    ["/draft", "release notes"],
+  ],
+] as const;
+
+function Jobs() {
+  return (
+    <section id="jobs" aria-labelledby="jobs-title" className="overflow-x-clip py-28 lg:py-36">
+      <div className="container-page grid gap-6 lg:grid-cols-12 lg:items-end">
+        <div className="lg:col-span-7">
+          <SectionTitle id="jobs-title">An agent for every job</SectionTitle>
+        </div>
+        <BlurFade
+          inView
+          direction="up"
+          offset={24}
+          delay={0.15}
+          className="lg:col-span-4 lg:col-start-9"
+        >
+          <p className="max-w-md text-[17px] leading-[1.6]">
+            Each agent lists the commands it takes. You pick one, the agent prices the job, and you
+            pay for that job alone.
+          </p>
+        </BlurFade>
+      </div>
+      <div className="mt-14 grid gap-3">
+        {jobRows.map((row, index) => (
+          <Marquee key={index} reverse={index === 1} pauseOnHover className="p-0 [--duration:46s]">
+            {row.map(([command, job]) => (
+              <p
+                key={command}
+                className="flex items-baseline gap-3 bg-secondary px-6 py-5 text-[clamp(1.25rem,2vw,1.75rem)] tracking-[-0.02em] whitespace-nowrap transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                <code className="font-mono font-medium">{command}</code>
+                <span>{job}</span>
+              </p>
+            ))}
+          </Marquee>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* The thread: the visitor hires an agent and picks how the job ends. */
 
 function TryIt() {
   return (
     <section
       id="try"
       aria-labelledby="try-title"
-      className="container-page grid items-center gap-12 py-28 lg:grid-cols-12 lg:gap-8 lg:py-36"
+      className="container-page grid items-center gap-12 pb-28 lg:grid-cols-12 lg:gap-8 lg:pb-36"
     >
       <div className="lg:col-span-5">
-        <SectionTitle id="try-title">Hire an agent, start to finish</SectionTitle>
+        <SectionTitle id="try-title">Hire an agent in a chat</SectionTitle>
         <BlurFade inView direction="up" offset={16} delay={0.2}>
           <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
-            This is a thread with an example agent. Accept its offer, then choose how the job ends
-            and watch where the 0.40 USDC goes.
+            Tell the agent what you need. It answers with an offer: the price, the delivery deadline
+            and how long you have to review. Accept it and the USDC moves into the vault.
           </p>
           <p className="mt-4 max-w-md text-[17px] leading-[1.6]">
-            Nothing here touches a wallet. In the real app the same steps run on Avalanche Fuji with
-            test USDC.
+            Work that arrives on time is paid out after your review. Work that doesn't comes back to
+            you as a full refund.
           </p>
         </BlurFade>
       </div>
@@ -237,33 +308,25 @@ function TryIt() {
   );
 }
 
-/* What buyers see when they hire an agent, one fragment at a time. */
+/* Each part of a thread, pinned beside its explanation while the list scrolls. */
 
 function Showcase() {
-  const [api, setApi] = useState<CarouselApi>();
+  const list = useRef<HTMLOListElement>(null);
   const [active, setActive] = useState(0);
-  const current = fragments[active];
-
-  useEffect(() => {
-    if (!api) return;
-    const select = () => setActive(api.selectedScrollSnap());
-    select();
-    api.on("select", select);
-    return () => {
-      api.off("select", select);
-    };
-  }, [api]);
+  const { scrollYProgress } = useScroll({ target: list, offset: ["start center", "end center"] });
+  useMotionValueEvent(scrollYProgress, "change", (value) => {
+    setActive(Math.min(fragments.length - 1, Math.max(0, Math.floor(value * fragments.length))));
+  });
 
   return (
     <section
-      id="buyers"
-      data-mode="dark"
-      aria-labelledby="buyers-title"
-      className="overflow-x-clip bg-background py-28 text-foreground lg:py-36"
+      id="thread"
+      aria-labelledby="thread-title"
+      className="bg-background-deep py-28 lg:py-36"
     >
       <div className="container-page grid gap-6 lg:grid-cols-12 lg:items-end">
         <div className="lg:col-span-6">
-          <SectionTitle id="buyers-title">What your buyers see</SectionTitle>
+          <SectionTitle id="thread-title">Everything happens in the thread</SectionTitle>
         </div>
         <BlurFade
           inView
@@ -273,46 +336,216 @@ function Showcase() {
           className="lg:col-span-5 lg:col-start-8"
         >
           <p className="max-w-md text-[17px] leading-[1.6]">
-            Every agent on Payvoke works in a chat. Buyers find it in the store, open a thread and
-            talk to it. Nothing is charged until they accept an offer.
+            Buyers find your agent in the store, open a thread and talk to it. Commands, forms,
+            offers and results all arrive in the same conversation.
           </p>
         </BlurFade>
       </div>
 
-      <Carousel
-        setApi={setApi}
-        opts={{ align: "center", containScroll: false }}
-        aria-label="Parts of a Payvoke thread"
-        className="mt-16"
-      >
-        <CarouselContent className="-ml-6 sm:-ml-10">
+      <div className="container-page mt-12 grid gap-8 lg:mt-4 lg:grid-cols-12">
+        <ol ref={list} className="grid lg:col-span-5">
           {fragments.map((fragment, index) => (
-            <CarouselItem
+            <li
               key={fragment.id}
-              aria-label={fragment.name}
               className={cn(
-                "basis-[min(24rem,82vw)] pl-6 transition-[opacity,scale] duration-500 sm:pl-10",
-                index !== active && "scale-95 opacity-40",
+                "flex flex-col justify-center gap-3 py-8 transition-opacity duration-300 lg:min-h-[52vh] lg:py-0",
+                index !== active && "lg:opacity-30",
               )}
             >
-              {fragment.panel}
-            </CarouselItem>
+              <h3 className="text-[clamp(1.5rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-[-0.03em]">
+                {fragment.name}
+              </h3>
+              <p className="max-w-md text-[17px] leading-[1.6]">{fragment.text}</p>
+              <div className="mt-4 max-w-md lg:hidden">{fragment.panel}</div>
+            </li>
           ))}
-        </CarouselContent>
-
-        <div className="container-page mt-10 grid gap-6 sm:grid-cols-[1fr_auto] sm:items-start">
-          <BlurFade key={current.id} className="max-w-xl">
-            <div aria-live="polite">
-              <h3 className="text-xl font-medium">{current.name}</h3>
-              <p className="mt-2 text-[17px] leading-[1.6]">{current.text}</p>
+        </ol>
+        <div className="relative hidden lg:col-span-6 lg:col-start-7 lg:block">
+          <div className="sticky top-[calc(50vh-12rem)] flex gap-6">
+            <motion.span
+              aria-hidden="true"
+              style={{ scaleY: scrollYProgress }}
+              className="w-1 origin-top bg-primary"
+            />
+            <div className="min-h-96 flex-1">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={fragments[active].id}
+                  initial={{ opacity: 0, y: 24, filter: "blur(6px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, y: -16, filter: "blur(6px)" }}
+                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                  className="max-w-md"
+                >
+                  {fragments[active].panel}
+                </motion.div>
+              </AnimatePresence>
             </div>
-          </BlurFade>
-          <div className="flex gap-2">
-            <CarouselPrevious size="icon-lg" className="static translate-none" />
-            <CarouselNext size="icon-lg" className="static translate-none" />
           </div>
         </div>
-      </Carousel>
+      </div>
+    </section>
+  );
+}
+
+/* Coding agents as buyers: they circle Payvoke, joined through MCP. */
+
+const toolCall = "flex items-center gap-2";
+
+const bridgePoints = [
+  "Your agent needs no MCP server of its own. The bridge lists it as a tool.",
+  "The bridge holds a spend key with the caps you set in the console.",
+  "It asks you before every payment, and the same vault rules apply.",
+];
+
+// Both rings stop together while the pointer or keyboard focus is in the
+// orbit, so no mark slides over another and each tooltip stays put.
+const orbitTile =
+  "rounded-none group-hover/orbit:[animation-play-state:paused] group-has-focus-visible/orbit:[animation-play-state:paused] motion-reduce:[animation-play-state:paused]";
+
+const rails = [
+  {
+    name: "Model Context Protocol",
+    icon: <SiModelcontextprotocol className="size-6 sm:size-7" />,
+  },
+  { name: "USDC", icon: <TokenUSDC className="size-7 sm:size-8" /> },
+  { name: "Avalanche", icon: <NetworkAvalancheFuji className="size-7 sm:size-8" /> },
+];
+
+// The mark sits on the section's own ground, which only hides the orbit line
+// behind it. Hovering one dims the rest; only the logo grows, not its ground.
+function OrbitMark({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={name}
+        className="grid size-full place-items-center bg-background text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary *:transition-[opacity,scale] *:duration-200 group-hover/orbit:*:opacity-35 group-has-focus-visible/orbit:*:opacity-35 hover:*:scale-115 hover:*:opacity-100! focus-visible:*:scale-115 focus-visible:*:opacity-100!"
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent className="rounded-none">{name}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CodingAgents() {
+  const wide = useMediaQuery("(min-width: 640px)");
+
+  return (
+    <section
+      id="agents"
+      data-mode="dark"
+      aria-labelledby="agents-title"
+      className="overflow-x-clip bg-background py-28 text-foreground lg:py-36"
+    >
+      <div className="container-page grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
+        <div className="min-w-0 lg:col-span-5">
+          <SectionTitle id="agents-title">Built for the age of agents</SectionTitle>
+          <BlurFade inView direction="up" offset={16} delay={0.15}>
+            <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
+              Coding agents already plan, write and review code on their own. Payvoke lets Claude
+              Code, Copilot, Cursor and any other MCP host hire your agent the way a person does,
+              with the same offer, the same vault and the same refund. The MCP bridge that connects
+              them is in development.
+            </p>
+          </BlurFade>
+        </div>
+
+        <BlurFade inView direction="up" offset={24} delay={0.1} className="min-w-0 lg:col-span-7">
+          <TooltipProvider delay={100}>
+            <div className="group/orbit relative mx-auto grid aspect-square w-full max-w-[22rem] place-items-center sm:max-w-[34rem]">
+              <div className="relative z-10 grid place-items-center gap-2">
+                <img src="/logo.svg" alt="" aria-hidden="true" className="size-12 sm:size-14" />
+                <span className="text-lg font-bold tracking-[-0.04em] sm:text-xl">Payvoke</span>
+              </div>
+              <OrbitingCircles
+                radius={wide ? 140 : 92}
+                iconSize={wide ? 48 : 40}
+                duration={28}
+                reverse
+                className={orbitTile}
+              >
+                {rails.map((rail) => (
+                  <OrbitMark key={rail.name} name={rail.name}>
+                    {rail.icon}
+                  </OrbitMark>
+                ))}
+              </OrbitingCircles>
+              <OrbitingCircles
+                radius={wide ? 236 : 152}
+                iconSize={wide ? 60 : 44}
+                duration={60}
+                className={orbitTile}
+              >
+                {codingAgents.map(({ name, Icon, brand }) => (
+                  <OrbitMark key={name} name={name}>
+                    <Icon color={brand ? "default" : "currentColor"} className="size-7 sm:size-9" />
+                  </OrbitMark>
+                ))}
+              </OrbitingCircles>
+            </div>
+          </TooltipProvider>
+        </BlurFade>
+      </div>
+
+      <div className="container-page mt-20 grid items-center gap-12 lg:mt-28 lg:grid-cols-12 lg:gap-8">
+        <BlurFade inView direction="up" offset={24} className="min-w-0 lg:col-span-7">
+          <Terminal
+            title={
+              <>
+                <SiClaudecode color="default" className="size-4" aria-hidden="true" />
+                Claude Code with the Payvoke bridge
+              </>
+            }
+            className="bg-background-deep text-[13px] leading-relaxed"
+          >
+            <TypingAnimation className="text-[13px] text-foreground" duration={28}>
+              {"> Review PR #128. Hire a reviewer on Payvoke if you want a second pass."}
+            </TypingAnimation>
+            <AnimatedSpan className={toolCall}>
+              <span aria-hidden="true" className="size-2 bg-primary" />
+              <span className="text-muted-foreground">
+                {'payvoke.search_agents("code review")'}
+              </span>
+            </AnimatedSpan>
+            <AnimatedSpan className="pl-4 text-foreground">
+              Reviewer, Lintwise and 2 more
+            </AnimatedSpan>
+            <AnimatedSpan className={toolCall}>
+              <span aria-hidden="true" className="size-2 bg-primary" />
+              <span className="text-muted-foreground">
+                {'payvoke.request_offer("Reviewer", "/review", "PR #128")'}
+              </span>
+            </AnimatedSpan>
+            <AnimatedSpan className="pl-4 text-foreground">
+              0.60 USDC · delivery 15 min · review 1 h
+            </AnimatedSpan>
+            <AnimatedSpan className="text-primary">
+              ? Pay 0.60 USDC from your spend key (4.40 left today)? › Yes
+            </AnimatedSpan>
+            <AnimatedSpan className={toolCall}>
+              <Check size={14} className="text-primary" aria-hidden="true" />
+              0.60 USDC held in PayvokeVault on Avalanche
+            </AnimatedSpan>
+            <AnimatedSpan className={toolCall}>
+              <Check size={14} className="text-primary" aria-hidden="true" />
+              Reviewer delivered 7 comments in 11 min
+            </AnimatedSpan>
+          </Terminal>
+        </BlurFade>
+        <ul className="grid max-w-md gap-5 lg:col-span-4 lg:col-start-9">
+          {bridgePoints.map((point, index) => (
+            <li key={point}>
+              <BlurFade inView direction="up" offset={12} delay={0.1 + index * 0.08}>
+                <p className="flex gap-3 text-[17px] leading-[1.5]">
+                  <Check size={18} className="mt-1 shrink-0 text-primary" aria-hidden="true" />
+                  {point}
+                </p>
+              </BlurFade>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -590,6 +823,10 @@ const questions = [
   {
     q: "Why Avalanche?",
     a: "Payvoke only tells your agent to start once the buyer's money is held in a finalized block. Avalanche finalizes blocks in a second or two, so jobs start almost right away, and gas stays small next to the price of a job.",
+  },
+  {
+    q: "Can a coding agent hire on Payvoke?",
+    a: "Not yet. A local MCP bridge is in development. It will run on your machine, hold a spend key with the caps you set, and ask you before every payment. Claude Code, Cursor and other MCP hosts will then see Payvoke agents as tools.",
   },
   {
     q: "Can I keep an agent private?",

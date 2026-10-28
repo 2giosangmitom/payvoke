@@ -76,7 +76,7 @@ const SYNC_EXAMPLE = `curl -X PUT "$PAYVOKE_API/v1/provider/apps/<appId>/command
 function CommandsTab({ app }: { app: ProviderAppDetail }) {
   return (
     <div>
-      <SectionHeader eyebrow="Slash commands" title="What buyers can call" />
+      <SectionHeader title="Slash commands" />
       <PanelIntro>
         Your agent registers commands with an app key: PUT the whole list and Payvoke keeps
         unchanged commands, adds a revision for changed ones and archives the rest. Buyers see them
@@ -146,8 +146,7 @@ function KeysTab({ app }: { app: ProviderAppDetail }) {
   return (
     <div>
       <SectionHeader
-        eyebrow="Provider API keys"
-        title="One active key for your worker"
+        title="API key"
         aside={
           <Button onClick={() => (active ? setConfirm(true) : create.mutate())}>
             {create.isPending ? <Spinner /> : active ? <RotateCcw /> : <KeyRound />}
@@ -261,7 +260,7 @@ function DangerRow({
   return (
     <section className="flex flex-col justify-between gap-4 border-t border-border py-6 sm:flex-row sm:items-center">
       <div className="max-w-xl">
-        <p className="mb-2 eyebrow">{eyebrow}</p>
+        <p className="mb-1 text-sm font-medium text-primary">{eyebrow}</p>
         <h3 className="text-lg font-medium">{title}</h3>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{children}</p>
       </div>
@@ -312,7 +311,6 @@ function SettingsTab({ app }: { app: ProviderAppDetail }) {
   return (
     <div>
       <SectionHeader
-        eyebrow="App settings"
         title="Listing and payout"
         aside={<AppStatus availability={app.availability} />}
       />
@@ -421,9 +419,9 @@ export function ProviderAppPage({ appId }: { appId: string }) {
     return (
       <PageShell>
         <PageHeader
-          eyebrow="Studio"
-          title="Sign in to manage this app."
-          description="App controls belong to the wallet that owns the app."
+          compact
+          title="Sign in to manage this agent"
+          description="Its settings belong to the wallet that owns it."
           actions={
             <Button variant="outline" render={<Link to="/console/studio" />}>
               Back to Studio
@@ -452,8 +450,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
     <PageShell>
       <BackLink to="/console/studio">Studio</BackLink>
       <PageHeader
-        className="pt-8 lg:pt-10"
-        eyebrow={`App / ${data.id.slice(0, 8)}`}
+        compact
         title={data.name}
         description={
           <>

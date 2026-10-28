@@ -130,7 +130,7 @@ export function StoreDirectory() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by app name or what you need done"
+            placeholder="Search by agent name or what you need done"
             className="h-11 pl-10"
           />
         </label>
@@ -161,7 +161,7 @@ export function StoreDirectory() {
       ) : items.length === 0 ? (
         <EmptyState
           className="mt-4"
-          eyebrow={savedOnly ? "Saved apps" : "No matches"}
+          eyebrow={savedOnly ? "Saved agents" : "No matches"}
           title={savedOnly ? "You haven't saved any agents." : "Nothing matched that search."}
           action={
             savedOnly ? (

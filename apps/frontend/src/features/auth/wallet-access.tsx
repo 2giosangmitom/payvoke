@@ -42,7 +42,7 @@ function walletError(error: unknown): string {
 
 type WalletAccessProps = { label?: string; variant?: "header" | "hero" | "secondary" };
 
-export function WalletAccess({ label = "Connect wallet", variant = "header" }: WalletAccessProps) {
+export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAccessProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<"sign" | "logout" | null>(null);
@@ -129,34 +129,46 @@ export function WalletAccess({ label = "Connect wallet", variant = "header" }: W
     }
   }
 
-  const buttonLabel =
-    sessionMatches && address ? shortAddress(address) : isConnected && address ? "Sign in" : label;
+  const signedIn = sessionMatches && address;
+  const buttonLabel = signedIn ? shortAddress(address) : isConnected && address ? "Sign in" : label;
+  const openDialog = () => {
+    setError("");
+    setOpen(true);
+  };
 
   return (
     <>
-      <Button
-        size={variant === "header" ? "sm" : "lg"}
-        variant={variant === "secondary" ? "outline" : "default"}
-        className={cn(variant === "header" && "h-10 px-3 max-sm:w-10 max-sm:px-0")}
-        onClick={() => {
-          setError("");
-          setOpen(true);
-        }}
-        aria-label={sessionMatches && address ? `Account ${address}` : buttonLabel}
-      >
-        {sessionMatches && address ? (
-          <span aria-hidden="true" className="size-1.5 bg-current" />
-        ) : (
-          <Wallet strokeWidth={1.7} />
-        )}
-        {/* The header button shrinks to its icon on phones; aria-label keeps the name. */}
-        <span className={cn(variant === "header" && "max-sm:hidden")}>{buttonLabel}</span>
-        {variant === "hero" ? (
-          <ArrowRight />
-        ) : (
-          <ChevronDown className={cn(variant === "header" && "max-sm:hidden")} />
-        )}
-      </Button>
+      {variant === "header" ? (
+        // In the site header: a quiet text button while signed out, the
+        // account's address once signed in.
+        <Button
+          variant={signedIn ? "outline" : "ghost"}
+          className="h-10 px-3"
+          onClick={openDialog}
+          aria-label={signedIn ? `Account ${address}` : buttonLabel}
+        >
+          {signedIn && <span aria-hidden="true" className="size-2 bg-primary" />}
+          <span className={cn(signedIn && "font-mono text-[13px] max-sm:hidden")}>
+            {buttonLabel}
+          </span>
+          {signedIn && <ChevronDown className="max-sm:hidden" />}
+        </Button>
+      ) : (
+        <Button
+          size="lg"
+          variant={variant === "secondary" ? "outline" : "default"}
+          onClick={openDialog}
+          aria-label={signedIn ? `Account ${address}` : buttonLabel}
+        >
+          {signedIn ? (
+            <span aria-hidden="true" className="size-1.5 bg-current" />
+          ) : (
+            <Wallet strokeWidth={1.7} />
+          )}
+          <span>{buttonLabel}</span>
+          {variant === "hero" ? <ArrowRight /> : <ChevronDown />}
+        </Button>
+      )}
 
       <Dialog
         open={open}

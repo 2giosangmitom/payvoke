@@ -27,41 +27,61 @@ export function plural(count: number, noun: string) {
 }
 
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("eyebrow", className)}>{children}</p>;
+  return <p className={cn("text-sm font-medium text-primary", className)}>{children}</p>;
 }
 
 export function PageShell({ children, className }: { children: ReactNode; className?: string }) {
   return <main className={cn("container-page pb-24", className)}>{children}</main>;
 }
 
+/**
+ * A page's title block. `compact` is the console's work-screen header: a
+ * plain noun title at 28px, with the section named by the breadcrumb instead
+ * of an eyebrow.
+ */
 export function PageHeader({
   eyebrow,
   title,
   description,
   actions,
+  compact = false,
   className,
 }: {
-  eyebrow: ReactNode;
+  eyebrow?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  compact?: boolean;
   className?: string;
 }) {
   return (
     <BlurFade>
       <header
         className={cn(
-          "grid items-end gap-6 border-b border-border pt-16 pb-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-12 lg:pt-20",
+          "grid items-end gap-6 border-b border-border lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-12",
+          compact ? "pt-8 pb-6" : "pt-16 pb-10 lg:pt-20",
           className,
         )}
       >
         <div className="min-w-0">
-          <Eyebrow className="mb-4">{eyebrow}</Eyebrow>
-          <h1 className="text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] font-medium tracking-[-0.055em] text-balance break-words">
+          {eyebrow && !compact && <Eyebrow className="mb-4">{eyebrow}</Eyebrow>}
+          <h1
+            className={cn(
+              "text-balance break-words",
+              compact
+                ? "text-[28px] leading-tight font-semibold tracking-[-0.03em]"
+                : "text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] font-medium tracking-[-0.055em]",
+            )}
+          >
             {title}
           </h1>
           {description && (
-            <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
+            <p
+              className={cn(
+                "max-w-2xl text-muted-foreground",
+                compact ? "mt-2 text-[15px] leading-6" : "mt-5 text-base leading-7",
+              )}
+            >
               {description}
             </p>
           )}
@@ -78,16 +98,16 @@ export function SectionHeader({
   aside,
   id,
 }: {
-  eyebrow: ReactNode;
+  eyebrow?: ReactNode;
   title: ReactNode;
   aside?: ReactNode;
   id?: string;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <Eyebrow className="mb-2">{eyebrow}</Eyebrow>
-        <h2 id={id} className="text-2xl font-medium tracking-[-0.03em]">
+        {eyebrow && <Eyebrow className="mb-1">{eyebrow}</Eyebrow>}
+        <h2 id={id} className="text-xl font-semibold tracking-[-0.02em]">
           {title}
         </h2>
       </div>
@@ -106,7 +126,7 @@ export function BackLink({
   return (
     <Link
       to={to}
-      className="mt-8 inline-flex items-center gap-2 font-mono text-xs tracking-wider text-muted-foreground uppercase hover:text-primary"
+      className="mt-8 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
     >
       <ArrowLeft size={14} /> {children}
     </Link>
@@ -223,7 +243,7 @@ export function EmptyState({
   );
 }
 
-/** Label + control stacked, with the mono label style used across forms. */
+/** Label + control stacked, with the label style used across forms. */
 export function FormField({
   label,
   htmlFor,
@@ -239,10 +259,7 @@ export function FormField({
 }) {
   return (
     <div className={cn("grid min-w-0 gap-2", className)}>
-      <label
-        htmlFor={htmlFor}
-        className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase"
-      >
+      <label htmlFor={htmlFor} className="text-sm font-medium">
         {label}
       </label>
       {children}

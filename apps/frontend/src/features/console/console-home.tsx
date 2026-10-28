@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Blocks, MessagesSquare, Store } from "lucide-react";
+import { MessagesSquare, Store } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { ActivityLink, StageBadge } from "@/src/features/activity/activity-page";
 import {
@@ -40,28 +40,25 @@ export function ConsoleHome() {
     .filter(({ stage }) => stage.tone === "active");
 
   return (
-    <PageShell className="pt-10">
+    <PageShell>
       <PageHeader
-        eyebrow="Console"
-        title="Your work in one place"
-        description="Hire agents and chat with them, follow every held payment and manage the agents you share."
+        compact
+        title="Overview"
+        description="Results to review, jobs in progress and your recent chats."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button render={<Link to="/console/chat" />}>
               <MessagesSquare /> New chat
             </Button>
             <Button variant="outline" render={<Link to="/store" />}>
-              <Store /> Find a tool
-            </Button>
-            <Button variant="outline" render={<Link to="/console/studio" />}>
-              <Blocks /> Studio
+              <Store /> Find an agent
             </Button>
           </div>
         }
       />
 
       <section aria-labelledby="attention-title" className="mt-12">
-        <SectionHeader id="attention-title" eyebrow="To do" title="Needs your attention" />
+        <SectionHeader id="attention-title" title="Needs your attention" />
         {activity.isPending ? (
           <LoadingState>Loading payments…</LoadingState>
         ) : activity.isError ? (
@@ -86,7 +83,7 @@ export function ConsoleHome() {
                   <p className="text-xs text-muted-foreground">{stage.detail}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs">{formatUsdc(item.grossAmount)}</span>
+                  <span className="text-sm tabular-nums">{formatUsdc(item.grossAmount)}</span>
                   <StageBadge stage={stage} />
                 </div>
               </li>
@@ -99,7 +96,6 @@ export function ConsoleHome() {
         <section aria-labelledby="running-title">
           <SectionHeader
             id="running-title"
-            eyebrow="In progress"
             title="Running now"
             aside={
               <Link to="/console/activity" className="hover:text-primary">
@@ -121,7 +117,7 @@ export function ConsoleHome() {
                   <ActivityLink item={item}>
                     <span className="text-sm">{item.app.name}</span>
                   </ActivityLink>
-                  <span className="font-mono text-[11px] text-faint">{stage.detail}</span>
+                  <span className="text-xs text-muted-foreground">{stage.detail}</span>
                 </li>
               ))}
             </ul>
@@ -130,7 +126,6 @@ export function ConsoleHome() {
         <section aria-labelledby="chats-title">
           <SectionHeader
             id="chats-title"
-            eyebrow="Agents"
             title="Recent chats"
             aside={
               <Link to="/console/chat" className="hover:text-primary">
@@ -142,8 +137,7 @@ export function ConsoleHome() {
             <LoadingState>Loading chats…</LoadingState>
           ) : (chats.data?.items.length ?? 0) === 0 ? (
             <EmptyState
-              eyebrow="No chats yet"
-              title="Talk to an agent."
+              title="No chats yet"
               action={<Button render={<Link to="/console/chat" />}>Start a chat</Button>}
             >
               Chatting is free; you pay only for an offer you accept.
@@ -158,7 +152,7 @@ export function ConsoleHome() {
                     className="flex items-center justify-between gap-3 hover:text-primary"
                   >
                     <span className="truncate text-sm">{thread.title || thread.app.name}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-faint">
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                       {new Date(thread.lastMessageAt).toLocaleDateString()}
                     </span>
                   </Link>

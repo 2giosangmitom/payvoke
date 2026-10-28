@@ -68,9 +68,9 @@ export function DashboardHome() {
     return (
       <PageShell>
         <PageHeader
-          eyebrow="Studio"
-          title="Run the app behind the thread."
-          description="Sign in with the wallet that owns your apps to manage their commands, API keys, worker status and store listing."
+          compact
+          title="Studio"
+          description="Sign in with the wallet that owns your agents to manage their commands, API keys and store listing."
           actions={<WalletAccess variant="hero" label="Sign in to Studio" />}
         />
       </PageShell>
@@ -80,12 +80,12 @@ export function DashboardHome() {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Studio"
-        title="Your apps"
-        description="Each app is an AI agent that buyers can hire. It chats with them, prices each job with an offer and registers its own commands with the API key you issue here. You decide whether it is listed in the store."
+        compact
+        title="Studio"
+        description="The agents you share. Each one prices its jobs with offers and registers its commands with the API key you issue here."
         actions={
           <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-            <Plus /> New app
+            <Plus /> New agent
           </Button>
         }
       />
@@ -98,9 +98,8 @@ export function DashboardHome() {
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-2 eyebrow">New app</p>
-                <h2 id="create-app-title" className="text-2xl font-medium tracking-[-0.03em]">
-                  Create an app
+                <h2 id="create-app-title" className="text-xl font-semibold tracking-[-0.02em]">
+                  New agent
                 </h2>
               </div>
               <Button
@@ -177,25 +176,20 @@ export function DashboardHome() {
       )}
 
       <section aria-labelledby="apps-title" className="mt-12">
-        <SectionHeader
-          id="apps-title"
-          eyebrow="Owned apps"
-          title="Apps you run"
-          aside={plural(items.length, "app")}
-        />
+        <SectionHeader id="apps-title" title="Your agents" aside={plural(items.length, "app")} />
         {apps.isPending ? (
-          <LoadingState>Loading apps…</LoadingState>
+          <LoadingState>Loading agents…</LoadingState>
         ) : apps.isError ? (
           <ErrorNotice onRetry={() => void apps.refetch()}>
-            {errorMessage(apps.error, "Could not load apps.")}
+            {errorMessage(apps.error, "Could not load agents.")}
           </ErrorNotice>
         ) : items.length === 0 ? (
           <EmptyState
-            eyebrow="No apps yet"
-            title="Create your first app."
-            action={<Button onClick={() => setOpen(true)}>Create app</Button>}
+            title="Share your first agent"
+            action={<Button onClick={() => setOpen(true)}>New agent</Button>}
           >
-            After that: add a default command, create an API key, and start your worker.
+            Name it here, then issue an API key so your agent can register its commands and start
+            taking jobs.
           </EmptyState>
         ) : (
           <div className="grid border-t border-border">

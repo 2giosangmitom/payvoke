@@ -22,8 +22,9 @@ import {
 
 // Cropped pieces of the buyer's side of Payvoke, built from the same
 // components as the app and shown at interface size in the landing's
-// showcase. Names and figures are sample content. Each panel is inert: the
-// controls are pictures of controls, so they take no focus or clicks.
+// walkthrough. Each panel is inert: the controls are pictures of controls,
+// so they take no focus or clicks. Panels may render twice (phone and
+// desktop layouts), so they carry no element ids.
 
 export type Fragment = { id: string; name: string; text: string; panel: ReactNode };
 
@@ -60,7 +61,7 @@ export const fragments: Fragment[] = [
             aria-hidden="true"
             className="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
           />
-          <Input readOnly value="summar" aria-label="Search apps" className="pl-9" />
+          <Input readOnly value="summar" aria-label="Search agents" className="pl-9" />
         </div>
         <Card size="sm" className="bg-background-deep">
           <CardHeader className="grid-cols-[1fr_auto]">
@@ -113,10 +114,8 @@ export const fragments: Fragment[] = [
       <Panel>
         <strong className="font-medium">A few details first</strong>
         <div className="grid gap-1.5">
-          <Label htmlFor="fragment-length" className="text-[13px] text-muted-foreground">
-            Length
-          </Label>
-          <Input id="fragment-length" readOnly value="One page" />
+          <Label className="text-[13px] text-muted-foreground">Length</Label>
+          <Input readOnly value="One page" aria-label="Length" />
         </div>
         <div className="grid gap-1.5">
           <Label className="text-[13px] text-muted-foreground">Report</Label>
