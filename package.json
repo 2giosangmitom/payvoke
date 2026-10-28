@@ -1,22 +1,28 @@
 {
   "name": "payvoke",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tests/*"
+  ],
   "scripts": {
     "fmt": "oxfmt",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "postinstall": "pnpm --filter @payvoke/db generate"
+    "postinstall": "bun --filter @payvoke/db generate"
   },
   "devDependencies": {
     "oxfmt": "^0.73.0",
     "oxlint": "^1.89.0"
   },
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "12.14.0",
-      "onFail": "download"
-    }
-  }
+  "trustedDependencies": [
+    "@openuidev/lang-core",
+    "@prisma/engines",
+    "esbuild",
+    "prisma",
+    "protobufjs"
+  ]
 }

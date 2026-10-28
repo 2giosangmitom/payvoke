@@ -11,10 +11,10 @@
     "./config": "./src/config.ts"
   },
   "scripts": {
-    "dev": "tsx --watch ./src/server.ts",
-    "start": "tsx ./src/server.ts",
+    "dev": "bun --watch ./src/server.ts",
+    "start": "bun ./src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "test": "bun test test/"
   },
   "dependencies": {
     "@fastify/bearer-auth": "10.1.4",
@@ -31,7 +31,6 @@
     "close-with-grace": "^2.5.0",
     "dotenv": "^18.0.9",
     "fastify": "^5.12.7",
-    "tsx": "^4.23.15",
     "typebox": "^1.4.3",
     "viem": "2.57.7"
   },

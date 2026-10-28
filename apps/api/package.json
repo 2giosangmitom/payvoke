@@ -12,11 +12,11 @@
     "./testing": "./test/offer-fixture.ts"
   },
   "scripts": {
-    "dev": "tsx --watch ./src/server.ts",
-    "start": "tsx ./src/server.ts",
-    "auth:schema": "pnpm dlx auth@1.7.11 generate --config auth.cli.ts --output ../../packages/payvoke-db/prisma/auth.prisma --yes",
+    "dev": "bun --watch ./src/server.ts",
+    "start": "bun ./src/server.ts",
+    "auth:schema": "bunx auth@1.7.11 generate --config auth.cli.ts --output ../../packages/payvoke-db/prisma/auth.prisma --yes",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "test": "bun test test/"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "1.7.11",
@@ -47,7 +47,6 @@
     "dotenv": "^18.0.9",
     "fastify": "^5.12.7",
     "fastify-plugin": "^6.0.1",
-    "tsx": "^4.23.15",
     "typebox": "^1.4.3",
     "viem": "2.57.7",
     "zod": "^4.6.7"

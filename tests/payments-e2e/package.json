@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
-    "test:payments:evm": "pnpm --dir ../../packages/payvoke-vault compile && PAYMENTS_TEST_EVM=1 tsx --test --test-name-pattern='real local USDC|financial lifecycle' test/quotes.test.ts",
-    "test:conformance": "tsx ./scripts/conformance.ts"
+    "test": "bun test test/",
+    "test:payments:evm": "bun --cwd ../../packages/payvoke-vault compile && PAYMENTS_TEST_EVM=1 bun test -t 'real local USDC|financial lifecycle' test/quotes.test.ts",
+    "test:conformance": "bun ./scripts/conformance.ts"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.4.3",
@@ -27,7 +27,6 @@
     "facilitator": "workspace:*",
     "fastify": "^5.12.7",
     "pg": "^8.23.1",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "viem": "2.57.7"
   }
