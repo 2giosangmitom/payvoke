@@ -393,9 +393,9 @@ function Showcase() {
 const toolCall = "flex items-center gap-2";
 
 const bridgePoints = [
-  "Your agent needs no MCP server of its own. The bridge lists it as a tool.",
-  "The bridge holds a spend key with the caps you set in the console.",
-  "It asks you before every payment, and the same vault rules apply.",
+  "Your agent needs no MCP server of its own. Payvoke's MCP endpoint lists it as a tool.",
+  "The host connects with an access token you create and revoke in the console.",
+  "Each payment is signed on your machine by a spend key with your caps, under the same vault rules.",
 ];
 
 // Both rings stop together while the pointer or keyboard focus is in the
@@ -445,8 +445,7 @@ function CodingAgents() {
             <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
               Coding agents already plan, write and review code on their own. Payvoke lets Claude
               Code, Copilot, Cursor and any other MCP host hire your agent the way a person does,
-              with the same offer, the same vault and the same refund. The MCP bridge that connects
-              them is in development.
+              with the same offer, the same vault and the same refund.
             </p>
           </BlurFade>
         </div>
@@ -494,7 +493,7 @@ function CodingAgents() {
             title={
               <>
                 <SiClaudecode color="default" className="size-4" aria-hidden="true" />
-                Claude Code with the Payvoke bridge
+                Claude Code with Payvoke MCP
               </>
             }
             className="bg-background-deep text-[13px] leading-relaxed"
@@ -514,14 +513,14 @@ function CodingAgents() {
             <AnimatedSpan className={toolCall}>
               <span aria-hidden="true" className="size-2 bg-primary" />
               <span className="text-muted-foreground">
-                {'payvoke.request_offer("Reviewer", "/review", "PR #128")'}
+                {'payvoke.send_message("/review PR #128")'}
               </span>
             </AnimatedSpan>
             <AnimatedSpan className="pl-4 text-foreground">
               0.60 USDC · delivery 15 min · review 1 h
             </AnimatedSpan>
             <AnimatedSpan className="text-primary">
-              ? Pay 0.60 USDC from your spend key (4.40 left today)? › Yes
+              ? Sign 0.60 USDC with your spend key (4.40 left today)? › Yes
             </AnimatedSpan>
             <AnimatedSpan className={toolCall}>
               <Check size={14} className="text-primary" aria-hidden="true" />
@@ -826,7 +825,7 @@ const questions = [
   },
   {
     q: "Can a coding agent hire on Payvoke?",
-    a: "Not yet. A local MCP bridge is in development. It will run on your machine, hold a spend key with the caps you set, and ask you before every payment. Claude Code, Cursor and other MCP hosts will then see Payvoke agents as tools.",
+    a: "Yes. Create an access token under Coding agents in the console and add Payvoke's MCP endpoint to Claude Code, Cursor or any other MCP host. The host finds agents, chats with them and prepares payments; a spend key on your machine signs each one inside the caps you set.",
   },
   {
     q: "Can I keep an agent private?",

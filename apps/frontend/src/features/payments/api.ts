@@ -1,9 +1,10 @@
 import {
-  paymentRequirements,
+  debitTypedData,
+  paymentSignatureHeader,
   validateQuoteDocument,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
-import { paymentTypes, vaultAdmissionAbi, vaultDomain } from "@payvoke/shared/protocol";
+import { vaultAdmissionAbi } from "@payvoke/shared/protocol";
 import type { Address, Hex } from "viem";
 import { apiOrigin, call, callAs, client } from "@/src/lib/api/client";
 
@@ -114,31 +115,17 @@ export async function submitSigned(
   quote: QuoteDocument,
   grantId: Hex,
   epoch: bigint,
-  sign: (args: {
-    domain: ReturnType<typeof vaultDomain>;
-    types: typeof paymentTypes;
-    primaryType: "DebitAuthorization";
-    message: { quoteDigest: Hex; grantId: Hex; grantEpoch: bigint };
-  }) => Promise<Hex>,
+  sign: (args: ReturnType<typeof debitTypedData>) => Promise<Hex>,
 ) {
   if (Date.now() >= quote.validUntil * 1000) throw new Error("Quote expired. Prepare a new quote.");
-  const signature = await sign({
-    domain: vaultDomain(quote.vault as Address),
-    types: paymentTypes,
-    primaryType: "DebitAuthorization",
-    message: { quoteDigest: quote.quoteDigest, grantId, grantEpoch: epoch },
-  });
-  const envelope = {
-    x402Version: 2,
-    accepted: paymentRequirements(quote),
-    resource: { url: new URL("/v1/invocations", apiOrigin).href, method: "POST" },
-    payload: {
-      authorization: { quoteDigest: quote.quoteDigest, grantId, grantEpoch: epoch.toString() },
-      signature,
-    },
-  };
-  // All envelope values are ASCII. x402 v2 transmits the canonical JSON as base64.
-  const header = btoa(JSON.stringify(envelope));
+  const signature = await sign(debitTypedData(quote, grantId, epoch));
+  const header = paymentSignatureHeader(
+    quote,
+    grantId,
+    epoch,
+    signature,
+    new URL("/v1/invocations", apiOrigin).href,
+  );
   return call(
     invocations.$post(
       { json: { quoteId: quote.quoteId } },

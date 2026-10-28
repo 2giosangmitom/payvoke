@@ -66,14 +66,17 @@ const address = (c: Parameters<typeof getConnInfo>[0]) => {
   }
 };
 
-// `max` requests per minute for one route. A store error lets the request
+// `max` requests per minute for one route and client. A store error lets the request
 // through rather than failing it; the limit is abuse control, not accounting.
 export const rateLimit = (name: string, max: number) =>
   createMiddleware<AppEnv>(async (c, next) => {
     const { rateStore } = c.var.cradle;
+    // MCP tools call the API in process, without a socket: count those per
+    // buyer token rather than all as one "local" client.
+    const token = /^Bearer pvb_([a-f0-9]{16})\./.exec(c.req.header("authorization") ?? "")?.[1];
     let count = 0;
     try {
-      count = await rateStore.hit(`${name}:${address(c)}`, 60000);
+      count = await rateStore.hit(`${name}:${token ? `pvb_${token}` : address(c)}`, 60000);
     } catch {
       count = 0;
     }

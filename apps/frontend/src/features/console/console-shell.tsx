@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Blocks, ChevronRight, House, MessagesSquare, Store } from "lucide-react";
+import {
+  Activity,
+  Blocks,
+  ChevronRight,
+  House,
+  MessagesSquare,
+  Store,
+  SquareTerminal,
+} from "lucide-react";
 import { NetworkAvalancheFuji } from "@web3icons/react";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
@@ -30,6 +38,7 @@ const workspace = [
   { to: "/console", label: "Home", icon: House, exact: true },
   { to: "/console/chat", label: "Chat", icon: MessagesSquare, exact: false },
   { to: "/console/activity", label: "Activity", icon: Activity, exact: false },
+  { to: "/console/connect", label: "Coding agents", icon: SquareTerminal, exact: false },
 ] as const;
 const build = [{ to: "/console/studio", label: "Studio", icon: Blocks, exact: false }] as const;
 
@@ -38,6 +47,7 @@ const build = [{ to: "/console/studio", label: "Studio", icon: Blocks, exact: fa
 const crumbs: { prefix: string; label: string; to?: string }[] = [
   { prefix: "/console/chat", label: "Chat", to: "/console/chat" },
   { prefix: "/console/activity", label: "Activity", to: "/console/activity" },
+  { prefix: "/console/connect", label: "Coding agents", to: "/console/connect" },
   { prefix: "/console/studio", label: "Studio", to: "/console/studio" },
 ];
 

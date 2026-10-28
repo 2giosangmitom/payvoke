@@ -19,6 +19,7 @@ import { Route as ChatThreadIdRouteImport } from './routes/chat.$threadId'
 import { Route as ConsoleIndexRouteImport } from './routes/console.index'
 import { Route as ConsoleActivityRouteImport } from './routes/console.activity'
 import { Route as ConsoleChatRouteImport } from './routes/console.chat'
+import { Route as ConsoleConnectRouteImport } from './routes/console.connect'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
@@ -87,6 +88,11 @@ const ConsoleChatRoute = ConsoleChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => ConsoleRoute,
 } as any)
+const ConsoleConnectRoute = ConsoleConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
+  getParentRoute: () => ConsoleRoute,
+} as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/dashboard/',
   path: '/dashboard/',
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
   '/console/chat': typeof ConsoleChatRouteWithChildren
+  '/console/connect': typeof ConsoleConnectRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/agents': typeof MarketAgentsRoute
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
+  '/console/connect': typeof ConsoleConnectRoute
   '/': typeof MarketIndexRoute
   '/chat': typeof ChatIndexRoute
   '/console': typeof ConsoleIndexRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
   '/console/chat': typeof ConsoleChatRouteWithChildren
+  '/console/connect': typeof ConsoleConnectRoute
   '/_market/': typeof MarketIndexRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
@@ -202,6 +211,7 @@ export interface FileRouteTypes {
     | '/chat/$threadId'
     | '/console/activity'
     | '/console/chat'
+    | '/console/connect'
     | '/chat/'
     | '/console/'
     | '/dashboard/'
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/chat/$threadId'
     | '/console/activity'
+    | '/console/connect'
     | '/'
     | '/chat'
     | '/console'
@@ -241,6 +252,7 @@ export interface FileRouteTypes {
     | '/chat/$threadId'
     | '/console/activity'
     | '/console/chat'
+    | '/console/connect'
     | '/_market/'
     | '/chat/'
     | '/console/'
@@ -351,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleChatRouteImport
       parentRoute: typeof ConsoleRoute
     }
+    '/console/connect': {
+      id: '/console/connect'
+      path: '/connect'
+      fullPath: '/console/connect'
+      preLoaderRoute: typeof ConsoleConnectRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
     '/dashboard/': {
       id: '/dashboard/'
       path: '/dashboard'
@@ -456,6 +475,7 @@ const ConsoleChatRouteWithChildren = ConsoleChatRoute._addFileChildren(
 interface ConsoleRouteChildren {
   ConsoleActivityRoute: typeof ConsoleActivityRoute
   ConsoleChatRoute: typeof ConsoleChatRouteWithChildren
+  ConsoleConnectRoute: typeof ConsoleConnectRoute
   ConsoleIndexRoute: typeof ConsoleIndexRoute
   ConsoleStudioIndexRoute: typeof ConsoleStudioIndexRoute
   ConsoleStudioAppsAppIdRoute: typeof ConsoleStudioAppsAppIdRoute
@@ -464,6 +484,7 @@ interface ConsoleRouteChildren {
 const ConsoleRouteChildren: ConsoleRouteChildren = {
   ConsoleActivityRoute: ConsoleActivityRoute,
   ConsoleChatRoute: ConsoleChatRouteWithChildren,
+  ConsoleConnectRoute: ConsoleConnectRoute,
   ConsoleIndexRoute: ConsoleIndexRoute,
   ConsoleStudioIndexRoute: ConsoleStudioIndexRoute,
   ConsoleStudioAppsAppIdRoute: ConsoleStudioAppsAppIdRoute,

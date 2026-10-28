@@ -308,6 +308,41 @@ export function paymentRequirements(document: QuoteDocument): PaymentRequirement
   };
 }
 
+// The EIP-712 debit the grant's signer signs to pay for one quote.
+export function debitTypedData(document: QuoteDocument, grantId: Hex, grantEpoch: bigint) {
+  return {
+    domain: vaultDomain(getAddress(document.vault)),
+    types: paymentTypes,
+    primaryType: "DebitAuthorization",
+    message: { quoteDigest: document.quoteDigest, grantId, grantEpoch },
+  } as const;
+}
+
+// The x402 v2 payment for a signed debit, base64 of its JSON as the
+// PAYMENT-SIGNATURE header carries it. All envelope values are ASCII.
+export function paymentSignatureHeader(
+  document: QuoteDocument,
+  grantId: Hex,
+  grantEpoch: bigint,
+  signature: Hex,
+  resourceUrl: string,
+) {
+  const envelope = {
+    x402Version: 2,
+    accepted: paymentRequirements(document),
+    resource: { url: resourceUrl, method: "POST" },
+    payload: {
+      authorization: {
+        quoteDigest: document.quoteDigest,
+        grantId,
+        grantEpoch: grantEpoch.toString(),
+      },
+      signature,
+    },
+  };
+  return btoa(JSON.stringify(envelope));
+}
+
 // Local envelope/signature integrity only. The recovered EOA is NOT trusted as
 // the grant signer until the worker reads the grant and simulates reserveHold.
 export async function readPaymentIntent(

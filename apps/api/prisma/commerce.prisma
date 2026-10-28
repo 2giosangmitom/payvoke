@@ -134,6 +134,24 @@ model AppStar {
   @@map("app_stars")
 }
 
+// Buyer personal access tokens for MCP hosts and scripts, stored only as a
+// SHA-256 hash. A token acts as its buyer on buyer routes, never on auth or
+// token routes.
+model BuyerAccessToken {
+  id         String    @id @default(uuid())
+  userId     String
+  name       String
+  prefix     String    @unique
+  secretHash String    @unique
+  expiresAt  DateTime
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@map("buyer_access_tokens")
+}
+
 model DeploymentPolicy {
   version                String @id
   // Only the current policy has activeSlot="active"; old versions are retained.

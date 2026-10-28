@@ -11,10 +11,12 @@ import type { AppEnv } from "./http/context";
 import { logger } from "./logging";
 import { errorHandler, notFound } from "./http/errors";
 import { defaultBodyLimit, memoryRateStore, redisRateStore } from "./http/limits";
+import { accessTokenRoutes } from "./modules/auth/access-token.routes";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { originGuard } from "./modules/auth/guard";
 import { catalogRoutes } from "./modules/catalog/catalog.routes";
 import { fileRoutes } from "./modules/files/file.routes";
+import { mcpRoutes } from "./modules/mcp/mcp.routes";
 import { openuiRoutes } from "./modules/openui/openui.routes";
 import { paymentRoutes } from "./modules/payments/payments.routes";
 import { presaleRoutes } from "./modules/presale/presale.routes";
@@ -27,6 +29,7 @@ import { memorySignals, type Signals } from "./signals";
 // Every route, chained so the RPC client (`hc<AppType>`) sees their types.
 export const routes = new Hono<AppEnv>()
   .route("/", authRoutes)
+  .route("/", accessTokenRoutes)
   .route("/", quoteRoutes)
   .route("/", paymentRoutes)
   .route("/", providerRoutes)
@@ -69,6 +72,10 @@ export function createApp(
   const container = createAppContainer(config, db, log, signals, storage, payments, rateStore);
   const cradle = container.cradle;
 
+  // MCP tools call back into this app, bound once it exists.
+  let self: (request: Request) => Response | Promise<Response> = () => {
+    throw new Error("App not ready");
+  };
   const app = new Hono<AppEnv>()
     // One access record per request, with a request ID (x-request-id) that
     // every log record written while handling it carries. The path only:
@@ -104,7 +111,10 @@ export function createApp(
     )
     .use(defaultBodyLimit(DEFAULT_BODY_LIMIT))
     .use(originGuard(config.WEB_ORIGIN))
-    .route("/", routes);
+    .route("/", routes)
+    // Outside `routes`: MCP is not part of the RPC client.
+    .route("/", mcpRoutes((request) => self(request)));
+  self = (request) => app.fetch(request);
   app.onError(errorHandler(log));
   app.notFound(notFound);
 

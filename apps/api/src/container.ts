@@ -8,6 +8,7 @@ import type { Logger } from "./logging";
 import type { RateStore } from "./http/limits";
 import type { Signals } from "./signals";
 import { createAuth } from "./modules/auth/auth";
+import { AccessTokenService } from "./modules/auth/access-token.service";
 import { AuthService } from "./modules/auth/auth.service";
 import { CatalogService } from "./modules/catalog/catalog.service";
 import { FileService } from "./modules/files/file.service";
@@ -35,6 +36,7 @@ export interface Cradle {
   // Null when FILES_ENABLED is false.
   storage: ObjectStorage | null;
   auth: ReturnType<typeof createAuth>;
+  accessTokenService: AccessTokenService;
   authService: AuthService;
   catalogService: CatalogService;
   providerAppService: ProviderAppService;
@@ -74,6 +76,7 @@ export function createAppContainer(
     storage: asValue(storage),
     auth: asFunction(({ config, db }: Cradle) => createAuth(config, db)).singleton(),
 
+    accessTokenService: asClass(AccessTokenService).singleton(),
     authService: asClass(AuthService).singleton(),
     catalogService: asClass(CatalogService).singleton(),
     providerAppService: asClass(ProviderAppService).singleton(),

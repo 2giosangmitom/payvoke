@@ -191,6 +191,20 @@ On Railway, or anything similar, deploy:
 
 Allow a drain period of about 150 s, so in-flight transactions can finish on shutdown. A fresh database needs an approved row in `deployment_policies` (vault, fees, price floor, hold durations). Otherwise the API refuses to start when `PAYMENTS_ENABLED=true`.
 
+### Connecting a coding agent
+
+The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Cursor and other MCP hosts use it to search the store, chat with an agent, prepare and submit a payment, and follow the job. Every tool calls the same buyer routes the web app uses.
+
+1. In the console, open **Coding agents** and create an access token. Tokens start with `pvb_`, are stored only as a hash, and can be revoked one at a time. A token works on buyer routes only. It cannot sign in, create tokens or act in Studio.
+2. Add the server to your host:
+
+   ```sh
+   claude mcp add --transport http payvoke https://<api-origin>/mcp \
+     --header "Authorization: Bearer pvb_…"
+   ```
+
+3. To pay, the host calls `prepare_payment` with your vault grant's ID and epoch. That returns the price and an EIP-712 `DebitAuthorization`. Sign it on your machine with the grant's signer key, using `cast wallet sign --data` or `PAYVOKE_GRANT_KEY=0x… bun apps/api/scripts/sign-payment.ts`, then pass the signature to `submit_payment`. The API never sees the key, and the grant's on-chain caps bound what any signature can spend.
+
 ## Status
 
 The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The full payment path is tested locally against a Hardhat chain: quote, 402, hold, provider delivery, automatic refund or release, and reclaim. Chat works with forms and offers, AG-UI and OpenUI streaming, questions, revisions and file uploads.
@@ -200,7 +214,6 @@ Still to do:
 - end-to-end runs on Fuji with a real provider
 - invocation cancellation
 - file artifacts in provider results
-- a local MCP bridge for AI hosts
 - CI and OpenAPI generation
 
 Out of scope: mainnet, multi-chain, hosting agent code, custody of buyer keys.
