@@ -1,29 +1,20 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import { randomUUID } from "node:crypto";
 import type { Cradle } from "../../container";
 import type { Prisma } from "#core/db";
 import { channels } from "#core/queue";
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  ServiceUnavailableError,
-  isUniqueViolation,
-} from "../../errors";
+import { BadRequestError, ConflictError, NotFoundError, isUniqueViolation } from "../../errors";
 import { threadSlotReleased } from "../apps/schema";
+import { parseToolResult, storedToolCall } from "../tools/builtin";
 import { hash, identifier, object } from "./protocol";
 import { revisionPolicy } from "./run-rules";
 
-export type AnswerBody = {
-  questionId: string;
-  arguments: Record<string, unknown>;
-  clientRequestId: string;
-};
+export type ToolResultBody = { toolCallId: string; result: unknown; clientRequestId: string };
 export type RevisionBody = { reason: string; clientRequestId: string };
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
-// Buyer continuations of a paid invocation. Both are free and start a new
+// Buyer continuations of a paid invocation: the result to a tool the run
+// opened, and an in-scope revision. Both are free and start a new
 // provider run inside the same invocation and hold; both are idempotent on
 // (invocation, clientRequestId).
 export class ContinuationService {
@@ -41,87 +32,70 @@ export class ContinuationService {
     this.doorbell.ring(channels.thread(quote.threadId));
   }
 
-  // The input schema comes from the provider's question, never the browser.
-  async answer(buyerId: string, invocationId: string, body: AnswerBody | undefined) {
-    if (
-      !object(body) ||
-      !identifier(body.questionId) ||
-      !identifier(body.clientRequestId) ||
-      !object(body.arguments)
-    )
-      throw new BadRequestError("INVALID_ANSWER");
-    const invocation = await this.db.invocation.findFirst({
-      where: { id: invocationId, buyerId },
-      include: { quote: true, run: true },
+  // The result to a tool call a run opened, named by its public id. Null when
+  // the id is not a run tool call of this buyer's thread. The call stored at
+  // report time, never the browser, decides what a valid result is.
+  async submitToolResult(buyerId: string, threadId: string, body: ToolResultBody) {
+    const call = await this.db.invocationToolCall.findFirst({
+      where: { id: body.toolCallId, invocation: { buyerId, quote: { threadId } } },
+      include: { invocation: { include: { quote: true } } },
     });
-    if (!invocation) throw new NotFoundError("INVOCATION_NOT_FOUND");
+    if (!call) return null;
+    if (!identifier(body.clientRequestId)) throw new BadRequestError("INVALID_TOOL_RESULT");
+    const invocation = call.invocation;
+    const result = parseToolResult(
+      storedToolCall({ name: call.name, args: call.args }),
+      body.result,
+    );
     const key = {
       invocationId_clientRequestId: {
         invocationId: invocation.id,
         clientRequestId: body.clientRequestId,
       },
     };
-    const replay = await this.db.invocationAnswer.findUnique({ where: key });
+    const replay = await this.db.invocationToolResult.findUnique({ where: key });
     if (replay) {
-      if (replay.questionId !== body.questionId || hash(replay.arguments) !== hash(body.arguments))
-        throw new ConflictError("ANSWER_IDEMPOTENCY_CONFLICT");
+      if (replay.toolCallId !== call.toolCallId || hash(replay.result) !== hash(result))
+        throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return {
-        questionId: replay.questionId,
-        answerId: replay.id,
+        toolCallId: call.id,
         runId: replay.runId,
         executionStatus: invocation.executionStatus,
       };
     }
-    if (invocation.executionStatus !== "WAITING_BUYER")
-      throw new ConflictError("QUESTION_NOT_OPEN");
-    const question = await this.db.invocationQuestion.findFirst({
-      where: { invocationId: invocation.id, questionId: body.questionId, status: "OPEN" },
-    });
-    if (!question) throw new ConflictError("QUESTION_NOT_OPEN");
-    let validate: ReturnType<Ajv2020["compile"]>;
-    try {
-      validate = new Ajv2020({ strict: true }).compile(question.inputSchema as object);
-    } catch {
-      throw new ServiceUnavailableError("QUESTION_SCHEMA_UNAVAILABLE");
-    }
-    if (!validate(body.arguments)) throw new BadRequestError("INVALID_ANSWER_ARGUMENTS");
+    if (call.status !== "OPEN" || invocation.executionStatus !== "WAITING_BUYER")
+      throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
     const runId = randomUUID();
     try {
       await this.db.$transaction(async (tx) => {
-        const claimed = await tx.invocationQuestion.updateMany({
-          where: { invocationId: invocation.id, questionId: body.questionId, status: "OPEN" },
+        const claimed = await tx.invocationToolCall.updateMany({
+          where: { id: call.id, status: "OPEN" },
           data: { status: "ANSWERED", answeredAt: new Date() },
         });
-        if (!claimed.count) throw new ConflictError("QUESTION_ALREADY_ANSWERED");
+        if (!claimed.count) throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
         await tx.providerRun.create({ data: { invocationId: invocation.id, runId } });
-        await tx.invocationAnswer.create({
+        await tx.invocationToolResult.create({
           data: {
             invocationId: invocation.id,
-            questionId: body.questionId,
+            toolCallId: call.toolCallId,
             runId,
             buyerId,
             clientRequestId: body.clientRequestId,
-            arguments: json(body.arguments),
+            result: json(result),
           },
         });
         const queued = await tx.invocation.updateMany({
           where: { id: invocation.id, executionStatus: "WAITING_BUYER" },
           data: { executionStatus: "QUEUED", runId },
         });
-        if (!queued.count) throw new ConflictError("QUESTION_NOT_OPEN");
+        if (!queued.count) throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
       });
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictError("QUESTION_ALREADY_ANSWERED");
+      if (isUniqueViolation(error)) throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
       throw error;
     }
     this.ring(invocation.quote);
-    const answer = await this.db.invocationAnswer.findUniqueOrThrow({ where: key });
-    return {
-      questionId: body.questionId,
-      answerId: answer.id,
-      runId,
-      executionStatus: "QUEUED",
-    };
+    return { toolCallId: call.id, runId, executionStatus: "QUEUED" as const };
   }
 
   // An in-scope revision reuses the delivered invocation and hold. The snapshot

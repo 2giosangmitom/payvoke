@@ -1,6 +1,7 @@
 import { call, client, type Body } from "@/src/lib/api/client";
 
 export type ThreadFile = Body<(typeof client.v1.files)[":fileId"]["completions"]["$post"]>;
+export type AudioMeta = { durationMs: number; peaks: number[] };
 
 // Mirrors the API allowlist; anything else is refused before hashing.
 export const ACCEPTED_FILE_TYPES: string[] = [
@@ -19,20 +20,59 @@ export const ACCEPTED_FILE_TYPES: string[] = [
   "image/gif",
   "audio/mpeg",
   "audio/wav",
+  "audio/ogg",
+  "audio/webm",
+  "audio/mp4",
+  "audio/flac",
+  "audio/aac",
   "video/mp4",
 ];
 
 type AcceptedFileType = Parameters<typeof client.v1.files.$post>[0]["json"]["contentType"];
 
-async function sha256Hex(file: File) {
-  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+const PEAKS = 96;
+
+async function sha256Hex(bytes: ArrayBuffer) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// The player draws what the uploader measured: the length and a waveform of
+// the loudest sample in each of PEAKS equal slices, scaled to 0..1. Decoding
+// happens on the local copy, so the stored file never needs CORS to be drawn.
+async function audioMeta(bytes: ArrayBuffer): Promise<AudioMeta | undefined> {
+  if (typeof AudioContext === "undefined") return undefined;
+  const context = new AudioContext();
+  try {
+    const buffer = await context.decodeAudioData(bytes.slice(0));
+    const channel = buffer.getChannelData(0);
+    const slice = Math.max(1, Math.floor(channel.length / PEAKS));
+    const raw: number[] = [];
+    for (let start = 0; start < channel.length && raw.length < PEAKS; start += slice) {
+      let peak = 0;
+      for (let index = start; index < Math.min(start + slice, channel.length); index += 16)
+        peak = Math.max(peak, Math.abs(channel[index]));
+      raw.push(peak);
+    }
+    const loudest = Math.max(...raw, 0.0001);
+    return {
+      durationMs: Math.max(1, Math.round(buffer.duration * 1000)),
+      peaks: raw.map((peak) => Math.round((peak / loudest) * 1000) / 1000),
+    };
+  } catch {
+    // A format this browser cannot decode still uploads, with no waveform.
+    return undefined;
+  } finally {
+    void context.close();
+  }
 }
 
 // Declares size and digest, PUTs the bytes straight to storage, then asks the
 // API to verify them. Only a READY file can be attached to a quote.
 export async function uploadThreadFile(threadId: string, file: File): Promise<ThreadFile> {
   if (!ACCEPTED_FILE_TYPES.includes(file.type)) throw new Error("Unsupported file type.");
+  const bytes = await file.arrayBuffer();
+  const audio = file.type.startsWith("audio/") ? await audioMeta(bytes) : undefined;
   const requested = await call(
     client.v1.files.$post({
       json: {
@@ -40,8 +80,9 @@ export async function uploadThreadFile(threadId: string, file: File): Promise<Th
         name: file.name,
         contentType: file.type as AcceptedFileType,
         size: file.size,
-        sha256: await sha256Hex(file),
+        sha256: await sha256Hex(bytes),
         clientRequestId: crypto.randomUUID(),
+        ...(audio ? { audio } : {}),
       },
     }),
   );
@@ -62,6 +103,10 @@ export const downloadFile = async (fileId: string) => {
   const { url } = await call(client.v1.files[":fileId"].download.$get({ param: { fileId } }));
   window.location.assign(url);
 };
+
+// An inline URL for the player or an image preview; audio and images only.
+export const streamFile = (fileId: string) =>
+  call(client.v1.files[":fileId"].stream.$get({ param: { fileId } }));
 
 export const formatBytes = (size: number) =>
   size < 1024

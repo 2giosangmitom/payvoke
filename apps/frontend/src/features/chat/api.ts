@@ -1,9 +1,9 @@
-import { call, callAs, client, type Body } from "@/src/lib/api/client";
+import { call, client, type Body } from "@/src/lib/api/client";
 
 const threads = client.v1.threads;
 const invocations = client.v1.invocations;
 
-// Commands, threads, messages and offers as the API serializes them.
+// Commands, threads and the projected timeline as the API serializes them.
 export type ThreadSummary = Body<typeof threads.$get>["items"][number];
 export type ThreadDetail = Body<(typeof threads)[":threadId"]["$get"]>;
 export type ThreadApp = ThreadDetail["app"];
@@ -13,95 +13,53 @@ export type CommandOption = CommandRevision["options"][number];
 export type CommandOptionType = CommandOption["type"];
 export type RevisionPolicy = CommandRevision["terms"]["revisionPolicy"];
 
-// AG-UI projections: the API stores and replays these as JSON events, so
-// their shapes are declared here rather than inferred.
-export type FileManifest = {
-  fileId: string;
-  name: string;
-  contentType: string;
-  size: number;
-  sha256: string;
+export type Timeline = Body<(typeof threads)[":threadId"]["timeline"]["$get"]>;
+export type TimelineMessage = Timeline["messages"][number];
+export type TimelinePart = TimelineMessage["parts"][number];
+export type TimelineToolPart = Extract<TimelinePart, { type: "tool-call" }>;
+export type TimelineFilePart = Extract<TimelinePart, { type: "file" }>;
+export type TimelineRun = NonNullable<TimelineMessage["run"]>;
+export type RunPhase = TimelineRun["phase"];
+// A text token streamed after the last timeline, addressed to one part.
+export type TimelineDelta = { messageId: string; partId: string; delta: string };
+
+// Built-in tool arguments, as the API normalizes them.
+export type AskFormArgs = {
+  title: string;
+  description?: string;
+  schema: unknown;
+  submitLabel?: string;
 };
-export type ConversationMessage = {
-  id: string;
-  seq: number;
-  role: "BUYER" | "PROVIDER";
-  content: string;
-  commandId: string | null;
-  arguments: Record<string, unknown> | null;
-  files: FileManifest[];
-  // A bot message may ask for a form; the buyer's answer points back to it.
-  form: MessageForm | null;
-  replyToId: string | null;
-  createdAt: string;
+export type AskChoiceArgs = {
+  prompt: string;
+  options: { id: string; label: string; description?: string }[];
+  multiple: boolean;
+  minSelections: number;
+  maxSelections: number;
 };
-export type MessageForm = { title: string; description?: string; schema: unknown };
-export type OfferStatus = "OPEN" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "SUPERSEDED" | "EXPIRED";
-export type Offer = {
-  id: string;
-  threadId: string;
-  commandRevisionId: string;
-  arguments: Record<string, unknown>;
+export type ConfirmArgs = {
+  title: string;
+  description?: string;
+  details: { label: string; value: string }[];
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant: "default" | "destructive";
+};
+export type OfferArgs = {
+  offerId: string;
+  summary: string;
   grossAmount: string;
   deliverySeconds: number;
-  summary: string;
-  messageSeq: number;
-  status: OfferStatus;
   expiresAt: string;
-  quoteId: string | null;
-  createdAt: string;
-};
-// Whole OpenUI Lang program for one surface; each snapshot replaces the last.
-export type OpenUISurfaceContent = { source: string; invocationId?: string; surfaceId?: string };
-export type AguiEvent = {
-  type: string;
-  messageId?: string;
-  role?: string;
-  delta?: string;
-  activityType?: string;
-  content?: OpenUISurfaceContent;
-  message?: string;
-};
-export type ChatQuestion = {
-  id: string;
-  invocationId: string;
-  questionId: string;
-  prompt: string;
-  inputSchema: unknown;
-  chatTextParameter: string | null;
-  status: string;
-  createdAt: string;
-  answeredAt: string | null;
-};
-export type ChatAnswer = {
-  questionId: string;
-  invocationId: string;
+  commandRevisionId: string;
+  command: { id: string; name: string };
   arguments: Record<string, unknown>;
-  createdAt: string;
 };
-export type ChatRevision = {
-  id: string;
-  invocationId: string;
-  reason: string;
-  status: string;
-  createdAt: string;
-};
-export type ChatSnapshot = {
-  cursor: string;
-  messages: { messageId: string; invocationId: string; content: string; complete: boolean }[];
-  surfaces: { messageId: string; content: OpenUISurfaceContent }[];
-  invocations: {
-    id: string;
-    executionStatus: string;
-    output: unknown | null;
-    files: { fileId: string; name: string; contentType: string; size: number }[];
-  }[];
-  prompts: { quoteId: string; invocationId: string; text: string; paid: boolean }[];
-  questions: ChatQuestion[];
-  answers: ChatAnswer[];
-  revisions: ChatRevision[];
-  conversation: ConversationMessage[];
-  offers: Offer[];
+export type ProgressArgs = {
+  stepId: string;
+  label: string;
+  status: "running" | "done" | "failed";
+  detail?: string;
 };
 
 export const getThreads = (q?: string) =>
@@ -114,28 +72,45 @@ export const renameThread = (threadId: string, title: string) =>
   call(threads[":threadId"].$patch({ param: { threadId }, json: { title } }));
 export const archiveThread = (threadId: string) =>
   call(threads[":threadId"].archive.$post({ param: { threadId } }));
-// The snapshot replays stored AG-UI JSON events, which the API leaves untyped.
-export const getSnapshot = (threadId: string) =>
-  callAs<ChatSnapshot>(threads[":threadId"]["ag-ui"].snapshot.$get({ param: { threadId } }));
-// Live AG-UI events for a native EventSource, resumed from `after`.
-export const threadEventsUrl = (threadId: string, after: string) =>
-  threads[":threadId"]["ag-ui"].events.$url({ param: { threadId }, query: { after } }).href;
+export const getTimeline = (threadId: string) =>
+  call(threads[":threadId"].timeline.$get({ param: { threadId } }));
+// Live `timeline` and `delta` events for a native EventSource.
+export const threadEventsUrl = (threadId: string) =>
+  threads[":threadId"].events.$url({ param: { threadId }, query: {} }).href;
 
-export const answerQuestion = (
-  invocationId: string,
-  questionId: string,
-  values: Record<string, unknown>,
-  clientRequestId: string,
+// Free interaction with the app's bot: a message or a slash command with its
+// arguments, with files attached as metadata.
+export const sendMessage = (
+  threadId: string,
+  body: {
+    content: string;
+    commandId?: string;
+    arguments?: Record<string, unknown>;
+    fileIds?: string[];
+  },
+  clientRequestId = crypto.randomUUID(),
 ) =>
   call(
-    invocations[":id"].answers.$post(
-      {
-        param: { id: invocationId },
-        json: { questionId, arguments: values, clientRequestId },
-      },
-      { headers: { "idempotency-key": clientRequestId } },
-    ),
+    threads[":threadId"].messages.$post({
+      param: { threadId },
+      json: { ...body, clientRequestId },
+    }),
   );
+
+// The one result to a tool the bot opened, or `{ accepted: false }` for an offer.
+export const submitToolResult = (
+  threadId: string,
+  toolCallId: string,
+  result: Record<string, unknown>,
+  clientRequestId = crypto.randomUUID(),
+) =>
+  call(
+    threads[":threadId"]["tool-results"].$post({
+      param: { threadId },
+      json: { toolCallId, result, clientRequestId },
+    }),
+  );
+
 export const requestRevision = (invocationId: string, reason: string, clientRequestId: string) =>
   call(
     invocations[":id"].revisions.$post(
@@ -143,27 +118,3 @@ export const requestRevision = (invocationId: string, reason: string, clientRequ
       { headers: { "idempotency-key": clientRequestId } },
     ),
   );
-
-// Free interaction with the app's bot: a message, a slash command with its
-// arguments, or the answer to a bot form.
-export const sendMessage = async (
-  threadId: string,
-  body: {
-    content: string;
-    commandId?: string;
-    replyToId?: string;
-    arguments?: Record<string, unknown>;
-    fileIds?: string[];
-  },
-  clientRequestId = crypto.randomUUID(),
-) =>
-  (await call(
-    threads[":threadId"].messages.$post({
-      param: { threadId },
-      json: { ...body, clientRequestId },
-    }),
-  )) as ConversationMessage;
-export const declineOffer = async (threadId: string, offerId: string) =>
-  (await call(
-    threads[":threadId"].offers[":offerId"].declines.$post({ param: { threadId, offerId } }),
-  )) as Offer;

@@ -20,6 +20,8 @@ import { Route as ConsoleIndexRouteImport } from './routes/console.index'
 import { Route as ConsoleActivityRouteImport } from './routes/console.activity'
 import { Route as ConsoleChatRouteImport } from './routes/console.chat'
 import { Route as ConsoleConnectRouteImport } from './routes/console.connect'
+import { Route as ConsoleKeysRouteImport } from './routes/console.keys'
+import { Route as ConsoleWalletRouteImport } from './routes/console.wallet'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
@@ -93,6 +95,16 @@ const ConsoleConnectRoute = ConsoleConnectRouteImport.update({
   path: '/connect',
   getParentRoute: () => ConsoleRoute,
 } as any)
+const ConsoleKeysRoute = ConsoleKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => ConsoleRoute,
+} as any)
+const ConsoleWalletRoute = ConsoleWalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => ConsoleRoute,
+} as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/dashboard/',
   path: '/dashboard/',
@@ -145,6 +157,8 @@ export interface FileRoutesByFullPath {
   '/console/activity': typeof ConsoleActivityRoute
   '/console/chat': typeof ConsoleChatRouteWithChildren
   '/console/connect': typeof ConsoleConnectRoute
+  '/console/keys': typeof ConsoleKeysRoute
+  '/console/wallet': typeof ConsoleWalletRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -163,6 +177,8 @@ export interface FileRoutesByTo {
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
   '/console/connect': typeof ConsoleConnectRoute
+  '/console/keys': typeof ConsoleKeysRoute
+  '/console/wallet': typeof ConsoleWalletRoute
   '/': typeof MarketIndexRoute
   '/chat': typeof ChatIndexRoute
   '/console': typeof ConsoleIndexRoute
@@ -187,6 +203,8 @@ export interface FileRoutesById {
   '/console/activity': typeof ConsoleActivityRoute
   '/console/chat': typeof ConsoleChatRouteWithChildren
   '/console/connect': typeof ConsoleConnectRoute
+  '/console/keys': typeof ConsoleKeysRoute
+  '/console/wallet': typeof ConsoleWalletRoute
   '/_market/': typeof MarketIndexRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
@@ -212,6 +230,8 @@ export interface FileRouteTypes {
     | '/console/activity'
     | '/console/chat'
     | '/console/connect'
+    | '/console/keys'
+    | '/console/wallet'
     | '/chat/'
     | '/console/'
     | '/dashboard/'
@@ -230,6 +250,8 @@ export interface FileRouteTypes {
     | '/chat/$threadId'
     | '/console/activity'
     | '/console/connect'
+    | '/console/keys'
+    | '/console/wallet'
     | '/'
     | '/chat'
     | '/console'
@@ -253,6 +275,8 @@ export interface FileRouteTypes {
     | '/console/activity'
     | '/console/chat'
     | '/console/connect'
+    | '/console/keys'
+    | '/console/wallet'
     | '/_market/'
     | '/chat/'
     | '/console/'
@@ -370,6 +394,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleConnectRouteImport
       parentRoute: typeof ConsoleRoute
     }
+    '/console/keys': {
+      id: '/console/keys'
+      path: '/keys'
+      fullPath: '/console/keys'
+      preLoaderRoute: typeof ConsoleKeysRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
+    '/console/wallet': {
+      id: '/console/wallet'
+      path: '/wallet'
+      fullPath: '/console/wallet'
+      preLoaderRoute: typeof ConsoleWalletRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
     '/dashboard/': {
       id: '/dashboard/'
       path: '/dashboard'
@@ -476,6 +514,8 @@ interface ConsoleRouteChildren {
   ConsoleActivityRoute: typeof ConsoleActivityRoute
   ConsoleChatRoute: typeof ConsoleChatRouteWithChildren
   ConsoleConnectRoute: typeof ConsoleConnectRoute
+  ConsoleKeysRoute: typeof ConsoleKeysRoute
+  ConsoleWalletRoute: typeof ConsoleWalletRoute
   ConsoleIndexRoute: typeof ConsoleIndexRoute
   ConsoleStudioIndexRoute: typeof ConsoleStudioIndexRoute
   ConsoleStudioAppsAppIdRoute: typeof ConsoleStudioAppsAppIdRoute
@@ -485,6 +525,8 @@ const ConsoleRouteChildren: ConsoleRouteChildren = {
   ConsoleActivityRoute: ConsoleActivityRoute,
   ConsoleChatRoute: ConsoleChatRouteWithChildren,
   ConsoleConnectRoute: ConsoleConnectRoute,
+  ConsoleKeysRoute: ConsoleKeysRoute,
+  ConsoleWalletRoute: ConsoleWalletRoute,
   ConsoleIndexRoute: ConsoleIndexRoute,
   ConsoleStudioIndexRoute: ConsoleStudioIndexRoute,
   ConsoleStudioAppsAppIdRoute: ConsoleStudioAppsAppIdRoute,

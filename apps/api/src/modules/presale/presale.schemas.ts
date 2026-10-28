@@ -8,15 +8,14 @@ export const buyerMessageBody = z.object({
   content: z.string().optional(),
   commandId: z.string().optional(),
   arguments: z.unknown().optional(),
-  // Answers a provider form instead of naming a command.
-  replyToId: z.string().optional(),
   fileIds: z.array(z.string()).optional(),
   clientRequestId: requestId,
 });
 
+// `tool` opens a built-in tool ({name, args}); its text is then optional.
 export const providerMessageBody = z.object({
-  content: z.string(),
-  form: z.unknown().optional(),
+  content: z.string().optional(),
+  tool: z.unknown().optional(),
   clientRequestId: requestId,
 });
 
@@ -29,4 +28,10 @@ export const offerBody = z.object({
   deliverySeconds: z.number().int().positive().optional(),
   summary: z.string(),
   validForSeconds: z.number().int().positive().optional(),
+});
+
+export const toolResultBody = z.object({
+  toolCallId: z.string().max(128),
+  result: z.unknown(),
+  clientRequestId: requestId,
 });

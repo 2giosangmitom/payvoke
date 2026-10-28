@@ -106,14 +106,13 @@ export function payvokeMcpServer(api: BuyerApi, resourceUrl: string) {
       title: "Send message",
       description:
         "Send a message to the agent in a chat. `content` is always the text the agent reads; add " +
-        "`commandId` and `arguments` to run one of its slash commands, or `replyToId` and `arguments` " +
-        "to answer a form it sent. Messages are free; the agent replies with an offer.",
+        "`commandId` and `arguments` to run one of its slash commands. Messages are free; the agent " +
+        "replies with an offer. Answer a form, choice or confirmation it opened with answer_tool.",
       inputSchema: {
         threadId: id,
         content: z.string().min(1).max(16000),
         commandId: id.optional(),
         arguments: z.record(z.string(), z.unknown()).optional(),
-        replyToId: id.optional(),
         fileIds: z.array(id).max(20).optional(),
       },
     },
@@ -130,17 +129,45 @@ export function payvokeMcpServer(api: BuyerApi, resourceUrl: string) {
     {
       title: "Read chat",
       description:
-        "Read a chat: messages, open offers, jobs with their status and output, and questions the agent asked.",
+        "Read a chat as ordered messages. Each part is text, a file or a tool call: offers, the " +
+        "agent's open forms (ask_form), choices (ask_choice) and confirmations (confirm) with status " +
+        "`open`, paid jobs with their phase, steps and output.",
       inputSchema: { threadId: id },
       annotations: readOnly,
     },
     async ({ threadId }) => {
-      const result = await api("GET", `/v1/threads/${encode(threadId)}/ag-ui/snapshot`);
+      const result = await api("GET", `/v1/threads/${encode(threadId)}/timeline`);
       if (result.status >= 400) return answer(result);
       // Generative UI surfaces are for the web chat; hosts read the rest.
-      const { surfaces: _surfaces, ...snapshot } = result.body as Record<string, unknown>;
-      return text(snapshot);
+      const timeline = result.body as {
+        messages: { parts: { type: string; toolName?: string }[] }[];
+      };
+      for (const message of timeline.messages)
+        message.parts = message.parts.filter((part) => part.toolName !== "render_ui");
+      return text(timeline);
     },
+  );
+
+  server.registerTool(
+    "answer_tool",
+    {
+      title: "Answer tool",
+      description:
+        "Answer a tool call the agent opened, by its `toolCallId` from read_chat. ask_form takes the " +
+        "form's fields, ask_choice takes `{ selected: [optionId] }`, confirm takes `{ approved: boolean }`. " +
+        "Each tool call takes one answer.",
+      inputSchema: {
+        threadId: id,
+        toolCallId: id,
+        result: z.record(z.string(), z.unknown()),
+      },
+    },
+    async ({ threadId, toolCallId, result }) =>
+      answer(
+        await api("POST", `/v1/threads/${encode(threadId)}/tool-results`, {
+          json: { toolCallId, result, clientRequestId: crypto.randomUUID() },
+        }),
+      ),
   );
 
   server.registerTool(
@@ -153,10 +180,13 @@ export function payvokeMcpServer(api: BuyerApi, resourceUrl: string) {
     },
     async ({ threadId, offerId }) =>
       answer(
-        await api(
-          "POST",
-          `/v1/threads/${encode(threadId)}/offers/${encode(offerId)}/declines`,
-        ),
+        await api("POST", `/v1/threads/${encode(threadId)}/tool-results`, {
+          json: {
+            toolCallId: offerId,
+            result: { accepted: false },
+            clientRequestId: `decline-${offerId}`,
+          },
+        }),
       ),
   );
 
@@ -167,13 +197,16 @@ export function payvokeMcpServer(api: BuyerApi, resourceUrl: string) {
       description:
         "Turn an open offer into a quote and return the EIP-712 debit to sign. Nothing is paid yet. " +
         "Show the user the price before signing. Sign `typedData` with the delegated grant's signer key, " +
-        "for example `cast wallet sign --data \"$TYPED_DATA\"` or `bun apps/api/scripts/sign-payment.ts`, " +
+        'for example `cast wallet sign --data "$TYPED_DATA"` or `bun apps/api/scripts/sign-payment.ts`, ' +
         "then call submit_payment before `validUntil`.",
       inputSchema: {
         threadId: id,
         offerId: id,
         grantId: bytes32.describe("The vault grant that pays, bytes32"),
-        grantEpoch: z.string().regex(/^[1-9]\d*$/).describe("The grant's current epoch"),
+        grantEpoch: z
+          .string()
+          .regex(/^[1-9]\d*$/)
+          .describe("The grant's current epoch"),
         fileIds: z.array(id).max(100).optional(),
       },
     },

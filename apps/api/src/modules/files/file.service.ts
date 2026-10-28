@@ -51,6 +51,8 @@ const view = (file: FileAsset) => ({
   contentType: file.contentType,
   size: Number(file.size),
   sha256: file.sha256,
+  durationMs: file.durationMs,
+  peaks: file.peaks,
   threadId: file.threadId,
   invocationId: file.invocationId,
   rejectionCode: file.rejectionCode,
@@ -117,6 +119,8 @@ export class FileService {
   // staging key without extending the original upload deadline.
   private async request(storage: ObjectStorage, owner: Owner, body: UploadBody) {
     if (body.size > this.config.FILE_MAX_BYTES) throw new PayloadTooLargeError("FILE_TOO_LARGE");
+    if (body.audio && !body.contentType.startsWith("audio/"))
+      throw new BadRequestError("INVALID_UPLOAD");
     const key = { uploadScope: owner.uploadScope, clientRequestId: body.clientRequestId };
     let file = await this.db.fileAsset.findUnique({ where: { uploadScope_clientRequestId: key } });
     if (!file) {
@@ -137,6 +141,9 @@ export class FileService {
             contentType: body.contentType,
             size: BigInt(body.size),
             sha256: body.sha256,
+            ...(body.audio
+              ? { durationMs: body.audio.durationMs, peaks: body.audio.peaks ?? [] }
+              : {}),
             stagingKey: `staging/${id}`,
             uploadExpiresAt: new Date(Date.now() + this.config.FILE_UPLOAD_TTL_SECONDS * 1000),
           },
@@ -221,7 +228,7 @@ export class FileService {
 
   // A buyer reads their own inputs, and artifacts of their invocations once a
   // run's accepted result lists them.
-  async buyerDownload(buyerId: string, fileId: string) {
+  async buyerDownload(buyerId: string, fileId: string, inline = false) {
     const storage = this.store();
     const file = await this.db.fileAsset.findUnique({ where: { id: fileId } });
     if (!file || file.status !== "READY") throw new NotFoundError("FILE_NOT_FOUND");
@@ -236,7 +243,9 @@ export class FileService {
       );
     }
     if (!allowed) throw new NotFoundError("FILE_NOT_FOUND");
-    return this.sign(storage, file);
+    if (inline && !/^(audio|image)\//.test(file.contentType))
+      throw new BadRequestError("INLINE_NOT_SUPPORTED");
+    return this.sign(storage, file, inline);
   }
 
   // A provider reads only the inputs frozen into this invocation's quote.
@@ -253,11 +262,11 @@ export class FileService {
     return this.sign(storage, file);
   }
 
-  private async sign(storage: ObjectStorage, file: FileAsset) {
+  private async sign(storage: ObjectStorage, file: FileAsset, inline = false) {
     if (!file.objectKey) throw new NotFoundError("FILE_NOT_FOUND");
     const target = await storage.presignGet(
       file.objectKey,
-      { filename: file.name, contentType: file.contentType },
+      { filename: file.name, contentType: file.contentType, inline },
       this.config.FILE_DOWNLOAD_TTL_SECONDS,
     );
     return { fileId: file.id, name: file.name, ...target };

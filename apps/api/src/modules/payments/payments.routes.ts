@@ -40,6 +40,9 @@ export const paymentRoutes = new Hono<AppEnv>()
         await c.var.cradle.paymentStatusService.list(c.var.account.id, c.req.valid("query").cursor),
       ),
   )
+  .get("/v1/wallet", noStore, requireAccount, async (c) =>
+    c.json(await c.var.cradle.paymentStatusService.wallet(c.var.account.id)),
+  )
   .get(
     "/v1/invocations/:id",
     noStore,

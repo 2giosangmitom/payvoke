@@ -4,7 +4,12 @@ import { maxBody, rateLimit } from "../../http/limits";
 import { validate } from "../../http/validate";
 import { requireAccount } from "../auth/guard";
 import type { KeyScope } from "../provider/provider.validation";
-import { buyerMessageBody, offerBody, providerMessageBody } from "./presale.schemas";
+import {
+  buyerMessageBody,
+  offerBody,
+  providerMessageBody,
+  toolResultBody,
+} from "./presale.schemas";
 
 const provider = "/v1/provider/apps/:appId/threads/:threadId";
 
@@ -34,14 +39,22 @@ export const presaleRoutes = new Hono<AppEnv>()
         201,
       ),
   )
-  .post("/v1/threads/:threadId/offers/:offerId/declines", requireAccount, async (c) =>
-    c.json(
-      await c.var.cradle.presaleService.declineOffer(
-        c.var.account.id,
-        c.req.param("threadId"),
-        c.req.param("offerId"),
+  // The buyer's result to any open tool call, or `{ accepted: false }` to an offer.
+  .post(
+    "/v1/threads/:threadId/tool-results",
+    rateLimit("tool-results", 30),
+    maxBody(32768),
+    validate("json", toolResultBody, "INVALID_TOOL_RESULT"),
+    requireAccount,
+    async (c) =>
+      c.json(
+        await c.var.cradle.toolResultService.submit(
+          c.var.account.id,
+          c.req.param("threadId"),
+          c.req.valid("json"),
+        ),
+        201,
       ),
-    ),
   )
   // Provider worker: app key auth, never a browser session.
   .post(

@@ -1,10 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ConnectPage } from "@/src/features/connect/connect-page";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
+// Coding agent tokens moved into API keys.
 export const Route = createFileRoute("/console/connect")({
-  component: ConnectPage,
-  staticData: {
-    title: "Coding agents",
-    description: "Connect Claude Code, Cursor and other MCP hosts to Payvoke.",
-  },
+  component: () => <Navigate to="/console/keys" replace />,
 });

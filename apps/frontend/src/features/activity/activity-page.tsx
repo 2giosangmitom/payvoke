@@ -35,11 +35,13 @@ const FILTERS = [
 ] as const;
 type Filter = (typeof FILTERS)[number][0];
 
+// Pale pills: grey for what simply runs or settled, colour only where the
+// buyer has to act or something failed.
 const toneClass: Record<Stage["tone"], string> = {
-  active: "border-border-strong text-foreground",
-  attention: "border-warning text-warning",
-  done: "border-primary text-primary",
-  failed: "border-destructive text-destructive",
+  active: "border-transparent bg-muted text-foreground",
+  attention: "border-warning/40 bg-warning/10 text-warning",
+  done: "border-border text-muted-foreground",
+  failed: "border-transparent bg-destructive-soft text-destructive",
 };
 
 // Every paid run opens the chat thread it came from.
@@ -63,7 +65,13 @@ export function ActivityLink({
 
 export function StageBadge({ stage }: { stage: Stage }) {
   return (
-    <Badge variant="outline" className={cn("font-mono", toneClass[stage.tone])}>
+    <Badge
+      variant="outline"
+      className={cn(
+        "h-6 flex-none px-2 font-sans text-xs tracking-normal whitespace-nowrap normal-case",
+        toneClass[stage.tone],
+      )}
+    >
       {stage.label}
     </Badge>
   );
@@ -81,33 +89,42 @@ export function ActivityPage() {
     refetchInterval: 15_000,
   });
   const items = (activity.data?.pages ?? []).flatMap((page) => page.items);
-  const rows = items
-    .map((item) => ({ item, stage: stageOf(item) }))
-    .filter(
-      ({ stage }) =>
-        filter === "all" ||
-        stage.tone === filter ||
-        (filter === "attention" && stage.tone === "failed"),
-    );
+  const staged = items.map((item) => ({ item, stage: stageOf(item) }));
+  const matches = (value: Filter, tone: Stage["tone"]) =>
+    value === "all" || tone === value || (value === "attention" && tone === "failed");
+  const rows = staged.filter(({ stage }) => matches(filter, stage.tone));
 
   return (
-    <PageShell className="pt-10">
+    <PageShell className="pt-2">
       <PageHeader
         compact
         title="Activity"
         description="Every job you paid for: what is still running, what waits for your review and what you can reclaim."
       />
-      <div role="group" aria-label="Filter activity" className="mt-8 flex flex-wrap gap-2">
+      <div
+        role="group"
+        aria-label="Filter activity"
+        className="mt-6 flex flex-wrap gap-x-6 gap-y-2 border-b border-border text-sm"
+      >
         {FILTERS.map(([value, label]) => (
-          <Button
+          <button
             key={value}
-            size="sm"
-            variant={filter === value ? "default" : "outline"}
+            type="button"
             aria-pressed={filter === value}
             onClick={() => setFilter(value)}
+            className={cn(
+              "relative pb-2.5 transition-colors",
+              filter === value ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            {label}
-          </Button>
+            {label}{" "}
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+              {staged.filter(({ stage }) => matches(value, stage.tone)).length}
+            </span>
+            {filter === value && (
+              <span aria-hidden className="absolute inset-x-0 -bottom-px h-px bg-primary" />
+            )}
+          </button>
         ))}
       </div>
       <section className="mt-6" aria-label="Payments">
@@ -149,7 +166,7 @@ export function ActivityPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>App</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Next</TableHead>
                   <TableHead>Paid</TableHead>
@@ -161,16 +178,18 @@ export function ActivityPage() {
                   <TableRow key={item.invocationId}>
                     <TableCell className="max-w-64">
                       <span className="block truncate font-medium">{item.app.name}</span>
-                      <span className="font-mono text-[11px] text-faint">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {item.commandName ? `/${item.commandName}` : "offer"}
                       </span>
                     </TableCell>
-                    <TableCell className="font-mono">{formatUsdc(item.grossAmount)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {formatUsdc(item.grossAmount)}
+                    </TableCell>
                     <TableCell>
                       <StageBadge stage={stage} />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{stage.detail}</TableCell>
-                    <TableCell className="font-mono text-xs text-faint">
+                    <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">
                       {new Date(item.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>

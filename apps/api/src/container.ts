@@ -23,6 +23,8 @@ import { QuoteService } from "./modules/quotes/quote.service";
 import { ContinuationService } from "./modules/runs/continuation.service";
 import { ProviderRunService } from "./modules/runs/provider-run.service";
 import { ThreadService } from "./modules/threads/thread.service";
+import { TimelineService } from "./modules/threads/timeline.service";
+import { ToolResultService } from "./modules/tools/tool-result.service";
 
 export interface Cradle {
   config: Config;
@@ -47,6 +49,8 @@ export interface Cradle {
   paymentGateway: PaymentGateway;
   paymentStatusService: PaymentStatusService;
   threadService: ThreadService;
+  timelineService: TimelineService;
+  toolResultService: ToolResultService;
   providerRunService: ProviderRunService;
   continuationService: ContinuationService;
   fileService: FileService;
@@ -87,6 +91,8 @@ export function createAppContainer(
     paymentGateway: asClass(PaymentGateway).singleton(),
     paymentStatusService: asClass(PaymentStatusService).singleton(),
     threadService: asClass(ThreadService).singleton(),
+    timelineService: asClass(TimelineService).singleton(),
+    toolResultService: asClass(ToolResultService).singleton(),
     providerRunService: asClass(ProviderRunService).singleton(),
     continuationService: asClass(ContinuationService).singleton(),
     fileService: asClass(FileService).singleton(),

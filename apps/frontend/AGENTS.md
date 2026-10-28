@@ -21,18 +21,20 @@ Payvoke is a marketplace for discovering AI agents/tools, saving starred listing
 
 Current route map:
 
-| URL                                   | Route file                                 | Responsibility                                                                               |
-| ------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| (pathless)                            | `src/routes/_market.tsx`                   | Public site chrome: marketing header (Home, Store, Console) + footer                         |
-| `/`                                   | `src/routes/_market.index.tsx`             | Landing page                                                                                 |
-| `/store`, `/store/$appId`             | `src/routes/_market.store.*.tsx`           | Public directory and app detail; CTA opens a chat thread with the app                        |
-| `/console`                            | `src/routes/console.tsx`                   | Signed-in app shell (`ConsoleShell`): collapsible sidebar, breadcrumb, sign-in gate          |
-| `/console/`                           | `src/routes/console.index.tsx`             | Console home: items needing attention, running work, recent chats                            |
-| `/console/chat/...`                   | `src/routes/console.chat*.tsx`             | Every app: thread list + `ThreadChat` (messages, slash commands, bot forms, offers, results) |
-| `/console/activity`                   | `src/routes/console.activity.tsx`          | Every paid invocation with hold state and next deadline                                      |
-| `/console/studio/...`                 | `src/routes/console.studio.*.tsx`          | Provider Studio: app info, keys; commands are read-only (bots register them via API)         |
-| `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx` | Redirects from old URLs into the console                                                     |
-| (document)                            | `src/routes/__root.tsx`                    | `<html>`, unhead provider and document tags, `HeadContent`, providers, `<Outlet>`, `Scripts` |
+| URL                                   | Route file                                 | Responsibility                                                                                      |
+| ------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| (pathless)                            | `src/routes/_market.tsx`                   | Public site chrome: marketing header (Home, Store, Console) + footer                                |
+| `/`                                   | `src/routes/_market.index.tsx`             | Landing page                                                                                        |
+| `/store`, `/store/$appId`             | `src/routes/_market.store.*.tsx`           | Public directory and app detail; CTA opens a chat thread with the app                               |
+| `/console`                            | `src/routes/console.tsx`                   | Signed-in app shell (`ConsoleShell`): icon rail (bottom bar on phones), breadcrumb, sign-in gate    |
+| `/console/`                           | `src/routes/console.index.tsx`             | Console home: jobs that need the buyer, money in flight, running work, recent chats                 |
+| `/console/chat/...`                   | `src/routes/console.chat*.tsx`             | Every app: thread list + `ThreadChat` (assistant-ui thread over the API timeline)                   |
+| `/console/activity`                   | `src/routes/console.activity.tsx`          | Every paid invocation with hold state and next deadline                                             |
+| `/console/wallet`                     | `src/routes/console.wallet.tsx`            | USDC in the wallet, in the vault and held for jobs; provider earnings                               |
+| `/console/keys`                       | `src/routes/console.keys.tsx`              | Buyer access tokens for MCP hosts and each shared agent's worker key (`/console/connect` redirects) |
+| `/console/studio/...`                 | `src/routes/console.studio.*.tsx`          | Provider Studio: app info, keys; commands are read-only (bots register them via API)                |
+| `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx` | Redirects from old URLs into the console                                                            |
+| (document)                            | `src/routes/__root.tsx`                    | `<html>`, unhead provider and document tags, `HeadContent`, providers, `<Outlet>`, `Scripts`        |
 
 - Public, browse-only pages are children of `_market`; anything signed-in (chat, runs, payments, Studio) is a child of `console`. Do not put marketing chrome around working surfaces.
 - Use a new pathless layout for a distinct shell (for example a future immersive chat surface) instead of sprinkling `pathname` conditionals through every page. Keep layout concerns in the parent and page concerns in the child.
@@ -48,7 +50,8 @@ Current route map:
 Current design direction: **Osaka Jade / dark editorial terminal**, not generic dashboard chrome. Theme lives under `[data-theme="osaka-jade"]` in `src/global.css`.
 
 - Palette: deep charcoal green backgrounds (`--t-bg`, `--t-bg-deep`), jade (`--t-brand`), warm ivory text (`--t-text`), olive-gray secondary text, quiet green borders. Use tokens instead of one-off hex values.
-- Type: Geist Variable for display/editorial headlines; JetBrains Mono Variable for interface metadata, amounts, code and terminal-like detail. Respect established typographic hierarchy.
+- Type: Geist Variable for display/editorial headlines and all console text; JetBrains Mono Variable for amounts, counts, times, IDs, keys and code only. Console labels are sentence case at 12px or larger: no tiny tracked uppercase labels.
+- Console (data terminal): colour goes on data and status, not chrome. The one selection mark everywhere (rail item, filter, run stage) is a 1px jade line exactly as wide as its target. Status pills are pale tints; figures are right-aligned tabular mono with the unit in grey; no entrance animations on work screens.
 - Layout: spacious but purposeful; grid/list views for listings, legible form groupings, clear primary action. Keep square corners and restrained borders; `--radius` is intentionally `0px`.
 - Interaction: clear hover/focus/disabled/loading/error/success states. Motion supports comprehension, never gates an action. Respect `prefers-reduced-motion`.
 - Keep logo, favicon, wordmark and header consistent via `/logo.svg`. Avoid invented logos, gradients, glass panels, repetitive icon cards and template filler.
@@ -64,6 +67,14 @@ Current design direction: **Osaka Jade / dark editorial terminal**, not generic 
 ## AI, assistant-ui and agent conversation interfaces
 
 Use **assistant-ui** for actual chats, model messages, tool calls, runs and conversation history. Keep it dedicated to chat surfaces; ordinary marketplace search, provider forms and collections remain shadcn UI.
+
+How the chat is built (`src/features/chat/`):
+
+- `use-timeline.ts` reads `GET /v1/threads/:id/timeline` and keeps it live over `GET /v1/threads/:id/events`: each `timeline` event replaces the cached projection, `delta` events append streamed text to one part. Never stitch API tables together in the browser.
+- `thread-runtime.ts` converts timeline messages for `useExternalStoreRuntime`, uploads attachments through `ThreadAttachmentAdapter`, and provides `ThreadChatContext` (tool status and results by id, `submitTool`, `acceptOffer`).
+- Every interactive or structured piece is a tool-call part rendered by `tool-uis.tsx`: `ask_form` (ElicitationForm + `SchemaForm`), `ask_choice` (OptionList), `confirm` and `offer` (ApprovalCard), `command`, `progress` (one AgentPlan via `MessagePrimitive.GroupedParts`), `render_ui` (OpenUI), `revision`, `result`. Results go to `POST /v1/threads/:id/tool-results`.
+- A paid run is one assistant message (`run-message.tsx`): the run strip, the payment step while one is owed, then its parts. Audio plays in the waveform `AudioPlayer` (`components/assistant-ui/elements/media-player.tsx`), drawn from the peaks the uploader measured (`files.ts` decodes local audio before upload).
+- assistant-ui registry components live in `src/components/assistant-ui/elements/` as owned source, restyled through `surfaces.tsx` (square corners, jade tokens). When adding more with `bunx shadcn add @assistant-ui/...`, keep the project's own `ui/button`, `tooltip`, `badge` and `dialog` instead of the overwrites the registry proposes.
 
 - First inspect the backend conversation/run API and authentication. No mock messages presented as real agent output and no fake streaming. Add UI only against an explicit contract or a clearly labeled demo.
 - Build the chat shell using assistant-ui's thread/message/composer and tool-call primitives, then theme them to Payvoke's design tokens. Keep accessibility, keyboard send behavior, scroll anchoring and long-output handling.
@@ -124,6 +135,6 @@ Use **React Bits** on the landing page and a few high-impact marketing moments w
 | `src/global.css`          | Design tokens and project-level styles; don't create inconsistent page-specific themes |
 | `components.json`         | shadcn registry, aliases, style settings                                               |
 
-Features: `auth` (wallet sign-in), `apps` (catalog and Studio endpoints, command card, price formatting), `store`, `studio`, `chat`, `payments` (quotes, grant checks, signed submission), `activity`, `console` (shell and home), `landing`. A feature may import another feature's `api.ts` or components; anything two features both need and that has no domain meaning belongs in `components/` or `lib/`.
+Features: `auth` (wallet sign-in), `apps` (catalog and Studio endpoints, command card, price formatting), `store`, `studio`, `chat`, `payments` (quotes, grant checks, signed submission), `activity`, `wallet`, `keys`, `console` (shell and home), `landing`. A feature may import another feature's `api.ts` or components; anything two features both need and that has no domain meaning belongs in `components/` or `lib/`.
 
 When modifying existing code, preserve unfinished work in the worktree. Prefer cohesive, narrow changes; avoid incidental redesigns of unrelated pages. Keep reusable styles and components aligned with the established system, remove dead imports, and report what was actually built versus what remains planned.

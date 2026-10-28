@@ -21,6 +21,10 @@ model FileAsset {
   size             BigInt
   // Declared by the uploader, then recomputed from the stored bytes.
   sha256           String
+  // Audio only, declared by the uploader for the player: length and up to 256
+  // normalized waveform peaks. Display data; never used for verification.
+  durationMs       Int?
+  peaks            Json?
   stagingKey       String
   objectKey        String?
   uploadExpiresAt  DateTime

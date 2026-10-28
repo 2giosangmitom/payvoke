@@ -30,17 +30,18 @@ Code under `core/` never imports Hono or `modules/`. Imports use package subpath
 aliases (`#core/db`, `#core/payments/finance`, `#test/kit/database`), declared in
 `package.json`, so the web app's typecheck resolves them too.
 
-| Module     | Owns                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------- |
-| `auth`     | Better Auth SIWE bridge, `requireAccount` middleware, web-write Origin policy           |
-| `catalog`  | public store, app detail, stars                                                         |
-| `provider` | owner app lifecycle, command revisions, API keys and key authentication                 |
-| `threads`  | buyer chat threads, AG-UI snapshot and SSE replay                                       |
-| `quotes`   | immutable quote documents and the verified transcript                                   |
-| `payments` | paid submission, x402 gateway, payment status and financial intents                     |
-| `runs`     | provider feed/ACK/reports/NDJSON stream, buyer answers and revisions, delivery verifier |
-| `openui`   | OpenUI validation and the provider component catalog                                    |
-| `apps`     | shared app/command rules and serializers                                                |
+| Module     | Owns                                                                              |
+| ---------- | --------------------------------------------------------------------------------- |
+| `auth`     | Better Auth SIWE bridge, `requireAccount` middleware, web-write Origin policy     |
+| `catalog`  | public store, app detail, stars                                                   |
+| `provider` | owner app lifecycle, command revisions, API keys and key authentication           |
+| `threads`  | buyer chat threads, the projected timeline and its live SSE stream                |
+| `quotes`   | immutable quote documents and the verified transcript                             |
+| `payments` | paid submission, x402 gateway, payment status and financial intents               |
+| `runs`     | provider feed/ACK/reports/NDJSON stream, run tool results and revisions, verifier |
+| `tools`    | built-in tools providers open in the chat, and the buyer's tool-result endpoint   |
+| `openui`   | OpenUI validation and the provider component catalog                              |
+| `apps`     | shared app/command rules and serializers                                          |
 
 ### Routes, validation and RPC
 
@@ -147,12 +148,51 @@ can star apps.
 
 Every app is a chat bot. Buyers message it for free (`PRESALE_MESSAGE_LIMIT`
 messages per thread between paid invocations); the provider receives
-`thread.message` events, replies with `messages:write` (text or a one-shot form)
-and proposes priced offers with `offers:write`. Commands may declare a
+`thread.message` events, replies with `messages:write` (text, a built-in tool,
+or both) and proposes priced offers with `offers:write`. Commands may declare a
 `maxAmount` ceiling; the price itself always comes from an offer. A quote is
 prepared from an open `offerId`, which freezes the negotiated arguments into the
 input hash.
 `GET /v1/invocations` lists the buyer's paid invocations for the console.
+
+### Built-in tools
+
+A provider opens a Payvoke component in the buyer's chat and waits for one
+result. Before payment it sends `tool` with a message; during a run it sends a
+`tool_call` report, which parks the invocation in `WAITING_BUYER` until the
+buyer answers and a new run starts.
+
+| Tool         | `args`                                                                                                     | Result                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `ask_form`   | `title`, `description?`, `schema` (flat JSON Schema, file fields allowed), `submitLabel?`                  | the form's values       |
+| `ask_choice` | `prompt`, `options: [{ id, label, description? }]` (2-12), `multiple?`, `minSelections?`, `maxSelections?` | `{ selected: [id] }`    |
+| `confirm`    | `title`, `description?`, `details?: [{ label, value }]`, `confirmLabel?`, `cancelLabel?`, `variant?`       | `{ approved: boolean }` |
+
+```http
+POST /v1/provider/apps/:appId/threads/:threadId/messages
+{ "clientRequestId": "q1", "content": "Which tone?",
+  "tool": { "name": "ask_choice", "args": { "prompt": "Pick a tone",
+    "options": [{ "id": "formal", "label": "Formal" }, { "id": "casual", "label": "Casual" }] } } }
+
+POST /v1/provider/apps/:appId/invocations/:id/reports
+{ "reportId": "r4", "sequence": 4, "type": "tool_call",
+  "data": { "toolCallId": "scope", "name": "confirm", "args": { "title": "Use the long format?" } } }
+```
+
+Pre-sale results arrive as `thread.message` events with `toolResult:
+{ toolCallId, result }`; run results as `invocation.tool_result` events with
+`toolCallId`, `name`, `result` and the `runId` to acknowledge. Runs also show
+`progress` reports (`{ stepId, label, status: running | done | failed, detail? }`,
+replaced by `stepId`) as steps, and OpenUI surfaces streamed as `payvoke.openui`.
+
+The buyer side reads `GET /v1/threads/:id/timeline` (ordered messages whose parts
+are text, files and tool calls) and `GET /v1/threads/:id/events` (SSE: a full
+`timeline` on connect and after each change, `delta` events for streamed text),
+and answers every tool call, or declines an offer with `{ accepted: false }`,
+through `POST /v1/threads/:id/tool-results`.
+
+Audio uploads may declare `audio: { durationMs, peaks }` for the chat player;
+`GET /v1/files/:id/stream` returns an inline URL for audio and images.
 
 Files (buyer inputs and provider artifacts) use presigned S3 uploads, a
 server-side completion that copies and re-hashes the bytes, and per-request

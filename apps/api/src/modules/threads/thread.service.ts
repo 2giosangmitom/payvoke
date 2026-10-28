@@ -1,30 +1,23 @@
 import type { Cradle } from "../../container";
-import type { Prisma } from "#core/db";
-import { parseManifest } from "#core/payments/files";
-import { BadRequestError, ConflictError, NotFoundError, PayloadTooLargeError } from "../../errors";
+import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 import { availabilityLabel, threadSlotReleased } from "../apps/schema";
 import { serializeCommand } from "../apps/serializers";
-import { promptText } from "../quotes/transcript";
-import { object } from "../runs/protocol";
 import { revisionPolicy } from "../runs/run-rules";
 
 export type NewThreadBody = { appId: string; clientRequestId: string; title?: string };
 export type ThreadQuery = { q?: string; cursor?: string; archived?: string };
 
 const PAGE = 50;
-const HISTORY_LIMIT = 100000;
 const validTitle = (title: unknown): title is string =>
   typeof title === "string" && title.trim().length >= 1 && title.length <= 160;
 
-// Buyer chat threads and their AG-UI history.
+// Buyer chat threads. Their messages are projected by TimelineService.
 export class ThreadService {
   private readonly db: Cradle["db"];
-  private readonly retentionSeconds: number;
   private readonly presale: Cradle["presaleService"];
 
-  constructor({ db, config, presaleService }: Cradle) {
+  constructor({ db, presaleService }: Cradle) {
     this.db = db;
-    this.retentionSeconds = config.AGUI_CURSOR_RETENTION_SECONDS;
     this.presale = presaleService;
   }
 
@@ -211,152 +204,36 @@ export class ThreadService {
     return { archived: true };
   }
 
-  // Fenced at a single high-water cursor: events after the fence are picked up
-  // by the SSE subscriber, never lost between the two requests.
-  async snapshot(threadId: string) {
-    const fence =
-      (
-        await this.db.aguiStreamEvent.aggregate({
-          where: { threadId },
-          _max: { cursor: true },
-        })
-      )._max.cursor ?? 0n;
-    const rows: { cursor: bigint; invocationId: string; event: Prisma.JsonValue }[] = [];
-    let last = 0n;
-    for (;;) {
-      const batch = await this.db.aguiStreamEvent.findMany({
-        where: { threadId, cursor: { gt: last, lte: fence } },
-        orderBy: { cursor: "asc" },
-        take: 1000,
-        select: { cursor: true, invocationId: true, event: true },
-      });
-      if (!batch.length) break;
-      rows.push(...batch);
-      if (rows.length > HISTORY_LIMIT) throw new PayloadTooLargeError("THREAD_HISTORY_TOO_LARGE");
-      last = batch.at(-1)!.cursor;
-    }
-    const texts = new Map<
-      string,
-      { messageId: string; invocationId: string; content: string; complete: boolean }
-    >();
-    const surfaces = new Map<string, unknown>();
-    for (const { event, invocationId } of rows) {
-      if (!object(event)) continue;
-      const id = event.messageId as string;
-      if (typeof id !== "string") continue;
-      if (event.type === "TEXT_MESSAGE_START")
-        texts.set(id, { messageId: id, invocationId, content: "", complete: false });
-      if (event.type === "TEXT_MESSAGE_CONTENT" && texts.has(id))
-        texts.get(id)!.content += event.delta;
-      if (event.type === "TEXT_MESSAGE_END" && texts.has(id)) texts.get(id)!.complete = true;
-      if (event.type === "ACTIVITY_SNAPSHOT" && event.activityType === "openui-surface")
-        surfaces.set(id, event.content);
-    }
-    const inThread = { invocation: { quote: { threadId } } };
-    const recent = { orderBy: { createdAt: "asc" as const }, take: 100 };
-    const invocations = await this.db.invocation.findMany({
-      where: { quote: { threadId } },
-      select: { id: true, executionStatus: true, run: { select: { result: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
-    const quotes = await this.db.quote.findMany({
-      where: { threadId },
-      include: { invocation: { include: { settlement: true } } },
-      ...recent,
-    });
-    const [questions, answers, revisions] = await Promise.all([
-      this.db.invocationQuestion.findMany({ where: inThread, ...recent }),
-      this.db.invocationAnswer.findMany({ where: inThread, ...recent }),
-      this.db.invocationRevision.findMany({ where: inThread, ...recent }),
+  // Changes whenever anything the timeline shows changes outside the run
+  // stream: pre-sale messages, offers, payment and execution state, tool
+  // results and revisions. The live stream rebuilds the timeline on a change.
+  async mark(threadId: string) {
+    const [thread, quotes] = await Promise.all([
+      this.db.chatThread.findUnique({ where: { id: threadId }, select: { lastMessageAt: true } }),
+      this.db.quote.findMany({
+        where: { threadId },
+        select: {
+          id: true,
+          invocation: {
+            select: {
+              executionStatus: true,
+              settlement: { select: { state: true } },
+              _count: { select: { toolResults: true, revisions: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
     ]);
-    return {
-      cursor: fence.toString(),
-      messages: [...texts.values()],
-      surfaces: [...surfaces].map(([messageId, content]) => ({ messageId, content })),
-      invocations: invocations.map((i) => {
-        const result =
-          i.executionStatus === "DELIVERED" && object(i.run?.result) ? i.run.result : null;
-        return {
-          id: i.id,
-          executionStatus: i.executionStatus,
-          output: result ? result.output : null,
-          // Metadata only; the buyer fetches a short-lived URL per download.
-          files: (parseManifest(result?.files) ?? []).map(
-            ({ fileId, name, contentType, size }) => ({ fileId, name, contentType, size }),
-          ),
-        };
-      }),
-      prompts: quotes.map((q) => {
-        const snapshot = (q.document as Record<string, unknown>).inputSnapshot as Record<
-          string,
-          unknown
-        >;
-        return {
-          quoteId: q.id,
-          invocationId: q.invocationId,
-          text: promptText(snapshot.arguments as Record<string, unknown>),
-          paid: q.invocation?.settlement?.state === "HELD",
-        };
-      }),
-      questions: questions.map((q) => ({
-        id: q.id,
-        invocationId: q.invocationId,
-        questionId: q.questionId,
-        prompt: q.prompt,
-        inputSchema: q.inputSchema,
-        chatTextParameter: q.chatTextParameter,
-        status: q.status,
-        createdAt: q.createdAt,
-        answeredAt: q.answeredAt,
-      })),
-      answers: answers.map((a) => ({
-        questionId: a.questionId,
-        invocationId: a.invocationId,
-        arguments: a.arguments,
-        createdAt: a.createdAt,
-      })),
-      revisions: revisions.map((r) => ({
-        id: r.id,
-        invocationId: r.invocationId,
-        reason: r.reason,
-        status: r.status,
-        createdAt: r.createdAt,
-      })),
-      // Unpaid pre-sale chat and offers of the thread.
-      conversation: await this.presale.threadMessages(threadId),
-      offers: await this.presale.threadOffers(threadId),
-    };
-  }
-
-  // Changes whenever a pre-sale message or offer is written; the SSE stream
-  // tells the client to reload the snapshot without carrying any content.
-  async conversationMark(threadId: string) {
-    const thread = await this.db.chatThread.findUnique({
-      where: { id: threadId },
-      select: { lastMessageAt: true },
-    });
-    return thread?.lastMessageAt.getTime() ?? 0;
-  }
-
-  // Replay cannot be complete when the requested point is older than the
-  // retention window: the client must load the snapshot and resume from its cursor.
-  async assertReplayable(threadId: string, after: bigint) {
-    const oldest = await this.db.aguiStreamEvent.findFirst({
-      where: { threadId, createdAt: { gte: new Date(Date.now() - this.retentionSeconds * 1000) } },
-      orderBy: { cursor: "asc" },
-      select: { cursor: true },
-    });
-    if (after > 0n && oldest && after < oldest.cursor - 1n)
-      throw new ConflictError("CURSOR_EXPIRED");
+    return JSON.stringify([thread?.lastMessageAt.getTime() ?? 0, quotes]);
   }
 
   async eventsAfter(threadId: string, cursor: bigint) {
-    const rows = await this.db.aguiStreamEvent.findMany({
+    return this.db.aguiStreamEvent.findMany({
       where: { threadId, cursor: { gt: cursor } },
       orderBy: { cursor: "asc" },
       take: 100,
+      select: { cursor: true, invocationId: true, event: true },
     });
-    return rows.map((row) => ({ cursor: row.cursor, event: row.event }));
   }
 }

@@ -387,8 +387,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     401,
   );
   assert.equal(
-    (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`, undefined, otherCookie))
-      .statusCode,
+    (await web("GET", `/v1/threads/${thread.id}/timeline`, undefined, otherCookie)).statusCode,
     404,
   );
   assert.equal(
@@ -418,15 +417,18 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const listenAddress = server.url.origin;
   const stopLive = new AbortController();
   try {
-    const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/ag-ui/events?after=0`, {
+    const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/events`, {
       headers: { origin, cookie },
       signal: stopLive.signal,
     });
     assert.equal(live.status, 200);
     const reader = live.body!.getReader();
-    const welcome = await reader.read();
-    assert.equal(welcome.done, false);
-    assert.match(new TextDecoder().decode(welcome.value), /: connected/);
+    // Every connection starts from the whole timeline.
+    let opening = "";
+    while (!opening.includes("event: timeline"))
+      opening += new TextDecoder().decode((await reader.read()).value);
+    assert.match(opening, /: connected/);
+    assert.match(opening, /"phase":"queued"/);
     const firstChunk = reader.read();
     await new Promise((resolve) => setTimeout(resolve, 900));
     assert.equal((await postWorker(`${task}/reports`, report(1, "started"))).statusCode, 200);
@@ -437,7 +439,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       ),
     ]);
     assert.equal(streamedChunk.done, false, "SSE must remain open until the client closes it");
-    assert.match(new TextDecoder().decode(streamedChunk.value), /RUN_STARTED/);
+    assert.match(new TextDecoder().decode(streamedChunk.value), /"phase":"running"/);
   } finally {
     stopLive.abort();
   }
@@ -461,18 +463,14 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     emit(7, openui('summary = Text("Final")')),
     emit(8, { type: "TEXT_MESSAGE_END", messageId: "answer" }),
   ].join("");
-  const beforeStream = (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`)).json().cursor;
   const stopDeltas = new AbortController();
   let streamed: Response;
   let finishUpload = () => {};
   try {
-    const live = await fetch(
-      `${listenAddress}/v1/threads/${thread.id}/ag-ui/events?after=${beforeStream}`,
-      {
-        headers: { origin, cookie },
-        signal: stopDeltas.signal,
-      },
-    );
+    const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/events`, {
+      headers: { origin, cookie },
+      signal: stopDeltas.signal,
+    });
     assert.equal(live.status, 200);
     const reader = live.body!.getReader();
     assert.match(new TextDecoder().decode((await reader.read()).value), /: connected/);
@@ -494,7 +492,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     } as RequestInit & { duplex: "half" });
     let received = "";
     const timeout = AbortSignal.timeout(4000);
-    while (!received.includes("TEXT_MESSAGE_CONTENT")) {
+    while (!received.includes("Xin ")) {
       const next = await Promise.race([
         reader.read(),
         new Promise<never>((_, reject) =>
@@ -530,7 +528,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       assert.equal(next.done, false);
       received += new TextDecoder().decode(next.value);
     }
-    assert.match(received, /openui-surface/);
+    assert.match(received, /"toolName":"render_ui"/);
     // Surface activity IDs are namespaced by run exactly once, so replays and
     // redefined statements target the same widget.
     assert.ok(received.includes(`${runId}-openui-${surface}`));
@@ -611,11 +609,30 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     assert.equal(rejected.statusCode, 400, source);
     assert.match(rejected.body, new RegExp(code), source);
   }
-  const snapshot = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
-  assert.equal(snapshot.statusCode, 200, snapshot.body);
-  assert.equal(snapshot.json().messages[0].content, "Xin chào");
+  type Part = {
+    type: string;
+    text?: string;
+    toolName?: string;
+    toolCallId?: string;
+    status?: string;
+    args?: Record<string, unknown>;
+  };
+  const runMessage = async () => {
+    const timeline = await web("GET", `/v1/threads/${thread.id}/timeline`);
+    assert.equal(timeline.statusCode, 200, timeline.body);
+    return timeline
+      .json()
+      .messages.find((m: { id: string }) => m.id === `run-${quoted.invocationId}`) as {
+      status: string;
+      parts: Part[];
+      run: { phase: string };
+    };
+  };
+  const streamedRun = await runMessage();
+  assert.equal(streamedRun.parts.find((part) => part.type === "text")!.text, "Xin chào");
+  const surfacePart = streamedRun.parts.find((part) => part.toolName === "render_ui")!;
   assert.equal(
-    snapshot.json().surfaces[0].content.source,
+    surfacePart.args!.source,
     [
       "root = Stack([summary, score])",
       'summary = Text("Draft")',
@@ -623,73 +640,86 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       'summary = Text("Final")',
     ].join("\n"),
   );
-  assert.equal(snapshot.json().surfaces[0].content.invocationId, quoted.invocationId);
+  assert.equal(surfacePart.args!.invocationId, quoted.invocationId);
   const openuiCatalog = (await web("GET", "/v1/openui/catalog")).json();
   assert.equal(openuiCatalog.root, "Stack");
   assert.match(openuiCatalog.prompt, /Metric\(label: string/);
-  const streamedToBuyer = await web("GET", `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`);
+  const streamedToBuyer = await web("GET", `/v1/threads/${thread.id}/events?once=1`);
   assert.equal(streamedToBuyer.statusCode, 200, streamedToBuyer.body);
-  assert.match(streamedToBuyer.body, /event: ag-ui/);
-  assert.match(streamedToBuyer.body, /TEXT_MESSAGE_CONTENT/);
-  const resumedToBuyer = await inject(app, {
-    method: "GET",
-    url: `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`,
-    headers: { origin, cookie, "last-event-id": snapshot.json().cursor },
-  });
-  assert.equal(resumedToBuyer.statusCode, 200, resumedToBuyer.body);
-  assert.doesNotMatch(resumedToBuyer.body, /event: ag-ui/);
-  // A question ends the current run and parks the invocation in WAITING_BUYER.
-  // The buyer answer is free and starts a new run for the same invocation/hold.
-  const questionReport = report(2, "question", {
-    questionId: "format",
-    prompt: "Which format should I use?",
-    inputSchema: {
+  assert.match(streamedToBuyer.body, /event: timeline/);
+  assert.match(streamedToBuyer.body, /Xin chào/);
+  // Progress steps are structured and replace each other by stepId.
+  for (const [sequence, status] of [
+    [2, "running"],
+    [3, "done"],
+  ] as const)
+    assert.equal(
+      (
+        await postWorker(
+          `${task}/reports`,
+          report(sequence, "progress", { stepId: "draft", label: "Drafting", status }),
+        )
+      ).statusCode,
+      200,
+    );
+  assert.equal(
+    (await postWorker(`${task}/reports`, report(4, "progress", { label: "No id" }))).statusCode,
+    400,
+  );
+  const steps = (await runMessage()).parts.filter((part) => part.toolName === "progress");
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].status, "done");
+  // A tool call ends the current run and parks the invocation in WAITING_BUYER.
+  // The buyer's result is free and starts a new run for the same invocation/hold.
+  const formArgs = {
+    title: "Which format should I use?",
+    schema: {
       type: "object",
       additionalProperties: false,
       required: ["format"],
       properties: { format: { type: "string", enum: ["md", "txt"] } },
     },
+  };
+  assert.equal(
+    (
+      await postWorker(
+        `${task}/reports`,
+        report(4, "tool_call", { toolCallId: "format", name: "ask_form", args: {} }),
+      )
+    ).statusCode,
+    400,
+  );
+  const toolCallReport = report(4, "tool_call", {
+    toolCallId: "format",
+    name: "ask_form",
+    args: formArgs,
   });
-  assert.equal((await postWorker(`${task}/reports`, questionReport)).statusCode, 200);
+  assert.equal((await postWorker(`${task}/reports`, toolCallReport)).statusCode, 200);
   assert.equal(
     (await web("GET", `/v1/invocations/${quoted.invocationId}`)).json().executionStatus,
     "WAITING_BUYER",
   );
-  const questionSnapshot = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
-  assert.equal(questionSnapshot.json().questions.at(-1).questionId, "format");
-  assert.equal(questionSnapshot.json().questions.at(-1).status, "OPEN");
-  const answerBody = {
-    questionId: "format",
-    arguments: { format: "md" },
-    clientRequestId: "answer-format",
-  };
-  const answered = await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, answerBody);
-  assert.equal(answered.statusCode, 202, answered.body);
+  const waiting = await runMessage();
+  assert.equal(waiting.status, "requires-action");
+  assert.equal(waiting.run.phase, "waiting_buyer");
+  const openCall = waiting.parts.find((part) => part.toolName === "ask_form")!;
+  assert.equal(openCall.status, "open");
+  assert.deepEqual(openCall.args, formArgs);
+  // The buyer answers by the public id, never the provider's own.
+  assert.notEqual(openCall.toolCallId, "format");
+  const answer = (result: unknown, clientRequestId: string) =>
+    web("POST", `/v1/threads/${thread.id}/tool-results`, {
+      toolCallId: openCall.toolCallId,
+      result,
+      clientRequestId,
+    });
+  assert.equal((await answer({ format: "pdf" }, "answer-format-0")).statusCode, 400);
+  const answered = await answer({ format: "md" }, "answer-format");
+  assert.equal(answered.statusCode, 201, answered.body);
   const continuationRun = answered.json().runId;
   assert.notEqual(continuationRun, runId);
-  assert.equal(
-    (await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, answerBody)).statusCode,
-    202,
-  );
-  assert.equal(
-    (
-      await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, {
-        ...answerBody,
-        clientRequestId: "answer-format-2",
-      })
-    ).statusCode,
-    409,
-  );
-  assert.equal(
-    (
-      await web("POST", `/v1/invocations/${quoted.invocationId}/answers`, {
-        questionId: "format",
-        arguments: { format: "pdf" },
-        clientRequestId: "answer-format-3",
-      })
-    ).statusCode,
-    409,
-  );
+  assert.equal((await answer({ format: "md" }, "answer-format")).statusCode, 201);
+  assert.equal((await answer({ format: "md" }, "answer-format-2")).statusCode, 409);
   const continuationEvents = await inject(app, {
     method: "GET",
     url: `${workerBase}/events?once=1`,
@@ -697,26 +727,65 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   const continuationEvent = continuationEvents
     .json()
-    .events.find((event: { type: string }) => event.type === "invocation.answer");
+    .events.find((event: { type: string }) => event.type === "invocation.tool_result");
   assert.equal(continuationEvent.runId, continuationRun);
-  assert.deepEqual(continuationEvent.arguments, { format: "md" });
+  assert.equal(continuationEvent.toolCallId, "format");
+  assert.equal(continuationEvent.name, "ask_form");
+  assert.deepEqual(continuationEvent.result, { format: "md" });
   assert.equal(
-    (await postWorker(`${task}/acks`, { eventId: answered.json().answerId })).statusCode,
+    (await postWorker(`${task}/acks`, { eventId: continuationEvent.resultId })).statusCode,
     200,
+  );
+  assert.equal(
+    (await runMessage()).parts.find((part) => part.toolCallId === openCall.toolCallId)!.status,
+    "done",
   );
   assert.equal((await postWorker(`${task}/reports`, report(1, "started"))).statusCode, 200);
   const continuationStream = `${task}/ag-ui/streams/${continuationRun}`;
-  const continuationNdjson = [
-    emit(1, { type: "TEXT_MESSAGE_START", messageId: "answer2", role: "assistant" }),
-    emit(2, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "Tiếp " }),
-    emit(3, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "tục" }),
-    emit(4, { type: "TEXT_MESSAGE_END", messageId: "answer2" }),
-  ].join("");
-  assert.equal(
-    (await postWorker(continuationStream, continuationNdjson, worker, "application/x-ndjson"))
-      .statusCode,
-    200,
-  );
+  // Text tokens reach a live buyer as deltas addressed to their part.
+  const stopTokens = new AbortController();
+  try {
+    const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/events`, {
+      headers: { origin, cookie },
+      signal: stopTokens.signal,
+    });
+    const reader = live.body!.getReader();
+    let received = "";
+    const read = async (until: string) => {
+      const timeout = AbortSignal.timeout(4000);
+      while (!received.includes(until)) {
+        const next = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) =>
+            timeout.addEventListener("abort", () => reject(new Error(`SSE_${until}`)), {
+              once: true,
+            }),
+          ),
+        ]);
+        assert.equal(next.done, false);
+        received += new TextDecoder().decode(next.value);
+      }
+    };
+    await read("event: timeline");
+    const post = async (body: string) =>
+      assert.equal(
+        (await postWorker(continuationStream, body, worker, "application/x-ndjson")).statusCode,
+        200,
+      );
+    await post(emit(1, { type: "TEXT_MESSAGE_START", messageId: "answer2", role: "assistant" }));
+    await read(`"id":"${continuationRun}-answer2"`);
+    await post(
+      emit(2, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "Tiếp " }) +
+        emit(3, { type: "TEXT_MESSAGE_CONTENT", messageId: "answer2", delta: "tục" }),
+    );
+    await read('"delta":"tục"');
+    assert.match(received, /event: delta/);
+    assert.ok(received.includes(`"messageId":"run-${quoted.invocationId}"`));
+    assert.ok(received.includes(`"partId":"${continuationRun}-answer2"`));
+    await post(emit(4, { type: "TEXT_MESSAGE_END", messageId: "answer2" }));
+  } finally {
+    stopTokens.abort();
+  }
   assert.equal(
     (
       await postWorker(
@@ -766,8 +835,12 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   );
   const invocationStatus = await web("GET", `/v1/invocations/${quoted.invocationId}`);
   assert.equal(invocationStatus.json().executionStatus, "VERIFYING");
-  const unverified = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
-  assert.equal(unverified.json().invocations[0].output, null);
+  const unverified = await runMessage();
+  assert.equal(unverified.run.phase, "verifying");
+  assert.equal(
+    unverified.parts.some((part) => part.toolName === "result"),
+    false,
+  );
   // The job worker sweep finds the run even if the enqueue above was lost.
   assert.deepEqual(await pendingVerifications(db), [
     { invocationId: quoted.invocationId, artifactVersion: 1 },
@@ -778,9 +851,18 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(await db.paymentDeliveryEvidence.count(), 1);
   // No output schema: the app-key-reported JSON is SIGN evidence.
   assert.equal((await db.paymentDeliveryEvidence.findFirstOrThrow()).evidenceLevel, "SIGN");
-  const delivered = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
-  assert.equal(delivered.json().invocations[0].executionStatus, "DELIVERED");
-  assert.deepEqual(delivered.json().invocations[0].output, { summary: "Done" });
+  const delivered = await runMessage();
+  assert.equal(delivered.run.phase, "delivered");
+  assert.deepEqual(delivered.parts.find((part) => part.toolName === "result")!.args!.output, {
+    summary: "Done",
+  });
+  // The wallet totals the held payment for the buyer and for the app's owner.
+  const summary = (await web("GET", "/v1/wallet")).json();
+  assert.equal(summary.chainId, 43113);
+  assert.deepEqual(summary.buyer.held, { amount: quoted.grossAmount, count: 1 });
+  assert.deepEqual(summary.buyer.released, { amount: "0", count: 0 });
+  assert.equal(summary.provider.apps >= 1, true);
+  assert.deepEqual(summary.provider.held, { amount: quoted.grossAmount, count: 1 });
   const threadDetails = await web("GET", `/v1/threads/${thread.id}`);
   assert.equal(threadDetails.json().activeQuoteId, null);
   assert.equal(threadDetails.json().revisionPolicy.maxIncluded, 1);
@@ -837,10 +919,11 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     200,
   );
   assert.equal(await verifyStructuredDeliveries(db), 1);
-  const revised = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
-  assert.equal(revised.json().invocations[0].executionStatus, "DELIVERED");
-  // Plain markdown text is a delivery too.
-  assert.equal(revised.json().invocations[0].output, "## Short\n\nMarkdown text.");
+  const revised = await runMessage();
+  assert.equal(revised.run.phase, "delivered");
+  // Plain markdown text is a delivery too; the revision request shows in the run.
+  assert.equal(revised.parts.at(-1)!.text, "## Short\n\nMarkdown text.");
+  assert.ok(revised.parts.some((part) => part.toolName === "revision"));
   const markdown = await db.paymentDeliveryEvidence.findFirstOrThrow({
     where: { invocationId: quoted.invocationId, artifactVersion: 2 },
   });
@@ -852,22 +935,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         clientRequestId: "revision-2",
       })
     ).statusCode,
-    409,
-  );
-  // Cursors older than the replay window must bootstrap from the snapshot.
-  const earliest = await db.aguiStreamEvent.findMany({
-    where: { threadId: thread.id },
-    orderBy: { cursor: "asc" },
-    take: 2,
-    select: { cursor: true },
-  });
-  await db.aguiStreamEvent.updateMany({
-    where: { cursor: { in: earliest.map((event) => event.cursor) } },
-    data: { createdAt: new Date(Date.now() - 8 * 86400000) },
-  });
-  assert.equal(
-    (await web("GET", `/v1/threads/${thread.id}/ag-ui/events?once=1&after=${earliest[0].cursor}`))
-      .statusCode,
     409,
   );
   // A verified chat turn frees the admission slot while preserving its
@@ -904,7 +971,9 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     ],
   );
   assert.equal(
-    (await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`)).json().prompts.length,
+    (await web("GET", `/v1/threads/${thread.id}/timeline`))
+      .json()
+      .messages.filter((m: { run: unknown }) => m.run).length,
     2,
   );
   const rotated = await web("POST", keys, {

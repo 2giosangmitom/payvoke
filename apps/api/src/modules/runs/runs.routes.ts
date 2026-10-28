@@ -6,7 +6,7 @@ import { eventStream } from "../../http/sse";
 import { validate } from "../../http/validate";
 import { requireAccount } from "../auth/guard";
 import type { KeyScope } from "../provider/provider.validation";
-import { ackBody, answerBody, feedQuery, reportBody, revisionBody } from "./runs.schemas";
+import { ackBody, feedQuery, reportBody, revisionBody } from "./runs.schemas";
 
 const base = "/v1/provider/apps/:appId";
 const work = `${base}/invocations/:id`;
@@ -91,22 +91,7 @@ export const runRoutes = new Hono<AppEnv>()
       ),
     );
   })
-  // Buyer continuations.
-  .post(
-    "/v1/invocations/:id/answers",
-    maxBody(32768),
-    validate("json", answerBody, "INVALID_ANSWER"),
-    requireAccount,
-    async (c) =>
-      c.json(
-        await c.var.cradle.continuationService.answer(
-          c.var.account.id,
-          c.req.param("id"),
-          c.req.valid("json"),
-        ),
-        202,
-      ),
-  )
+  // Buyer continuation; tool results go through the thread.
   .post(
     "/v1/invocations/:id/revisions",
     maxBody(8192),

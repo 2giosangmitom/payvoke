@@ -62,18 +62,20 @@ export function PaymentConfirm({
   return (
     <section
       aria-label="Quote awaiting authorization"
-      className="grid gap-3 border border-primary bg-primary-soft p-4 animate-in fade-in-0 slide-in-from-bottom-2"
+      className="grid max-w-lg gap-3 border border-border-strong bg-card p-4"
     >
-      <div className="flex items-center gap-3">
-        <div className="grid size-8 place-items-center border border-primary text-primary">
-          <CircleDollarSign size={17} />
-        </div>
+      <div className="flex items-start gap-3">
+        <CircleDollarSign size={18} className="mt-1 shrink-0 text-primary" aria-hidden />
         <div className="grid min-w-0 gap-0.5">
-          <strong className="font-mono text-lg font-semibold tracking-tight">
+          <strong className="font-mono text-lg font-semibold">
             {formatUsdc(quote.grossAmount)}
           </strong>
-          <span className="font-mono text-[10px] text-faint">
-            Expires {new Date(quote.validUntil * 1000).toLocaleTimeString()} · Avalanche Fuji
+          <span className="text-xs text-muted-foreground">
+            Quote valid until{" "}
+            <span className="font-mono">
+              {new Date(quote.validUntil * 1000).toLocaleTimeString()}
+            </span>{" "}
+            · Avalanche Fuji
           </span>
         </div>
         {onHide && (
@@ -88,17 +90,17 @@ export function PaymentConfirm({
           </Button>
         )}
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px] sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
         <div>
-          <dt className="text-faint">Delivery</dt>
-          <dd>{duration(definition.deliverySeconds)}</dd>
+          <dt className="text-muted-foreground">Delivery</dt>
+          <dd className="font-mono">{duration(definition.deliverySeconds)}</dd>
         </div>
         <div>
-          <dt className="text-faint">Review window</dt>
-          <dd>{duration(definition.reviewSeconds)}</dd>
+          <dt className="text-muted-foreground">Review window</dt>
+          <dd className="font-mono">{duration(definition.reviewSeconds)}</dd>
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <dt className="text-faint">Refund</dt>
+          <dt className="text-muted-foreground">Refund</dt>
           <dd className="break-words">{definition.refundPolicy}</dd>
         </div>
       </dl>

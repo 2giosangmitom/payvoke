@@ -1,11 +1,8 @@
-import React, { createContext, useContext, useMemo } from "react";
 import {
   createLibrary,
-  createParser,
   defineComponent,
   Renderer,
   type ComponentRenderer,
-  type ElementNode,
 } from "@openuidev/react-lang";
 import {
   OPENUI_ROOT,
@@ -14,20 +11,12 @@ import {
   type ComponentProps,
 } from "@payvoke/shared/openui";
 import { ChatWidget } from "@/src/features/chat/chat-widget";
-import { QuestionForm } from "@/src/features/chat/question-form";
 import { cn } from "@/src/lib/utils";
-import type { ChatQuestion } from "@/src/features/chat/api";
 
 // OpenUI Lang is host-rendered declarative data. Every component below is a
 // fixed host renderer for the shared catalog; provider text is only ever React
 // text content, and the catalog has no action, URL or tool props to wire up.
-type SurfaceContextValue = {
-  questions: ChatQuestion[];
-  invocationId?: string;
-  onAnswer?: (question: ChatQuestion, values: Record<string, unknown>) => Promise<void>;
-};
-const SurfaceContext = createContext<SurfaceContextValue>({ questions: [] });
-
+// Interaction is the built-in tools' job, never a surface's.
 const label = (value: unknown) =>
   typeof value === "string" || typeof value === "number" || typeof value === "boolean"
     ? String(value)
@@ -131,40 +120,6 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
       </div>
     );
   },
-  QuestionForm: ({ props }) => {
-    const { questions, invocationId, onAnswer } = useContext(SurfaceContext);
-    const title = props.title || "Provider question";
-    const question = questions.find(
-      (item) =>
-        item.questionId === props.questionId &&
-        item.status === "OPEN" &&
-        (!invocationId || item.invocationId === invocationId),
-    );
-    if (!question)
-      return (
-        <div className={widgetCard}>
-          <h3 className={widgetTitle}>{title}</h3>
-          <p className="text-muted-foreground">This question is no longer open.</p>
-        </div>
-      );
-    return (
-      <div className={widgetCard}>
-        <h3 className={widgetTitle}>{title}</h3>
-        {onAnswer ? (
-          <QuestionForm
-            question={question}
-            compact
-            onSubmit={(values) => onAnswer(question, values)}
-          />
-        ) : (
-          <>
-            <p className="leading-relaxed">{question.prompt}</p>
-            <small className="text-faint">You can't answer from this view.</small>
-          </>
-        )}
-      </div>
-    );
-  },
 };
 
 export const openuiLibrary = createLibrary({
@@ -173,50 +128,11 @@ export const openuiLibrary = createLibrary({
     defineComponent({ ...spec, component: renderers[spec.name] as ComponentRenderer<any> }),
   ),
 });
-const parser = createParser(openuiLibrary.toJSONSchema(), OPENUI_ROOT);
-
-// Question IDs placed inline by a surface, so the chat does not render the
-// same open question a second time as a standalone form.
-export function surfaceQuestionIds(source: string): string[] {
-  const ids: string[] = [];
-  const visit = (value: unknown, depth: number) => {
-    if (depth > 20 || !value || typeof value !== "object") return;
-    if (Array.isArray(value)) return value.forEach((item) => visit(item, depth + 1));
-    const node = value as ElementNode;
-    if (node.type !== "element") return;
-    if (node.typeName === "QuestionForm" && typeof node.props.questionId === "string")
-      ids.push(node.props.questionId);
-    for (const prop of Object.values(node.props)) visit(prop, depth + 1);
-  };
-  try {
-    visit(parser.parse(source).root, 0);
-  } catch {
-    /* an unparsable surface places no questions */
-  }
-  return ids;
-}
-
-export function OpenUISurface({
-  source,
-  questions = [],
-  invocationId,
-  onAnswer,
-}: {
-  source: string;
-  questions?: ChatQuestion[];
-  invocationId?: string;
-  onAnswer?: (question: ChatQuestion, values: Record<string, unknown>) => Promise<void>;
-}) {
-  const context = useMemo(
-    () => ({ questions, invocationId, onAnswer }),
-    [questions, invocationId, onAnswer],
-  );
+export function OpenUISurface({ source }: { source: string }) {
   if (typeof source !== "string" || !source.trim()) return null;
   return (
-    <ChatWidget label="App widget" meta="OpenUI Lang" aria-label="App widget">
-      <SurfaceContext.Provider value={context}>
-        <Renderer response={source} library={openuiLibrary} />
-      </SurfaceContext.Provider>
+    <ChatWidget label="App widget" aria-label="App widget">
+      <Renderer response={source} library={openuiLibrary} />
     </ChatWidget>
   );
 }

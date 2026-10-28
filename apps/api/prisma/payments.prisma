@@ -41,8 +41,8 @@ model Invocation {
   streamEvents    AguiStreamEvent[]
   run             ProviderRun? @relation("ActiveRun", fields: [runId], references: [runId], onDelete: Restrict)
   runs            ProviderRun[] @relation("InvocationRuns")
-  questions       InvocationQuestion[]
-  answers         InvocationAnswer[]
+  toolCalls       InvocationToolCall[]
+  toolResults     InvocationToolResult[]
   revisions       InvocationRevision[]
   files           FileAsset[]
 
@@ -192,44 +192,45 @@ model OpenUISurface {
   @@map("openui_surfaces")
 }
 
-// A provider question closes the current run with RUN_FINISHED but keeps the
-// invocation (and its hold) alive. Only a buyer answer starts the next run.
-model InvocationQuestion {
-  id                String   @id @default(uuid())
-  invocationId      String
-  questionId        String
-  runId             String
-  prompt            String
-  inputSchema       Json
-  chatTextParameter String?
-  status            String   @default("OPEN")
-  createdAt         DateTime @default(now())
-  answeredAt        DateTime?
-  invocation        Invocation @relation(fields: [invocationId], references: [id], onDelete: Restrict)
-  answer            InvocationAnswer?
+// A built-in tool (ask_form, ask_choice, confirm) a provider opened during a
+// run. It closes the run with RUN_FINISHED but keeps the invocation (and its
+// hold) alive. Only the buyer's result starts the next run. `id` is the public
+// toolCallId the buyer answers; `toolCallId` is the provider's own id.
+model InvocationToolCall {
+  id           String    @id @default(uuid())
+  invocationId String
+  toolCallId   String
+  runId        String
+  name         String
+  args         Json
+  status       String    @default("OPEN")
+  createdAt    DateTime  @default(now())
+  answeredAt   DateTime?
+  invocation   Invocation            @relation(fields: [invocationId], references: [id], onDelete: Restrict)
+  result       InvocationToolResult?
 
-  @@unique([invocationId, questionId])
+  @@unique([invocationId, toolCallId])
   @@index([invocationId, status])
-  @@map("invocation_questions")
+  @@map("invocation_tool_calls")
 }
 
-model InvocationAnswer {
+model InvocationToolResult {
   id              String   @id @default(uuid())
   invocationId    String
-  questionId      String
+  toolCallId      String
   runId           String
   buyerId         String
   clientRequestId String   @db.VarChar(128)
-  arguments       Json
+  result          Json
   acknowledgedAt  DateTime?
   createdAt       DateTime @default(now())
   invocation      Invocation         @relation(fields: [invocationId], references: [id], onDelete: Restrict)
-  question        InvocationQuestion @relation(fields: [invocationId, questionId], references: [invocationId, questionId], onDelete: Restrict)
+  call            InvocationToolCall @relation(fields: [invocationId, toolCallId], references: [invocationId, toolCallId], onDelete: Restrict)
 
   @@unique([invocationId, clientRequestId])
-  @@unique([invocationId, questionId])
+  @@unique([invocationId, toolCallId])
   @@index([buyerId, createdAt])
-  @@map("invocation_answers")
+  @@map("invocation_tool_results")
 }
 
 // In-scope revisions reuse the invocation/hold. A revision may only target a

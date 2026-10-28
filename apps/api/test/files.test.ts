@@ -361,7 +361,7 @@ it("verifies buyer inputs before a quote freezes them for the provider", async (
   assert.equal(await storage.head(`staging/${abandoned.id}`), null);
 });
 
-it("takes files from bot forms and FILE options into the frozen quote", async () => {
+it("takes files from bot form tools and FILE options into the frozen quote", async () => {
   const { web, worker, appId, thread } = await marketplace();
   const threadId = await thread();
   const readyFile = async (target: string, body: string, contentType: string, name: string) => {
@@ -387,7 +387,7 @@ it("takes files from bot forms and FILE options into the frozen quote", async ()
       note: { type: "string", maxLength: 200 },
     },
   };
-  for (const form of [
+  for (const args of [
     {
       title: "Nested",
       schema: {
@@ -403,37 +403,81 @@ it("takes files from bot forms and FILE options into the frozen quote", async ()
     },
     { title: "", schema },
   ])
-    assert.equal((await botSays({ content: "Upload", form })).json().error, "INVALID_FORM");
+    assert.equal(
+      (await botSays({ content: "Upload", tool: { name: "ask_form", args } })).json().error,
+      "INVALID_TOOL_CALL",
+    );
   const asked = await botSays({
     content: "Please upload the scan",
-    form: { title: "Scan", schema },
+    tool: { name: "ask_form", args: { title: "Scan", schema } },
   });
   assert.equal(asked.statusCode, 201, asked.body);
-  assert.equal(asked.json().form.title, "Scan");
+  assert.equal(asked.json().tool.args.title, "Scan");
 
   const png = await readyFile(threadId, "png bytes", "image/png", "scan.png");
   const text = await readyFile(threadId, "plain text", "text/plain", "scan.txt");
   const large = await readyFile(threadId, "x".repeat(65), "image/png", "large.png");
   const foreign = await readyFile(await thread(), "other", "image/png", "other.png");
   const answer = (scan: unknown) =>
-    say({ content: "Here it is", replyToId: asked.json().id, arguments: { scan } });
+    web("POST", `/v1/threads/${threadId}/tool-results`, {
+      toolCallId: asked.json().id,
+      result: { scan },
+      clientRequestId: randomUUID(),
+    });
   for (const scan of [text, large, foreign, randomUUID()])
     assert.equal((await answer(scan)).json().error, "INVALID_ARGUMENT_FILES");
-  assert.equal((await answer(42)).json().error, "INVALID_ARGUMENTS");
+  assert.equal((await answer(42)).json().error, "INVALID_TOOL_RESULT");
   const answered = await answer(png);
   assert.equal(answered.statusCode, 201, answered.body);
-  assert.equal(answered.json().replyToId, asked.json().id);
+  const reply = answered.json().message;
+  assert.equal(reply.replyToId, asked.json().id);
   assert.deepEqual(
-    answered.json().files.map((file: { fileId: string }) => file.fileId),
+    reply.files.map((file: { fileId: string }) => file.fileId),
     [png],
   );
-  assert.equal((await answer(png)).json().error, "FORM_ALREADY_ANSWERED");
-  // The bot sees the answer and its file metadata, never the bytes before payment.
+  assert.equal((await answer(png)).json().error, "TOOL_CALL_ALREADY_ANSWERED");
+  // The bot sees the result and its file metadata, never the bytes before payment.
   const feed = (await worker("GET", "/events?once=1")).json().events;
-  const event = feed.find((item: { messageId: string }) => item.messageId === answered.json().id);
-  assert.equal(event.replyToId, asked.json().id);
+  const event = feed.find((item: { messageId: string }) => item.messageId === reply.id);
+  assert.deepEqual(event.toolResult, { toolCallId: asked.json().id, result: { scan: png } });
   assert.equal(event.files[0].contentType, "image/png");
-  assert.equal(event.conversation.at(-2).form.title, "Scan");
+  assert.equal(event.conversation.at(-2).tool.args.title, "Scan");
+
+  // Audio carries player metadata and gets an inline URL; other types do not.
+  const audioBody = "audio bytes";
+  assert.equal(
+    (
+      await web(
+        "POST",
+        "/v1/files",
+        upload("text", { threadId, audio: { durationMs: 1000, peaks: [0.5] } }),
+      )
+    ).json().error,
+    "INVALID_UPLOAD",
+  );
+  const voice = (
+    await web(
+      "POST",
+      "/v1/files",
+      upload(audioBody, {
+        threadId,
+        name: "voice.ogg",
+        contentType: "audio/ogg",
+        audio: { durationMs: 2500, peaks: [0, 0.4, 1] },
+      }),
+    )
+  ).json().file;
+  assert.equal(voice.durationMs, 2500);
+  storage.put(`staging/${voice.id}`, audioBody);
+  assert.equal((await web("POST", `/v1/files/${voice.id}/completions`, {})).statusCode, 200);
+  assert.equal((await web("GET", `/v1/files/${voice.id}/stream`)).statusCode, 200);
+  assert.equal((await web("GET", `/v1/files/${text}/stream`)).json().error, "INLINE_NOT_SUPPORTED");
+  assert.equal((await say({ content: "Listen", fileIds: [voice.id] })).statusCode, 201);
+  const voicePart = (await web("GET", `/v1/threads/${threadId}/timeline`))
+    .json()
+    .messages.flatMap((m: { parts: { type: string; fileId?: string }[] }) => m.parts)
+    .find((part: { fileId?: string }) => part.fileId === voice.id);
+  assert.deepEqual(voicePart.audio, { durationMs: 2500, peaks: [0, 0.4, 1] });
 
   // A FILE option takes the same path through slash commands and offers.
   const command = await web("POST", `/v1/provider/apps/${appId}/commands`, {
@@ -567,12 +611,25 @@ it("accepts verified provider artifacts and records REC evidence", async () => {
   assert.deepEqual((evidence.envelope as { files: unknown }).files, [
     { fileId: file.id, sha256: sha256(body), size: 17 },
   ]);
-  const snapshot = await web("GET", `/v1/threads/${threadId}/ag-ui/snapshot`);
-  const delivered = snapshot.json().invocations.find((i: { id: string }) => i.id === invocationId);
-  assert.equal(delivered.executionStatus, "DELIVERED");
-  assert.deepEqual(delivered.files, [
-    { fileId: file.id, name: "result.txt", contentType: "text/plain", size: 17 },
-  ]);
+  const timeline = await web("GET", `/v1/threads/${threadId}/timeline`);
+  const delivered = timeline
+    .json()
+    .messages.find((m: { id: string }) => m.id === `run-${invocationId}`);
+  assert.equal(delivered.run.phase, "delivered");
+  assert.deepEqual(
+    delivered.parts.filter((part: { type: string }) => part.type === "file"),
+    [
+      {
+        type: "file",
+        id: file.id,
+        fileId: file.id,
+        name: "result.txt",
+        contentType: "text/plain",
+        size: 17,
+        audio: null,
+      },
+    ],
+  );
 });
 
 it("keeps file routes and file context closed when files are disabled", async () => {

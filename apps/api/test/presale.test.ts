@@ -226,7 +226,7 @@ async function marketplace() {
   return { web, cookie, otherCookie, agent, tool, quote, say, offer, hold };
 }
 
-it("talks to every app, prices only by offer and takes one answer per bot form", async () => {
+it("talks to every app, prices only by offer and takes one result per bot tool call", async () => {
   const { web, agent, tool, quote, say, offer } = await marketplace();
   // Commands carry no price of their own; pricing fields are rejected.
   const define = (extra: Record<string, unknown>) =>
@@ -267,7 +267,7 @@ it("talks to every app, prices only by offer and takes one answer per bot form",
   const agentThread = await agent.thread();
   assert.equal((await offer(agentThread)).json().error, "NO_BUYER_REQUEST");
 
-  // A bot form takes exactly one validated answer from the thread's buyer.
+  // A tool the bot opens takes exactly one validated result from the thread's buyer.
   const form = {
     title: "Scope",
     description: "Tell us the length",
@@ -278,34 +278,101 @@ it("talks to every app, prices only by offer and takes one answer per bot form",
       properties: { pages: { type: "integer", minimum: 1, maximum: 50, title: "Pages" } },
     },
   };
-  const asked = await tool.worker("POST", `/threads/${toolThread}/messages`, {
-    content: "How long should it be?",
-    form,
-    clientRequestId: randomUUID(),
-  });
+  const open = (content: string, toolCall: unknown) =>
+    tool.worker("POST", `/threads/${toolThread}/messages`, {
+      content,
+      tool: toolCall,
+      clientRequestId: randomUUID(),
+    });
+  for (const bad of [
+    { name: "ask_form", args: { ...form, schema: { type: "string" } } },
+    { name: "ask_choice", args: { prompt: "Pick", options: [{ id: "a", label: "A" }] } },
+    {
+      name: "ask_choice",
+      args: {
+        prompt: "Pick",
+        options: [
+          { id: "a", label: "A" },
+          { id: "a", label: "B" },
+        ],
+      },
+    },
+    { name: "confirm", args: { title: "Go?", variant: "loud" } },
+    { name: "run_shell", args: {} },
+  ])
+    assert.equal((await open("x", bad)).json().error, "INVALID_TOOL_CALL", JSON.stringify(bad));
+  const asked = await open("How long should it be?", { name: "ask_form", args: form });
   assert.equal(asked.statusCode, 201, asked.body);
-  assert.deepEqual(asked.json().form, form);
-  const reply = (args: unknown, extra: Record<string, unknown> = {}) =>
-    say(toolThread, { content: "Answer", replyToId: asked.json().id, arguments: args, ...extra });
-  assert.equal((await reply({ pages: 0 })).json().error, "INVALID_ARGUMENTS");
+  assert.deepEqual(asked.json().tool, { name: "ask_form", args: form });
+  const toolResult = (
+    toolCallId: string,
+    result: unknown,
+    clientRequestId: string = randomUUID(),
+  ) =>
+    web("POST", `/v1/threads/${toolThread}/tool-results`, {
+      toolCallId,
+      result,
+      clientRequestId,
+    });
   assert.equal(
-    (await reply({ pages: 2 }, { commandId: tool.commandId })).json().error,
-    "INVALID_MESSAGE",
+    (await toolResult(asked.json().id, { pages: 0 })).json().error,
+    "INVALID_TOOL_RESULT",
   );
   const plain = await say(toolThread, { content: "plain" });
-  assert.equal(
-    (await say(toolThread, { content: "x", replyToId: plain.json().id, arguments: {} })).json()
-      .error,
-    "FORM_NOT_FOUND",
-  );
-  const answered = await reply({ pages: 3 });
+  assert.equal((await toolResult(plain.json().id, {})).json().error, "TOOL_CALL_NOT_FOUND");
+  const answered = await toolResult(asked.json().id, { pages: 3 }, "answer-pages");
   assert.equal(answered.statusCode, 201, answered.body);
-  assert.deepEqual(answered.json().arguments, { pages: 3 });
-  assert.equal((await reply({ pages: 4 })).json().error, "FORM_ALREADY_ANSWERED");
-  const snapshot = (await web("GET", `/v1/threads/${toolThread}/ag-ui/snapshot`)).json();
+  assert.deepEqual(answered.json().message.arguments, { pages: 3 });
+  assert.equal(answered.json().message.replyToId, asked.json().id);
+  // A lost response replays; a second, different result is refused.
+  assert.equal((await toolResult(asked.json().id, { pages: 3 }, "answer-pages")).statusCode, 201);
   assert.equal(
-    snapshot.conversation.find((m: { id: string }) => m.id === answered.json().id).replyToId,
-    asked.json().id,
+    (await toolResult(asked.json().id, { pages: 4 })).json().error,
+    "TOOL_CALL_ALREADY_ANSWERED",
+  );
+
+  // A choice needs a valid selection; a message text is optional with a tool.
+  const choice = await open("", {
+    name: "ask_choice",
+    args: {
+      prompt: "Which tone?",
+      options: [
+        { id: "formal", label: "Formal" },
+        { id: "casual", label: "Casual", description: "Short sentences" },
+      ],
+    },
+  });
+  assert.equal(choice.statusCode, 201, choice.body);
+  assert.equal(choice.json().tool.args.maxSelections, 1);
+  assert.equal(
+    (await toolResult(choice.json().id, { selected: ["formal", "casual"] })).json().error,
+    "INVALID_TOOL_RESULT",
+  );
+  assert.equal(
+    (await toolResult(choice.json().id, { selected: ["casual"] })).json().message.content,
+    "Casual",
+  );
+
+  const timeline = (await web("GET", `/v1/threads/${toolThread}/timeline`)).json();
+  type Part = {
+    type: string;
+    toolName?: string;
+    toolCallId?: string;
+    status?: string;
+    result?: unknown;
+  };
+  const parts: Part[] = timeline.messages.flatMap((m: { parts: Part[] }) => m.parts);
+  const formPart = parts.find((part) => part.toolCallId === asked.json().id)!;
+  assert.equal(formPart.toolName, "ask_form");
+  assert.equal(formPart.status, "done");
+  assert.deepEqual(formPart.result, { pages: 3 });
+  assert.deepEqual(parts.find((part) => part.toolCallId === choice.json().id)!.result, {
+    selected: ["casual"],
+  });
+  // A result is shown on its call, never as its own bubble.
+  assert.equal(
+    timeline.messages.some((m: { id: string }) => m.id === answered.json().message.id),
+    false,
   );
 
   // The bot prices freely above the floor on an uncapped command.
@@ -409,16 +476,17 @@ it("delivers free pre-sale messages to the provider feed with bounded abuse", as
   assert.equal((await say(threadId, { content: "fifth" })).json().error, "PRESALE_LIMIT_REACHED");
 
   // Browsers open this stream cross-origin with credentials.
-  const stream = await web("GET", `/v1/threads/${threadId}/ag-ui/events?once=1`);
+  const stream = await web("GET", `/v1/threads/${threadId}/events?once=1`);
   assert.equal(stream.headers["access-control-allow-origin"], origin);
   assert.equal(stream.headers["access-control-allow-credentials"], "true");
+  assert.match(stream.body, /event: timeline/);
 
-  const snapshot = (await web("GET", `/v1/threads/${threadId}/ag-ui/snapshot`)).json();
-  assert.equal(snapshot.conversation.length, 9);
-  assert.deepEqual(snapshot.conversation.map((m: { role: string }) => m.role).slice(0, 3), [
-    "BUYER",
-    "BUYER",
-    "PROVIDER",
+  const timeline = (await web("GET", `/v1/threads/${threadId}/timeline`)).json();
+  assert.equal(timeline.messages.length, 9);
+  assert.deepEqual(timeline.messages.map((m: { role: string }) => m.role).slice(0, 3), [
+    "user",
+    "user",
+    "assistant",
   ]);
 });
 
@@ -532,7 +600,8 @@ it("turns exactly one open offer into a quote that freezes the negotiation", asy
 it("closes offers by withdrawal, decline and expiry", async () => {
   const { web, otherCookie, agent, quote, say, offer } = await marketplace();
   const threadId = await agent.thread();
-  await say(threadId, { content: "Quote me" });
+  const said = await say(threadId, { content: "Quote me" });
+  assert.equal(said.statusCode, 201, said.body);
 
   const withdrawn = (await offer(threadId)).json();
   const withdrawal = await agent.worker(
@@ -543,17 +612,18 @@ it("closes offers by withdrawal, decline and expiry", async () => {
   assert.equal((await quote({ threadId, offerId: withdrawn.id })).json().error, "OFFER_NOT_OPEN");
 
   const declined = (await offer(threadId)).json();
-  assert.equal(
-    (await web("POST", `/v1/threads/${threadId}/offers/${declined.id}/declines`, {}, otherCookie))
-      .statusCode,
-    404,
-  );
-  const decline = await web("POST", `/v1/threads/${threadId}/offers/${declined.id}/declines`, {});
-  assert.equal(decline.json().status, "DECLINED");
-  assert.equal(
-    (await web("POST", `/v1/threads/${threadId}/offers/${declined.id}/declines`, {})).json().error,
-    "OFFER_NOT_OPEN",
-  );
+  const decline = (cookie?: string, result: unknown = { accepted: false }) =>
+    web(
+      "POST",
+      `/v1/threads/${threadId}/tool-results`,
+      { toolCallId: declined.id, result, clientRequestId: randomUUID() },
+      cookie,
+    );
+  assert.equal((await decline(otherCookie)).statusCode, 404);
+  // Accepting goes through a quote and payment, never this endpoint.
+  assert.equal((await decline(undefined, { accepted: true })).json().error, "INVALID_TOOL_RESULT");
+  assert.equal((await decline()).json().status, "DECLINED");
+  assert.equal((await decline()).json().error, "OFFER_NOT_OPEN");
 
   const expired = (await offer(threadId)).json();
   await db.offer.update({
@@ -562,9 +632,12 @@ it("closes offers by withdrawal, decline and expiry", async () => {
   });
   assert.equal((await quote({ threadId, offerId: expired.id })).json().error, "OFFER_NOT_OPEN");
 
-  const snapshot = (await web("GET", `/v1/threads/${threadId}/ag-ui/snapshot`)).json();
+  const timeline = (await web("GET", `/v1/threads/${threadId}/timeline`)).json();
   assert.deepEqual(
-    snapshot.offers.map((o: { status: string }) => o.status),
+    timeline.messages
+      .flatMap((m: { parts: { toolName?: string; result?: { status: string } }[] }) => m.parts)
+      .filter((part: { toolName?: string }) => part.toolName === "offer")
+      .map((part: { result: { status: string } }) => part.result.status),
     ["WITHDRAWN", "DECLINED", "EXPIRED"],
   );
 });

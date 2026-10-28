@@ -15,7 +15,6 @@ it("accumulates OpenUI Lang statements with forward references and redefinition"
   assert.equal(source.split("\n").length, 5);
   // Statements may span lines inside brackets, and children may precede root.
   assert.ok(applyOpenUIPatch("", 'rows = Table(["a"], [\n  {a: 1},\n  {a: 2}\n])'));
-  assert.ok(applyOpenUIPatch("", 'q = QuestionForm("region", "Pick a region")'));
 });
 
 it("rejects components, tool calls and content outside the display-only catalog", () => {
@@ -56,13 +55,12 @@ it("accepts only the payvoke.openui custom event shape at ingress", () => {
 it("publishes a provider prompt generated from the shared catalog", () => {
   const { root, prompt, schema } = openuiCatalog();
   assert.equal(root, "Stack");
-  for (const name of ["Stack", "Text", "Card", "Metric", "Table", "Chart", "QuestionForm"])
+  for (const name of ["Stack", "Text", "Card", "Metric", "Table", "Chart"])
     assert.match(prompt, new RegExp(`${name}\\(`));
   assert.deepEqual(Object.keys(schema.properties ?? {}).sort(), [
     "Card",
     "Chart",
     "Metric",
-    "QuestionForm",
     "Stack",
     "Table",
     "Text",

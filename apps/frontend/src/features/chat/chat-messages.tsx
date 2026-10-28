@@ -1,26 +1,32 @@
 "use client";
 
-import { Suspense, createContext, lazy, useContext, type ReactNode } from "react";
+import { useContext } from "react";
 import {
   ActionBarPrimitive,
   MessagePrimitive,
   useAuiState,
   type TextMessagePartProps,
+  type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
-import { CheckIcon, CopyIcon, Handshake, UserRound } from "lucide-react";
-import { TooltipIconButton } from "@/src/features/chat/assistant-ui/tooltip-icon-button";
+import { CheckIcon, CopyIcon } from "lucide-react";
+import { TooltipIconButton } from "@/src/components/assistant-ui/elements/tooltip-icon-button";
+import { TypingIndicator } from "@/src/components/assistant-ui/elements/typing-indicator";
+import { FilePart } from "@/src/features/chat/file-part";
+import { RunBody } from "@/src/features/chat/run-message";
+import { ThreadChatContext, type MessageKind } from "@/src/features/chat/thread-runtime";
+import { toolUIs } from "@/src/features/chat/tool-uis";
 import { cn } from "@/src/lib/utils";
 
-// The app on the other side of the thread, for avatars and indicators.
-export const ChatAppContext = createContext<{ name: string }>({ name: "App" });
+const time = (date: Date | undefined) =>
+  date ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 
-function AppAvatar({ className }: { className?: string }) {
-  const { name } = useContext(ChatAppContext);
+function AppMark({ className }: { className?: string }) {
+  const name = useContext(ThreadChatContext)?.appName ?? "App";
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-8 shrink-0 place-items-center border border-primary bg-primary-soft font-mono text-xs font-semibold text-primary uppercase max-sm:hidden",
+        "grid size-8 shrink-0 place-items-center border border-border-strong font-mono text-xs font-semibold text-foreground uppercase max-sm:hidden",
         className,
       )}
     >
@@ -29,102 +35,85 @@ function AppAvatar({ className }: { className?: string }) {
   );
 }
 
-function MessageLabel({ children }: { children: ReactNode }) {
-  return (
-    <span className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-faint uppercase">
-      {children}
-    </span>
-  );
-}
-
-// Provider pre-sale text is shown verbatim: no markdown, so no links or
-// formatting can pass for Payvoke UI.
+// Bot chat text is shown verbatim: no markdown, so nothing in it can pass
+// for Payvoke UI. Paid run output renders as markdown in the run body.
 function PlainText({ text }: TextMessagePartProps) {
-  return <span className="whitespace-pre-wrap">{text}</span>;
+  return <p className="leading-relaxed break-words whitespace-pre-wrap">{text}</p>;
 }
 
-// Streamdown and its highlighter are heavy; the chat shell loads without them
-// and app output shows as plain text until the renderer arrives.
-const StreamdownText = lazy(() =>
-  import("@/src/features/chat/assistant-ui/streamdown-text").then((m) => ({
-    default: m.StreamdownText,
-  })),
-);
-function AppText(props: TextMessagePartProps) {
-  return (
-    <Suspense fallback={<PlainText {...props} />}>
-      <StreamdownText />
-    </Suspense>
+function Tool(props: ToolCallMessagePartProps) {
+  const Component = toolUIs[props.toolName as keyof typeof toolUIs];
+  return Component ? (
+    <Component {...(props as ToolCallMessagePartProps<Record<string, unknown>>)} />
+  ) : null;
+}
+
+const partComponents = {
+  Text: PlainText,
+  File: FilePart,
+  tools: { Override: Tool },
+};
+
+export function UserMessage() {
+  const createdAt = useAuiState((s) => s.message.createdAt);
+  const pending = useAuiState(
+    (s) => (s.message.metadata.custom?.["kind"] as MessageKind | undefined) === "pending",
   );
-}
-
-export function BuyerMessage() {
   return (
-    <MessagePrimitive.Root className="group flex max-w-[min(85%,44rem)] flex-row-reverse max-sm:max-w-[92%] items-start gap-3 self-end animate-in fade-in-0 slide-in-from-bottom-2">
-      <span
-        aria-hidden="true"
-        className="grid size-8 shrink-0 place-items-center border border-border-strong bg-background text-muted-foreground max-sm:hidden"
-      >
-        <UserRound size={15} />
-      </span>
-      <div className="grid min-w-0 justify-items-end gap-1.5">
-        <MessageLabel>You</MessageLabel>
-        <div className="border border-primary/30 bg-primary-soft px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap">
-          <MessagePrimitive.Parts />
-        </div>
+    <MessagePrimitive.Root
+      className={cn(
+        "grid max-w-[min(85%,40rem)] justify-items-end gap-1.5 self-end max-sm:max-w-[92%]",
+        pending && "opacity-70",
+      )}
+    >
+      <div className="grid min-w-0 justify-items-end gap-2 border border-primary/30 bg-primary-soft px-4 py-3 text-sm *:max-w-full">
+        <MessagePrimitive.Parts components={partComponents} />
       </div>
+      <span className="font-mono text-[11px] text-faint">
+        {pending ? "Sending" : time(createdAt)}
+      </span>
     </MessagePrimitive.Root>
   );
 }
 
-// Streamed and delivered app output renders through streamdown with a live
-// caret while the run streams; settled offers render as a compact receipt line.
-export function AssistantReply() {
-  const { name } = useContext(ChatAppContext);
-  const label = useAuiState((s) => s.message.metadata.custom?.["label"] as string | undefined);
-  const running = useAuiState((s) => s.message.status?.type === "running");
-  const provider = label?.startsWith("PROVIDER");
-  const offer = label?.startsWith("OFFER");
+export function AssistantMessage() {
+  const chat = useContext(ThreadChatContext);
+  const id = useAuiState((s) => s.message.id);
+  const createdAt = useAuiState((s) => s.message.createdAt);
+  const kind = useAuiState(
+    (s) => (s.message.metadata.custom?.["kind"] as MessageKind | undefined) ?? "conversation",
+  );
+  const run = chat?.runs.get(id);
 
-  if (offer)
+  if (kind === "offer")
     return (
-      <MessagePrimitive.Root className="flex max-w-[min(85%,44rem)] items-center gap-3 self-start animate-in fade-in-0">
-        <span className="grid size-8 shrink-0 place-items-center border border-dashed border-border-strong text-faint">
-          <Handshake size={15} />
-        </span>
-        <div className="grid min-w-0 gap-1 border border-dashed border-border-strong px-4 py-2.5 text-sm text-muted-foreground">
-          <MessageLabel>{label}</MessageLabel>
-          <MessagePrimitive.Parts components={{ Text: PlainText }} />
-        </div>
+      <MessagePrimitive.Root className="flex items-start gap-3 self-start">
+        <AppMark className="invisible" />
+        <MessagePrimitive.Parts components={partComponents} />
       </MessagePrimitive.Root>
     );
 
   return (
-    <MessagePrimitive.Root className="group flex max-w-[min(90%,48rem)] items-start gap-3 self-start max-sm:max-w-full animate-in fade-in-0 slide-in-from-bottom-2">
-      <AppAvatar />
-      <div className="grid min-w-0 gap-1.5">
-        <MessageLabel>
-          {name}
-          <span className="text-border-strong">·</span>
-          {provider
-            ? "message"
-            : running
-              ? "streaming"
-              : label === "VERIFIED OUTPUT"
-                ? "verified output"
-                : "live output"}
-          {running && (
-            <span className="size-1.5 animate-pulse bg-primary motion-reduce:animate-none" />
-          )}
-        </MessageLabel>
-        <div
-          className={cn(
-            "min-w-0 border px-4 py-3 text-sm leading-relaxed break-words",
-            provider ? "border-border bg-background" : "border-border bg-background-deep",
-          )}
-        >
-          <MessagePrimitive.Parts components={{ Text: provider ? PlainText : AppText }} />
-        </div>
+    <MessagePrimitive.Root
+      className={cn(
+        "group flex items-start gap-3 self-start",
+        run ? "w-full" : "max-w-[min(90%,44rem)] max-sm:max-w-full",
+      )}
+    >
+      <AppMark />
+      <div className="grid min-w-0 flex-1 gap-2">
+        <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{chat?.appName ?? "App"}</span>
+          {run ? "Paid job" : null}
+          <span className="font-mono text-[11px] text-faint">{time(createdAt)}</span>
+        </span>
+        {run ? (
+          <RunBody run={run} />
+        ) : (
+          <div className="grid gap-3 text-sm">
+            <MessagePrimitive.Parts components={partComponents} />
+          </div>
+        )}
         <ActionBarPrimitive.Root
           hideWhenRunning
           autohide="not-last"
@@ -146,27 +135,14 @@ export function AssistantReply() {
   );
 }
 
-// Shown while the other side owes a reply: the provider answering free chat,
-// or a paid run that has not streamed anything yet.
-export function TypingIndicator({ label }: { label: string }) {
+// The other side owes a reply: the bot answering free chat.
+export function ReplyingIndicator({ label }: { label: string }) {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-3 self-start animate-in fade-in-0"
-    >
-      <AppAvatar className="opacity-80" />
-      <div className="flex items-center gap-3 border border-border bg-background-deep px-4 py-3">
-        <span className="flex gap-1" aria-hidden="true">
-          {[0, 150, 300].map((delay) => (
-            <span
-              key={delay}
-              className="size-1.5 animate-bounce bg-primary motion-reduce:animate-none"
-              style={{ animationDelay: `${delay}ms` }}
-            />
-          ))}
-        </span>
-        <span className="font-mono text-[11px] text-muted-foreground">{label}</span>
+    <div role="status" aria-live="polite" className="flex items-center gap-3 self-start">
+      <AppMark className="opacity-70" />
+      <div className="flex items-center gap-3 border border-border bg-card px-4 py-3">
+        <TypingIndicator variant="bare" aria-hidden />
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
     </div>
   );

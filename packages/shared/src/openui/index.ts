@@ -56,14 +56,6 @@ export const componentSpecs = {
       title: z.string().optional(),
     }),
   },
-  QuestionForm: {
-    description:
-      "Places the open provider question with this questionId inline. The answer form comes from the question report, not from this component.",
-    props: z.object({
-      questionId: z.string(),
-      title: z.string().optional(),
-    }),
-  },
 } as const;
 
 export type ComponentName = keyof typeof componentSpecs;

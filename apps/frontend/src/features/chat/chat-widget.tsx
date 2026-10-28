@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/src/lib/utils";
 
-/** Framed block inside a thread for app widgets, questions and verified results. */
+/** Framed block inside a thread for app widgets and structured results. */
 export function ChatWidget({
   label,
   meta,
@@ -12,14 +12,14 @@ export function ChatWidget({
   return (
     <section
       className={cn(
-        "grid gap-3 self-stretch border border-border-strong bg-background-deep p-5 break-words animate-in fade-in-0 slide-in-from-bottom-2",
+        "grid gap-3 self-stretch border border-border bg-background-deep p-4 break-words",
         className,
       )}
       {...props}
     >
-      <header className="flex justify-between gap-3 font-mono text-[10px] tracking-widest text-primary uppercase">
+      <header className="flex justify-between gap-3 text-xs text-muted-foreground">
         {label}
-        {meta && <span className="text-faint normal-case">{meta}</span>}
+        {meta && <span className="font-mono text-faint">{meta}</span>}
       </header>
       {children}
     </section>

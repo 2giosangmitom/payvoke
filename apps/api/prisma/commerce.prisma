@@ -206,9 +206,9 @@ model ThreadMessage {
   commandId       String?
   arguments       Json?
   fileManifest    Json?
-  // A provider message may carry a form ({title, description?, schema}); the
-  // buyer's single answer to it points back through replyToId.
-  form            Json?
+  // A provider message may open a built-in tool ({name, args}); the buyer's
+  // single result to it points back through replyToId.
+  tool            Json?
   replyToId       String?   @unique
   clientRequestId String
   // Provider acknowledgement of the thread.message event (buyer messages only).
@@ -216,8 +216,8 @@ model ThreadMessage {
   createdAt       DateTime  @default(now())
 
   thread  ChatThread     @relation(fields: [threadId], references: [id], onDelete: Restrict)
-  replyTo ThreadMessage? @relation("FormReply", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  reply   ThreadMessage? @relation("FormReply")
+  replyTo ThreadMessage? @relation("ToolReply", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reply   ThreadMessage? @relation("ToolReply")
 
   @@unique([threadId, seq])
   @@unique([threadId, role, clientRequestId])

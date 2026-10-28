@@ -1,9 +1,9 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import type { InvocationExecutionStatus } from "#core/db";
 import { BadRequestError, ConflictError } from "../../errors";
+import { parseToolCall, type ToolCall } from "../tools/builtin";
 import { identifier, object } from "./protocol";
 
-export const REPORT_TYPES = ["started", "progress", "question", "result", "failed"] as const;
+export const REPORT_TYPES = ["started", "progress", "tool_call", "result", "failed"] as const;
 export type ReportType = (typeof REPORT_TYPES)[number];
 
 export const validSequence = (value: unknown): value is number =>
@@ -13,7 +13,7 @@ export const validSequence = (value: unknown): value is number =>
 const allowedFrom: Record<ReportType, string[]> = {
   started: ["QUEUED"],
   progress: ["RUNNING", "WAITING_BUYER"],
-  question: ["RUNNING"],
+  tool_call: ["RUNNING"],
   result: ["RUNNING"],
   failed: ["RUNNING", "WAITING_BUYER"],
 };
@@ -24,8 +24,8 @@ export function assertReportAllowed(
 ) {
   if (!allowedFrom[type].includes(run.state))
     throw new ConflictError(type === "started" ? "RUN_ALREADY_STARTED" : "RUN_NOT_RUNNING");
-  // A question, result or failure ends the turn: no text message may be open.
-  if (["question", "result", "failed"].includes(type) && run.activeMessageId)
+  // A tool call, result or failure ends the turn: no text message may be open.
+  if (["tool_call", "result", "failed"].includes(type) && run.activeMessageId)
     throw new ConflictError("MESSAGE_NOT_CLOSED");
 }
 
@@ -33,7 +33,7 @@ export function assertReportAllowed(
 const nextRunState: Record<ReportType, InvocationExecutionStatus> = {
   started: "RUNNING",
   progress: "RUNNING",
-  question: "WAITING_BUYER",
+  tool_call: "WAITING_BUYER",
   result: "VERIFYING",
   failed: "FAILED",
 };
@@ -44,12 +44,21 @@ export const runStateAfter = (type: ReportType) => nextRunState[type];
 export const executionStatusAfter = (type: ReportType, current: InvocationExecutionStatus) =>
   type === "progress" ? current : nextRunState[type];
 
-// AG-UI events a report appends to the buyer's thread stream.
+export type RunToolCall = ToolCall & { toolCallId: string };
+export type ProgressStep = {
+  stepId: string;
+  label: string;
+  status: "running" | "done" | "failed";
+  detail?: string;
+};
+
+// AG-UI events a report appends to the buyer's thread stream. A tool call
+// carries the public id the buyer answers, not the provider's own id.
 export function reportEvents(
   type: ReportType,
   data: unknown,
   ids: { threadId: string; runId: string },
-  question: unknown,
+  extra: { step?: ProgressStep; toolCall?: RunToolCall & { id: string } },
 ): Record<string, unknown>[] {
   const finished = { type: "RUN_FINISHED", threadId: ids.threadId, runId: ids.runId };
   switch (type) {
@@ -59,14 +68,19 @@ export function reportEvents(
       return [
         {
           type: "ACTIVITY_SNAPSHOT",
-          messageId: `progress-${ids.runId}`,
+          messageId: `progress-${ids.runId}-${extra.step!.stepId}`,
           activityType: "payvoke.progress",
-          content: data ?? {},
+          content: extra.step,
           replace: true,
         },
       ];
-    case "question":
-      return [{ type: "CUSTOM", name: "payvoke.question", value: question }, finished];
+    case "tool_call": {
+      const { id, name, args } = extra.toolCall!;
+      return [
+        { type: "CUSTOM", name: "payvoke.tool_call", value: { toolCallId: id, name, args } },
+        finished,
+      ];
+    }
     case "result":
       return [finished];
     case "failed":
@@ -74,37 +88,37 @@ export function reportEvents(
   }
 }
 
-// OpenUI ingress is a display-only projection. Question metadata is validated
-// separately because it becomes the schema for a buyer answer.
-export function parseQuestion(value: unknown) {
-  if (!object(value)) throw new BadRequestError("INVALID_QUESTION");
-  const { questionId, prompt, inputSchema, chatTextParameter } = value;
+// One step of the run's visible plan; a later report with the same stepId
+// replaces it.
+export function parseProgress(value: unknown): ProgressStep {
+  const fail = () => new BadRequestError("INVALID_PROGRESS");
+  if (!object(value)) throw fail();
+  const { stepId, label, status = "running", detail } = value;
   if (
-    !identifier(questionId) ||
-    typeof prompt !== "string" ||
-    prompt.length < 1 ||
-    prompt.length > 2000 ||
-    !object(inputSchema) ||
-    JSON.stringify(inputSchema).length > 20000 ||
-    (chatTextParameter !== undefined && !identifier(chatTextParameter)) ||
-    Object.keys(value).some(
-      (key) => !["questionId", "prompt", "inputSchema", "chatTextParameter"].includes(key),
-    )
+    !identifier(stepId) ||
+    typeof label !== "string" ||
+    !label.trim() ||
+    label.length > 120 ||
+    !["running", "done", "failed"].includes(status as string) ||
+    (detail !== undefined && (typeof detail !== "string" || detail.length > 500)) ||
+    Object.keys(value).some((key) => !["stepId", "label", "status", "detail"].includes(key))
   )
-    throw new BadRequestError("INVALID_QUESTION");
-  try {
-    new Ajv2020({ strict: true }).compile(inputSchema);
-  } catch {
-    throw new BadRequestError("INVALID_QUESTION_SCHEMA");
-  }
+    throw fail();
   return {
-    questionId,
-    prompt,
-    inputSchema,
-    chatTextParameter: chatTextParameter as string | undefined,
+    stepId,
+    label: label.trim(),
+    status: status as ProgressStep["status"],
+    ...(typeof detail === "string" && detail.trim() ? { detail: detail.trim() } : {}),
   };
 }
-export type Question = ReturnType<typeof parseQuestion>;
+
+// `{ toolCallId, name, args }`: a built-in tool the buyer must answer before
+// the next run starts.
+export function parseRunToolCall(value: unknown): RunToolCall {
+  if (!object(value) || !identifier(value.toolCallId))
+    throw new BadRequestError("INVALID_TOOL_CALL");
+  return { toolCallId: value.toolCallId, ...parseToolCall({ name: value.name, args: value.args }) };
+}
 
 // The signed terms decide how many in-scope revisions a delivery includes.
 export function revisionPolicy(terms: unknown) {

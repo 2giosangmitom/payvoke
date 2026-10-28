@@ -1,4 +1,5 @@
 import Ajv2020 from "ajv/dist/2020.js";
+import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import type { Cradle } from "../../container";
 import type { Prisma } from "#core/db";
@@ -16,7 +17,8 @@ import {
   REPORT_TYPES,
   assertReportAllowed,
   executionStatusAfter,
-  parseQuestion,
+  parseProgress,
+  parseRunToolCall,
   reportEvents,
   runStateAfter,
   validSequence,
@@ -91,9 +93,12 @@ export class ProviderRunService {
       orderBy: { createdAt: "asc" as const },
       take: 50,
     };
-    const [ready, answers, revisions] = [
+    const [ready, results, revisions] = [
       await this.db.invocationReady.findMany(query),
-      await this.db.invocationAnswer.findMany(query),
+      await this.db.invocationToolResult.findMany({
+        ...query,
+        include: { ...query.include, call: { select: { name: true } } },
+      }),
       await this.db.invocationRevision.findMany(query),
     ];
     const events: { id: string; createdAt: Date; event: Record<string, unknown> }[] = [
@@ -108,17 +113,18 @@ export class ProviderRunService {
           input: (row.invocation.quote.document as Record<string, unknown>).inputSnapshot,
         },
       })),
-      ...answers.map((row) => ({
+      ...results.map((row) => ({
         id: row.id,
         createdAt: row.createdAt,
         event: {
-          type: "invocation.answer",
+          type: "invocation.tool_result",
           invocationId: row.invocationId,
           runId: row.runId,
           threadId: row.invocation.quote.threadId,
-          answerId: row.id,
-          questionId: row.questionId,
-          arguments: row.arguments,
+          resultId: row.id,
+          toolCallId: row.toolCallId,
+          name: row.call.name,
+          result: row.result,
         },
       })),
       ...revisions.map((row) => ({
@@ -153,7 +159,7 @@ export class ProviderRunService {
       if (eventId === ready.invocationId || eventId === invocation.id) runId = ready.runId;
       else {
         const continuation =
-          (await this.db.invocationAnswer.findFirst({
+          (await this.db.invocationToolResult.findFirst({
             where: { id: eventId, invocationId: invocation.id },
             select: { runId: true },
           })) ??
@@ -180,7 +186,7 @@ export class ProviderRunService {
         });
       } else {
         const where = { invocationId: invocation.id, runId, acknowledgedAt: null };
-        await tx.invocationAnswer.updateMany({ where, ...acknowledged });
+        await tx.invocationToolResult.updateMany({ where, ...acknowledged });
         await tx.invocationRevision.updateMany({ where, ...acknowledged });
       }
       await tx.providerRun.upsert({
@@ -223,20 +229,26 @@ export class ProviderRunService {
     }
     assertReportAllowed(kind, run);
     if (sequence !== run.reportSequence + 1) throw new ConflictError("REPORT_SEQUENCE_GAP");
-    const question = kind === "question" ? parseQuestion(data) : null;
-    if (question) {
-      const open = await this.db.invocationQuestion.findFirst({
-        where: { invocationId: invocation.id, status: "OPEN" },
-        select: { id: true },
+    const step = kind === "progress" ? parseProgress(data) : undefined;
+    const toolCall =
+      kind === "tool_call" ? { ...parseRunToolCall(data), id: randomUUID() } : undefined;
+    if (toolCall) {
+      const prior = await this.db.invocationToolCall.findFirst({
+        where: {
+          invocationId: invocation.id,
+          OR: [{ status: "OPEN" }, { toolCallId: toolCall.toolCallId }],
+        },
+        select: { status: true },
       });
-      if (open) throw new ConflictError("QUESTION_ALREADY_OPEN");
+      if (prior?.status === "OPEN") throw new ConflictError("TOOL_CALL_ALREADY_OPEN");
+      if (prior) throw new ConflictError("TOOL_CALL_ID_REUSED");
     }
     const result = kind === "result" ? await this.checkResult(invocation, data) : null;
     const events = reportEvents(
       kind,
       data,
       { threadId: invocation.quote.threadId, runId: run.runId },
-      question,
+      { step, toolCall },
     );
     const executionStatus = executionStatusAfter(kind, invocation.executionStatus);
     await this.db.$transaction(async (tx) => {
@@ -267,15 +279,15 @@ export class ProviderRunService {
           },
         });
       }
-      if (question) {
-        await tx.invocationQuestion.create({
+      if (toolCall) {
+        await tx.invocationToolCall.create({
           data: {
+            id: toolCall.id,
             invocationId: invocation.id,
-            questionId: question.questionId,
+            toolCallId: toolCall.toolCallId,
             runId: run.runId,
-            prompt: question.prompt,
-            inputSchema: json(question.inputSchema),
-            chatTextParameter: question.chatTextParameter ?? null,
+            name: toolCall.name,
+            args: json(toolCall.args),
           },
         });
       }

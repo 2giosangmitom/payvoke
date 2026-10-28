@@ -40,6 +40,12 @@ export const fileRoutes = new Hono<AppEnv>()
   .get("/v1/files/:fileId/download", requireAccount, async (c) =>
     c.json(await c.var.cradle.fileService.buyerDownload(c.var.account.id, c.req.param("fileId"))),
   )
+  // Inline URL for audio playback and image previews in the chat.
+  .get("/v1/files/:fileId/stream", requireAccount, async (c) =>
+    c.json(
+      await c.var.cradle.fileService.buyerDownload(c.var.account.id, c.req.param("fileId"), true),
+    ),
+  )
   // Provider worker: app key auth, never a browser session.
   .post(
     work,

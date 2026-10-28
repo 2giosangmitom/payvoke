@@ -8,22 +8,26 @@ import {
   UnprocessableEntityError,
   isUniqueViolation,
 } from "../../errors";
-import { isAvailable, record, validateFormSchema } from "../apps/schema";
+import { isAvailable } from "../apps/schema";
 import { effectiveArguments } from "../quotes/arguments";
 import { fileManifestUnion } from "../files/file.service";
+import {
+  parseToolCall,
+  parseToolResult,
+  resultSchema,
+  resultText,
+  storedToolCall,
+} from "../tools/builtin";
 import { conversation, conversationHash } from "./conversation";
 
 export type BuyerMessageBody = {
   content?: unknown;
   commandId?: unknown;
   arguments?: unknown;
-  // Answers a provider form instead of naming a command.
-  replyToId?: unknown;
   fileIds?: unknown;
   clientRequestId?: unknown;
 };
-export type ProviderMessageBody = { content?: unknown; form?: unknown; clientRequestId?: unknown };
-type MessageForm = { title: string; description?: string; schema: Prisma.JsonValue };
+export type ProviderMessageBody = { content?: unknown; tool?: unknown; clientRequestId?: unknown };
 export type OfferBody = {
   clientRequestId?: unknown;
   commandId?: unknown;
@@ -58,26 +62,10 @@ export const messageView = (message: ThreadMessage) => ({
   commandId: message.commandId,
   arguments: message.arguments,
   files: message.fileManifest ?? [],
-  form: message.form,
+  tool: message.tool,
   replyToId: message.replyToId,
   createdAt: message.createdAt,
 });
-
-// A provider form: a title, an optional description and a flat input schema
-// the chat renders as a popup, file fields included.
-function parseForm(value: unknown): MessageForm | null {
-  if (!record(value)) return null;
-  const { title, description, schema } = value;
-  if (Object.keys(value).some((key) => !["title", "description", "schema"].includes(key)))
-    return null;
-  if (content(title, 120) === null || !validateFormSchema(schema)) return null;
-  if (description !== undefined && content(description, 1000) === null) return null;
-  return {
-    title: (title as string).trim(),
-    ...(description !== undefined ? { description: (description as string).trim() } : {}),
-    schema: schema as Prisma.JsonValue,
-  };
-}
 
 // Expiry is derived, never written: an OPEN offer past expiresAt is EXPIRED.
 export const offerStatus = (offer: Pick<Offer, "status" | "expiresAt">, now = Date.now()) =>
@@ -99,9 +87,8 @@ export const offerView = (offer: Offer) => ({
   createdAt: offer.createdAt,
 });
 
-// Free interactions with an app's bot (messages, slash commands and form
-// answers) and the priced offers a provider proposes
-// in it. Nothing here moves money; an offer only becomes payable when the
+// Free interactions with an app's bot (messages, slash commands and tool
+// results) and the priced offers a provider proposes in it. Nothing here moves money; an offer only becomes payable when the
 // buyer turns it into a Payvoke-issued quote.
 export class PresaleService {
   private readonly db: Cradle["db"];
@@ -164,11 +151,7 @@ export class PresaleService {
       !text ||
       !requestId(body?.clientRequestId) ||
       (body.commandId !== undefined && typeof body.commandId !== "string") ||
-      (body.replyToId !== undefined && typeof body.replyToId !== "string") ||
-      (body.commandId !== undefined && body.replyToId !== undefined) ||
-      (body.commandId === undefined &&
-        body.replyToId === undefined &&
-        body.arguments !== undefined) ||
+      (body.commandId === undefined && body.arguments !== undefined) ||
       !Array.isArray(fileIds) ||
       fileIds.length > MAX_MESSAGE_FILES ||
       fileIds.some((id) => typeof id !== "string") ||
@@ -177,7 +160,6 @@ export class PresaleService {
       throw new BadRequestError("INVALID_MESSAGE");
     const clientRequestId = body.clientRequestId;
     const commandId = (body.commandId as string | undefined) ?? null;
-    const replyToId = (body.replyToId as string | undefined) ?? null;
     const thread = await this.db.chatThread.findFirst({
       where: { id: threadId, buyerId },
       include: { app: true },
@@ -186,13 +168,13 @@ export class PresaleService {
     const key = { threadId_role_clientRequestId: { threadId, role: "BUYER", clientRequestId } };
     const prior = await this.db.threadMessage.findUnique({ where: key });
     if (prior) {
-      if (prior.content !== text || prior.commandId !== commandId || prior.replyToId !== replyToId)
+      if (prior.content !== text || prior.commandId !== commandId || prior.replyToId)
         throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return messageView(prior);
     }
     if (thread.archivedAt) throw new NotFoundError("THREAD_NOT_FOUND");
     if (!isAvailable(thread.app)) throw new ConflictError("APP_OFFLINE");
-    // Arguments follow the command's schema or the answered form's schema.
+    // Arguments follow the command's schema.
     let schema: Prisma.JsonValue | null = null;
     if (commandId) {
       const command = await this.db.appCommand.findFirst({
@@ -201,15 +183,6 @@ export class PresaleService {
       });
       if (!command?.activeRevision) throw new NotFoundError("COMMAND_NOT_FOUND");
       schema = command.activeRevision.inputSchema;
-    }
-    if (replyToId) {
-      const asked = await this.db.threadMessage.findFirst({
-        where: { id: replyToId, threadId, role: "PROVIDER" },
-        include: { reply: { select: { id: true } } },
-      });
-      if (!asked?.form) throw new NotFoundError("FORM_NOT_FOUND");
-      if (asked.reply) throw new ConflictError("FORM_ALREADY_ANSWERED");
-      schema = (asked.form as MessageForm).schema;
     }
     const args = schema ? effectiveArguments(schema, body.arguments ?? {}) : undefined;
     if (fileIds.length && !this.files.enabled) throw new BadRequestError("FILES_NOT_SUPPORTED");
@@ -232,7 +205,6 @@ export class PresaleService {
             role: "BUYER",
             content: text,
             commandId,
-            replyToId,
             ...(args !== undefined ? { arguments: json(args) } : {}),
             fileManifest: json(manifest),
             clientRequestId,
@@ -243,9 +215,79 @@ export class PresaleService {
       return messageView(message);
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      // The same request raced itself, or another answer took the form.
       const replay = await this.db.threadMessage.findUnique({ where: key });
-      if (!replay) throw new ConflictError("FORM_ALREADY_ANSWERED");
+      if (!replay) throw error;
+      return messageView(replay);
+    }
+  }
+
+  // The buyer's one result to a tool a provider message opened. It is a buyer
+  // message of the conversation (so it counts toward the free allowance and
+  // reaches the provider feed) whose replyToId names the tool call.
+  async submitToolResult(
+    buyerId: string,
+    threadId: string,
+    body: { toolCallId: string; result: unknown; clientRequestId: string },
+  ) {
+    const thread = await this.db.chatThread.findFirst({
+      where: { id: threadId, buyerId },
+      include: { app: true },
+    });
+    if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");
+    const asked = await this.db.threadMessage.findFirst({
+      where: { id: body.toolCallId, threadId, role: "PROVIDER" },
+      include: { reply: true },
+    });
+    if (!asked?.tool) return null;
+    const call = storedToolCall(asked.tool);
+    const result = parseToolResult(call, body.result);
+    const key = {
+      threadId_role_clientRequestId: {
+        threadId,
+        role: "BUYER",
+        clientRequestId: body.clientRequestId,
+      },
+    };
+    const prior = await this.db.threadMessage.findUnique({ where: key });
+    if (prior) {
+      if (
+        prior.replyToId !== asked.id ||
+        JSON.stringify(prior.arguments) !== JSON.stringify(result)
+      )
+        throw new ConflictError("IDEMPOTENCY_CONFLICT");
+      return messageView(prior);
+    }
+    if (asked.reply) throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
+    if (thread.archivedAt) throw new NotFoundError("THREAD_NOT_FOUND");
+    if (!isAvailable(thread.app)) throw new ConflictError("APP_OFFLINE");
+    const schema = resultSchema(call);
+    try {
+      const message = await this.db.$transaction(async (tx) => {
+        const seq = await this.nextSeq(tx, threadId);
+        if ((await this.unpaidBuyerMessages(tx, threadId)) >= this.config.PRESALE_MESSAGE_LIMIT)
+          throw new ConflictError("PRESALE_LIMIT_REACHED");
+        const named = schema
+          ? await this.files.argumentFiles(tx, buyerId, threadId, schema, result)
+          : [];
+        return tx.threadMessage.create({
+          data: {
+            threadId,
+            seq,
+            role: "BUYER",
+            content: resultText(call, result),
+            replyToId: asked.id,
+            arguments: json(result),
+            fileManifest: json(fileManifestUnion([], named)),
+            clientRequestId: body.clientRequestId,
+          },
+        });
+      });
+      this.ring(thread.appId, threadId);
+      return messageView(message);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const replay = await this.db.threadMessage.findUnique({ where: key });
+      if (!replay) throw new ConflictError("TOOL_CALL_ALREADY_ANSWERED");
       return messageView(replay);
     }
   }
@@ -281,8 +323,9 @@ export class PresaleService {
           seq: row.seq,
           content: row.content,
           commandId: row.commandId,
-          arguments: row.arguments,
-          replyToId: row.replyToId,
+          arguments: row.replyToId ? null : row.arguments,
+          // The buyer's result to a tool call this provider opened.
+          toolResult: row.replyToId ? { toolCallId: row.replyToId, result: row.arguments } : null,
           files: row.fileManifest ?? [],
           conversation: await conversation(this.db, row.threadId, row.seq),
         } as Record<string, unknown>,
@@ -304,10 +347,14 @@ export class PresaleService {
   }
 
   async sendProviderMessage(app: App, threadId: string, body: ProviderMessageBody | undefined) {
-    const text = content(body?.content, CONTENT_MAX);
-    if (!text || !requestId(body?.clientRequestId)) throw new BadRequestError("INVALID_MESSAGE");
-    const form = body.form === undefined ? null : parseForm(body.form);
-    if (body.form !== undefined && !form) throw new BadRequestError("INVALID_FORM");
+    const tool = body?.tool === undefined ? null : parseToolCall(body.tool);
+    // A tool carries its own prompt, so its message text is optional.
+    const text =
+      tool && (body?.content === undefined || body.content === "")
+        ? ""
+        : content(body?.content, CONTENT_MAX);
+    if (text === null || !requestId(body?.clientRequestId))
+      throw new BadRequestError("INVALID_MESSAGE");
     const clientRequestId = body.clientRequestId;
     const key = { threadId_role_clientRequestId: { threadId, role: "PROVIDER", clientRequestId } };
     const thread = await this.providerThread(app, threadId);
@@ -333,7 +380,7 @@ export class PresaleService {
             seq,
             role: "PROVIDER",
             content: text,
-            ...(form ? { form: json(form) } : {}),
+            ...(tool ? { tool: json(tool) } : {}),
             clientRequestId,
           },
         });

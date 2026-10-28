@@ -1,16 +1,17 @@
 import { Hono } from "hono";
 import { channels } from "#core/queue";
-import { BadRequestError } from "../../errors";
 import type { AppEnv } from "../../http/context";
 import { maxBody } from "../../http/limits";
 import { eventStream } from "../../http/sse";
 import { validate } from "../../http/validate";
 import { requireAccount } from "../auth/guard";
 import { eventsQuery, newThreadBody, renameBody, threadQuery } from "./thread.schemas";
+import { runMessageId } from "./timeline.service";
 
 // Rings wake the stream at once; the backstop bounds latency if one is lost.
 const BACKSTOP_MS = 5000;
 const KEEP_ALIVE_MS = 15000;
+const TIMELINE_INTERVAL_MS = 250;
 
 export const threadRoutes = new Hono<AppEnv>()
   .post(
@@ -53,42 +54,64 @@ export const threadRoutes = new Hono<AppEnv>()
   .post("/v1/threads/:threadId/archive", requireAccount, async (c) =>
     c.json(await c.var.cradle.threadService.archive(c.var.account.id, c.req.param("threadId"))),
   )
-  .get("/v1/threads/:threadId/ag-ui/snapshot", requireAccount, async (c) => {
-    const { threadService } = c.var.cradle;
+  .get("/v1/threads/:threadId/timeline", requireAccount, async (c) => {
+    const { threadService, timelineService } = c.var.cradle;
     await threadService.owned(c.var.account.id, c.req.param("threadId"));
-    return c.json(await threadService.snapshot(c.req.param("threadId")));
+    return c.json(await timelineService.build(c.req.param("threadId")));
   })
+  // Live view of one thread. A `timeline` event carries the whole projection:
+  // first on connect, then whenever anything but streamed text changes. Text
+  // tokens arrive as `delta` events addressed to a part of a run message. Each
+  // event id is the stream cursor the client state is fenced at.
   .get(
-    "/v1/threads/:threadId/ag-ui/events",
-    validate("query", eventsQuery, "INVALID_CURSOR"),
+    "/v1/threads/:threadId/events",
+    validate("query", eventsQuery, "INVALID_QUERY"),
     requireAccount,
     async (c) => {
-      const { threadService: threads, doorbell } = c.var.cradle;
+      const { threadService: threads, timelineService: timelines, doorbell } = c.var.cradle;
       const threadId = c.req.param("threadId");
       await threads.owned(c.var.account.id, threadId);
-      const query = c.req.valid("query");
-      const raw = c.req.header("last-event-id") ?? query.after ?? "0";
-      if (!/^[0-9]{1,20}$/.test(raw)) throw new BadRequestError("INVALID_CURSOR");
-      let cursor = BigInt(raw);
-      await threads.assertReplayable(threadId, cursor);
-      const once = query.once === "1";
+      const once = c.req.valid("query").once === "1";
       return eventStream(c, "no-store, no-transform", async (stream) => {
         // Listen before the first read so a commit racing it is not slept through.
         const listener = once ? undefined : doorbell.listen(channels.thread(threadId));
         try {
           let lastKeepAlive = Date.now();
-          let mark = await threads.conversationMark(threadId);
+          let lastTimeline = 0;
+          let cursor = await timelines.cursor(threadId);
+          let mark = await threads.mark(threadId);
+          const sendTimeline = async (fence: bigint) => {
+            lastTimeline = Date.now();
+            return stream.send(fence, "timeline", await timelines.build(threadId, fence));
+          };
+          if (!(await sendTimeline(cursor))) return;
           do {
-            for (const row of await threads.eventsAfter(threadId, cursor)) {
-              if (!stream.send(row.cursor, "ag-ui", row.event)) break;
+            const rows = await threads.eventsAfter(threadId, cursor);
+            const next = await threads.mark(threadId);
+            const structural = next !== mark || rows.some((row) => !isTextDelta(row.event));
+            if (structural) {
+              // Coalesce bursts (OpenUI patches, step updates) into one rebuild.
+              const wait = TIMELINE_INTERVAL_MS - (Date.now() - lastTimeline);
+              if (wait > 0) {
+                await Bun.sleep(wait);
+                continue;
+              }
+              mark = next;
+              cursor = rows.at(-1)?.cursor ?? cursor;
+              if (!(await sendTimeline(cursor))) break;
+              continue;
+            }
+            for (const row of rows) {
+              const event = row.event as { messageId: string; delta: string };
+              const delta = {
+                messageId: runMessageId(row.invocationId),
+                partId: event.messageId,
+                delta: event.delta,
+              };
+              if (!stream.send(row.cursor, "delta", delta)) break;
               cursor = row.cursor;
             }
-            const next = await threads.conversationMark(threadId);
-            if (next !== mark) {
-              mark = next;
-              // Same id: the replay cursor only ever follows AG-UI events.
-              if (!stream.send(cursor, "conversation", { changedAt: next })) break;
-            }
+            if (rows.length) continue;
             if (!listener) break;
             if (Date.now() - lastKeepAlive > KEEP_ALIVE_MS) {
               stream.comment("keep-alive");
@@ -102,3 +125,8 @@ export const threadRoutes = new Hono<AppEnv>()
       });
     },
   );
+
+const isTextDelta = (event: unknown) =>
+  !!event &&
+  typeof event === "object" &&
+  (event as { type?: unknown }).type === "TEXT_MESSAGE_CONTENT";

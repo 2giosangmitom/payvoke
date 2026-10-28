@@ -30,9 +30,10 @@ export interface ObjectStorage {
     object: { contentType: string; size: number },
     expiresInSeconds: number,
   ): Promise<UploadTarget>;
+  // `inline` lets a browser play or show the object instead of saving it.
   presignGet(
     key: string,
-    object: { filename: string; contentType: string },
+    object: { filename: string; contentType: string; inline?: boolean },
     expiresInSeconds: number,
   ): Promise<DownloadTarget>;
   // Null when the object does not exist.
@@ -98,10 +99,10 @@ const missing = (error: unknown) => {
   return e?.name === "NotFound" || e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404;
 };
 
-// RFC 6266 attachment with an ASCII fallback; downloads are never inline.
-export function attachment(filename: string) {
+// RFC 6266 disposition with an ASCII fallback.
+export function attachment(filename: string, type: "attachment" | "inline" = "attachment") {
   const ascii = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 export class S3Storage implements ObjectStorage {
@@ -133,14 +134,17 @@ export class S3Storage implements ObjectStorage {
 
   async presignGet(
     key: string,
-    object: { filename: string; contentType: string },
+    object: { filename: string; contentType: string; inline?: boolean },
     expiresIn: number,
   ) {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ResponseContentType: object.contentType,
-      ResponseContentDisposition: attachment(object.filename),
+      ResponseContentDisposition: attachment(
+        object.filename,
+        object.inline ? "inline" : "attachment",
+      ),
     });
     const url = await getSignedUrl(this.signer, command, { expiresIn });
     return { url, expiresAt: new Date(Date.now() + expiresIn * 1000) };

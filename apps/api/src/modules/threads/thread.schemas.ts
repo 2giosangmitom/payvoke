@@ -14,6 +14,5 @@ export const threadQuery = z.object({
 
 export const renameBody = z.object({ title: z.string() });
 
-// Native EventSource reconnects with Last-Event-ID even when the bootstrap URL
-// still carries an older ?after= cursor.
-export const eventsQuery = z.object({ after: z.string().optional(), once: z.string().optional() });
+// Every connection starts from a full timeline, so no resume cursor is taken.
+export const eventsQuery = z.object({ once: z.string().optional() });

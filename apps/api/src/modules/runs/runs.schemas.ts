@@ -13,12 +13,6 @@ export const reportBody = z.object({
   data: object.optional(),
 });
 
-export const answerBody = z.object({
-  questionId: identifier,
-  arguments: object,
-  clientRequestId: identifier,
-});
-
 export const revisionBody = z.object({
   reason: z
     .string()

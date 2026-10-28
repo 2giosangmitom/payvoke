@@ -7,6 +7,15 @@ import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 export type FinancialIntentBody = { action: "reclaim" };
 
 const PAGE = 30;
+// Bound on the payments one wallet summary totals.
+const SUMMARY_LIMIT = 2000;
+
+type Bucket = { amount: string; count: number };
+type Ledger = Record<"pending" | "held" | "released" | "refunded", Bucket>;
+type SummaryRow = {
+  quote: { document: unknown };
+  settlement: { state: string; invocationKey: string } | null;
+};
 
 const latestEvidence = { orderBy: [{ observedAt: "desc" as const }, { id: "desc" as const }] };
 
@@ -14,9 +23,102 @@ const latestEvidence = { orderBy: [{ observedAt: "desc" as const }, { id: "desc"
 // leases. Polling never triggers admission or broadcast.
 export class PaymentStatusService {
   private readonly db: Cradle["db"];
+  private readonly config: Cradle["config"];
 
-  constructor({ db }: Cradle) {
+  constructor({ db, config }: Cradle) {
     this.db = db;
+    this.config = config;
+  }
+
+  // Where the money of these invocations stands: not yet held, held in the
+  // vault, released to the provider, or returned to the buyer. Amounts are
+  // atomic USDC strings; failed admissions held nothing and are left out.
+  private async ledger(rows: SummaryRow[]): Promise<Ledger> {
+    const projections = await this.db.vaultHoldProjection.findMany({
+      where: { holdId: { in: rows.flatMap((row) => row.settlement?.invocationKey ?? []) } },
+      select: { holdId: true, status: true },
+    });
+    const closed = new Map(projections.map((row) => [row.holdId, row.status]));
+    const totals = { pending: [0n, 0], held: [0n, 0], released: [0n, 0], refunded: [0n, 0] };
+    for (const row of rows) {
+      const settlement = row.settlement;
+      if (!settlement) continue;
+      const amount = BigInt((row.quote.document as QuoteDocument).grossAmount);
+      const status = closed.get(settlement.invocationKey);
+      const bucket =
+        status === "RELEASED"
+          ? "released"
+          : status === "REFUNDED" || status === "RECLAIMED"
+            ? "refunded"
+            : settlement.state === "HELD"
+              ? "held"
+              : settlement.state === "PENDING"
+                ? "pending"
+                : null;
+      if (!bucket) continue;
+      totals[bucket][0] = (totals[bucket][0] as bigint) + amount;
+      totals[bucket][1] = (totals[bucket][1] as number) + 1;
+    }
+    const view = ([amount, count]: (bigint | number)[]) => ({
+      amount: amount.toString(),
+      count: count as number,
+    });
+    return {
+      pending: view(totals.pending),
+      held: view(totals.held),
+      released: view(totals.released),
+      refunded: view(totals.refunded),
+    };
+  }
+
+  // The console wallet: the chain and contract the browser reads live
+  // balances from, the account's wallets, and its payments as a buyer and,
+  // for apps it owns, as a provider.
+  async wallet(accountId: string) {
+    const select = {
+      quote: { select: { document: true } },
+      settlement: { select: { state: true, invocationKey: true } },
+    };
+    const [wallets, bought, apps] = await Promise.all([
+      this.db.walletAddress.findMany({
+        where: { userId: accountId },
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        select: { address: true, chainId: true, isPrimary: true },
+      }),
+      this.db.invocation.findMany({
+        where: { buyerId: accountId, settlement: { isNot: null } },
+        select,
+        orderBy: { createdAt: "desc" },
+        take: SUMMARY_LIMIT,
+      }),
+      this.db.app.findMany({
+        where: { ownerId: accountId },
+        select: { id: true, payoutAddress: true },
+      }),
+    ]);
+    const sold = apps.length
+      ? await this.db.invocation.findMany({
+          where: {
+            quote: { appId: { in: apps.map((app) => app.id) } },
+            settlement: { isNot: null },
+          },
+          select,
+          orderBy: { createdAt: "desc" },
+          take: SUMMARY_LIMIT,
+        })
+      : [];
+    return {
+      chainId: this.config.CHAIN_ID,
+      usdc: getAddress(this.config.USDC_ADDRESS),
+      vault: this.config.VAULT_ADDRESS ? getAddress(this.config.VAULT_ADDRESS) : null,
+      wallets,
+      buyer: await this.ledger(bought),
+      provider: {
+        apps: apps.length,
+        payoutAddresses: [...new Set(apps.map((app) => getAddress(app.payoutAddress)))],
+        ...(await this.ledger(sold)),
+      },
+    };
   }
 
   async status(buyerId: string, invocationId: string) {

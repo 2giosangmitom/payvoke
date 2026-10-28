@@ -213,6 +213,7 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   const host = await connect(token);
   const { tools } = await host.listTools();
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+    "answer_tool",
     "decline_offer",
     "get_agent",
     "get_job",
@@ -257,8 +258,16 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   const offerId = offer.json().id as string;
 
   const chat = json(await host.callTool({ name: "read_chat", arguments: { threadId: thread.id } }));
-  assert.equal(chat.surfaces, undefined);
-  assert.ok(chat.offers.some((open: { id: string }) => open.id === offerId));
+  const parts = chat.messages.flatMap(
+    (message: { parts: { toolName?: string; toolCallId?: string; status?: string }[] }) =>
+      message.parts,
+  );
+  assert.ok(
+    parts.some(
+      (part: { toolName?: string; toolCallId?: string; status?: string }) =>
+        part.toolName === "offer" && part.toolCallId === offerId && part.status === "open",
+    ),
+  );
 
   const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
   const prepared = json(

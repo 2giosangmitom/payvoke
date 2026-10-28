@@ -54,42 +54,42 @@ export function PageHeader({
   compact?: boolean;
   className?: string;
 }) {
-  return (
-    <BlurFade>
-      <header
-        className={cn(
-          "grid items-end gap-6 border-b border-border lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-12",
-          compact ? "pt-8 pb-6" : "pt-16 pb-10 lg:pt-20",
-          className,
-        )}
-      >
-        <div className="min-w-0">
-          {eyebrow && !compact && <Eyebrow className="mb-4">{eyebrow}</Eyebrow>}
-          <h1
+  const header = (
+    <header
+      className={cn(
+        "grid items-end gap-6 border-b border-border lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-12",
+        compact ? "pt-6 pb-5" : "pt-16 pb-10 lg:pt-20",
+        className,
+      )}
+    >
+      <div className="min-w-0">
+        {eyebrow && !compact && <Eyebrow className="mb-4">{eyebrow}</Eyebrow>}
+        <h1
+          className={cn(
+            "text-balance break-words",
+            compact
+              ? "text-2xl leading-tight font-semibold tracking-[-0.025em]"
+              : "text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] font-medium tracking-[-0.055em]",
+          )}
+        >
+          {title}
+        </h1>
+        {description && (
+          <p
             className={cn(
-              "text-balance break-words",
-              compact
-                ? "text-[28px] leading-tight font-semibold tracking-[-0.03em]"
-                : "text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] font-medium tracking-[-0.055em]",
+              "max-w-2xl text-muted-foreground",
+              compact ? "mt-2 text-[15px] leading-6" : "mt-5 text-base leading-7",
             )}
           >
-            {title}
-          </h1>
-          {description && (
-            <p
-              className={cn(
-                "max-w-2xl text-muted-foreground",
-                compact ? "mt-2 text-[15px] leading-6" : "mt-5 text-base leading-7",
-              )}
-            >
-              {description}
-            </p>
-          )}
-        </div>
-        {actions && <div className="flex flex-wrap gap-3 lg:justify-end">{actions}</div>}
-      </header>
-    </BlurFade>
+            {description}
+          </p>
+        )}
+      </div>
+      {actions && <div className="flex flex-wrap gap-3 lg:justify-end">{actions}</div>}
+    </header>
   );
+  // Work screens do not perform an entrance; marketing headers fade in.
+  return compact ? header : <BlurFade>{header}</BlurFade>;
 }
 
 export function SectionHeader({

@@ -115,8 +115,8 @@ stateDiagram-v2
     QUEUED --> SENT
     SENT --> ACKED
     ACKED --> RUNNING
-    RUNNING --> WAITING_BUYER: question
-    WAITING_BUYER --> RUNNING: answer (free)
+    RUNNING --> WAITING_BUYER: tool call
+    WAITING_BUYER --> RUNNING: tool result (free)
     RUNNING --> VERIFYING: result
     VERIFYING --> DELIVERED
     DELIVERED --> RUNNING: in-scope revision (free)
@@ -207,7 +207,7 @@ The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Cursor and other
 
 ## Status
 
-The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The full payment path is tested locally against a Hardhat chain: quote, 402, hold, provider delivery, automatic refund or release, and reclaim. Chat works with forms and offers, AG-UI and OpenUI streaming, questions, revisions and file uploads.
+The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The full payment path is tested locally against a Hardhat chain: quote, 402, hold, provider delivery, automatic refund or release, and reclaim. Chat works with built-in tools (forms, choices, confirmations) and offers, streamed text and OpenUI, run steps, revisions, file uploads and audio playback.
 
 Still to do:
 

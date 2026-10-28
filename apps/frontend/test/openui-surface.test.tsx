@@ -2,26 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OpenUISurface, surfaceQuestionIds } from "@/src/features/chat/openui-surface";
-import type { ChatQuestion } from "@/src/features/chat/api";
-
-const question = (overrides: Partial<ChatQuestion> = {}): ChatQuestion => ({
-  id: "q1",
-  invocationId: "i1",
-  questionId: "format",
-  prompt: "Which format?",
-  inputSchema: {
-    type: "object",
-    required: ["format"],
-    properties: { format: { type: "string", enum: ["md", "txt"] } },
-  },
-  chatTextParameter: null,
-  status: "OPEN",
-  createdAt: "2026-10-23T00:00:00.000Z",
-  answeredAt: null,
-  ...overrides,
-});
-const form = ["root = Stack([form])", 'form = QuestionForm("format", "Pick a format")'].join("\n");
+import { OpenUISurface } from "@/src/features/chat/openui-surface";
 
 it("renders an OpenUI Lang program with the latest definition of each statement", () => {
   const html = renderToStaticMarkup(
@@ -36,7 +17,7 @@ it("renders an OpenUI Lang program with the latest definition of each statement"
       ].join("\n")}
     />,
   );
-  assert.match(html, /OpenUI Lang/);
+  assert.match(html, /App widget/);
   assert.match(html, /Updated as statements arrive/);
   assert.doesNotMatch(html, /Draft/);
   assert.match(html, /Score/);
@@ -61,12 +42,9 @@ it("renders a partially streamed program and drops unknown components", () => {
   assert.match(html, /&lt;b&gt;plain&lt;\/b&gt;/);
 });
 
-it("nests cards and places an open question form inline", () => {
+it("nests cards and drops the removed question slot", () => {
   const html = renderToStaticMarkup(
     <OpenUISurface
-      invocationId="i1"
-      questions={[question()]}
-      onAnswer={async () => {}}
       source={[
         "root = Stack([result, form])",
         'result = Card("Result", "Summary", [nested])',
@@ -77,27 +55,6 @@ it("nests cards and places an open question form inline", () => {
   );
   assert.match(html, /<h3[^>]*>Result<\/h3>/);
   assert.match(html, /Nested text/);
-  assert.match(html, /Pick a format/);
-  assert.match(html, /Which format\?/);
-  assert.match(html, /Send answer/);
-  assert.deepEqual(surfaceQuestionIds(form), ["format"]);
-  assert.deepEqual(surfaceQuestionIds("not openui"), []);
-});
-
-it("does not offer an answer for a closed or foreign question", () => {
-  for (const [invocationId, status] of [
-    ["i1", "ANSWERED"],
-    ["i2", "OPEN"],
-  ]) {
-    const html = renderToStaticMarkup(
-      <OpenUISurface
-        invocationId={invocationId}
-        questions={[question({ status })]}
-        onAnswer={async () => {}}
-        source={form}
-      />,
-    );
-    assert.doesNotMatch(html, /Send answer/);
-    assert.match(html, /no longer open/);
-  }
+  // Tools are message parts now; a surface cannot open a form.
+  assert.doesNotMatch(html, /Pick a format/);
 });
