@@ -1,33 +1,38 @@
 # API
 
-Fastify API for the web app and provider integrations: SIWE auth, catalog,
+Hono API on Bun for the web app and provider integrations: SIWE auth, catalog,
 provider apps/commands, threads, quotes, the x402 payment gateway and AG-UI
-streams. It holds no signing keys; settlement runs in
-[`apps/facilitator`](../facilitator) and [`apps/settlement-worker`](../settlement-worker).
+streams. The same process runs the x402 facilitator and the workers the
+environment enables; see [Workers](#workers).
 
 ## Structure
 
 ```text
 src/
-  server.ts               # process startup and graceful shutdown
-  app.ts                  # composition: DI container, plugins, module routes
+  server.ts               # Bun.serve, workers, graceful shutdown
+  app.ts                  # composition: DI container, middleware, routes; exports AppType
+  rpc.ts                  # `import type { AppType } from "api/rpc"` for the web app
   container.ts            # Awilix registrations and the typed Cradle
   config.ts               # typed environment config
   errors.ts               # AppError classes with public codes
-  http/errors.ts          # the one error handler and the 404 handler
-  http/financial-json.ts  # duplicate-key-rejecting JSON parser for checkout scopes
-  http/sse.ts             # text/event-stream helper
-  plugins/http.ts         # sensible, helmet, CORS, cookies and rate limits
+  http/                   # context, zod validation, errors, limits, SSE, financial JSON
   modules/<feature>/
-    <feature>.routes.ts      # paths, schemas, hooks, limits; no logic
-    <feature>.controller.ts  # HTTP adapter: request in, status/headers out
-    *.service.ts             # business rules and Prisma access
-    *.validation.ts / *.schemas.ts / pure helpers
+    <feature>.routes.ts   # a chained Hono sub-app: middleware, validation, handlers
+    <feature>.schemas.ts  # zod request schemas
+    *.service.ts          # business rules and Prisma access
+  core/                   # no HTTP: db, queue, storage, runtime, payments, facilitator
+  workers/                # job, settlement and finance workers, started by server.ts
+prisma/                   # schema and migrations
+test/                     # API tests, e2e payments and conformance (e2e/), fixtures (kit/)
 ```
+
+Code under `core/` never imports Hono or `modules/`. Imports use package subpath
+aliases (`#core/db`, `#core/payments/finance`, `#test/kit/database`), declared in
+`package.json`, so the web app's typecheck resolves them too.
 
 | Module     | Owns                                                                                    |
 | ---------- | --------------------------------------------------------------------------------------- |
-| `auth`     | Better Auth SIWE bridge, `requireAccount` guard, web-write Origin policy                |
+| `auth`     | Better Auth SIWE bridge, `requireAccount` middleware, web-write Origin policy           |
 | `catalog`  | public store, app detail, stars                                                         |
 | `provider` | owner app lifecycle, command revisions, API keys and key authentication                 |
 | `threads`  | buyer chat threads, AG-UI snapshot and SSE replay                                       |
@@ -37,16 +42,31 @@ src/
 | `openui`   | OpenUI validation and the provider component catalog                                    |
 | `apps`     | shared app/command rules and serializers                                                |
 
+### Routes, validation and RPC
+
+Each module exports one Hono sub-app built by chaining, and `app.ts` chains them
+into `routes`, whose type is `AppType`. Keep the chain unbroken: a route added
+outside it is invisible to the web app's `hc<AppType>` client.
+
+Request params, query and JSON bodies are validated with zod through
+`validate(target, schema, code, fieldCodes?)` (`http/validate.ts`), a wrapper of
+`@hono/zod-validator`. A failure answers 400 `{ error: CODE }` with the route's
+public code, or the code of the first failing field listed in `fieldCodes`.
+Business rules beyond shape stay in the services. Middleware order mirrors the
+former Fastify lifecycle: rate limit, body limit, parsing and validation, then
+`requireAccount`, then the handler. Handlers return `c.json(value, status)` so
+response types reach the client; serialize JSON columns with their domain types
+(see `modules/apps/serializers.ts`).
+
 ### Dependency injection
 
 `container.ts` builds one strict Awilix container per app (tests create several
-apps in one process, so `@fastify/awilix`'s module-level container is never
-used). Services and controllers are singletons in `PROXY` mode: a class takes
-the cradle in its constructor and keeps only what it uses. Routes resolve their
-controller from `app.diContainer.cradle` once, at registration. Startup work
-uses Awilix lifecycle hooks: `paymentGateway.verifyCapabilities` runs on ready
-(`asyncInit`). `doorbell` and `jobs` come from `src/signals.ts`: the server
-connects them to Redis, while `createApp` defaults to in-process versions for tests.
+apps in one process). Services are singletons in `PROXY` mode: a class takes the
+cradle in its constructor and keeps only what it uses. Every request carries the
+cradle as `c.var.cradle`. `app.ready()` runs startup checks, such as the payment
+gateway's facilitator capabilities. `doorbell` and `jobs` come from
+`src/signals.ts`: the server connects them to Redis, while `createApp` defaults
+to in-process versions for tests.
 
 ### Redis signals
 
@@ -56,30 +76,63 @@ logged and tolerated. Redis never holds state:
 - SSE streams listen on a doorbell (`payvoke:thread:{id}`, `payvoke:app:{id}`) that
   services ring after their transaction commits, and re-read Postgres by cursor.
   A lost ring is caught by the backstop poll (5 s buyer, 15 s provider feed).
-- Rate limits use Redis as a shared store (`skipOnError`), so they hold across replicas.
-- A committed `result` report enqueues `delivery-verify` for `apps/job-worker`; a
+- Rate limits count in Redis when the server has it (errors let requests through).
+- A committed `result` report enqueues `delivery-verify` for the job worker; a
   `failed` report wakes the finance worker. Workers keep database sweeps, so a lost
   job only delays work.
 
-To add a feature: write the service and controller, register both in
-`container.ts` (and the `Cradle` declaration), and register its routes in
-`app.ts` after `authGuard`.
+To add a feature: write the service and register it in `container.ts` (and the
+`Cradle` interface), write its zod schemas and chained routes, and add the
+routes to the chain in `app.ts`.
 
 ### Errors
 
-Services throw `AppError` subclasses (`NotFoundError("THREAD_NOT_FOUND")`, …),
-never Fastify helpers. The error handler sends `{ error: code }` with the class
-status. Prisma unique and missing-record races become 409 `CONFLICT` and 404
-`NOT_FOUND`; Fastify validation, body-limit and rate-limit errors keep their
-status and code. Anything else is 500 `INTERNAL_ERROR`, logged with the error
-type only, because driver messages can contain SQL or credentials.
+Services throw `AppError` subclasses (`NotFoundError("THREAD_NOT_FOUND")`, …).
+The error handler sends `{ error: code }` with the class status. Prisma unique
+and missing-record races become 409 `CONFLICT` and 404 `NOT_FOUND`; malformed
+JSON is 400 `INVALID_JSON`, an oversized body 413 `PAYLOAD_TOO_LARGE`, a rate
+limit 429 `RATE_LIMITED`. Anything else is 500 `INTERNAL_ERROR`, logged with the
+error type only, because driver messages can contain SQL or credentials.
 
-Shared code lives in workspace packages: Prisma schema and client in
-[`@payvoke/db`](../../packages/payvoke-db), the settlement/finance domain in
-[`@payvoke/payments`](../../packages/payvoke-payments), and env/redaction helpers in
-[`@payvoke/server`](../../packages/payvoke-server).
+### Logging
 
-**Routes are documented by code only.** This README and `docs/` describe rules,
+Logging uses [LogTape](https://logtape.org). Code takes a logger from
+`logger(...category)` in `src/logging.ts` (categories under `payvoke`) and
+logs a message template with properties:
+`log.error("Settlement tick failed ({error})", { error: errorTag(error) })`.
+Only `server.ts` calls `configureLogging(LOG_LEVEL)`; before that LogTape
+discards records, so tests and tools are silent. Output is JSON lines on
+stdout, through `redactByField` with `redactedLogFields` (secrets, tokens,
+keys, signatures, cookies, payment headers, bodies, connection URLs): a
+property with such a name is written as `[REDACTED]` at any depth. Log error
+tags, never error messages, since those can carry SQL or signed payloads.
+
+`@logtape/hono` writes one `payvoke.http` record per request (method, path
+without the query string, status, time; level error only for 5xx) and gives
+every record written during the request the same `requestId`, also returned as
+`x-request-id`.
+
+## Workers
+
+| Worker     | Enabled by                          | Holds                                                          |
+| ---------- | ----------------------------------- | -------------------------------------------------------------- |
+| Job        | `JOB_WORKER_ENABLED` (default true) | No key: delivery verification and upload cleanup               |
+| Settlement | `SETTLEMENT_WORKER_ENABLED`         | `RELAYER_PRIVATE_KEY`; sends `reserveHold`                     |
+| Finance    | `FINANCE_WORKER_ENABLED`            | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
+
+A disabled worker is never constructed and its keys are never read; an enabled
+but misconfigured one fails startup. Each signing worker has its own gas budget
+(`SETTLEMENT_GAS_*`, `FINANCE_GAS_*`). Settlement and finance each keep one
+in-process nonce lane, so **run exactly one API replica**. With either enabled,
+this public process holds signing keys: fund those wallets with only what the gas
+budget needs.
+
+The facilitator (`core/facilitator`) runs in-process with no HTTP endpoint. It
+holds no key: it verifies payments and, with `SETTLEMENT_ENABLED`, journals an
+intent the settlement worker picks up. Its startup checks (vault code hash,
+relayer role, approved deployment policy) gate `app.ready()`.
+
+**Routes are documented by code only.** This README describes rules,
 not method/path/body catalogs. Read the route registrations in `src/modules/*`
 (or an OpenAPI document generated from them) for the current HTTP surface.
 
@@ -92,25 +145,25 @@ archived appear in the store without operator review; availability requires
 `ACTIVE`, a default command and a recent provider heartbeat. Signed-in buyers
 can star apps.
 
-Apps have a fixed `kind`. `TOOL` commands carry a fixed `grossAmount`;
-`AGENT` commands publish `minGrossAmount`/`maxGrossAmount` instead. Buyers chat
-with an agent for free (`PRESALE_MESSAGE_LIMIT` messages per thread between
-paid invocations); the provider receives `thread.message` events, replies with
-`messages:write` and proposes offers with `offers:write`. A quote is prepared
-from `commandId + arguments` for tools or from an open `offerId` for agents; see
-[S01 §6.5](../../docs/specs/01-api-and-provider-protocol.md#65-chat-trước-khi-trả-và-offer-agent-28102026).
+Every app is a chat bot. Buyers message it for free (`PRESALE_MESSAGE_LIMIT`
+messages per thread between paid invocations); the provider receives
+`thread.message` events, replies with `messages:write` (text or a one-shot form)
+and proposes priced offers with `offers:write`. Commands may declare a
+`maxAmount` ceiling; the price itself always comes from an offer. A quote is
+prepared from an open `offerId`, which freezes the negotiated arguments into the
+input hash.
 `GET /v1/invocations` lists the buyer's paid invocations for the console.
 
 Files (buyer inputs and provider artifacts) use presigned S3 uploads, a
 server-side completion that copies and re-hashes the bytes, and per-request
-download URLs; see [S01 §5.4](../../docs/specs/01-api-and-provider-protocol.md#54-file).
+download URLs.
 
-Protected routes use `preHandler: app.requireAccount`. Prisma is the data
-layer; no generic repository layer sits between services and the client.
+Protected routes chain the `requireAccount` middleware and read `c.var.account`.
+Prisma is the data layer; no generic repository layer sits between services and
+the client.
 
 `auth.cli.ts` loads the same Better Auth factory as the server, without starting
-Fastify or querying the database. It writes `packages/payvoke-db/prisma/auth.prisma`;
-see the [`@payvoke/db` README](../../packages/payvoke-db/README.md) for schema rules.
+the server or querying the database. It writes `prisma/auth.prisma`.
 
 ## Setup
 
@@ -122,12 +175,9 @@ is needed.
 
 ```sh
 docker compose up -d redis   # Redis on 127.0.0.1:6380 (needs the root .env)
-pnpm --filter @payvoke/db migrate   # apply migrations (reads packages/payvoke-db/.env)
-pnpm --filter api dev
+bun run migrate              # apply migrations to DATABASE_URL
+bun run dev                  # API and the enabled workers
 ```
-
-Start order for the full backend: Redis, facilitator, API, then settlement-worker,
-finance-worker and job-worker.
 
 Files are optional. Any S3-compatible store works and only the `S3_*` values
 change between environments; compose runs RustFS with the bucket and CORS for
@@ -140,11 +190,11 @@ docker compose up -d rustfs storage-init   # S3 on 127.0.0.1:9000, bucket payvok
 #       S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY = the values in the root .env
 ```
 
-Set the same `S3_*` values on the job-worker; without them, file results are
-never verified and are refunded at the delivery deadline.
+Without files, the job worker cannot verify file results, and they are refunded
+at the delivery deadline.
 
 Change auth fields/plugins in `src/modules/auth/auth.ts`, then run
-`pnpm --filter api auth:schema`; do not copy model definitions or modify generated
+`bun run auth:schema`; do not copy model definitions or modify generated
 auth table maps/indexes by hand.
 
 ## Better Auth SIWE
@@ -161,7 +211,7 @@ logout. Invalid verification consumes the nonce: request a fresh one to retry.
 Payvoke hooks enforce a 5-minute nonce lifetime, browser binding, Fuji/URI/time
 policy and buyer suspension. EOA signatures are verified with viem. Sessions
 last 7 days, with refresh and cookie caching disabled for immediate revocation.
-Fastify provides process-local rate limits; proxy headers are not trusted.
+The API rate-limits auth endpoints; proxy headers are not trusted.
 
 **Storage change:** Better Auth stores its native session token (not our former
 custom hash) in `session`. Its native SIWE response includes that token;
@@ -182,7 +232,7 @@ commented out; their user relations target `User`.
 
 ## Tests
 
-`pnpm --filter api test` uses ephemeral PGlite through Prisma/pg, without Docker.
+`bun test` (`bun run test`) uses ephemeral PGlite through Prisma/pg, without Docker.
 Tests apply the CLI-generated migrations and exercise native auth plus the
 provider/catalog endpoints. For real multi-connection PostgreSQL auth proof,
 explicitly supply a `TEST_DATABASE_URL` pointing to local Docker PostgreSQL only.
@@ -190,11 +240,12 @@ Neon is production and must never be used for tests. Tests create/remove only
 their own random schema; they never read `DATABASE_URL`.
 
 Storage is in-memory in API tests. The presigned-URL behavior is tested against a
-real S3 endpoint in `@payvoke/storage` when `TEST_S3_ENDPOINT` points at a
+real S3 endpoint in `test/core/storage.test.ts` when `TEST_S3_ENDPOINT` points at a
 disposable store (the test creates its own bucket).
 
-Quote, x402, settlement and finance flows span several services and are tested in
-[`tests/payments-e2e`](../../tests/payments-e2e).
+Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
+`bun run test:payments:evm` adds the real local-EVM flows (Hardhat node), and
+`bun run test:conformance` checks every x402 security rule against passing tests.
 
 ## Quote/x402 milestone (not live payments)
 
@@ -212,8 +263,8 @@ Quote, x402, settlement and finance flows span several services and are tested i
   idempotency key.
   After ownership/availability/schema gates it returns an SDK-encoded v2
   `PAYMENT-REQUIRED` header for `payvoke-vault` on Fuji, with `payTo` set to vault.
-- Core/client/server adapters live in `@payvoke/x402`, pinned to core 2.28.0.
-  No stock `@x402/fastify` middleware is mounted: the studied version settles at
+- Core/client/server adapters live in `@payvoke/shared/x402`, pinned to core 2.28.0.
+  No stock x402 framework middleware is mounted: the studied Fastify one settles at
   `onRequest`, before body validation. Final orchestration must run only after
   auth/body/ownership gates, using core's upfront flow.
 
@@ -222,8 +273,8 @@ an active policy and a matching `VAULT_ADDRESS` in a development DB. Quotes do
 not prove onchain admission.
 
 **Spending remains disabled by default.** With `PAYMENTS_ENABLED=false`, signed
-submissions still return `SETTLEMENT_NOT_AVAILABLE`. Opt-in requires the private
-facilitator URL/token and matching capabilities at API startup, a separately
-enabled facilitator submission service, and the signing worker below. The full
+submissions still return `SETTLEMENT_NOT_AVAILABLE`. Opt-in requires the vault
+deployment settings and matching facilitator capabilities at API startup,
+`SETTLEMENT_ENABLED` for journaling, and the settlement worker. The full
 path is exercised on an isolated local EVM; no Fuji deployment/E2E or production
 enablement has been performed.

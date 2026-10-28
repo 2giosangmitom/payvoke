@@ -1,4 +1,4 @@
-import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
+import { x402ResourceServer } from "@x402/core/server";
 import {
   decodePaymentResponseHeader,
   encodePaymentRequiredHeader,
@@ -6,7 +6,7 @@ import {
   x402HTTPResourceServer,
   type HTTPRequestContext,
 } from "@x402/core/http";
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import {
   NETWORK,
   SCHEME,
@@ -14,50 +14,36 @@ import {
   paymentRequirements,
   readPaymentIntent,
   type QuoteDocument,
-} from "@payvoke/x402";
-import { isPrivateServiceUrl, parseFinancialJson } from "@payvoke/server";
-import type { FastifyReply, FastifyRequest } from "fastify";
+} from "@payvoke/shared/x402";
+import type { Context } from "hono";
+import { parseFinancialJson } from "#core/runtime";
+import type { Facilitator } from "#core/facilitator";
 import { getAddress } from "viem";
 import { BadRequestError, ServiceUnavailableError } from "../../errors";
 
 const PATH = "/v1/invocations";
 
-function facilitatorClient(config: Cradle["config"]) {
-  const url = new URL(config.FACILITATOR_URL!);
-  // The facilitator is private: loopback, TLS, or a service name on the
-  // deployment's internal network.
-  if (!isPrivateServiceUrl(url) || url.search || Buffer.byteLength(config.FACILITATOR_TOKEN!) < 32)
-    throw new Error("Invalid private facilitator configuration");
-  return new HTTPFacilitatorClient({
-    url: url.href.replace(/\/$/, ""),
-    timeoutMs: 10000,
-    createAuthHeaders: async () => {
-      const auth = { Authorization: `Bearer ${config.FACILITATOR_TOKEN}` };
-      return { supported: auth, verify: auth, settle: auth };
-    },
-  });
-}
-
-// x402 adapter for the paid invocation resource. Signing and broadcasting never
-// happen in this process: settlement goes to the private facilitator, which only
-// journals an intent for the separate settlement worker.
+// x402 adapter for the paid invocation resource. Settlement goes to the
+// in-process facilitator, which only journals an intent; the settlement worker
+// signs and broadcasts it.
 export class PaymentGateway {
   private readonly db: Cradle["db"];
   private readonly config: Cradle["config"];
   private readonly resource: string;
-  readonly facilitator: HTTPFacilitatorClient | undefined;
+  readonly facilitator: Facilitator | null;
 
-  constructor({ db, config }: Cradle) {
+  constructor({ db, config, facilitator }: Cradle) {
     this.db = db;
     this.config = config;
     this.resource = new URL(PATH, config.API_ORIGIN).href;
-    this.facilitator = config.PAYMENTS_ENABLED ? facilitatorClient(config) : undefined;
+    this.facilitator = facilitator;
   }
 
-  // Runs on app ready (asyncInit): refuse to serve payments against a
-  // facilitator that does not settle this scheme for the configured vault.
+  // Runs when the app starts: refuse to serve payments against a facilitator
+  // that does not settle this scheme for the configured vault.
   async verifyCapabilities() {
     if (!this.facilitator) return;
+    await this.facilitator.ready();
     const supported = await this.facilitator.getSupported();
     if (
       !supported.kinds.some(
@@ -71,11 +57,11 @@ export class PaymentGateway {
       ) ||
       !supported.signers["eip155:*"]?.length
     )
-      throw new Error("Private facilitator capability mismatch");
+      throw new Error("Facilitator capability mismatch");
   }
 
   // The 402 challenge for an unpaid submission.
-  async challenge(quote: QuoteDocument, reply: FastifyReply) {
+  async challenge(quote: QuoteDocument, c: Context) {
     const core = new x402ResourceServer().register(NETWORK, new VaultServerScheme(quote));
     // `method` is not part of core's ResourceInfo type but is kept on the wire.
     const resource = {
@@ -88,17 +74,15 @@ export class PaymentGateway {
       [paymentRequirements(quote)],
       resource,
     );
-    return reply
-      .code(402)
-      .header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(required))
-      .send(required);
+    c.header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(required));
+    return c.json(required, 402);
   }
 
   // Headers are written to the reply as soon as they are known: a buyer must
   // keep the receipt for held funds even if a later consistency check fails.
-  async settle(quote: QuoteDocument, request: FastifyRequest, reply: FastifyReply) {
+  async settle(quote: QuoteDocument, c: Context, body: unknown) {
     if (!this.facilitator) throw new ServiceUnavailableError("SETTLEMENT_NOT_AVAILABLE");
-    const header = request.headers["payment-signature"];
+    const header = c.req.header("payment-signature");
     if (typeof header !== "string" || header.length > 16384)
       throw new BadRequestError("INVALID_PAYMENT");
     try {
@@ -134,24 +118,23 @@ export class PaymentGateway {
       paymentHeader: header,
       adapter: {
         getHeader: (name) => {
-          const value = request.headers[name.toLowerCase()];
-          return typeof value === "string" ? value : undefined;
+          return c.req.header(name);
         },
         getMethod: () => "POST",
         getPath: () => PATH,
         getUrl: () => this.resource,
         getAcceptHeader: () => "application/json",
         getUserAgent: () => "",
-        getBody: () => request.body,
+        getBody: () => body,
       },
     };
-    reply.header("Location", `${PATH}/${encodeURIComponent(quote.invocationId)}`);
+    c.header("Location", `${PATH}/${encodeURIComponent(quote.invocationId)}`);
     const result = await http.processHTTPRequest(context);
     if (result.type === "payment-error") {
       const encoded = Object.entries(result.response.headers).find(
         ([key]) => key.toLowerCase() === "payment-response",
       )?.[1];
-      return this.unsettled(quote, encoded, reply);
+      return this.unsettled(quote, encoded, c);
     }
     if (result.type !== "payment-verified" || !result.beforeHandlerSettlement?.result.success)
       throw new ServiceUnavailableError("SETTLEMENT_NOT_FINALIZED");
@@ -164,24 +147,27 @@ export class PaymentGateway {
       undefined,
       result.beforeHandlerSettlement,
     );
-    reply.headers(echo.headers);
+    for (const [name, value] of Object.entries(echo.headers)) c.header(name, value);
     const operation = await this.db.settlementOperation.findUnique({
       where: { invocationId: quote.invocationId },
       include: { attempt: true, invocation: true },
     });
     if (operation?.state !== "HELD" || operation.attempt?.state !== "FINALIZED")
       throw new ServiceUnavailableError("SETTLEMENT_RECOVERY_REQUIRED");
-    return reply.code(202).send({
-      invocationId: quote.invocationId,
-      paymentStatus: "HELD",
-      executionStatus: operation.invocation.executionStatus,
-      nextActions: ["poll"],
-    });
+    return c.json(
+      {
+        invocationId: quote.invocationId,
+        paymentStatus: "HELD",
+        executionStatus: operation.invocation.executionStatus,
+        nextActions: ["poll"],
+      },
+      202,
+    );
   }
 
   // A facilitator payment error. The durable journal, not the SDK response,
   // decides what the buyer is told.
-  private async unsettled(quote: QuoteDocument, encoded: string | undefined, reply: FastifyReply) {
+  private async unsettled(quote: QuoteDocument, encoded: string | undefined, c: Context) {
     const operation = await this.db.settlementOperation.findUnique({
       where: { invocationId: quote.invocationId },
       include: { attempt: true },
@@ -198,19 +184,19 @@ export class PaymentGateway {
           receipt.transaction === operation.attempt.transactionHash &&
           ["BROADCAST", "UNKNOWN", "CONFIRMED"].includes(operation.attempt.state)
         ) {
-          reply.header("PAYMENT-RESPONSE", encoded).header("Retry-After", "5");
-          return reply.code(402).send({
-            invocationId: quote.invocationId,
-            paymentStatus: "PENDING",
-            nextActions: ["poll"],
-          });
+          c.header("PAYMENT-RESPONSE", encoded);
+          c.header("Retry-After", "5");
+          return c.json(
+            { invocationId: quote.invocationId, paymentStatus: "PENDING", nextActions: ["poll"] },
+            402,
+          );
         }
       } catch {
         /* No trusted receipt; status polling remains authoritative. */
       }
     }
     if (operation?.state === "HELD" && operation.attempt?.state === "FINALIZED") {
-      reply.header(
+      c.header(
         "PAYMENT-RESPONSE",
         encodePaymentResponseHeader({
           success: true,
@@ -228,12 +214,16 @@ export class PaymentGateway {
       );
     }
     const rejected = operation?.state === "REJECTED";
-    reply.header("Retry-After", "5");
-    return reply.code(rejected ? 422 : 503).send({
-      invocationId: quote.invocationId,
-      paymentStatus: operation?.state ?? "UNKNOWN",
-      error: rejected ? operation?.errorReason : "settlement_unavailable",
-      nextActions: rejected || operation?.state === "QUARANTINED" ? ["contact_support"] : ["poll"],
-    });
+    c.header("Retry-After", "5");
+    return c.json(
+      {
+        invocationId: quote.invocationId,
+        paymentStatus: operation?.state ?? "UNKNOWN",
+        error: rejected ? operation?.errorReason : "settlement_unavailable",
+        nextActions:
+          rejected || operation?.state === "QUARANTINED" ? ["contact_support"] : ["poll"],
+      },
+      rejected ? 422 : 503,
+    );
   }
 }

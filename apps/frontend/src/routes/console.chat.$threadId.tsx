@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ThreadChat } from "@/src/components/thread-chat";
+import { ThreadChat } from "@/src/features/chat/thread-chat";
 
 export const Route = createFileRoute("/console/chat/$threadId")({
   component: ThreadPage,
-  head: () => ({ meta: [{ title: "Chat · Payvoke" }] }),
+  // The chat replaces this with the thread's title once loaded.
+  staticData: { title: "Chat" },
 });
 
 function ThreadPage() {

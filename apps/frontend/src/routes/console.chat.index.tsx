@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NewThread } from "@/src/components/new-thread";
+import { NewThread } from "@/src/features/chat/new-thread";
 
 export const Route = createFileRoute("/console/chat/")({
   component: NewThread,
-  head: () => ({ meta: [{ title: "Chat · Payvoke" }] }),
+  staticData: { title: "Chat" },
 });

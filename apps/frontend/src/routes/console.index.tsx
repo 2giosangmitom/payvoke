@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ConsoleHome } from "@/src/components/console-home";
+import { ConsoleHome } from "@/src/features/console/console-home";
 
 export const Route = createFileRoute("/console/")({
   component: ConsoleHome,
-  head: () => ({ meta: [{ title: "Console · Payvoke" }] }),
+  staticData: { title: "Console" },
 });

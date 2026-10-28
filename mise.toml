@@ -1,3 +1,4 @@
 [tools]
+bun = "1.4"
+# Hardhat and Vite still run on Node.
 node = "24"
-pnpm = "12"

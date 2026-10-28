@@ -1,0 +1,3 @@
+[test]
+# node:test had no per-test timeout; the e2e payment flows run for seconds.
+timeout = 120000

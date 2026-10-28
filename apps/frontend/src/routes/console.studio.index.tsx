@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DashboardHome } from "@/src/components/dashboard-home";
+import { DashboardHome } from "@/src/features/studio/dashboard-home";
 
 export const Route = createFileRoute("/console/studio/")({
   component: DashboardHome,
-  head: () => ({
-    meta: [
-      { title: "Studio · Payvoke" },
-      { name: "description", content: "Manage Payvoke apps, commands, visibility and keys." },
-    ],
-  }),
+  staticData: {
+    title: "Studio",
+    description: "Manage Payvoke apps, commands, visibility and keys.",
+  },
 });

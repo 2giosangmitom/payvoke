@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { Cradle } from "@fastify/awilix";
-import type { FileAsset, Prisma } from "@payvoke/db";
+import type { Cradle } from "../../container";
+import type { FileAsset, Prisma } from "#core/db";
 import {
   fileManifest,
   parseManifest,
   UPLOAD_COMPLETION_GRACE_MS,
   type FileManifestEntry,
-} from "@payvoke/payments/files";
-import type { ObjectStorage } from "@payvoke/storage";
+} from "#core/payments/files";
+import type { ObjectStorage } from "#core/storage";
 import {
   BadRequestError,
   ConflictError,

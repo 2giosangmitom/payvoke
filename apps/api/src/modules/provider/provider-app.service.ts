@@ -1,7 +1,7 @@
-import type { Cradle } from "@fastify/awilix";
+import type { Cradle } from "../../container";
 import { ConflictError, NotFoundError } from "../../errors";
 import { serializeOwnedApp, serializeOwnedCommand } from "../apps/serializers";
-import type { parseAppPatch, parseNewApp } from "./provider.validation";
+import type { AppPatch, NewApp } from "./provider.validation";
 
 const appSelect = {
   id: true,
@@ -33,7 +33,7 @@ export class ProviderAppService {
 
   // Idempotent on (owner, clientRequestId): a replay with the same fields
   // returns the original app; different fields are a conflict.
-  async create(ownerId: string, { clientRequestId, fields }: ReturnType<typeof parseNewApp>) {
+  async create(ownerId: string, { clientRequestId, fields }: NewApp) {
     const where = { ownerId_clientRequestId: { ownerId, clientRequestId } };
     const prior = await this.db.app.findUnique({ where, select: appSelect });
     if (prior) {
@@ -74,7 +74,7 @@ export class ProviderAppService {
     return { ...serializeOwnedApp(app), commands: commands.map(serializeOwnedCommand) };
   }
 
-  async update(appId: string, data: ReturnType<typeof parseAppPatch>) {
+  async update(appId: string, data: AppPatch) {
     return serializeOwnedApp(
       await this.db.app.update({ where: { id: appId }, data, select: appSelect }),
     );

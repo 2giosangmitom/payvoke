@@ -1,4 +1,5 @@
 import { getAddress, isAddress } from "viem";
+import { z } from "zod";
 import { BadRequestError } from "../../errors";
 import {
   commandPositional,
@@ -22,102 +23,100 @@ export const KEY_SCOPES = [
 ] as const;
 export type KeyScope = (typeof KEY_SCOPES)[number];
 
-const visibilities = ["PUBLIC", "PRIVATE"];
+const visibility = z.enum(["PUBLIC", "PRIVATE"]);
+const address = z
+  .string()
+  .refine((value) => isAddress(value))
+  .transform((value) => getAddress(value));
+const appName = z
+  .string()
+  .refine((value) => text(value, 120))
+  .transform((value) => value.trim());
+const appDescription = z
+  .string()
+  .max(2000)
+  .transform((value) => value.trim() || null);
 
-export type NewAppBody = {
-  name: string;
-  description?: string;
-  payoutAddress: string;
-  visibility?: string;
-  clientRequestId: string;
-};
-export type AppPatchBody = {
-  name?: string;
-  description?: string | null;
-  visibility?: string;
-  payoutAddress?: string;
-};
-export type KeyRequestBody = { scopes?: string[]; expiresAt?: string };
-export type CommandBody = {
-  name: string;
-  description: string;
-  options: unknown;
-  positionalParameter?: string | null;
-  // Prices come from the bot's offers; this optional cap bounds them.
-  maxAmount?: string;
-  terms: unknown;
-  expectedRevisionId?: string;
-};
-
-export function parseNewApp(body: Partial<NewAppBody> | undefined) {
-  const { name, description, payoutAddress, visibility, clientRequestId } = body ?? {};
-  const visible = visibility ?? "PUBLIC";
-  if (
-    !text(name, 120) ||
-    (description !== undefined && typeof description !== "string") ||
-    (description && description.length > 2000) ||
-    !isAddress(payoutAddress as string) ||
-    !visibilities.includes(visible) ||
-    !text(clientRequestId, 128)
-  )
-    throw new BadRequestError("INVALID_APP");
-  return {
+export const newAppBody = z
+  .object({
+    name: appName,
+    description: appDescription.optional(),
+    payoutAddress: address,
+    visibility: visibility.default("PUBLIC"),
+    clientRequestId: z.string().refine((value) => text(value, 128)),
+  })
+  .transform(({ clientRequestId, description, ...fields }) => ({
     clientRequestId,
-    fields: {
-      name: name.trim(),
-      description: description?.trim() || null,
-      payoutAddress: getAddress(payoutAddress as string),
-      visibility: visible,
-    },
-  };
-}
+    fields: { ...fields, description: description ?? null },
+  }));
+export type NewApp = z.output<typeof newAppBody>;
 
-export function parseAppPatch(body: AppPatchBody | undefined) {
-  const patch = body ?? {};
-  if (patch.name !== undefined && !text(patch.name, 120))
-    throw new BadRequestError("INVALID_APP_NAME");
-  if (
-    patch.description !== undefined &&
-    patch.description !== null &&
-    (typeof patch.description !== "string" || patch.description.length > 2000)
-  )
-    throw new BadRequestError("INVALID_APP_DESCRIPTION");
-  if (patch.visibility !== undefined && !visibilities.includes(patch.visibility))
-    throw new BadRequestError("INVALID_VISIBILITY");
-  if (patch.payoutAddress !== undefined && !isAddress(patch.payoutAddress))
-    throw new BadRequestError("INVALID_PAYOUT");
-  return {
-    ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-    ...(patch.description !== undefined ? { description: patch.description?.trim() || null } : {}),
-    ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
-    ...(patch.payoutAddress !== undefined
-      ? { payoutAddress: getAddress(patch.payoutAddress) }
-      : {}),
-  };
-}
+export const appPatchBody = z.object({
+  name: appName.optional(),
+  description: appDescription.nullable().optional(),
+  visibility: visibility.optional(),
+  payoutAddress: address.optional(),
+});
+export type AppPatch = z.output<typeof appPatchBody>;
+// The first failing field decides the public code.
+export const appPatchCodes = {
+  name: "INVALID_APP_NAME",
+  description: "INVALID_APP_DESCRIPTION",
+  visibility: "INVALID_VISIBILITY",
+  payoutAddress: "INVALID_PAYOUT",
+};
 
-export function parsePayout(body: { payoutAddress?: string } | undefined) {
-  if (!isAddress(body?.payoutAddress as string)) throw new BadRequestError("INVALID_PAYOUT");
-  return getAddress(body!.payoutAddress!);
-}
+export const payoutBody = z.object({ payoutAddress: address });
 
 const DAY_MS = 86_400_000;
 
-export function parseKeyRequest(body: KeyRequestBody | undefined, now = Date.now()) {
-  const scopes = body?.scopes ?? [...KEY_SCOPES];
-  const expiry = new Date(body?.expiresAt ?? new Date(now + 90 * DAY_MS).toISOString());
-  if (
-    !Array.isArray(scopes) ||
-    !scopes.length ||
-    scopes.some((scope) => !(KEY_SCOPES as readonly string[]).includes(scope)) ||
-    new Set(scopes).size !== scopes.length ||
-    !Number.isFinite(expiry.getTime()) ||
-    expiry.getTime() <= now ||
-    expiry.getTime() > now + 365 * DAY_MS
-  )
-    throw new BadRequestError("INVALID_KEY_REQUEST");
-  return { scopes, expiresAt: expiry };
-}
+export const keyRequestBody = z
+  .object({
+    scopes: z
+      .array(z.enum(KEY_SCOPES))
+      .min(1)
+      .refine((scopes) => new Set(scopes).size === scopes.length)
+      .default([...KEY_SCOPES]),
+    expiresAt: z.string().optional(),
+  })
+  .transform(({ scopes, expiresAt }, ctx) => {
+    const now = Date.now();
+    const expiry = new Date(expiresAt ?? now + 90 * DAY_MS);
+    if (
+      !Number.isFinite(expiry.getTime()) ||
+      expiry.getTime() <= now ||
+      expiry.getTime() > now + 365 * DAY_MS
+    ) {
+      ctx.addIssue({ code: "custom", path: ["expiresAt"], message: "Invalid expiry" });
+      return z.NEVER;
+    }
+    return { scopes, expiresAt: expiry };
+  });
+
+// Shape of a command definition; the service checks options, schema and terms.
+export const commandBody = z
+  .object({
+    name: z.string(),
+    description: z.string(),
+    options: z.unknown(),
+    positionalParameter: z.string().nullable().optional(),
+    // Prices come from the bot's offers; this optional cap bounds them.
+    maxAmount: z.string().optional(),
+    terms: z.unknown(),
+    expectedRevisionId: z.string().optional(),
+  })
+  .strict();
+export type CommandBody = z.infer<typeof commandBody>;
+// Unknown keys (path "") and the identity fields fail as INVALID_COMMAND.
+export const commandCodes = {
+  "": "INVALID_COMMAND",
+  name: "INVALID_COMMAND",
+  description: "INVALID_COMMAND",
+  positionalParameter: "INVALID_POSITIONAL_PARAMETER",
+  maxAmount: "INVALID_MAX_AMOUNT",
+};
+// The whole command list, checked item by item by the service.
+export const commandListBody = z.array(z.unknown());
 
 const UINT256_MAX = (1n << 256n) - 1n;
 const atomicAmount = (value: unknown): value is string =>

@@ -1,28 +1,42 @@
 # syntax=docker/dockerfile:1
 # Build from the repository root: docker build -f apps/api/Dockerfile .
-# HTTP API and x402 gateway.
-FROM node:24-slim AS base
-# Prisma's engines link against OpenSSL, which the slim image leaves out.
+# HTTP API, x402 gateway with its in-process facilitator, and the workers the
+# environment enables, bundled into one file. Apply migrations before each
+# release with `bun run migrate` (the Railway pre-deploy command).
+FROM oven/bun:1.4-slim AS base
+# Prisma's migration engine links against OpenSSL, which the slim image leaves out.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
-# Matches devEngines.packageManager in the root package.json.
-RUN npm install --global pnpm@12.14.0
+WORKDIR /app
 
 FROM base AS build
-WORKDIR /repo
 COPY . .
-# Installs dev dependencies too, so the root postinstall can generate the Prisma client.
-RUN --mount=type=cache,id=pnpm,target=/var/cache/pnpm \
-    pnpm install --store-dir /var/cache/pnpm --frozen-lockfile
-RUN --mount=type=cache,id=pnpm,target=/var/cache/pnpm \
-    pnpm deploy --store-dir /var/cache/pnpm --filter=api --prod /prod/app
+RUN --mount=type=cache,id=bun,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --filter api --filter @payvoke/shared
+WORKDIR /app/apps/api
+# Filtered installs skip the root postinstall; the bundle embeds this client.
+RUN bunx prisma generate && bun build src/server.ts --target=bun --outfile dist/server.js
 
-# Runs binaries directly: `pnpm run` would re-verify the build-time lockfile paths.
+# The Prisma CLI is the only runtime dependency left outside the bundle.
+FROM base AS migrate
+COPY <<EOF package.json
+{
+  "private": true,
+  "type": "module",
+  "scripts": { "migrate": "prisma migrate deploy" }
+}
+EOF
+RUN --mount=type=cache,id=bun,target=/root/.bun/install/cache \
+    bun add --exact prisma@7.10.1 dotenv@18.0.9
+
 FROM base
 ENV NODE_ENV=production
-USER node
-WORKDIR /app
-COPY --from=build --chown=node /prod/app .
+COPY --from=migrate /app/package.json package.json
+COPY --from=migrate /app/node_modules node_modules
+COPY --from=build /app/apps/api/prisma prisma
+COPY --from=build /app/apps/api/prisma.config.ts prisma.config.ts
+COPY --from=build /app/apps/api/dist/server.js server.js
+USER bun
 ENV HOST=0.0.0.0 PORT=3001
 EXPOSE 3001
-CMD ["node_modules/.bin/tsx", "src/server.ts"]
+CMD ["bun", "server.js"]

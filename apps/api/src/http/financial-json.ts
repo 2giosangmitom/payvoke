@@ -1,19 +1,23 @@
-import type { FastifyInstance } from "fastify";
-import { parseFinancialJson } from "@payvoke/server";
+import { createMiddleware } from "hono/factory";
+import { parseFinancialJson } from "#core/runtime";
 import { BadRequestError } from "../errors";
 
-// Call inside an encapsulated scope only: it replaces the JSON parser for that
-// scope's routes and must not change Better Auth's native parser.
-export function useFinancialJson(scope: FastifyInstance) {
-  scope.removeContentTypeParser("application/json");
-  scope.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => {
+// Financial JSON boundaries (quotes, paid submission) reject duplicate keys and
+// non-canonical values before the zod validator parses the same, cached text.
+// Better Auth keeps its own native parser. Responses are never cached.
+export const financialJson = createMiddleware(async (c, next) => {
+  if (c.req.header("content-type")?.startsWith("application/json")) {
     try {
-      done(null, parseFinancialJson(body as string));
+      parseFinancialJson(await c.req.text());
     } catch {
-      done(new BadRequestError("INVALID_JSON"));
+      throw new BadRequestError("INVALID_JSON");
     }
-  });
-  scope.addHook("onRequest", async (_request, reply) => {
-    reply.cacheControl("no-store");
-  });
-}
+  }
+  await next();
+  c.header("Cache-Control", "no-store");
+});
+
+export const noStore = createMiddleware(async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-store");
+});

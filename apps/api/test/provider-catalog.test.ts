@@ -1,8 +1,9 @@
 /// <reference types="emscripten" />
 /// <reference types="bun" />
+import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { after, before, it } from "node:test";
+import { afterAll, beforeAll, it } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -10,10 +11,10 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { pendingVerifications, verifyStructuredDeliveries } from "@payvoke/payments/delivery";
-import { MemoryDoorbell, MemoryJobs } from "@payvoke/queue";
+import { PrismaClient } from "#core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
+import { pendingVerifications, verifyStructuredDeliveries } from "#core/payments/delivery";
+import { MemoryDoorbell, MemoryJobs } from "#core/queue";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;
@@ -23,9 +24,10 @@ let postgres: TestPostgres;
 let pool: Pool;
 let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
+let server: ReturnType<typeof Bun.serve> | undefined;
 const jobs = new MemoryJobs();
 
-before(async () => {
+beforeAll(async () => {
   postgres = await startTestPostgres();
   const { connectionString } = postgres;
   pool = new Pool({ connectionString, max: 1, options: `-c search_path=${schema}` });
@@ -54,7 +56,8 @@ before(async () => {
   );
   await app.ready();
 });
-after(async () => {
+afterAll(async () => {
+  await server?.stop(true);
   await app?.close();
   await pool?.query(`DROP SCHEMA "${schema}" CASCADE`);
   await pool?.end();
@@ -62,7 +65,7 @@ after(async () => {
 });
 
 async function login(account: typeof wallet) {
-  const nonce = await app.inject({
+  const nonce = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/nonce",
     headers: { origin },
@@ -81,7 +84,7 @@ async function login(account: typeof wallet) {
     issuedAt,
     expirationTime: new Date(issuedAt.getTime() + 300000),
   });
-  const verified = await app.inject({
+  const verified = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/verify",
     headers: { origin, cookie: `${binding.name}=${encodeURIComponent(binding.value)}` },
@@ -101,7 +104,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     payload?: Record<string, unknown>,
     userCookie = cookie,
   ) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url,
       headers: { origin, cookie: userCookie },
@@ -132,7 +135,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const secret = key.json().secret;
   assert.equal((await db.appApiKey.findFirstOrThrow()).secretHash.includes(secret), false);
   const bearer = (method: string, url: string, payload: Record<string, unknown>, token = secret) =>
-    app.inject({
+    inject(app, {
       method: method as "POST",
       url,
       headers: { authorization: `Bearer ${token}` },
@@ -242,7 +245,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     arguments: { text: "hello" },
     grossAmount: "10000",
   });
-  const quote = await app.inject({
+  const quote = await inject(app, {
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie, "idempotency-key": "not-ready" },
@@ -352,7 +355,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(workerKey.statusCode, 201, workerKey.body);
   const worker = workerKey.json().secret;
   const workerBase = `/v1/provider/apps/${id}`;
-  const ready = await app.inject({
+  const ready = await inject(app, {
     method: "GET",
     url: `${workerBase}/events?once=1`,
     headers: { authorization: `Bearer ${worker}` },
@@ -367,7 +370,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     token = worker,
     contentType = "application/json",
   ) =>
-    app.inject({
+    inject(app, {
       method: "POST",
       url,
       headers: { authorization: `Bearer ${token}`, "content-type": contentType },
@@ -395,7 +398,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal((await postWorker(`${task}/acks`, {})).statusCode, 200);
   assert.equal(
     (
-      await app.inject({
+      await inject(app, {
         method: "GET",
         url: `${workerBase}/events?once=1`,
         headers: { authorization: `Bearer ${worker}` },
@@ -411,7 +414,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   // Exercise a real open HTTP socket: injection's once=1 snapshots cannot
   // prove that a browser EventSource stays connected for later LLM chunks.
-  const listenAddress = await app.listen({ host: "127.0.0.1", port: 0 });
+  server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: app.fetch });
+  const listenAddress = server.url.origin;
   const stopLive = new AbortController();
   try {
     const live = await fetch(`${listenAddress}/v1/threads/${thread.id}/ag-ui/events?after=0`, {
@@ -627,7 +631,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(streamedToBuyer.statusCode, 200, streamedToBuyer.body);
   assert.match(streamedToBuyer.body, /event: ag-ui/);
   assert.match(streamedToBuyer.body, /TEXT_MESSAGE_CONTENT/);
-  const resumedToBuyer = await app.inject({
+  const resumedToBuyer = await inject(app, {
     method: "GET",
     url: `/v1/threads/${thread.id}/ag-ui/events?once=1&after=0`,
     headers: { origin, cookie, "last-event-id": snapshot.json().cursor },
@@ -686,7 +690,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     ).statusCode,
     409,
   );
-  const continuationEvents = await app.inject({
+  const continuationEvents = await inject(app, {
     method: "GET",
     url: `${workerBase}/events?once=1`,
     headers: { authorization: `Bearer ${worker}` },
@@ -764,7 +768,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(invocationStatus.json().executionStatus, "VERIFYING");
   const unverified = await web("GET", `/v1/threads/${thread.id}/ag-ui/snapshot`);
   assert.equal(unverified.json().invocations[0].output, null);
-  // The job-worker sweep finds the run even if the enqueue above was lost.
+  // The job worker sweep finds the run even if the enqueue above was lost.
   assert.deepEqual(await pendingVerifications(db), [
     { invocationId: quoted.invocationId, artifactVersion: 1 },
   ]);
@@ -795,7 +799,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       .statusCode,
     202,
   );
-  const revisionEvents = await app.inject({
+  const revisionEvents = await inject(app, {
     method: "GET",
     url: `${workerBase}/events?once=1`,
     headers: { authorization: `Bearer ${worker}` },
@@ -875,7 +879,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     arguments: { text: "follow up" },
     grossAmount: "10000",
   });
-  const nextQuote = await app.inject({
+  const nextQuote = await inject(app, {
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie, "idempotency-key": "second-paid-turn" },
@@ -966,7 +970,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
 it("releases the thread slot after a failed run and keeps one open invocation per thread", async () => {
   const cookie = await login(wallet);
   const web = (method: string, url: string, payload?: Record<string, unknown>) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url,
       headers: { origin, cookie },
@@ -1009,7 +1013,7 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
       arguments: { text: "hello" },
       grossAmount: "10000",
     });
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },
@@ -1099,7 +1103,7 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
 it("enforces the approved price floor and defaults the evidence floor in signed terms", async () => {
   const cookie = await login(wallet);
   const web = (method: string, url: string, payload?: Record<string, unknown>) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url,
       headers: { origin, cookie },
@@ -1150,7 +1154,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
       arguments: { text: "hello" },
       grossAmount: "1000",
     });
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },

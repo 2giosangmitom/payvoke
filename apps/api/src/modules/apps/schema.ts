@@ -1,5 +1,5 @@
 import Ajv2020 from "ajv/dist/2020.js";
-import { minEvidenceLevels, type MinEvidence } from "@payvoke/payments/evidence";
+import { minEvidenceLevels, type MinEvidence } from "#core/payments/evidence";
 
 export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN", "FILE"] as const;
 export type CommandOptionType = (typeof COMMAND_OPTION_TYPES)[number];
@@ -310,6 +310,17 @@ export function fileFields(schema: unknown): FileField[] {
   }
   return fields;
 }
+
+// A command's signed terms, as validateTerms and normalizeTerms leave them.
+export type CommandTerms = {
+  deliverySeconds: number;
+  reviewSeconds: number;
+  revisionPolicy: { maxIncluded: number; description: string };
+  refundPolicy: string;
+  sideEffects: string;
+  dataUse: string;
+  verification: { minEvidence: MinEvidence };
+};
 
 export function validateTerms(value: unknown): value is Record<string, unknown> {
   if (!record(value)) return false;

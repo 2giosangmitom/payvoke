@@ -1,5 +1,5 @@
-import { hashSnapshot, type Json } from "@payvoke/protocol";
-import type { Prisma } from "@payvoke/db";
+import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
+import type { Prisma } from "#core/db";
 
 // Messages a provider sees with each event and an accepted offer freezes.
 export const CONVERSATION_LIMIT = 30;

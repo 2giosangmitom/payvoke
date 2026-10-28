@@ -4,10 +4,10 @@
 !**/.env.example
 **/*.env
 apps/ops/private
-packages/payvoke-db/src/generated
-packages/payvoke-vault/artifacts
-packages/payvoke-vault/cache
-packages/payvoke-vault/types
+apps/api/src/core/db/generated
+packages/vault/artifacts
+packages/vault/cache
+packages/vault/types
 **/dist
 **/.output
 **/.tanstack

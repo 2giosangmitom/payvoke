@@ -1,6 +1,4 @@
-import type { IncomingHttpHeaders } from "node:http";
-import type { Cradle } from "@fastify/awilix";
-import { fromNodeHeaders } from "better-auth/node";
+import type { Cradle } from "../../container";
 import { ForbiddenError, UnauthorizedError } from "../../errors";
 
 export type AccountIdentity = { id: string; walletAddress: string };
@@ -18,8 +16,8 @@ export class AuthService {
     this.apiOrigin = config.API_ORIGIN;
   }
 
-  private session(headers: IncomingHttpHeaders) {
-    return this.auth.api.getSession({ headers: fromNodeHeaders(headers) });
+  private session(headers: Headers) {
+    return this.auth.api.getSession({ headers });
   }
 
   private async primaryWallet(userId: string) {
@@ -29,14 +27,14 @@ export class AuthService {
     return wallet?.address.toLowerCase() ?? null;
   }
 
-  async optionalAccount(headers: IncomingHttpHeaders): Promise<AccountIdentity | null> {
+  async optionalAccount(headers: Headers): Promise<AccountIdentity | null> {
     const session = await this.session(headers);
     if (!session || session.user.status !== "ACTIVE") return null;
     const walletAddress = await this.primaryWallet(session.user.id);
     return walletAddress ? { id: session.user.id, walletAddress } : null;
   }
 
-  async requireAccount(headers: IncomingHttpHeaders): Promise<AccountIdentity> {
+  async requireAccount(headers: Headers): Promise<AccountIdentity> {
     const session = await this.session(headers);
     if (!session) throw new UnauthorizedError("UNAUTHENTICATED");
     if (session.user.status !== "ACTIVE") throw new ForbiddenError("ACCOUNT_SUSPENDED");
@@ -47,12 +45,13 @@ export class AuthService {
 
   // Forwards a native Better Auth request. The configured API origin is
   // trusted, never the request's Host header.
-  handle(url: string, method: string, headers: IncomingHttpHeaders, body: unknown) {
+  async handle(request: Request) {
+    const url = new URL(request.url);
     return this.auth.handler(
-      new Request(new URL(url, this.apiOrigin), {
-        method,
-        headers: fromNodeHeaders(headers),
-        ...(method === "POST" && body !== undefined ? { body: JSON.stringify(body) } : {}),
+      new Request(new URL(url.pathname + url.search, this.apiOrigin), {
+        method: request.method,
+        headers: request.headers,
+        ...(request.method === "POST" ? { body: await request.text() } : {}),
       }),
     );
   }

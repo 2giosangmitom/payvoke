@@ -1,8 +1,9 @@
 /// <reference types="emscripten" />
 /// <reference types="bun" />
+import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { after, before, it } from "node:test";
+import { afterAll, beforeAll, it } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -10,11 +11,11 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { offerFixture } from "./offer-fixture";
 import { loadConfig } from "../src/config";
-import { PrismaClient } from "@payvoke/db";
-import { readMigrations, startTestPostgres, type TestPostgres } from "@payvoke/testkit/database";
-import { verifyStructuredDeliveries } from "@payvoke/payments/delivery";
-import { expireStaleUploads } from "@payvoke/payments/files";
-import { MemoryStorage } from "@payvoke/storage";
+import { PrismaClient } from "#core/db";
+import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
+import { verifyStructuredDeliveries } from "#core/payments/delivery";
+import { expireStaleUploads } from "#core/payments/files";
+import { MemoryStorage } from "#core/storage";
 
 const origin = "https://app.payvoke.test";
 const schema = `files_test_${randomUUID().replaceAll("-", "")}`;
@@ -27,7 +28,7 @@ let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
 let config: ReturnType<typeof loadConfig>;
 
-before(async () => {
+beforeAll(async () => {
   postgres = await startTestPostgres();
   const { connectionString } = postgres;
   pool = new Pool({ connectionString, max: 1, options: `-c search_path=${schema}` });
@@ -55,7 +56,7 @@ before(async () => {
   app = createApp(config, db, undefined, storage);
   await app.ready();
 });
-after(async () => {
+afterAll(async () => {
   await app?.close();
   await pool?.query(`DROP SCHEMA "${schema}" CASCADE`);
   await pool?.end();
@@ -63,7 +64,7 @@ after(async () => {
 });
 
 async function login(account: typeof wallet) {
-  const nonce = await app.inject({
+  const nonce = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/nonce",
     headers: { origin },
@@ -81,7 +82,7 @@ async function login(account: typeof wallet) {
     issuedAt,
     expirationTime: new Date(issuedAt.getTime() + 300000),
   });
-  const verified = await app.inject({
+  const verified = await inject(app, {
     method: "POST",
     url: "/v1/auth/siwe/verify",
     headers: { origin, cookie: `${binding.name}=${encodeURIComponent(binding.value)}` },
@@ -100,7 +101,7 @@ async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
   const web = (method: string, url: string, payload?: unknown, userCookie = cookie) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url,
       headers: { origin, cookie: userCookie },
@@ -160,7 +161,7 @@ async function marketplace() {
   });
   assert.equal(key.statusCode, 201, key.body);
   const worker = (method: string, url: string, payload?: unknown) =>
-    app.inject({
+    inject(app, {
       method: method as "GET",
       url: `/v1/provider/apps/${appId}${url}`,
       headers: { authorization: `Bearer ${key.json().secret}` },
@@ -180,7 +181,7 @@ async function marketplace() {
       arguments: { text: "convert this" },
       grossAmount: "10000",
     });
-    return app.inject({
+    return inject(app, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },
@@ -466,7 +467,7 @@ it("takes files from bot forms and FILE options into the frozen quote", async ()
   });
   assert.equal(offer.statusCode, 201, offer.body);
   const clientRequestId = randomUUID();
-  const quoted = await app.inject({
+  const quoted = await inject(app, {
     method: "POST",
     url: "/v1/quotes",
     headers: { origin, cookie: await login(wallet), "idempotency-key": clientRequestId },
@@ -580,7 +581,7 @@ it("keeps file routes and file context closed when files are disabled", async ()
     await disabled.ready();
     // Sessions live in the shared database, so the same cookie works here.
     const cookie = await login(wallet);
-    const response = await disabled.inject({
+    const response = await inject(disabled, {
       method: "POST",
       url: "/v1/files",
       headers: { origin, cookie },
@@ -589,7 +590,7 @@ it("keeps file routes and file context closed when files are disabled", async ()
     assert.equal(response.statusCode, 503, response.body);
     assert.equal(response.json().error, "FILES_DISABLED");
     const clientRequestId = randomUUID();
-    const quoted = await disabled.inject({
+    const quoted = await inject(disabled, {
       method: "POST",
       url: "/v1/quotes",
       headers: { origin, cookie, "idempotency-key": clientRequestId },

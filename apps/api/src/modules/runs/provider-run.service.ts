@@ -1,8 +1,8 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { StringDecoder } from "node:string_decoder";
-import type { Cradle } from "@fastify/awilix";
-import type { Prisma } from "@payvoke/db";
-import { channels } from "@payvoke/queue";
+import type { Cradle } from "../../container";
+import type { Prisma } from "#core/db";
+import { channels } from "#core/queue";
 import {
   BadRequestError,
   ConflictError,
@@ -342,7 +342,7 @@ export class ProviderRunService {
   // Consumes an NDJSON body of `{ streamSequence, event }` lines. Lines are
   // committed per received chunk, not one transaction per token; a failed batch
   // rolls back, so the provider cursor always names a safe prefix.
-  async ingest(invocation: Work, runId: string, body: AsyncIterable<Buffer> | null) {
+  async ingest(invocation: Work, runId: string, body: AsyncIterable<Uint8Array> | null) {
     const run = invocation.run;
     if (!run || run.runId !== runId || run.state !== "RUNNING")
       throw new ConflictError("RUN_NOT_RUNNING");

@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
-import { ThreadSidebar } from "@/src/components/thread-sidebar";
+import { ThreadSidebar } from "@/src/features/chat/thread-sidebar";
 import { cn } from "@/src/lib/utils";
 
 export const Route = createFileRoute("/console/chat")({ component: ChatLayout });
