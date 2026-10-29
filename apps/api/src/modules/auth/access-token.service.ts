@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getAddress } from "viem";
+import { tokenSigner } from "./token-signer";
 import type { Cradle } from "../../container";
 import { ConflictError, NotFoundError, UnauthorizedError } from "../../errors";
 
@@ -44,7 +45,7 @@ export class AccessTokenService {
     void this.db.buyerAccessToken
       .update({ where: { id: token.id }, data: { lastUsedAt: new Date() } })
       .catch(() => undefined);
-    return { id: token.id, userId: token.userId };
+    return { id: token.id, userId: token.userId, signer: token.signer };
   }
 
   // Each live token with its autopay grant, if it has one; the grant's
@@ -56,6 +57,7 @@ export class AccessTokenService {
         id: true,
         name: true,
         prefix: true,
+        signer: true,
         expiresAt: true,
         lastUsedAt: true,
         createdAt: true,
@@ -77,40 +79,71 @@ export class AccessTokenService {
     });
   }
 
-  // With `autopay`, the vault grant the buyer just registered becomes the
-  // token's spending policy; without it, every payment needs approval.
-  async issue(
-    userId: string,
-    request: { name: string; expiresAt: Date },
-    autopay?: { grantId: string; buyer: string; signer: string },
-  ) {
+  // The key's grant signer is derived from its secret, so the key alone can
+  // pay once the buyer registers a vault grant for that signer and links it.
+  async issue(userId: string, request: { name: string; expiresAt: Date }) {
     const active = await this.db.buyerAccessToken.count({
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
     });
     if (active >= MAX_ACTIVE) throw new ConflictError("TOO_MANY_ACCESS_TOKENS");
-    if (autopay) await this.grantService.admit(userId, autopay.buyer);
     const prefix = randomBytes(8).toString("hex");
     const secret = `pvb_${prefix}.${randomBytes(32).toString("hex")}`;
-    const created = await this.db.$transaction(async (tx) => {
-      const token = await tx.buyerAccessToken.create({
-        data: { userId, prefix, secretHash: digest(secret), ...request },
-        select: { id: true, name: true, prefix: true, expiresAt: true, createdAt: true },
-      });
-      if (autopay)
-        await tx.vaultGrant.create({
-          data: {
-            userId,
-            tokenId: token.id,
-            grantId: autopay.grantId.toLowerCase(),
-            buyer: getAddress(autopay.buyer),
-            signer: getAddress(autopay.signer),
-            kind: "agent",
-            name: request.name,
-          },
-        });
-      return token;
+    const created = await this.db.buyerAccessToken.create({
+      data: {
+        userId,
+        prefix,
+        secretHash: digest(secret),
+        signer: tokenSigner(secret).address,
+        ...request,
+      },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        signer: true,
+        expiresAt: true,
+        createdAt: true,
+      },
     });
     return { ...created, secret };
+  }
+
+  private async live(userId: string, id: string) {
+    const token = await this.db.buyerAccessToken.findFirst({
+      where: { id, userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    });
+    if (!token) throw new NotFoundError("ACCESS_TOKEN_NOT_FOUND");
+    return token;
+  }
+
+  // Makes a vault grant the buyer registered for the key's signer its
+  // autopay limit, replacing an earlier one. The vault checks the signer on
+  // every payment, so a grant for another signer could never pay.
+  async linkGrant(userId: string, id: string, grant: { grantId: string; buyer: string }) {
+    const token = await this.live(userId, id);
+    if (!token.signer) throw new ConflictError("ACCESS_TOKEN_NEEDS_RECREATE");
+    const data = {
+      grantId: grant.grantId.toLowerCase(),
+      buyer: getAddress(grant.buyer),
+      signer: token.signer,
+    };
+    const existing = await this.db.vaultGrant.findUnique({ where: { tokenId: id } });
+    await this.grantService.admit(userId, grant.buyer, Boolean(existing));
+    await this.db.vaultGrant.upsert({
+      where: { tokenId: id },
+      create: { userId, tokenId: id, kind: "agent", name: token.name, ...data },
+      update: data,
+    });
+    return { linked: true };
+  }
+
+  // Extends a live key. The console moves its grant's expiry in the vault
+  // to the same day first.
+  async extend(userId: string, id: string, expiresAt: Date) {
+    const token = await this.live(userId, id);
+    if (expiresAt <= token.expiresAt) throw new ConflictError("ACCESS_TOKEN_EXPIRY_NOT_LATER");
+    await this.db.buyerAccessToken.update({ where: { id }, data: { expiresAt } });
+    return { expiresAt };
   }
 
   async revoke(userId: string, id: string) {

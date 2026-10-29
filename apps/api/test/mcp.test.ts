@@ -9,32 +9,33 @@ import { Pool } from "pg";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { recoverTypedDataAddress, type Hex } from "viem";
+import type { Address, Hex } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "#core/db";
 import type { GrantReader } from "../src/modules/payments/autopay.service";
+import { tokenSigner } from "../src/modules/auth/token-signer";
 import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 
 const origin = "https://app.payvoke.test";
 const api = "https://api.payvoke.test";
 const schema = `mcp_test_${randomUUID().replaceAll("-", "")}`;
 const wallet = privateKeyToAccount(generatePrivateKey());
-const grantSigner = privateKeyToAccount(generatePrivateKey());
+const stranger = privateKeyToAccount(generatePrivateKey());
 let postgres: TestPostgres;
 let pool: Pool;
 let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
 
-// The vault as the API reads it: one autopay grant signed by grantSigner,
-// 5 USDC a job and 100 a day, with `spentToday` already spent.
+// The vault as the API reads it: one autopay grant for the API key's derived
+// signer, 5 USDC a job and 100 a day, with `spentToday` already spent.
 const USDC = 1_000_000n;
-const vault = { spentToday: 0n };
+const vault = { spentToday: 0n, signer: stranger.address as Address };
 const grantReader: GrantReader = {
   grant: async () => ({
     config: {
-      signer: grantSigner.address,
+      signer: vault.signer,
       expiresAt: Math.floor(Date.now() / 1000) + 86400,
       maxPerCall: 5n * USDC,
       periodSeconds: 86400,
@@ -171,7 +172,7 @@ it("issues buyer access tokens to sessions only and revokes them", async () => {
   assert.equal(forged.statusCode, 401);
 });
 
-it("lets an MCP host find an agent, chat, and prepare and submit a payment", async () => {
+it("lets an MCP host find an agent, chat and pay with its API key alone", async () => {
   const cookie = await login();
   const web = (method: string, url: string, payload?: unknown) =>
     inject(app, {
@@ -232,21 +233,39 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   assert.equal(anonymous.statusCode, 401);
   assert.match(String(anonymous.headers["www-authenticate"]), /^Bearer/);
 
-  // One token per coding agent, with its spending limit as a vault grant.
-  const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
-  const foreign = await web("POST", "/v1/access-tokens", {
-    name: "Not mine",
-    autopay: { grantId, buyer: grantSigner.address, signer: grantSigner.address },
-  });
-  assert.equal(foreign.statusCode, 403);
-  const issued = await web("POST", "/v1/access-tokens", {
-    name: "Claude Code",
-    autopay: { grantId, buyer: wallet.address, signer: grantSigner.address },
-  });
+  // An API key's grant signer is derived from its secret; Payvoke keeps
+  // only the address. Its spending limit is a vault grant for that signer.
+  const issued = await web("POST", "/v1/access-tokens", { name: "Claude Code" });
   assert.equal(issued.statusCode, 201, issued.body);
   const token = issued.json().secret as string;
+  const tokenId = issued.json().id as string;
+  assert.equal(issued.json().signer, tokenSigner(token).address);
+  vault.signer = issued.json().signer;
+  const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
+  const foreign = await web("PUT", `/v1/access-tokens/${tokenId}/grant`, {
+    grantId,
+    buyer: stranger.address,
+  });
+  assert.equal(foreign.statusCode, 403);
+  const linked = await web("PUT", `/v1/access-tokens/${tokenId}/grant`, {
+    grantId,
+    buyer: wallet.address,
+  });
+  assert.equal(linked.statusCode, 200, linked.body);
   const listed = (await web("GET", "/v1/access-tokens")).json();
   assert.equal(listed[0].autopay.grantId, grantId);
+  assert.equal(listed[0].autopay.signer, listed[0].signer);
+  assert.equal(JSON.stringify(listed).includes(token), false);
+
+  // Extending only moves the expiry later.
+  assert.equal(
+    (await web("PATCH", `/v1/access-tokens/${tokenId}`, { expiresInDays: 120 })).statusCode,
+    200,
+  );
+  assert.equal(
+    (await web("PATCH", `/v1/access-tokens/${tokenId}`, { expiresInDays: 1 })).statusCode,
+    409,
+  );
   const host = await connect(token);
   const { tools } = await host.listTools();
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
@@ -256,14 +275,13 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
     "get_job",
     "get_spending_limits",
     "list_jobs",
-    "prepare_payment",
+    "pay_offer",
     "prepare_reclaim",
     "read_chat",
     "request_payment",
     "search_agents",
     "send_message",
     "start_chat",
-    "submit_payment",
   ]);
 
   const found = json(await host.callTool({ name: "search_agents", arguments: { query: name } }));
@@ -317,42 +335,19 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
     method: "POST",
     url: "/v1/grants",
     headers: { authorization: `Bearer ${token}` },
-    payload: { grantId, buyer: wallet.address, signer: grantSigner.address, name: "x" },
+    payload: { grantId, buyer: wallet.address, signer: stranger.address, name: "x" },
   });
   assert.equal(byToken.statusCode, 403);
 
-  // Within the limits: the host signs with the connection's grant.
-  const prepared = json(
-    await host.callTool({
-      name: "prepare_payment",
-      arguments: { threadId: thread.id, offerId },
-    }),
-  );
-  assert.equal(prepared.mode, "sign");
-  assert.equal(prepared.price, "0.6 USDC");
-  assert.equal(prepared.grantId, grantId);
-  assert.equal(prepared.typedData.message.grantId, grantId);
-  // The typed data is what an off-the-shelf EIP-712 signer reads.
-  const { EIP712Domain: _domain, ...types } = prepared.typedData.types;
-  const signature = await grantSigner.signTypedData({ ...prepared.typedData, types });
-  assert.equal(
-    await recoverTypedDataAddress({ ...prepared.typedData, types, signature }),
-    grantSigner.address,
-  );
-
-  // This app has no facilitator, so the signed payment cannot settle; the
-  // host sees the API's error rather than a success.
-  const submitted = await host.callTool({
-    name: "submit_payment",
-    arguments: {
-      quoteId: prepared.quoteId,
-      grantId: prepared.grantId,
-      grantEpoch: prepared.grantEpoch,
-      signature,
-    },
+  // Within the limits, Payvoke signs with the key's derived signer and pays.
+  // This app has no facilitator, so the payment cannot settle; the host sees
+  // the API's error rather than a success.
+  const paid = await host.callTool({
+    name: "pay_offer",
+    arguments: { threadId: thread.id, offerId },
   });
-  assert.equal(submitted.isError, true);
-  assert.deepEqual(json(submitted), { status: 503, error: "SETTLEMENT_NOT_AVAILABLE" });
+  assert.equal(paid.isError, true);
+  assert.deepEqual(json(paid), { status: 503, error: "SETTLEMENT_NOT_AVAILABLE" });
 
   async function openOffer(brief: string) {
     const chat = json(await host.callTool({ name: "start_chat", arguments: { appId } }));
@@ -375,12 +370,11 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   // Over today's limit: the user gets an approval link instead.
   vault.spentToday = 99_500_000n;
   const over = json(
-    await host.callTool({ name: "prepare_payment", arguments: await openOffer("PR #129") }),
+    await host.callTool({ name: "pay_offer", arguments: await openOffer("PR #129") }),
   );
   assert.equal(over.mode, "approve");
   assert.match(over.reason, /today's autopay limit/);
   assert.equal(over.approvalUrl, `${origin}/console/approve/${over.quoteId}`);
-  assert.equal("typedData" in over, false);
 
   // The user can always ask to approve a payment themselves.
   vault.spentToday = 0n;
@@ -388,10 +382,20 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
     await host.callTool({ name: "request_payment", arguments: await openOffer("PR #130") }),
   );
   assert.equal(requested.approvalUrl, `${origin}/console/approve/${requested.quoteId}`);
-  assert.equal("typedData" in requested, false);
+
+  // A key made before keys paid by themselves has no derived signer: it
+  // always asks, and the console offers to recreate it.
+  await db.buyerAccessToken.update({ where: { id: tokenId }, data: { signer: null } });
+  const legacy = json(await host.callTool({ name: "get_spending_limits", arguments: {} }));
+  assert.equal(legacy.usable, false);
+  const asked = json(
+    await host.callTool({ name: "pay_offer", arguments: await openOffer("PR #131") }),
+  );
+  assert.equal(asked.mode, "approve");
+  assert.match(asked.reason, /made before keys could pay/);
 
   // Revoking the token takes its spending policy with it.
-  assert.equal((await web("DELETE", `/v1/access-tokens/${issued.json().id}`)).statusCode, 200);
+  assert.equal((await web("DELETE", `/v1/access-tokens/${tokenId}`)).statusCode, 200);
   assert.equal(await db.vaultGrant.count({ where: { grantId } }), 0);
   await host.close();
 });

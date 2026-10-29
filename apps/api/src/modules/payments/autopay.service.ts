@@ -64,12 +64,15 @@ export type Limits = {
   spentTotal: bigint;
   available: bigint;
   // Why the grant cannot pay at all right now, if it cannot.
-  blocked: "revoked" | "expired" | "not_found" | null;
+  // `recreate_key`: the key predates signing with the key alone, so its
+  // grant's signer is not one Payvoke can derive.
+  blocked: "revoked" | "expired" | "not_found" | "recreate_key" | null;
 };
 
 // Why a quote goes to the buyer for approval instead of being autopaid.
 export type ApprovalReason =
   | "no_autopay"
+  | "recreate_key"
   | "revoked"
   | "expired"
   | "not_found"
@@ -79,10 +82,10 @@ export type ApprovalReason =
   | "low_balance"
   | "chain_unavailable";
 
-// A coding agent's spending policy is its access token's linked vault grant.
-// The vault enforces the limits; reading them here first lets the agent pay
-// what fits and send the buyer an approval link for the rest, instead of
-// signing a debit the vault would refuse.
+// An API key's spending policy is its linked vault grant, whose signer is
+// derived from the key. The vault enforces the limits; reading them here
+// first lets the agent pay what fits and send the buyer an approval link for
+// the rest, instead of signing a debit the vault would refuse.
 export class AutopayService {
   private readonly db: Cradle["db"];
   private readonly reader: Cradle["grantReader"];
@@ -93,8 +96,9 @@ export class AutopayService {
   }
 
   // The token's limits with today's spending, or null when the token has no
-  // autopay grant. Throws when the chain cannot be read.
-  async limits(tokenId: string): Promise<Limits | null> {
+  // autopay grant. `signer` is the token's derived signer, null on older
+  // keys. Throws when the chain cannot be read.
+  async limits(tokenId: string, signer: string | null): Promise<Limits | null> {
     const row = await this.db.vaultGrant.findUnique({ where: { tokenId } });
     if (!row) return null;
     if (!this.reader) throw new Error("chain_unavailable");
@@ -120,15 +124,17 @@ export class AutopayService {
       spentTotal: grant.spentTotal,
       available,
       blocked:
-        grant.epoch === 0n
-          ? "not_found"
-          : grant.revoked
-            ? "revoked"
-            : Number(grant.config.expiresAt) <= now
-              ? "expired"
-              : grant.config.signer.toLowerCase() !== row.signer.toLowerCase()
-                ? "not_found"
-                : null,
+        !signer || signer.toLowerCase() !== row.signer.toLowerCase()
+          ? "recreate_key"
+          : grant.epoch === 0n
+            ? "not_found"
+            : grant.revoked
+              ? "revoked"
+              : Number(grant.config.expiresAt) <= now
+                ? "expired"
+                : grant.config.signer.toLowerCase() !== row.signer.toLowerCase()
+                  ? "not_found"
+                  : null,
     };
   }
 
@@ -143,11 +149,12 @@ export class AutopayService {
   // Whether the token's grant can pay this quote by itself.
   async decide(
     tokenId: string,
+    signer: string | null,
     quote: QuoteDocument,
   ): Promise<{ autopay: Limits } | { approve: ApprovalReason; limits: Limits | null }> {
     let limits: Limits | null;
     try {
-      limits = await this.limits(tokenId);
+      limits = await this.limits(tokenId, signer);
     } catch {
       return { approve: "chain_unavailable", limits: null };
     }

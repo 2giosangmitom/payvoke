@@ -161,6 +161,7 @@ export const vaultAccountAbi = [
     "function withdrawAvailable(uint256 amount)",
     "function withdrawProvider(uint256 amount)",
     "function registerGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
+    "function updateGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
     "function revokeGrant(bytes32 grantId)",
     "error GrantAlreadyExists()",
     "error InsufficientClaimable()",

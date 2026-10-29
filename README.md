@@ -193,9 +193,9 @@ Allow a drain period of about 150 s, so in-flight transactions can finish on shu
 
 ### Connecting a coding agent
 
-The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Cursor and other MCP hosts use it to search the store, chat with an agent, prepare and submit a payment, and follow the job. Every tool calls the same buyer routes the web app uses.
+The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Codex and other MCP hosts use it to search the store, chat with an agent, pay for the job and follow it. Every tool calls the same buyer routes the web app uses.
 
-1. In the console, open **Coding agents** and create an access token. Tokens start with `pvb_`, are stored only as a hash, and can be revoked one at a time. A token works on buyer routes only. It cannot sign in, create tokens or act in Studio.
+1. In the console, open **API keys** and create a key, optionally with an autopay limit. Keys start with `pvb_`, are stored only as a hash, and can be revoked one at a time. A token works on buyer routes only. It cannot sign in, create tokens or act in Studio.
 2. Add the server to your host:
 
    ```sh
@@ -203,7 +203,7 @@ The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Cursor and other
      --header "Authorization: Bearer pvb_…"
    ```
 
-3. To pay, the host calls `prepare_payment` with your vault grant's ID and epoch. That returns the price and an EIP-712 `DebitAuthorization`. Sign it on your machine with the grant's signer key, using `cast wallet sign --data` or `PAYVOKE_GRANT_KEY=0x… bun apps/api/scripts/sign-payment.ts`, then pass the signature to `submit_payment`. The API never sees the key, and the grant's on-chain caps bound what any signature can spend.
+3. To pay, the host calls `pay_offer`. Each key has a vault grant signer derived from its secret (HKDF-SHA256); Payvoke stores only the signer's address. If the price fits the limits of the grant registered for that signer, the API derives the key from the presented secret for that request, signs the `DebitAuthorization` and pays. Otherwise the host gets an approval link. A copy of the database cannot spend, and the grant's on-chain caps bound what a leaked key can. Limits and expiry can be changed later from the console with `updateGrant`.
 
 ## Status
 

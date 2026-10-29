@@ -3,12 +3,13 @@ import { StreamableHTTPTransport } from "@hono/mcp";
 import type { AppEnv } from "../../http/context";
 import { maxBody, rateLimit } from "../../http/limits";
 import { isBuyerToken } from "../auth/access-token.service";
+import { tokenSigner } from "../auth/token-signer";
 import { payvokeMcpServer, type BuyerApi } from "./mcp.tools";
 
 type Fetch = (request: Request) => Response | Promise<Response>;
 
 // Streamable HTTP MCP for coding agents and other MCP hosts, authenticated
-// with a buyer access token. Stateless: every request builds its own server,
+// with a buyer API key. Stateless: every request builds its own server,
 // so any replica answers and the token is checked on each call. Tools call
 // the buyer REST routes in process with the same token, so they share their
 // validation, limits and ownership checks.
@@ -49,8 +50,11 @@ export const mcpRoutes = (fetch: Fetch) =>
       resourceUrl: new URL("/v1/invocations", config.API_ORIGIN).href,
       webOrigin: config.WEB_ORIGIN,
       autopay: {
-        limits: () => autopayService.limits(token.id),
-        decide: (quote) => autopayService.decide(token.id, quote),
+        limits: () => autopayService.limits(token.id, token.signer),
+        decide: (quote) => autopayService.decide(token.id, token.signer, quote),
+        // The grant signer is derived from the presented secret for this
+        // payment only; Payvoke never stores it.
+        sign: (debit) => tokenSigner(authorization!.slice("Bearer ".length)).signTypedData(debit),
       },
     });
     const transport = new StreamableHTTPTransport({ sessionIdGenerator: undefined });

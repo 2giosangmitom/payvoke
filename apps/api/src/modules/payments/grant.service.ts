@@ -64,15 +64,15 @@ export class GrantService {
   }
 
   // A grant pays from its buyer's vault balance, so the buyer must be the
-  // account's own wallet; the list is capped.
-  async admit(userId: string, buyer: string) {
+  // account's own wallet; the list is capped unless the grant replaces one.
+  async admit(userId: string, buyer: string, replacing = false) {
     const wallets = await this.db.walletAddress.findMany({
       where: { userId },
       select: { address: true },
     });
     if (!wallets.some((wallet) => wallet.address.toLowerCase() === buyer.toLowerCase()))
       throw new ForbiddenError("GRANT_BUYER_NOT_LINKED");
-    if ((await this.db.vaultGrant.count({ where: { userId } })) >= MAX_GRANTS)
+    if (!replacing && (await this.db.vaultGrant.count({ where: { userId } })) >= MAX_GRANTS)
       throw new ConflictError("TOO_MANY_GRANTS");
   }
 

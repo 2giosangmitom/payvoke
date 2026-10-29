@@ -147,6 +147,9 @@ model BuyerAccessToken {
   name       String
   prefix     String    @unique
   secretHash String    @unique
+  // Address of the grant signer derived from the secret; null on keys made
+  // before the key alone could pay.
+  signer     String?
   expiresAt  DateTime
   lastUsedAt DateTime?
   revokedAt  DateTime?
