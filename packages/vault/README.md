@@ -43,6 +43,6 @@ admin key. Add a `PayvokeVaultRoles` object with `relayer` (settlement worker),
 bunx hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuji --build-profile production --parameters /path/to/parameters.json
 ```
 
-The current Fuji deployment (`ignition/deployments/chain-43113`, block 60042827) matches
-this source. The earlier vault, deployed before disputes were removed, is kept in
-`ignition/deployments/legacy-chain-43113-predispute-removal` for reference only.
+The current Fuji deployment (`ignition/deployments/chain-43113`) is vault
+`0xd3B75D6B8BFb1372E8312EC14BDFD27f01769512`, deployed at block 60179705 from
+this source with `ignition/parameters/fuji.json`.
