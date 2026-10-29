@@ -5,6 +5,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { fontless } from "fontless";
 import { nitro } from "nitro/vite";
 
+// Serves the API under the web origin so its SameSite=Lax session and SIWE
+// cookies stay first-party. On Vercel these become CDN rewrites.
+const apiProxy = process.env.API_PROXY_TARGET?.replace(/\/+$/, "");
+
 export default defineConfig({
   server: {
     port: 3000,
@@ -18,7 +22,16 @@ export default defineConfig({
         routeTreeFileHeader: ["// oxfmt-ignore", "// @ts-nocheck"],
       },
     }),
-    nitro(),
+    nitro(
+      apiProxy
+        ? {
+            routeRules: {
+              "/v1/**": { proxy: `${apiProxy}/v1/**` },
+              "/mcp": { proxy: `${apiProxy}/mcp` },
+            },
+          }
+        : {},
+    ),
     viteReact(),
     tailwindcss(),
     fontless({
