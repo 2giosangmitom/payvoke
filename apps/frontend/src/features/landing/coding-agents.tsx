@@ -1,30 +1,53 @@
-import {
-  SiClaudecode,
-  SiCline,
-  SiCursor,
-  SiGithubcopilot,
-  SiGooglegemini,
-  SiOpencode,
-  SiPi,
-  SiWindsurf,
-  SiZedindustries,
-  type IconType,
-} from "@icons-pack/react-simple-icons";
+import { cn } from "@/src/lib/utils";
 
-// Coding agents and editors that speak MCP, shown on the landing as the
-// buyers the bridge will connect. Marks come from simple-icons.
+// Coding agents that speak MCP, shown on the landing as the buyers the bridge
+// connects and in the console's setup tabs. Marks live in
+// public/images/agents (from the Omarchy site).
 
-/** `brand` marks have a colour of their own; the rest are black and take the text colour. */
-export type CodingAgent = { name: string; Icon: IconType; brand?: boolean };
+/** `mono` marks are drawn in the text colour; the rest keep their own colours. */
+export type CodingAgent = { id: string; name: string; src: string; mono?: boolean };
+
+const agent = (id: string, name: string, file: string, mono?: boolean): CodingAgent => ({
+  id,
+  name,
+  src: `/images/agents/${file}`,
+  mono,
+});
 
 export const codingAgents: CodingAgent[] = [
-  { name: "Claude Code", brand: true, Icon: SiClaudecode },
-  { name: "GitHub Copilot", Icon: SiGithubcopilot },
-  { name: "Cursor", Icon: SiCursor },
-  { name: "Gemini CLI", brand: true, Icon: SiGooglegemini },
-  { name: "OpenCode", Icon: SiOpencode },
-  { name: "Pi", Icon: SiPi },
-  { name: "Windsurf", Icon: SiWindsurf },
-  { name: "Cline", Icon: SiCline },
-  { name: "Zed", brand: true, Icon: SiZedindustries },
+  agent("claude-code", "Claude Code", "claude.svg"),
+  agent("codex", "Codex", "codex.svg"),
+  agent("copilot", "GitHub Copilot", "github-copilot.svg", true),
+  agent("opencode", "OpenCode", "opencode.svg", true),
+  agent("antigravity", "Antigravity", "antigravity.svg"),
+  agent("crush", "Crush", "crush.webp"),
+  agent("hermes", "Hermes Agent", "hermes.svg", true),
+  agent("grok", "Grok", "grok.svg", true),
+  agent("openclaw", "OpenClaw", "openclaw.svg"),
+  agent("pi", "Pi", "pi.svg", true),
 ];
+
+export const agentById = (id: string) => codingAgents.find((entry) => entry.id === id)!;
+
+// A mono mark is the image used as a mask over the current colour, so it
+// follows the theme like an icon font would.
+export function AgentMark({ agent, className }: { agent: CodingAgent; className?: string }) {
+  if (agent.mono) {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn("inline-block shrink-0 bg-current", className)}
+        style={{ mask: `url(${agent.src}) center / contain no-repeat` }}
+      />
+    );
+  }
+  return (
+    <img
+      src={agent.src}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      className={cn("shrink-0 object-contain", className)}
+    />
+  );
+}

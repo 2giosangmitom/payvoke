@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, ArrowUpRight, Check, Lock, RotateCcw } from "lucide-react";
 import { NetworkAvalancheFuji, TokenUSDC } from "@web3icons/react";
-import { SiClaudecode, SiModelcontextprotocol } from "@icons-pack/react-simple-icons";
 import {
   AnimatePresence,
   motion,
@@ -41,7 +40,7 @@ import {
 } from "@/src/components/ui/tooltip";
 import { WordRotate } from "@/src/components/ui/word-rotate";
 import { useMediaQuery } from "@/src/hooks/use-media-query";
-import { codingAgents } from "@/src/features/landing/coding-agents";
+import { AgentMark, agentById, codingAgents } from "@/src/features/landing/coding-agents";
 import { landingAudio } from "@/src/features/landing/landing-audio";
 import { DemoThread } from "@/src/features/landing/landing-demo";
 import { fragments } from "@/src/features/landing/landing-fragments";
@@ -403,11 +402,17 @@ const bridgePoints = [
 const orbitTile =
   "rounded-none group-hover/orbit:[animation-play-state:paused] group-has-focus-visible/orbit:[animation-play-state:paused] motion-reduce:[animation-play-state:paused]";
 
+// The Model Context Protocol mark.
+function McpMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M13.85 0a4.16 4.16 0 0 0-2.95 1.217L1.456 10.66a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l9.442-9.442a2.49 2.49 0 0 1 3.541 0 2.49 2.49 0 0 1 0 3.541L8.59 12.97l-.1.1a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l.1-.098 7.03-7.034a2.49 2.49 0 0 1 3.542 0l.049.05a2.49 2.49 0 0 1 0 3.54l-8.54 8.54a1.96 1.96 0 0 0 0 2.755l1.753 1.753a.835.835 0 0 0 1.18 0 .835.835 0 0 0 0-1.18l-1.753-1.753a.266.266 0 0 1 0-.394l8.54-8.54a4.185 4.185 0 0 0 0-5.9l-.05-.05a4.16 4.16 0 0 0-2.95-1.218c-.2 0-.401.02-.6.048a4.17 4.17 0 0 0-1.17-3.552A4.16 4.16 0 0 0 13.85 0m0 3.333a.84.84 0 0 0-.59.245L6.275 10.56a4.186 4.186 0 0 0 0 5.902 4.186 4.186 0 0 0 5.902 0L19.16 9.48a.835.835 0 0 0 0-1.18.835.835 0 0 0-1.18 0l-6.985 6.984a2.49 2.49 0 0 1-3.54 0 2.49 2.49 0 0 1 0-3.54l6.983-6.985a.835.835 0 0 0 0-1.18.84.84 0 0 0-.59-.245" />
+    </svg>
+  );
+}
+
 const rails = [
-  {
-    name: "Model Context Protocol",
-    icon: <SiModelcontextprotocol className="size-6 sm:size-7" />,
-  },
+  { name: "Model Context Protocol", icon: <McpMark className="size-6 sm:size-7" /> },
   { name: "USDC", icon: <TokenUSDC className="size-7 sm:size-8" /> },
   { name: "Avalanche", icon: <NetworkAvalancheFuji className="size-7 sm:size-8" /> },
 ];
@@ -444,7 +449,7 @@ function CodingAgents() {
           <BlurFade inView direction="up" offset={16} delay={0.15}>
             <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
               Coding agents already plan, write and review code on their own. Payvoke lets Claude
-              Code, Copilot, Cursor and any other MCP host hire your agent the way a person does,
+              Code, Codex, Copilot and any other MCP host hire your agent the way a person does,
               with the same offer, the same vault and the same refund.
             </p>
           </BlurFade>
@@ -476,9 +481,9 @@ function CodingAgents() {
                 duration={60}
                 className={orbitTile}
               >
-                {codingAgents.map(({ name, Icon, brand }) => (
-                  <OrbitMark key={name} name={name}>
-                    <Icon color={brand ? "default" : "currentColor"} className="size-7 sm:size-9" />
+                {codingAgents.map((agent) => (
+                  <OrbitMark key={agent.id} name={agent.name}>
+                    <AgentMark agent={agent} className="size-7 sm:size-9" />
                   </OrbitMark>
                 ))}
               </OrbitingCircles>
@@ -492,7 +497,7 @@ function CodingAgents() {
           <Terminal
             title={
               <>
-                <SiClaudecode color="default" className="size-4" aria-hidden="true" />
+                <AgentMark agent={agentById("claude-code")} className="size-4" />
                 Claude Code with Payvoke MCP
               </>
             }
@@ -825,7 +830,7 @@ const questions = [
   },
   {
     q: "Can a coding agent hire on Payvoke?",
-    a: "Yes. Create an access token under Coding agents in the console and add Payvoke's MCP endpoint to Claude Code, Cursor or any other MCP host. The host finds agents, chats with them and prepares payments; a spend key on your machine signs each one inside the caps you set.",
+    a: "Yes. Create an access token under Coding agents in the console and add Payvoke's MCP endpoint to Claude Code, Codex or any other MCP host. The host finds agents, chats with them and prepares payments; a spend key on your machine signs each one inside the caps you set.",
   },
   {
     q: "Can I keep an agent private?",
