@@ -15,6 +15,8 @@ import {
 } from "@/src/components/layout/page-kit";
 import { authClient } from "@/src/features/auth/auth-client";
 import { getWallet, usdc, type WalletSummary } from "@/src/features/wallet/api";
+import { OneClickSection } from "@/src/features/wallet/one-click-pay";
+import { EarningsWithdraw, FundsPanel } from "@/src/features/wallet/vault-actions";
 import { cn } from "@/src/lib/utils";
 
 type Row = {
@@ -232,7 +234,7 @@ export function WalletPage() {
       <PageHeader
         compact
         title="Wallet"
-        description="Your USDC on Avalanche Fuji: in your wallet, in the vault, and held for the jobs you hired."
+        description="Your USDC on Avalanche Fuji: in your wallet, in the vault, and held for the jobs you hired. Deposit to hire, withdraw what you don't need."
         actions={
           <Button variant="outline" render={<Link to="/console/activity" />}>
             Payment activity
@@ -247,29 +249,66 @@ export function WalletPage() {
         </ErrorNotice>
       ) : (
         <div className="grid gap-12 py-8">
-          <section aria-labelledby="where" className="grid gap-5">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="grid gap-1">
-                <h2 id="where" className="text-sm text-muted-foreground">
-                  Your USDC, all places
-                </h2>
-                <Figure amount={owned} className="text-3xl font-medium" />
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+            <section aria-labelledby="where" className="grid content-start gap-5">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="grid gap-1">
+                  <h2 id="where" className="text-sm text-muted-foreground">
+                    Your USDC, all places
+                  </h2>
+                  <Figure amount={owned} className="text-3xl font-medium" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {chain.loading ? "Reading the chain" : "Balances read from the chain every 30 s"}
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {chain.loading ? "Reading the chain" : "Balances read from the chain every 30 s"}
-              </p>
-            </div>
-            <Allocation rows={buyerRows} />
-            <LedgerTable title="Where it is" id="ledger" rows={buyerRows} />
-          </section>
+              <Allocation rows={buyerRows} />
+              <LedgerTable title="Where it is" id="ledger" rows={buyerRows} />
+            </section>
+            <section aria-labelledby="move" className="grid content-start gap-3">
+              <h2 id="move" className="text-base font-medium">
+                Move USDC
+              </h2>
+              <div className="border border-border bg-card p-4">
+                <FundsPanel
+                  token={data!.usdc as Address}
+                  vault={(data!.vault ?? null) as Address | null}
+                  address={connected}
+                  wallet={chain.wallet}
+                  available={chain.available}
+                />
+              </div>
+            </section>
+          </div>
+          {data?.vault && (
+            <section aria-labelledby="one-click" className="grid gap-3 lg:max-w-3xl">
+              <div className="grid gap-1">
+                <h2 id="one-click" className="text-base font-medium">
+                  One-click pay
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Pay for jobs without a wallet prompt each time. Each browser gets its own key and
+                  daily limit; revoke one here and it stops at once.
+                </p>
+              </div>
+              <OneClickSection vault={data.vault as Address} connected={connected} />
+            </section>
+          )}
           <div className="grid gap-12 lg:grid-cols-2">
             <LedgerTable title="Settled payments" id="history" rows={historyRows} />
             {data && data.provider.apps > 0 ? (
-              <LedgerTable
-                title={`Earnings of your ${plural(data.provider.apps, "agent")}`}
-                id="earnings"
-                rows={providerRows}
-              />
+              <div className="grid content-start gap-4">
+                <LedgerTable
+                  title={`Earnings of your ${plural(data.provider.apps, "agent")}`}
+                  id="earnings"
+                  rows={providerRows}
+                />
+                <EarningsWithdraw
+                  vault={(data.vault ?? null) as Address | null}
+                  address={connected}
+                  payouts={data.provider.payoutAddresses as Address[]}
+                />
+              </div>
             ) : (
               <section aria-labelledby="earnings" className="grid content-start gap-3">
                 <h2 id="earnings" className="text-base font-medium">

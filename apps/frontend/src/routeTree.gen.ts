@@ -25,6 +25,7 @@ import { Route as ConsoleWalletRouteImport } from './routes/console.wallet'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
+import { Route as ConsoleApproveQuoteIdRouteImport } from './routes/console.approve.$quoteId'
 import { Route as ConsoleChatIndexRouteImport } from './routes/console.chat.index'
 import { Route as ConsoleChatThreadIdRouteImport } from './routes/console.chat.$threadId'
 import { Route as ConsoleStudioIndexRouteImport } from './routes/console.studio.index'
@@ -120,6 +121,11 @@ const MarketStoreAppIdRoute = MarketStoreAppIdRouteImport.update({
   path: '/$appId',
   getParentRoute: () => MarketStoreRoute,
 } as any)
+const ConsoleApproveQuoteIdRoute = ConsoleApproveQuoteIdRouteImport.update({
+  id: '/approve/$quoteId',
+  path: '/approve/$quoteId',
+  getParentRoute: () => ConsoleRoute,
+} as any)
 const ConsoleChatIndexRoute = ConsoleChatIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
+  '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store/': typeof MarketStoreIndexRoute
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/console': typeof ConsoleIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
+  '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/store': typeof MarketStoreIndexRoute
@@ -210,6 +218,7 @@ export interface FileRoutesById {
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/_market/store/$appId': typeof MarketStoreAppIdRoute
+  '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
   '/_market/store/': typeof MarketStoreIndexRoute
@@ -236,6 +245,7 @@ export interface FileRouteTypes {
     | '/console/'
     | '/dashboard/'
     | '/store/$appId'
+    | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
     | '/store/'
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/console'
     | '/dashboard'
     | '/store/$appId'
+    | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
     | '/store'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/console/'
     | '/dashboard/'
     | '/_market/store/$appId'
+    | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
     | '/_market/store/'
@@ -429,6 +441,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketStoreAppIdRouteImport
       parentRoute: typeof MarketStoreRoute
     }
+    '/console/approve/$quoteId': {
+      id: '/console/approve/$quoteId'
+      path: '/approve/$quoteId'
+      fullPath: '/console/approve/$quoteId'
+      preLoaderRoute: typeof ConsoleApproveQuoteIdRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
     '/console/chat/': {
       id: '/console/chat/'
       path: '/'
@@ -517,6 +536,7 @@ interface ConsoleRouteChildren {
   ConsoleKeysRoute: typeof ConsoleKeysRoute
   ConsoleWalletRoute: typeof ConsoleWalletRoute
   ConsoleIndexRoute: typeof ConsoleIndexRoute
+  ConsoleApproveQuoteIdRoute: typeof ConsoleApproveQuoteIdRoute
   ConsoleStudioIndexRoute: typeof ConsoleStudioIndexRoute
   ConsoleStudioAppsAppIdRoute: typeof ConsoleStudioAppsAppIdRoute
 }
@@ -528,6 +548,7 @@ const ConsoleRouteChildren: ConsoleRouteChildren = {
   ConsoleKeysRoute: ConsoleKeysRoute,
   ConsoleWalletRoute: ConsoleWalletRoute,
   ConsoleIndexRoute: ConsoleIndexRoute,
+  ConsoleApproveQuoteIdRoute: ConsoleApproveQuoteIdRoute,
   ConsoleStudioIndexRoute: ConsoleStudioIndexRoute,
   ConsoleStudioAppsAppIdRoute: ConsoleStudioAppsAppIdRoute,
 }

@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
+import { clearBrowserKeys } from "@/src/features/wallet/browser-key";
 import { authClient } from "@/src/features/auth/auth-client";
 import { cn } from "@/src/lib/utils";
 
@@ -76,6 +77,7 @@ export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAc
       // Sign out an earlier session when authenticating a different wallet.
       if (session && !sessionMatches) {
         const signOut = await authClient.signOut();
+        await clearBrowserKeys();
         if (signOut.error) throw new Error(signOut.error.message);
         queryClient.removeQueries({ queryKey: ["account"] });
       }
@@ -115,6 +117,7 @@ export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAc
     setError("");
     try {
       const result = await authClient.signOut();
+      await clearBrowserKeys();
       if (result.error) throw new Error(result.error.message);
       queryClient.removeQueries({ queryKey: ["account"] });
       setVerifiedAddress(null);

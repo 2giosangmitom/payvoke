@@ -30,8 +30,9 @@ Current route map:
 | `/console/`                           | `src/routes/console.index.tsx`             | Console home: jobs that need the buyer, money in flight, running work, recent chats                 |
 | `/console/chat/...`                   | `src/routes/console.chat*.tsx`             | Every app: thread list + `ThreadChat` (assistant-ui thread over the API timeline)                   |
 | `/console/activity`                   | `src/routes/console.activity.tsx`          | Every paid invocation with hold state and next deadline                                             |
-| `/console/wallet`                     | `src/routes/console.wallet.tsx`            | USDC in the wallet, in the vault and held for jobs; provider earnings                               |
-| `/console/keys`                       | `src/routes/console.keys.tsx`              | Buyer access tokens for MCP hosts and each shared agent's worker key (`/console/connect` redirects) |
+| `/console/wallet`                     | `src/routes/console.wallet.tsx`            | USDC in the wallet, in the vault and held for jobs; deposit/withdraw, earnings, one-click pay keys  |
+| `/console/keys`                       | `src/routes/console.keys.tsx`              | Coding agents (MCP access tokens, each with an optional autopay limit) and each shared agent's worker key (`/console/connect` redirects) |
+| `/console/approve/$quoteId`           | `src/routes/console.approve.$quoteId.tsx`  | Approval link from MCP `request_payment`: the buyer reviews and pays a coding agent's quote        |
 | `/console/studio/...`                 | `src/routes/console.studio.*.tsx`          | Provider Studio: app info, keys; commands are read-only (bots register them via API)                |
 | `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx` | Redirects from old URLs into the console                                                            |
 | (document)                            | `src/routes/__root.tsx`                    | `<html>`, unhead provider and document tags, `HeadContent`, providers, `<Outlet>`, `Scripts`        |
