@@ -234,7 +234,7 @@ export function WalletPage() {
       <PageHeader
         compact
         title="Wallet"
-        description="Your USDC on Avalanche Fuji: in your wallet, in the vault, and held for the jobs you hired. Deposit to hire, withdraw what you don't need."
+        description="Your USDC on Avalanche Fuji: wallet, vault and jobs in progress."
         actions={
           <Button variant="outline" render={<Link to="/console/activity" />}>
             Payment activity
@@ -254,7 +254,7 @@ export function WalletPage() {
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div className="grid gap-1">
                   <h2 id="where" className="text-sm text-muted-foreground">
-                    Your USDC, all places
+                    Your USDC in total
                   </h2>
                   <Figure amount={owned} className="text-3xl font-medium" />
                 </div>
@@ -263,7 +263,7 @@ export function WalletPage() {
                 </p>
               </div>
               <Allocation rows={buyerRows} />
-              <LedgerTable title="Where it is" id="ledger" rows={buyerRows} />
+              <LedgerTable title="Balances" id="ledger" rows={buyerRows} />
             </section>
             <section aria-labelledby="move" className="grid content-start gap-3">
               <h2 id="move" className="text-base font-medium">
@@ -287,8 +287,8 @@ export function WalletPage() {
                   One-click pay
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Pay for jobs without a wallet prompt each time. Each browser gets its own key and
-                  daily limit; revoke one here and it stops at once.
+                  Pay without a wallet prompt. Each browser has its own key and daily limit; revoke
+                  it here to stop it.
                 </p>
               </div>
               <OneClickSection vault={data.vault as Address} connected={connected} />
@@ -315,7 +315,7 @@ export function WalletPage() {
                   Earnings
                 </h2>
                 <p className="border-y border-border py-3 text-sm text-muted-foreground">
-                  Share an agent in Studio and what buyers pay it shows here.{" "}
+                  Once you share an agent in Studio, what buyers pay it appears here.{" "}
                   <Link
                     to="/console/studio"
                     className="text-foreground underline underline-offset-4"

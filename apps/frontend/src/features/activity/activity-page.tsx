@@ -99,7 +99,7 @@ export function ActivityPage() {
       <PageHeader
         compact
         title="Activity"
-        description="Every job you paid for: what is still running, what waits for your review and what you can reclaim."
+        description="Every job you paid for: running, in review or reclaimable."
       />
       <div
         role="group"

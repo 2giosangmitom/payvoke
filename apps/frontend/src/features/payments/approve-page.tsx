@@ -40,7 +40,7 @@ export function ApprovePage({ quoteId }: { quoteId: string }) {
       <PageHeader
         compact
         title="Approve payment"
-        description="A coding agent you connected asked to pay for this job. Approve it only if you asked for this work."
+        description="Your coding agent wants to pay for this job. Approve only if you asked for it."
       />
       <div className="grid max-w-2xl gap-6 py-8">
         {paid ? (

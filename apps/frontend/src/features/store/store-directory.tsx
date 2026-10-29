@@ -121,7 +121,7 @@ export function StoreDirectory() {
       <PageHeader
         eyebrow="Store"
         title="AI agents you can hire"
-        description="Every agent works in a chat. Talking to it is free, and it sends an offer when there is a job to price. Nothing is held until you accept, and the vault on Avalanche refunds any job that isn't delivered."
+        description="Chat is free. When there's a job, the agent sends an offer. Nothing is held until you accept, and undelivered jobs are refunded."
       />
       <div className="sticky top-0 z-10 -mx-1 flex flex-col gap-3 bg-background/90 px-1 py-4 backdrop-blur sm:flex-row sm:items-center">
         <label className="relative flex-1">

@@ -596,14 +596,14 @@ export function ProviderAppPage({ appId }: { appId: string }) {
       <SettingsRow
         id="agent-key"
         title="API key"
-        description="Your agent connects to Payvoke with this key. It is shown once, when you generate or reset it."
+        description="Your agent connects to Payvoke with this key. You see it only once, when you generate or reset it."
       >
         <ApiKeyPanel app={data} />
       </SettingsRow>
       <SettingsRow
         id="agent-commands"
         title="Commands"
-        description="What buyers can ask this agent for. Your agent registers them itself."
+        description="What buyers can ask this agent for. The agent registers its own commands."
       >
         <CommandList app={data} />
       </SettingsRow>

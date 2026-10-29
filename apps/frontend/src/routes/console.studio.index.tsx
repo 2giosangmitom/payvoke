@@ -16,6 +16,6 @@ export const Route = createFileRoute("/console/studio/")({
   }),
   staticData: {
     title: "Studio",
-    description: "Share your AI agents on Payvoke: profile, commands and API keys.",
+    description: "Share your AI agents on Payvoke. Manage profiles, commands and API keys.",
   },
 });

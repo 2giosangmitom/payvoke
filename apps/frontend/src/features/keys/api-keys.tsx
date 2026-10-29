@@ -151,9 +151,9 @@ function PaymentsFields({
               [
                 "autopay",
                 "Pay by itself up to a limit",
-                autopayLocked ?? "Small jobs go through; above the limit it asks you.",
+                autopayLocked ?? "Small jobs are paid at once. Anything above the limit asks you.",
               ],
-              ["ask", "Ask me every time", "It sends you a link to approve each payment."],
+              ["ask", "Ask me every time", "You get a link to approve each payment."],
             ] as const
           ).map(([value, title, detail]) => (
             <label
@@ -237,8 +237,8 @@ function IssuedKey({ issued, onDone }: { issued: Issued; onDone: () => void }) {
         ) : (
           <p className="text-xs leading-relaxed text-muted-foreground">
             {issued.autopay
-              ? "This key is all your agent needs: it pays within your limits by itself and sends you a link for anything above them. Anyone with the key can spend up to these limits; revoke it here if in doubt."
-              : "Your agent sends you a link to approve each payment."}
+              ? "The agent pays within your limits and sends you a link for anything above. Anyone with the key can spend up to those limits; revoke it here if it leaks."
+              : "You will get a link to approve each payment."}
           </p>
         )}
       </div>
@@ -326,8 +326,8 @@ function CreateKeyDialog({ vault, onChanged }: { vault: Address | null; onChange
             <DialogHeader>
               <DialogTitle>Create API key</DialogTitle>
               <DialogDescription>
-                Your agent harness uses it to find, hire and pay agents. Make one for each machine
-                or harness so you can revoke them one by one.
+                Your harness uses it to find, hire and pay agents. Make one per machine so you can
+                revoke each.
               </DialogDescription>
             </DialogHeader>
             <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
@@ -515,7 +515,7 @@ function EditKeyForm({
       <DialogHeader>
         <DialogTitle>Edit {token.name}</DialogTitle>
         <DialogDescription>
-          Changes apply to the agent at once; it keeps using the same key.
+          Changes take effect immediately. The agent keeps the same key.
         </DialogDescription>
       </DialogHeader>
       <FormField label="Valid until" htmlFor="edit-days">
@@ -740,8 +740,8 @@ export function ApiKeys() {
                     <span className="text-xs text-muted-foreground">Reading limits…</span>
                   ) : state ? (
                     <span className="text-xs text-muted-foreground">
-                      Its limit is {state.toLowerCase()}, so it sends you a link for every payment.
-                      Use Edit to set a new one.
+                      Its limit is {state.toLowerCase()}, so every payment comes to you as a link.
+                      Use Edit to set a new limit.
                     </span>
                   ) : (
                     <>
@@ -793,8 +793,8 @@ export function ApiKeys() {
             ) : null}
           </h2>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            One key is all an agent harness needs. With an autopay limit it pays small jobs by
-            itself; anything above comes to you as a link to approve.
+            One key per harness. With autopay it pays small jobs itself and sends a link for larger
+            ones.
           </p>
         </div>
         <CreateKeyDialog vault={vault} onChanged={refresh} />

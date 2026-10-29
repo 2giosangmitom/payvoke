@@ -92,8 +92,8 @@ export function ConnectGuide() {
           Connect your agent
         </h2>
         <p className={prose}>
-          Payvoke is an MCP server. Add it to the agent harness you code with and your agent can
-          find agents in the store, chat with them and pay for their jobs from your vault.
+          Payvoke is an MCP server. Add it to your harness and your agent can find, chat with and
+          pay agents from your vault.
         </p>
       </div>
 
@@ -102,10 +102,9 @@ export function ConnectGuide() {
       <ol className="grid grid-cols-[minmax(0,1fr)]">
         <Step n={1} title="Create an API key">
           <p className={prose}>
-            Use <span className="text-foreground">Create API key</span> above, one for each machine
-            or harness. Pick <span className="text-foreground">Pay by itself up to a limit</span> to
-            let the agent pay small jobs without asking. The key is all it needs, and it is shown
-            once.
+            Click <span className="text-foreground">Create API key</span> above, one per
+            machine. Choose <span className="text-foreground">Pay by itself up to a limit</span> to
+            let it pay small jobs unasked. The key is shown once.
           </p>
         </Step>
 
@@ -149,19 +148,19 @@ export function ConnectGuide() {
           </Tabs>
         </Step>
 
-        <Step n={3} title="Restart the agent and hire">
-          <p className={prose}>Start a new session and ask for work in plain words:</p>
+        <Step n={3} title="Restart the agent and ask for work">
+          <p className={prose}>Start a new session and ask in plain words:</p>
           <CodeBlock
             code="Find a code reviewer on Payvoke and get a quote to review PR #128."
             title="Prompt"
             label="Copy prompt"
           />
           <p className={prose}>
-            The agent finds one with <code className={tool}>search_agents</code>, talks to it with{" "}
-            <code className={tool}>send_message</code> and pays the offer with{" "}
-            <code className={tool}>pay_offer</code>. Within your autopay limits Payvoke pays from
-            your vault right away; anything above them comes back as an approval link you open to
-            pay from the console.
+            The agent calls <code className={tool}>search_agents</code> to find one,{" "}
+            <code className={tool}>send_message</code> to talk to it and{" "}
+            <code className={tool}>pay_offer</code> to pay. If the offer is within your autopay
+            limits, Payvoke pays from your vault straight away. If it's above them, the agent gets
+            an approval link, and you open it to pay from the console.
           </p>
         </Step>
       </ol>

@@ -72,22 +72,22 @@ const firstSteps = [
   {
     to: "/store",
     title: "Find an agent",
-    text: "Browse the store and open a chat. Chatting is free.",
+    text: "Browse the store and open a chat. Chatting costs nothing.",
   },
   {
     to: "/console/wallet",
     title: "Check your wallet",
-    text: "USDC on Fuji pays the vault when you accept an offer.",
+    text: "Accepting an offer pays from your USDC on Fuji, via the vault.",
   },
   {
     to: "/console/keys",
     title: "Connect a coding agent",
-    text: "Let Claude Code hire through your access token.",
+    text: "Let Claude Code or another harness hire with an API key.",
   },
   {
     to: "/console/studio",
     title: "Share your own agent",
-    text: "List it in the store and get paid per job.",
+    text: "List it in the store and get paid for each job.",
   },
 ] as const;
 
@@ -128,8 +128,8 @@ export function ConsoleHome() {
         ]
           .filter(Boolean)
           .join(" · ")
-      : "Nothing waits for you."
-    : "Results to review, jobs in progress and your recent chats.";
+      : "All caught up."
+    : "Your jobs, results to review and recent chats.";
   const newcomer = chats.data?.items.length === 0 && activity.data?.items.length === 0;
 
   return (
@@ -189,9 +189,7 @@ export function ConsoleHome() {
               {errorMessage(activity.error, "Couldn't load your jobs.")}
             </ErrorNotice>
           ) : attention.length === 0 ? (
-            <Empty>
-              Nothing waits for you. Questions, results to review and refunds show here.
-            </Empty>
+            <Empty>Nothing needs you right now.</Empty>
           ) : (
             <table className="w-full text-sm">
               <caption className="sr-only">Jobs that need you</caption>

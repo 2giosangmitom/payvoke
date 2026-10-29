@@ -53,9 +53,8 @@ export function LandingPage() {
       <ScrollProgress />
       <Hero />
       <TextReveal className="bg-background-deep">
-        Someone builds an agent that saves them an afternoon. Someone else hires it for the same job
-        and pays only when the work arrives. Payvoke is the store, the checkout and the vault in
-        between, on Avalanche.
+        Someone builds an agent that saves them an afternoon. Someone else hires it and pays only
+        when the work arrives. Payvoke is the store and the vault on Avalanche between them.
       </TextReveal>
       <Jobs />
       <TryIt />
@@ -248,8 +247,7 @@ function Jobs() {
           className="lg:col-span-4 lg:col-start-9"
         >
           <p className="max-w-md text-[17px] leading-[1.6]">
-            Each agent lists the commands it takes. You pick one, the agent prices the job, and you
-            pay for that job alone.
+            Pick a command and the agent quotes a price for that job alone.
           </p>
         </BlurFade>
       </div>
@@ -285,12 +283,11 @@ function TryIt() {
         <SectionTitle id="try-title">Hire an agent in a chat</SectionTitle>
         <BlurFade inView direction="up" offset={16} delay={0.2}>
           <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
-            Tell the agent what you need. It answers with an offer: the price, the delivery deadline
-            and how long you have to review. Accept it and the USDC moves into the vault.
+            Say what you need and the agent replies with an offer: price, deadline and review
+            window. Accept it and the USDC moves into the vault.
           </p>
           <p className="mt-4 max-w-md text-[17px] leading-[1.6]">
-            Work that arrives on time is paid out after your review. Work that doesn't comes back to
-            you as a full refund.
+            On-time work is paid after your review. Late work is refunded in full.
           </p>
         </BlurFade>
       </div>
@@ -335,8 +332,8 @@ function Showcase() {
           className="lg:col-span-5 lg:col-start-8"
         >
           <p className="max-w-md text-[17px] leading-[1.6]">
-            Buyers find your agent in the store, open a thread and talk to it. Commands, forms,
-            offers and results all arrive in the same conversation.
+            Buyers open a thread with your agent. Commands, forms, offers and results all happen
+            there.
           </p>
         </BlurFade>
       </div>
@@ -392,9 +389,9 @@ function Showcase() {
 const toolCall = "flex items-center gap-2";
 
 const bridgePoints = [
-  "Your agent needs no MCP server of its own. Payvoke's MCP endpoint lists it as a tool.",
-  "The host connects with an access token you create and revoke in the console.",
-  "Each payment is signed on your machine by a spend key with your caps, under the same vault rules.",
+  "Your agent doesn't need an MCP server. Payvoke's MCP endpoint exposes it as a tool.",
+  "The host connects with an API key that you create and revoke in the console.",
+  "A spend key on your machine signs each payment within your caps.",
 ];
 
 // Both rings stop together while the pointer or keyboard focus is in the
@@ -445,12 +442,11 @@ function CodingAgents() {
     >
       <div className="container-page grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="min-w-0 lg:col-span-5">
-          <SectionTitle id="agents-title">Built for the age of agents</SectionTitle>
+          <SectionTitle id="agents-title">Let coding agents hire yours</SectionTitle>
           <BlurFade inView direction="up" offset={16} delay={0.15}>
             <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
-              Coding agents already plan, write and review code on their own. Payvoke lets Claude
-              Code, Codex, Copilot and any other MCP host hire your agent the way a person does,
-              with the same offer, the same vault and the same refund.
+              Claude Code, Codex, Copilot and other MCP hosts hire your agent like a person would,
+              with the same offer, vault and refund.
             </p>
           </BlurFade>
         </div>
@@ -706,26 +702,27 @@ const safeguards = [
   {
     id: "late",
     when: "Your agent misses its delivery deadline.",
-    result: "The buyer gets the full 0.40 USDC back automatically. Nobody has to open a dispute.",
+    result: "The buyer gets the full 0.40 USDC back automatically, with no dispute to open.",
     field: "bg-primary-soft",
   },
   {
     id: "cap",
     when: "A spend key tries to pay past its cap.",
     result:
-      "The vault refuses the debit. Caps per call, per period and in total are kept on Avalanche.",
+      "The vault refuses the payment. The per-job, per-day and total caps are enforced on Avalanche.",
     field: "bg-secondary",
   },
   {
     id: "replay",
     when: "The same signed payment arrives twice.",
-    result: "The vault accepts each job once. The retry gets the first receipt and costs nothing.",
+    result:
+      "The vault accepts each job once. The retry gets the first receipt back and costs nothing.",
     field: "bg-primary-soft",
   },
   {
     id: "chat-price",
     when: "Your agent types a price into a message.",
-    result: "Nothing can be paid from it. Only a structured offer becomes a quote.",
+    result: "Nobody can be charged from a chat message. Only a structured offer becomes a quote.",
     field: "bg-secondary",
   },
   {
@@ -754,8 +751,8 @@ function Safeguards() {
           className="lg:col-span-5 lg:col-start-8"
         >
           <p className="max-w-md text-[17px] leading-[1.6]">
-            The rules live in the PayvokeVault contract on Avalanche, so neither side has to trust
-            the other or Payvoke. Flip a case to see what happens.
+            The PayvokeVault contract on Avalanche enforces these rules. Flip a case to see the
+            outcome.
           </p>
         </BlurFade>
       </div>
@@ -802,43 +799,43 @@ function Safeguards() {
 const questions = [
   {
     q: "Where does my agent run?",
-    a: "On your own servers. Payvoke doesn't host agent code. Your agent reads thread events from an SSE feed, then replies, sends forms and offers, and streams results back over HTTP.",
+    a: "On your own servers. Your agent reads thread events from an SSE feed and answers over HTTP.",
   },
   {
     q: "How do I add slash commands?",
-    a: "Your agent registers them through the provider API with its app key. Studio lists them so you can check what buyers will see.",
+    a: "Your agent registers them through the provider API. Studio shows what buyers will see.",
   },
   {
     q: "Who sets the price?",
-    a: "Your agent, for each job, in an offer. A command can declare a maximum amount, and the deployment sets a minimum that covers gas.",
+    a: "Your agent, per job, in an offer. A command can set a maximum; the deployment sets a minimum that covers gas.",
   },
   {
     q: "When do I get paid?",
-    a: "When your result passes verification and the buyer's review window closes, the hold is released. Your share becomes claimable in the vault and you withdraw it to the wallet that owns the agent.",
+    a: "After your result is verified and the review window closes, your share is claimable in the vault. Withdraw it to the wallet that owns the agent.",
   },
   {
     q: "What if my agent fails or runs late?",
-    a: "The buyer is refunded in full, automatically. There is no manual dispute step, so a late delivery simply isn't paid.",
+    a: "The buyer is refunded in full, automatically.",
   },
   {
     q: "Do buyers approve every payment in their wallet?",
-    a: "No. A buyer's wallet registers a spend key with caps and an expiry, and that key signs each payment inside those limits. Revoking it invalidates every old signature.",
+    a: "No. A spend key with caps and an expiry signs each payment. Revoking it voids earlier signatures.",
   },
   {
     q: "Why Avalanche?",
-    a: "Payvoke only tells your agent to start once the buyer's money is held in a finalized block. Avalanche finalizes blocks in a second or two, so jobs start almost right away, and gas stays small next to the price of a job.",
+    a: "Your agent starts only once the buyer's money is in a finalized block. Avalanche finalizes in a second or two, and gas is small next to a job's price.",
   },
   {
     q: "Can a coding agent hire on Payvoke?",
-    a: "Yes. Create an access token under Coding agents in the console and add Payvoke's MCP endpoint to Claude Code, Codex or any other MCP host. The host finds agents, chats with them and prepares payments; a spend key on your machine signs each one inside the caps you set.",
+    a: "Yes. Create an API key in the console and add Payvoke's MCP endpoint to Claude Code, Codex or any MCP host. A spend key on your machine signs each payment within your caps.",
   },
   {
     q: "Can I keep an agent private?",
-    a: "Yes. You choose in Studio whether an agent is listed in the store or kept private.",
+    a: "Yes. In Studio you choose whether an agent is listed in the store or kept private.",
   },
   {
     q: "What does Payvoke charge?",
-    a: "A platform fee in basis points, set by the deployment and taken from whatever is left after refunds.",
+    a: "A fee in basis points, set by the deployment and taken from what remains after refunds.",
   },
   {
     q: "Is this real money?",
@@ -910,8 +907,8 @@ function Start() {
             Share your agent
           </TextAnimate>
           <p className="mt-6 max-w-sm text-[17px] leading-[1.6]">
-            Name it here and finish in Studio: sign in with your wallet, which is where your
-            earnings go, and issue the API key your agent connects with.
+            Name it here, then finish in Studio: sign in with the wallet that receives your earnings
+            and issue your agent's API key.
           </p>
         </div>
 

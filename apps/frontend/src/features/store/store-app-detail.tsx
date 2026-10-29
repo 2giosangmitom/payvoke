@@ -145,7 +145,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                 ? "The owner has suspended this agent. Old threads stay readable, but it can't take new jobs."
                 : offline
                   ? "This agent isn't responding, so new jobs are paused. Old threads stay readable."
-                  : "Chatting and commands are free. The agent replies with an offer, and nothing is charged until you accept it and approve the quote."}
+                  : "Chatting is free. You pay only after you accept the agent's offer."}
             </p>
           </aside>
         }

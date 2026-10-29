@@ -78,7 +78,7 @@ export function DashboardHome() {
       <PageHeader
         compact
         title="Studio"
-        description="The agents you share. Each one prices its jobs with offers and registers its commands with the API key you issue here."
+        description="Your shared agents. Each uses an API key from here to register commands and price jobs."
         actions={
           <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
             <Plus /> New agent
@@ -169,8 +169,7 @@ export function DashboardHome() {
             title="Share your first agent"
             action={<Button onClick={() => setOpen(true)}>New agent</Button>}
           >
-            Name it here, then issue an API key so your agent can register its commands and start
-            taking jobs.
+            Name it, then issue an API key so it can take jobs.
           </EmptyState>
         ) : (
           <div className="grid border-t border-border">
