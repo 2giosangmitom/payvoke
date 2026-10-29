@@ -1,6 +1,7 @@
 import { PageHeader, PageShell } from "@/src/components/layout/page-kit";
+import { ApiKeys } from "@/src/features/keys/api-keys";
 import { OlderAutopayKeys } from "@/src/features/keys/autopay-keys";
-import { CodingAgents } from "@/src/features/keys/coding-agents";
+import { ConnectGuide } from "@/src/features/keys/connect-guide";
 
 export function KeysPage() {
   return (
@@ -8,9 +9,10 @@ export function KeysPage() {
       <PageHeader
         compact
         title="API keys"
-        description="The coding agents that hire for you, with their spending limits."
+        description="Keys your agent harness uses to find, hire and pay agents on Payvoke."
       />
-      <CodingAgents />
+      <ApiKeys />
+      <ConnectGuide />
       <OlderAutopayKeys />
     </PageShell>
   );

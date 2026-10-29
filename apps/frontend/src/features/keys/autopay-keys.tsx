@@ -191,7 +191,7 @@ export function OlderAutopayKeys() {
     <SettingsRow
       id="older-autopay"
       title="Older autopay keys"
-      description="Spending keys not tied to a coding agent connection. Revoke the ones you no longer use."
+      description="Spending keys not tied to an API key. Revoke the ones you no longer use."
     >
       <GrantList grants={older} vault={vault} connected={connected} />
     </SettingsRow>

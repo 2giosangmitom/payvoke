@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
+import { cn } from "@/src/lib/utils";
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -41,5 +42,38 @@ export function SettingsRow({
       </div>
       <div className="min-w-0 border border-border bg-card p-4 sm:p-5">{children}</div>
     </section>
+  );
+}
+
+// Code or a secret under a bar with its title and a copy button.
+export function CodeBlock({
+  code,
+  title,
+  label = "Copy",
+  className,
+}: {
+  code: string;
+  title?: ReactNode;
+  label?: string;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={cn("min-w-0 border border-border bg-background-deep", className)}>
+      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-border pl-3">
+        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{title}</span>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={copied ? "Copied" : label}
+          onClick={() => void navigator.clipboard.writeText(code).then(() => setCopied(true))}
+        >
+          {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed">
+        <code>{code}</code>
+      </pre>
+    </div>
   );
 }
