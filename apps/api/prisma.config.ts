@@ -6,7 +6,9 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // Migrate takes a session-level advisory lock, which a connection pooler
+  // can leave held; the CLI uses the direct connection when one is set.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DATABASE_DIRECT_URL"] || process.env["DATABASE_URL"],
   },
 });

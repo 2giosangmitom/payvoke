@@ -16,6 +16,8 @@ import { PresaleService } from "./modules/presale/presale.service";
 import { ProviderAppService } from "./modules/provider/provider-app.service";
 import { ProviderCommandService } from "./modules/provider/provider-command.service";
 import { ProviderKeyService } from "./modules/provider/provider-key.service";
+import { AutopayService, type GrantReader } from "./modules/payments/autopay.service";
+import { GrantService } from "./modules/payments/grant.service";
 import { InvocationService } from "./modules/payments/invocation.service";
 import { PaymentGateway } from "./modules/payments/payment-gateway";
 import { PaymentStatusService } from "./modules/payments/payment-status.service";
@@ -45,6 +47,10 @@ export interface Cradle {
   providerCommandService: ProviderCommandService;
   providerKeyService: ProviderKeyService;
   quoteService: QuoteService;
+  grantService: GrantService;
+  // Null without a vault address.
+  grantReader: GrantReader | null;
+  autopayService: AutopayService;
   invocationService: InvocationService;
   paymentGateway: PaymentGateway;
   paymentStatusService: PaymentStatusService;
@@ -67,6 +73,7 @@ export function createAppContainer(
   storage: ObjectStorage | null,
   facilitator: Facilitator | null,
   rateStore: RateStore,
+  grantReader: GrantReader | null,
 ) {
   const container = createContainer<Cradle>({ injectionMode: InjectionMode.PROXY, strict: true });
   container.register({
@@ -87,6 +94,9 @@ export function createAppContainer(
     providerCommandService: asClass(ProviderCommandService).singleton(),
     providerKeyService: asClass(ProviderKeyService).singleton(),
     quoteService: asClass(QuoteService).singleton(),
+    grantService: asClass(GrantService).singleton(),
+    grantReader: asValue(grantReader),
+    autopayService: asClass(AutopayService).singleton(),
     invocationService: asClass(InvocationService).singleton(),
     paymentGateway: asClass(PaymentGateway).singleton(),
     paymentStatusService: asClass(PaymentStatusService).singleton(),

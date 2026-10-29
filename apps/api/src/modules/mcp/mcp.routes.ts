@@ -20,9 +20,9 @@ export const mcpRoutes = (fetch: Fetch) =>
       return c.json({ error: "INVALID_ACCESS_TOKEN" }, 401);
     }
     // Fails with the same 401 as any other bad token.
-    await c.var.cradle.accessTokenService.userId(authorization);
+    const token = await c.var.cradle.accessTokenService.resolve(authorization);
 
-    const { config } = c.var.cradle;
+    const { config, autopayService } = c.var.cradle;
     const api: BuyerApi = async (method, path, init = {}) => {
       const response = await fetch(
         new Request(new URL(path, config.API_ORIGIN), {
@@ -45,7 +45,14 @@ export const mcpRoutes = (fetch: Fetch) =>
       return { status: response.status, body };
     };
 
-    const server = payvokeMcpServer(api, new URL("/v1/invocations", config.API_ORIGIN).href);
+    const server = payvokeMcpServer(api, {
+      resourceUrl: new URL("/v1/invocations", config.API_ORIGIN).href,
+      webOrigin: config.WEB_ORIGIN,
+      autopay: {
+        limits: () => autopayService.limits(token.id),
+        decide: (quote) => autopayService.decide(token.id, quote),
+      },
+    });
     const transport = new StreamableHTTPTransport({ sessionIdGenerator: undefined });
     await server.connect(transport);
     return transport.handleRequest(c);

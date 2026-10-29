@@ -14,6 +14,7 @@ import { createSiweMessage } from "viem/siwe";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { PrismaClient } from "#core/db";
+import type { GrantReader } from "../src/modules/payments/autopay.service";
 import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 
 const origin = "https://app.payvoke.test";
@@ -25,6 +26,29 @@ let postgres: TestPostgres;
 let pool: Pool;
 let db: PrismaClient;
 let app: ReturnType<typeof createApp>;
+
+// The vault as the API reads it: one autopay grant signed by grantSigner,
+// 5 USDC a job and 100 a day, with `spentToday` already spent.
+const USDC = 1_000_000n;
+const vault = { spentToday: 0n };
+const grantReader: GrantReader = {
+  grant: async () => ({
+    config: {
+      signer: grantSigner.address,
+      expiresAt: Math.floor(Date.now() / 1000) + 86400,
+      maxPerCall: 5n * USDC,
+      periodSeconds: 86400,
+      maxPerPeriod: 100n * USDC,
+      maxTotal: 500n * USDC,
+    },
+    epoch: 1n,
+    spentTotal: vault.spentToday,
+    spentInPeriod: vault.spentToday,
+    currentPeriod: BigInt(Math.floor(Date.now() / 1000 / 86400)),
+    revoked: false,
+  }),
+  available: async () => 1000n * USDC,
+};
 
 beforeAll(async () => {
   postgres = await startTestPostgres();
@@ -49,7 +73,7 @@ beforeAll(async () => {
     LOG_LEVEL: "silent",
     VAULT_ADDRESS: wallet.address,
   });
-  app = createApp(config, db);
+  app = createApp(config, db, undefined, undefined, undefined, grantReader);
   await app.ready();
 });
 afterAll(async () => {
@@ -208,8 +232,21 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   assert.equal(anonymous.statusCode, 401);
   assert.match(String(anonymous.headers["www-authenticate"]), /^Bearer/);
 
-  const token = (await web("POST", "/v1/access-tokens", { name: "Claude Code" })).json()
-    .secret as string;
+  // One token per coding agent, with its spending limit as a vault grant.
+  const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
+  const foreign = await web("POST", "/v1/access-tokens", {
+    name: "Not mine",
+    autopay: { grantId, buyer: grantSigner.address, signer: grantSigner.address },
+  });
+  assert.equal(foreign.statusCode, 403);
+  const issued = await web("POST", "/v1/access-tokens", {
+    name: "Claude Code",
+    autopay: { grantId, buyer: wallet.address, signer: grantSigner.address },
+  });
+  assert.equal(issued.statusCode, 201, issued.body);
+  const token = issued.json().secret as string;
+  const listed = (await web("GET", "/v1/access-tokens")).json();
+  assert.equal(listed[0].autopay.grantId, grantId);
   const host = await connect(token);
   const { tools } = await host.listTools();
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
@@ -217,10 +254,12 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
     "decline_offer",
     "get_agent",
     "get_job",
+    "get_spending_limits",
     "list_jobs",
     "prepare_payment",
     "prepare_reclaim",
     "read_chat",
+    "request_payment",
     "search_agents",
     "send_message",
     "start_chat",
@@ -269,14 +308,29 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
     ),
   );
 
-  const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
+  // The host reads its limits but cannot record a grant itself.
+  const limits = json(await host.callTool({ name: "get_spending_limits", arguments: {} }));
+  assert.equal(limits.autopay, true);
+  assert.equal(limits.perJob, "5 USDC");
+  assert.equal(limits.leftToday, "100 USDC");
+  const byToken = await inject(app, {
+    method: "POST",
+    url: "/v1/grants",
+    headers: { authorization: `Bearer ${token}` },
+    payload: { grantId, buyer: wallet.address, signer: grantSigner.address, name: "x" },
+  });
+  assert.equal(byToken.statusCode, 403);
+
+  // Within the limits: the host signs with the connection's grant.
   const prepared = json(
     await host.callTool({
       name: "prepare_payment",
-      arguments: { threadId: thread.id, offerId, grantId, grantEpoch: "1" },
+      arguments: { threadId: thread.id, offerId },
     }),
   );
+  assert.equal(prepared.mode, "sign");
   assert.equal(prepared.price, "0.6 USDC");
+  assert.equal(prepared.grantId, grantId);
   assert.equal(prepared.typedData.message.grantId, grantId);
   // The typed data is what an off-the-shelf EIP-712 signer reads.
   const { EIP712Domain: _domain, ...types } = prepared.typedData.types;
@@ -290,9 +344,54 @@ it("lets an MCP host find an agent, chat, and prepare and submit a payment", asy
   // host sees the API's error rather than a success.
   const submitted = await host.callTool({
     name: "submit_payment",
-    arguments: { quoteId: prepared.quoteId, grantId, grantEpoch: "1", signature },
+    arguments: {
+      quoteId: prepared.quoteId,
+      grantId: prepared.grantId,
+      grantEpoch: prepared.grantEpoch,
+      signature,
+    },
   });
   assert.equal(submitted.isError, true);
   assert.deepEqual(json(submitted), { status: 503, error: "SETTLEMENT_NOT_AVAILABLE" });
+
+  async function openOffer(brief: string) {
+    const chat = json(await host.callTool({ name: "start_chat", arguments: { appId } }));
+    await host.callTool({ name: "send_message", arguments: { threadId: chat.id, content: brief } });
+    const created = await inject(app, {
+      method: "POST",
+      url: `/v1/provider/apps/${appId}/threads/${chat.id}/offers`,
+      headers: { authorization: `Bearer ${key}` },
+      payload: {
+        clientRequestId: randomUUID(),
+        arguments: { brief },
+        grossAmount: "600000",
+        summary: brief,
+      },
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    return { threadId: chat.id as string, offerId: created.json().id as string };
+  }
+
+  // Over today's limit: the user gets an approval link instead.
+  vault.spentToday = 99_500_000n;
+  const over = json(
+    await host.callTool({ name: "prepare_payment", arguments: await openOffer("PR #129") }),
+  );
+  assert.equal(over.mode, "approve");
+  assert.match(over.reason, /today's autopay limit/);
+  assert.equal(over.approvalUrl, `${origin}/console/approve/${over.quoteId}`);
+  assert.equal("typedData" in over, false);
+
+  // The user can always ask to approve a payment themselves.
+  vault.spentToday = 0n;
+  const requested = json(
+    await host.callTool({ name: "request_payment", arguments: await openOffer("PR #130") }),
+  );
+  assert.equal(requested.approvalUrl, `${origin}/console/approve/${requested.quoteId}`);
+  assert.equal("typedData" in requested, false);
+
+  // Revoking the token takes its spending policy with it.
+  assert.equal((await web("DELETE", `/v1/access-tokens/${issued.json().id}`)).statusCode, 200);
+  assert.equal(await db.vaultGrant.count({ where: { grantId } }), 0);
   await host.close();
 });

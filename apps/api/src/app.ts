@@ -18,6 +18,8 @@ import { catalogRoutes } from "./modules/catalog/catalog.routes";
 import { fileRoutes } from "./modules/files/file.routes";
 import { mcpRoutes } from "./modules/mcp/mcp.routes";
 import { openuiRoutes } from "./modules/openui/openui.routes";
+import { createGrantReader, type GrantReader } from "./modules/payments/autopay.service";
+import { grantRoutes } from "./modules/payments/grant.routes";
 import { paymentRoutes } from "./modules/payments/payments.routes";
 import { presaleRoutes } from "./modules/presale/presale.routes";
 import { providerRoutes } from "./modules/provider/provider.routes";
@@ -32,6 +34,7 @@ export const routes = new Hono<AppEnv>()
   .route("/", accessTokenRoutes)
   .route("/", quoteRoutes)
   .route("/", paymentRoutes)
+  .route("/", grantRoutes)
   .route("/", providerRoutes)
   .route("/", catalogRoutes)
   .route("/", threadRoutes)
@@ -46,14 +49,15 @@ export type AppType = typeof routes;
 const DEFAULT_BODY_LIMIT = 1048576;
 
 // The server passes Redis-backed signals; tests default to in-process ones.
-// Storage comes from the S3_* settings and the facilitator from the vault
-// deployment settings, unless a test injects them.
+// Storage comes from the S3_* settings, and the facilitator and the grant
+// reader from the vault deployment settings, unless a test injects them.
 export function createApp(
   config: Config,
   database?: PrismaClient,
   signals: Signals = memorySignals(),
   storage: ObjectStorage | null = createStorage(config),
   facilitator?: Facilitator | null,
+  grantReader: GrantReader | null = createGrantReader(config),
 ) {
   const log = logger("api");
   const db = database ?? createDatabase(config.DATABASE_URL);
@@ -69,7 +73,16 @@ export function createApp(
         : null;
   // Limits are shared through Redis when given, so they hold across replicas.
   const rateStore = signals.redis ? redisRateStore(signals.redis) : memoryRateStore();
-  const container = createAppContainer(config, db, log, signals, storage, payments, rateStore);
+  const container = createAppContainer(
+    config,
+    db,
+    log,
+    signals,
+    storage,
+    payments,
+    rateStore,
+    grantReader,
+  );
   const cradle = container.cradle;
 
   // MCP tools call back into this app, bound once it exists.

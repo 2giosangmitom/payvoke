@@ -152,6 +152,30 @@ model BuyerAccessToken {
   @@map("buyer_access_tokens")
 }
 
+// Vault grants (session keys) a buyer registered from the console. The
+// chain holds the grant and its limits; this row only names it and records
+// its signer so the console and MCP hosts can list it. The signer's private
+// key is never sent here.
+model VaultGrant {
+  id        String   @id @default(uuid())
+  userId    String
+  grantId   String
+  buyer     String
+  signer    String
+  // "agent": a coding agent signs (autopay). "browser": one browser signs
+  // the console's one-click payments and keeps the key on that device.
+  kind      String   @default("agent")
+  // The access token this grant is the spending policy of; the grant goes
+  // when the token is revoked.
+  tokenId   String?  @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, grantId])
+  @@index([userId])
+  @@map("vault_grants")
+}
+
 model DeploymentPolicy {
   version                String @id
   // Only the current policy has activeSlot="active"; old versions are retained.

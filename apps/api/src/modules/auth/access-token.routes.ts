@@ -11,6 +11,15 @@ const newTokenBody = z
   .object({
     name: z.string().trim().min(1).max(64),
     expiresInDays: z.number().int().min(1).max(365).default(90),
+    // A vault grant the buyer registered for this token's agent to sign with.
+    autopay: z
+      .object({
+        grantId: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+        buyer: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+        signer: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -28,13 +37,17 @@ export const accessTokenRoutes = new Hono<AppEnv>()
     validate("json", newTokenBody, "INVALID_ACCESS_TOKEN_REQUEST"),
     requireAccount,
     async (c) => {
-      const { name, expiresInDays } = c.req.valid("json");
+      const { name, expiresInDays, autopay } = c.req.valid("json");
       c.header("Cache-Control", "no-store");
       return c.json(
-        await c.var.cradle.accessTokenService.issue(c.var.account.id, {
-          name,
-          expiresAt: new Date(Date.now() + expiresInDays * DAY_MS),
-        }),
+        await c.var.cradle.accessTokenService.issue(
+          c.var.account.id,
+          {
+            name,
+            expiresAt: new Date(Date.now() + expiresInDays * DAY_MS),
+          },
+          autopay,
+        ),
         201,
       );
     },
