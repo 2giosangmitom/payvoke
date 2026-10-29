@@ -8,7 +8,7 @@ import type { PrismaClient } from "#core/db";
 import { scanFinancialLifecycle } from "#core/payments/finance-ledger";
 import { scanFinalizedHolds } from "#core/payments/scanner";
 import { SettlementWorker, validateGasPolicy } from "#core/payments/worker";
-import { channels, connectRedis, queues, QueueJobs, ring, serial, throttled } from "#core/queue";
+import { channels, connectRedis, idleWorker, queues, QueueJobs, ring, serial, throttled } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
 import type { InvocationJob } from "#core/queue";
 import { deploymentConfig, gasBudget, type Config } from "../config";
@@ -60,7 +60,7 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
   const settler = new Worker<InvocationJob>(
     queues.settlement,
     (job) => lane(() => worker.handle(job.data.invocationId)),
-    { connection: consumer, concurrency: 1 },
+    { connection: consumer, concurrency: 1, ...idleWorker },
   );
   settler.on("failed", (_job, error) =>
     log.error("Settlement job failed; durable state retained ({error})", {
@@ -70,6 +70,7 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
   settler.on("error", onError);
 
   let stopping = false;
+  const scheduled = new Set<string>();
   const loop = (async () => {
     while (!stopping) {
       let busy = false;
@@ -84,11 +85,21 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
         try {
           const lifecycle = await scanFinancialLifecycle(db, chain, start);
           // Finance acts at each hold's deadlines; schedule a wake-up for both.
+          // Only holds not scheduled yet cost Redis calls; a restart reschedules
+          // once, and the job ids make that harmless.
+          const open = new Set<string>();
+          let fresh = false;
           for (const hold of lifecycle.open) {
+            const key = `${hold.invocationId}:${hold.deliveryDeadline}:${hold.releaseNotBefore}`;
+            open.add(key);
+            if (scheduled.has(key)) continue;
             await jobs.financeDue(hold.invocationId, hold.deliveryDeadline, lifecycle.chainTime);
             await jobs.financeDue(hold.invocationId, hold.releaseNotBefore, lifecycle.chainTime);
+            scheduled.add(key);
+            fresh = true;
           }
-          if (lifecycle.open.length) await jobs.wakeFinance();
+          for (const key of scheduled) if (!open.has(key)) scheduled.delete(key);
+          if (fresh) await jobs.wakeFinance();
           await scanFinalizedHolds(db, chain, start);
           // Keep scanning without a pause while finalized blocks are still behind.
           if (!lifecycle.caughtUp && !("reason" in lifecycle)) busy = true;

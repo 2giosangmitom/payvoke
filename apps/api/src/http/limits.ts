@@ -49,10 +49,13 @@ export function redisRateStore(redis: Redis): RateStore {
   return {
     async hit(key, windowMs) {
       const name = `payvoke-rl:${key}`;
-      const [[, count]] = (await redis.multi().incr(name).pexpire(name, windowMs, "NX").exec()) as [
-        [unknown, number],
-      ];
-      return count;
+      // One command per request, atomic with the expiry of the window's first hit.
+      return (await redis.eval(
+        "local c = redis.call('INCR', KEYS[1]) if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end return c",
+        1,
+        name,
+        windowMs,
+      )) as number;
     },
   };
 }

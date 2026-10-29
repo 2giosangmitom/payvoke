@@ -6,6 +6,6 @@ export {
   type Doorbell,
   type Listener,
 } from "./doorbell";
-export { connectRedis, MemoryJobs, queues, QueueJobs, type InvocationJob, type Jobs } from "./jobs";
+export { connectRedis, idleWorker, MemoryJobs, queues, QueueJobs, type InvocationJob, type Jobs } from "./jobs";
 export { serial, throttled } from "./lane";
 export type { Redis } from "ioredis";

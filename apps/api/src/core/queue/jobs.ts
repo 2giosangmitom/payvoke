@@ -7,6 +7,12 @@ export const queues = {
   finance: "finance",
 } as const;
 
+// Redis is metered per command, so idle workers poll as rarely as BullMQ allows.
+// A new job still wakes a blocked worker at once, and delayed jobs shorten the
+// wait to their due time; the stalled check only recovers crashed workers, and
+// every consumer has a database sweep behind it.
+export const idleWorker = { drainDelay: 300, stalledInterval: 300000 } as const;
+
 export type InvocationJob = { invocationId: string };
 
 // Producer side of the job queues. Callers enqueue only after their Postgres

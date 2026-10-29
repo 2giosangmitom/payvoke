@@ -7,7 +7,7 @@ import type { PrismaClient } from "#core/db";
 import { FinanceService } from "#core/payments/finance";
 import { AutoFinance } from "#core/payments/finance-policy";
 import { validateGasPolicy } from "#core/payments/worker";
-import { connectRedis, queues, serial, throttled } from "#core/queue";
+import { connectRedis, idleWorker, queues, serial, throttled } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
 import { deploymentConfig, gasBudget, type Config } from "../config";
 import { logger } from "../logging";
@@ -56,7 +56,11 @@ export async function startFinanceWorker(config: Config, db: PrismaClient) {
       await auto.propose();
       if (!stopping) await auto.execute();
     });
-  const waker = new Worker(queues.finance, () => cycle(), { connection: consumer, concurrency: 1 });
+  const waker = new Worker(queues.finance, () => cycle(), {
+    connection: consumer,
+    concurrency: 1,
+    ...idleWorker,
+  });
   waker.on("failed", (_job, error) =>
     log.error("Finance job failed; durable state retained ({error})", { error: errorTag(error) }),
   );
