@@ -60,10 +60,27 @@ export function serializeOwnedCommand(
   };
 }
 
+// The agent's picture as an API path, versioned by its storage key so a new
+// upload is a new URL. Null when the agent has none.
+export function imageUrl(app: { id: string; imageKey: string | null }) {
+  return app.imageKey ? `/v1/apps/${app.id}/image?v=${app.imageKey.slice(-12)}` : null;
+}
+
 export function serializeOwnedApp<
-  T extends { status: string; lastHeartbeatAt: Date | null; defaultCommandId: string | null },
->(app: T) {
-  return { ...app, availability: availabilityLabel(app) };
+  T extends {
+    id: string;
+    status: string;
+    lastHeartbeatAt: Date | null;
+    defaultCommandId: string | null;
+    imageKey: string | null;
+    imageType: string | null;
+  },
+>({ imageKey, imageType: _type, ...app }: T) {
+  return {
+    ...app,
+    imageUrl: imageUrl({ id: app.id, imageKey }),
+    availability: availabilityLabel(app),
+  };
 }
 
 type Capped = { activeRevision: Pick<Revision, "maxGrossAmount"> | null };

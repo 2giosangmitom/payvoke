@@ -663,3 +663,62 @@ it("keeps file routes and file context closed when files are disabled", async ()
     await disabled.close();
   }
 });
+
+it("pays the owner's wallet and serves the agent image the owner uploads", async () => {
+  const cookie = await login(wallet);
+  const otherCookie = await login(other);
+  const send = (method: string, url: string, payload?: unknown, headers = {}, user = cookie) =>
+    inject(app, {
+      method: method as "GET",
+      url,
+      headers: { origin, cookie: user, ...headers },
+      payload,
+    });
+  const created = await send("POST", "/v1/provider/apps", {
+    name: "Pictured",
+    payoutAddress: other.address,
+    visibility: "PUBLIC",
+    clientRequestId: randomUUID(),
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal(created.json().payoutAddress, wallet.address);
+  assert.equal(created.json().imageUrl, null);
+  const appId = created.json().id as string;
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+  const wrongType = await send("PUT", `/v1/provider/apps/${appId}/image`, png, {
+    "content-type": "image/svg+xml",
+  });
+  assert.equal(wrongType.statusCode, 415, wrongType.body);
+  const stranger = await send(
+    "PUT",
+    `/v1/provider/apps/${appId}/image`,
+    png,
+    { "content-type": "image/png" },
+    otherCookie,
+  );
+  assert.equal(stranger.statusCode, 404, stranger.body);
+
+  const uploaded = await send("PUT", `/v1/provider/apps/${appId}/image`, png, {
+    "content-type": "image/png",
+  });
+  assert.equal(uploaded.statusCode, 200, uploaded.body);
+  const url = uploaded.json().imageUrl as string;
+  assert.match(url, new RegExp(`^/v1/apps/${appId}/image\\?v=`));
+  assert.equal(uploaded.json().imageKey, undefined);
+  const listed = (await send("GET", "/v1/apps"))
+    .json()
+    .items.find((item: { id: string }) => item.id === appId);
+  assert.equal(listed.imageUrl, url);
+  const served = await send("GET", url);
+  assert.equal(served.statusCode, 302);
+  assert.match(String(served.headers.location), /^memory:\/\/get\/app-images\//);
+
+  const replaced = await send("PUT", `/v1/provider/apps/${appId}/image`, png, {
+    "content-type": "image/webp",
+  });
+  assert.notEqual(replaced.json().imageUrl, url);
+  const removed = await send("DELETE", `/v1/provider/apps/${appId}/image`);
+  assert.equal(removed.json().imageUrl, null);
+  assert.equal((await send("GET", `/v1/apps/${appId}/image`)).statusCode, 404);
+});

@@ -9,9 +9,9 @@ import {
   commandBody,
   commandCodes,
   commandListBody,
+  IMAGE_MAX_BYTES,
   keyRequestBody,
   newAppBody,
-  payoutBody,
 } from "./provider.validation";
 
 const base = "/v1/provider/apps/:appId";
@@ -46,7 +46,7 @@ export const providerRoutes = new Hono<AppEnv>()
     requireAccount,
     async (c) => {
       const { created, app } = await c.var.cradle.providerAppService.create(
-        c.var.account.id,
+        c.var.account,
         c.req.valid("json"),
       );
       return c.json(app, created ? 201 : 200);
@@ -68,16 +68,21 @@ export const providerRoutes = new Hono<AppEnv>()
       return c.json(await c.var.cradle.providerAppService.update(app.id, c.req.valid("json")));
     },
   )
-  // Kept for callers that still patch only the payout address.
+  // The raw image bytes are the body; the Content-Type names the format.
   .put(
-    `${base}/payout`,
-    maxBody(2048),
-    validate("json", payoutBody, "INVALID_PAYOUT"),
+    `${base}/image`,
+    rateLimit("images", 20),
+    maxBody(IMAGE_MAX_BYTES),
     requireAccount,
     async (c) => {
       const app = await owned(c);
-      return c.json(await c.var.cradle.providerAppService.update(app.id, c.req.valid("json")));
+      const type = c.req.header("content-type")?.split(";")[0].trim().toLowerCase() ?? "";
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      return c.json(await c.var.cradle.providerAppService.setImage(app, type, bytes));
     },
+  )
+  .delete(`${base}/image`, requireAccount, async (c) =>
+    c.json(await c.var.cradle.providerAppService.removeImage(await owned(c))),
   )
   .post(`${base}/archive`, requireAccount, async (c) =>
     c.json(await c.var.cradle.providerAppService.archive((await owned(c)).id)),

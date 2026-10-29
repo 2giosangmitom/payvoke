@@ -14,9 +14,7 @@ export function VisibilityField({
 }) {
   return (
     <fieldset className="grid gap-2">
-      <legend className="mb-2 font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
-        Store visibility
-      </legend>
+      <legend className="mb-2 text-sm font-medium">Store visibility</legend>
       <RadioGroup
         value={value}
         onValueChange={(next) => onChange(next as Visibility)}

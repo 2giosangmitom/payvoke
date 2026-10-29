@@ -1,7 +1,16 @@
+import { randomUUID } from "node:crypto";
+import { getAddress } from "viem";
 import type { Cradle } from "../../container";
-import { ConflictError, NotFoundError } from "../../errors";
+import {
+  ConflictError,
+  NotFoundError,
+  PayloadTooLargeError,
+  ServiceUnavailableError,
+  UnsupportedMediaTypeError,
+} from "../../errors";
+import type { AccountIdentity } from "../auth/auth.service";
 import { serializeOwnedApp, serializeOwnedCommand } from "../apps/serializers";
-import type { AppPatch, NewApp } from "./provider.validation";
+import { IMAGE_MAX_BYTES, IMAGE_TYPES, type AppPatch, type NewApp } from "./provider.validation";
 
 const appSelect = {
   id: true,
@@ -10,6 +19,8 @@ const appSelect = {
   visibility: true,
   status: true,
   payoutAddress: true,
+  imageKey: true,
+  imageType: true,
   defaultCommandId: true,
   lastHeartbeatAt: true,
   archivedAt: true,
@@ -20,9 +31,11 @@ const appSelect = {
 // Owner-side app lifecycle. Callers resolve ownership through `owned()` first.
 export class ProviderAppService {
   private readonly db: Cradle["db"];
+  private readonly storage: Cradle["storage"];
 
-  constructor({ db }: Cradle) {
+  constructor({ db, storage }: Cradle) {
     this.db = db;
+    this.storage = storage;
   }
 
   async owned(ownerId: string, appId: string) {
@@ -32,8 +45,11 @@ export class ProviderAppService {
   }
 
   // Idempotent on (owner, clientRequestId): a replay with the same fields
-  // returns the original app; different fields are a conflict.
-  async create(ownerId: string, { clientRequestId, fields }: NewApp) {
+  // returns the original app; different fields are a conflict. Earnings are
+  // always paid to the owner's wallet.
+  async create(owner: AccountIdentity, { clientRequestId, fields: input }: NewApp) {
+    const ownerId = owner.id;
+    const fields = { ...input, payoutAddress: getAddress(owner.walletAddress) };
     const where = { ownerId_clientRequestId: { ownerId, clientRequestId } };
     const prior = await this.db.app.findUnique({ where, select: appSelect });
     if (prior) {
@@ -78,6 +94,40 @@ export class ProviderAppService {
     return serializeOwnedApp(
       await this.db.app.update({ where: { id: appId }, data, select: appSelect }),
     );
+  }
+
+  // The picture is replaced whole; each upload gets a fresh key so caches
+  // keyed on the URL never show the old one.
+  async setImage(
+    app: Awaited<ReturnType<ProviderAppService["owned"]>>,
+    contentType: string,
+    bytes: Uint8Array,
+  ) {
+    if (!this.storage) throw new ServiceUnavailableError("FILES_DISABLED");
+    if (!(IMAGE_TYPES as readonly string[]).includes(contentType))
+      throw new UnsupportedMediaTypeError("INVALID_IMAGE_TYPE");
+    if (!bytes.length) throw new UnsupportedMediaTypeError("INVALID_IMAGE_TYPE");
+    if (bytes.length > IMAGE_MAX_BYTES) throw new PayloadTooLargeError("IMAGE_TOO_LARGE");
+    const imageKey = `app-images/${app.id}/${randomUUID()}`;
+    await this.storage.put(imageKey, bytes, contentType);
+    const updated = await this.db.app.update({
+      where: { id: app.id },
+      data: { imageKey, imageType: contentType },
+      select: appSelect,
+    });
+    if (app.imageKey) await this.storage.delete(app.imageKey).catch(() => undefined);
+    return serializeOwnedApp(updated);
+  }
+
+  async removeImage(app: Awaited<ReturnType<ProviderAppService["owned"]>>) {
+    const updated = await this.db.app.update({
+      where: { id: app.id },
+      data: { imageKey: null, imageType: null },
+      select: appSelect,
+    });
+    if (app.imageKey && this.storage)
+      await this.storage.delete(app.imageKey).catch(() => undefined);
+    return serializeOwnedApp(updated);
   }
 
   // Archiving also revokes keys so a provider worker cannot keep acting on it.

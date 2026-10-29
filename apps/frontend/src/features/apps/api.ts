@@ -1,4 +1,4 @@
-import { call, client, type Body } from "@/src/lib/api/client";
+import { ApiError, apiOrigin, call, client, type Body } from "@/src/lib/api/client";
 
 const apps = client.v1.apps;
 const provider = client.v1.provider.apps;
@@ -36,7 +36,6 @@ export const listProviderApps = () => call(provider.$get());
 export const createProviderApp = (body: {
   name: string;
   description?: string;
-  payoutAddress: string;
   visibility: Visibility;
   clientRequestId?: string;
 }) =>
@@ -53,9 +52,29 @@ export const updateProviderApp = (
     name?: string;
     description?: string | null;
     visibility?: Visibility;
-    payoutAddress?: string;
   },
 ) => call(provider[":appId"].$patch({ param: { appId }, json }));
+
+// The image file is the raw body, so this goes around the JSON RPC client.
+export async function uploadAppImage(appId: string, file: File): Promise<ProviderApp> {
+  const response = await fetch(`${apiOrigin}/v1/provider/apps/${appId}/image`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new ApiError(
+      response.status,
+      (data as { error?: string }).error || `HTTP ${response.status}`,
+    );
+  return data as ProviderApp;
+}
+export const removeAppImage = (appId: string) =>
+  call(provider[":appId"].image.$delete({ param: { appId } }));
+export const appImageSrc = (path: string | null | undefined) =>
+  path ? `${apiOrigin}${path}` : undefined;
 export const archiveProviderApp = (appId: string) =>
   call(provider[":appId"].archive.$post({ param: { appId } }));
 export const suspendProviderApp = (appId: string) =>

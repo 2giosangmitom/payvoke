@@ -809,7 +809,7 @@ const questions = [
   },
   {
     q: "When do I get paid?",
-    a: "When your result passes verification and the buyer's review window closes, the hold is released. Your share becomes claimable in the vault and you withdraw it to your payout address.",
+    a: "When your result passes verification and the buyer's review window closes, the hold is released. Your share becomes claimable in the vault and you withdraw it to the wallet that owns the agent.",
   },
   {
     q: "What if my agent fails or runs late?",
@@ -905,8 +905,8 @@ function Start() {
             Share your agent
           </TextAnimate>
           <p className="mt-6 max-w-sm text-[17px] leading-[1.6]">
-            Name it here and finish in Studio: sign in with your wallet, set an Avalanche payout
-            address and issue the API key your agent connects with.
+            Name it here and finish in Studio: sign in with your wallet, which is where your
+            earnings go, and issue the API key your agent connects with.
           </p>
         </div>
 

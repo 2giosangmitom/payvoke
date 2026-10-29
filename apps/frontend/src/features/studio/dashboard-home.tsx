@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Plus, Radio, X } from "lucide-react";
-import { useConnection } from "wagmi";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -24,12 +23,12 @@ import {
 import { VisibilityField } from "@/src/features/studio/visibility-field";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { createProviderApp, listProviderApps } from "@/src/features/apps/api";
 
 export function DashboardHome() {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
-  const { address } = useConnection();
   const handoff = useSearch({ from: "/console/studio/" });
   const [open, setOpen] = useState(Boolean(handoff.name));
   const [name, setName] = useState(handoff.name ?? "");
@@ -37,7 +36,6 @@ export function DashboardHome() {
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">(
     handoff.visibility ?? "PRIVATE",
   );
-  const [payout, setPayout] = useState("");
   const [error, setError] = useState("");
   const apps = useQuery({
     queryKey: ["provider", "apps", session?.user.id],
@@ -50,18 +48,16 @@ export function DashboardHome() {
       createProviderApp({
         name: name.trim(),
         description: description.trim() || undefined,
-        payoutAddress: (payout || address || "").trim(),
         visibility,
       }),
     onSuccess: () => {
       setName("");
       setDescription("");
-      setPayout("");
       setOpen(false);
       setError("");
       void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
     },
-    onError: (cause) => setError(errorMessage(cause, "Could not create app.")),
+    onError: (cause) => setError(errorMessage(cause, "Could not create agent.")),
   });
 
   if (!session)
@@ -115,14 +111,10 @@ export function DashboardHome() {
               className="grid max-w-2xl gap-5"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!(payout || address)) {
-                  setError("Connect a wallet or enter a payout address.");
-                  return;
-                }
                 create.mutate();
               }}
             >
-              <FormField label="App name" htmlFor="app-name">
+              <FormField label="Name" htmlFor="app-name">
                 <Input
                   id="app-name"
                   value={name}
@@ -139,18 +131,7 @@ export function DashboardHome() {
                   onChange={(event) => setDescription(event.target.value)}
                   rows={3}
                   maxLength={2000}
-                  placeholder="What the app does and when someone would use it."
-                />
-              </FormField>
-              <FormField label="Payout address" htmlFor="app-payout">
-                <Input
-                  id="app-payout"
-                  value={payout || address || ""}
-                  onChange={(event) => setPayout(event.target.value)}
-                  required
-                  placeholder="0x…"
-                  spellCheck={false}
-                  className="font-mono"
+                  placeholder="What the agent does and when someone would hire it."
                 />
               </FormField>
               <VisibilityField
@@ -168,7 +149,7 @@ export function DashboardHome() {
                 className="justify-self-start"
                 disabled={create.isPending || !name.trim()}
               >
-                {create.isPending && <Spinner />} Create app
+                {create.isPending && <Spinner />} Create agent
               </Button>
             </form>
           </section>
@@ -176,7 +157,7 @@ export function DashboardHome() {
       )}
 
       <section aria-labelledby="apps-title" className="mt-12">
-        <SectionHeader id="apps-title" title="Your agents" aside={plural(items.length, "app")} />
+        <SectionHeader id="apps-title" title="Your agents" aside={plural(items.length, "agent")} />
         {apps.isPending ? (
           <LoadingState>Loading agents…</LoadingState>
         ) : apps.isError ? (
@@ -200,14 +181,21 @@ export function DashboardHome() {
                   params={{ appId: app.id }}
                   className="group flex flex-col justify-between gap-4 border-b border-border py-6 transition-colors hover:bg-card sm:flex-row sm:items-center sm:px-4"
                 >
-                  <div className="min-w-0">
-                    <AppStatus availability={app.availability} />
-                    <h3 className="mt-3 text-xl font-medium tracking-[-0.03em] break-words group-hover:text-primary">
-                      {app.name}
-                    </h3>
-                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                      {app.description || "No description yet."}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-4">
+                    <AgentAvatar
+                      name={app.name}
+                      imageUrl={app.imageUrl}
+                      className="size-12 text-xl"
+                    />
+                    <div className="min-w-0">
+                      <AppStatus availability={app.availability} />
+                      <h3 className="mt-2 text-xl font-medium tracking-[-0.03em] break-words group-hover:text-primary">
+                        {app.name}
+                      </h3>
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {app.description || "No description yet."}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Tag>{app.visibility.toLowerCase()}</Tag>

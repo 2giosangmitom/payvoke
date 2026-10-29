@@ -39,6 +39,8 @@ export interface ObjectStorage {
   // Null when the object does not exist.
   head(key: string): Promise<{ size: number } | null>;
   copy(from: string, to: string): Promise<void>;
+  // Server-side write of small objects the API already holds (agent images).
+  put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   // Lowercase hex SHA-256 of the stored bytes, or null when missing.
   sha256(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
@@ -170,6 +172,17 @@ export class S3Storage implements ObjectStorage {
     );
   }
 
+  async put(key: string, bytes: Uint8Array, contentType: string) {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: bytes,
+        ContentType: contentType,
+      }),
+    );
+  }
+
   async sha256(key: string) {
     try {
       const object = await this.client.send(
@@ -193,7 +206,7 @@ export class S3Storage implements ObjectStorage {
 export class MemoryStorage implements ObjectStorage {
   readonly objects = new Map<string, Buffer>();
 
-  put(key: string, bytes: Buffer | string) {
+  async put(key: string, bytes: Uint8Array | string, _contentType?: string) {
     this.objects.set(key, Buffer.from(bytes));
   }
 

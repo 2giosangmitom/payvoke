@@ -13,7 +13,11 @@ model App {
   description      String?
   visibility       String    @default("PUBLIC")
   status           String    @default("ACTIVE")
+  // Always the owner's primary wallet; set by the server, never by the client.
   payoutAddress    String
+  // The agent's picture in object storage, shown in the store and in Studio.
+  imageKey         String?
+  imageType        String?
   defaultCommandId String?   @unique
   lastHeartbeatAt  DateTime?
   archivedAt       DateTime?

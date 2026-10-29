@@ -26,6 +26,7 @@ import {
   unstarApp,
   type StoreApp,
 } from "@/src/features/apps/api";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { formatUsdc } from "@/src/features/apps/format";
 
 function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; canSave: boolean }) {
@@ -42,7 +43,10 @@ function AppCard({ app, starred, canSave }: { app: StoreApp; starred: boolean; c
   return (
     <article className="group relative flex min-h-64 flex-col border border-border bg-card transition-[border-color,translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-float">
       <div className="flex items-center justify-between gap-3 px-5 pt-5">
-        <AppStatus availability={app.availability} />
+        <div className="flex items-center gap-3">
+          <AgentAvatar name={app.name} imageUrl={app.imageUrl} />
+          <AppStatus availability={app.availability} />
+        </div>
         <Button
           variant="ghost"
           size="icon-sm"

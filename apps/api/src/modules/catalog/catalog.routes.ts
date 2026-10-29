@@ -32,6 +32,16 @@ export const catalogRoutes = new Hono<AppEnv>()
     const account = await viewer(c);
     return c.json(await c.var.cradle.catalogService.get(c.req.param("appId"), account?.id ?? null));
   })
+  // Redirects to a short-lived signed URL; the versioned path is cacheable.
+  .get("/v1/apps/:appId/image", async (c) => {
+    const account = await viewer(c);
+    const target = await c.var.cradle.catalogService.image(
+      c.req.param("appId"),
+      account?.id ?? null,
+    );
+    c.header("Cache-Control", "private, max-age=300");
+    return c.redirect(target.url, 302);
+  })
   .get("/v1/apps/:appId/commands", async (c) => {
     const account = await viewer(c);
     return c.json(

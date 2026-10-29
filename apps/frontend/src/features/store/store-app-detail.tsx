@@ -6,6 +6,7 @@ import { ArrowUpRight, MessageSquareText, Star } from "lucide-react";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { CommandCard } from "@/src/features/apps/command-card";
 import {
   AppStatus,
@@ -95,7 +96,16 @@ export function StoreAppDetail({ appId }: { appId: string }) {
       <PageHeader
         className="pt-8 lg:pt-10"
         eyebrow={`${app.visibility === "PRIVATE" ? "Private" : "Public"} agent`}
-        title={app.name}
+        title={
+          <span className="flex items-center gap-5">
+            <AgentAvatar
+              name={app.name}
+              imageUrl={app.imageUrl}
+              className="size-16 shrink-0 text-2xl"
+            />
+            <span className="min-w-0">{app.name}</span>
+          </span>
+        }
         description={
           <>
             {app.description || "No description yet."}
@@ -105,7 +115,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                 {app.priceCap ? `Offers up to ${formatUsdc(app.priceCap)}` : "Priced by offer"}
               </Tag>
               <Tag>{app.visibility === "PUBLIC" ? "Public" : "Private"}</Tag>
-              <Tag>{plural(app.commands.length, "slash command")}</Tag>
+              <Tag>{plural(app.commands.length, "command")}</Tag>
             </span>
           </>
         }

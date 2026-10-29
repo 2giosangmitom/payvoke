@@ -1,7 +1,7 @@
 import type { Cradle } from "../../container";
 import { NotFoundError } from "../../errors";
 import { availabilityLabel, isAvailable } from "../apps/schema";
-import { priceCap, serializeCommand } from "../apps/serializers";
+import { imageUrl, priceCap, serializeCommand } from "../apps/serializers";
 
 export type CatalogQuery = { q?: string; cursor?: string; limit: number; savedBy?: string };
 
@@ -12,9 +12,11 @@ const activeCommands = {
 
 export class CatalogService {
   private readonly db: Cradle["db"];
+  private readonly storage: Cradle["storage"];
 
-  constructor({ db }: Cradle) {
+  constructor({ db, storage }: Cradle) {
     this.db = db;
+    this.storage = storage;
   }
 
   // Public apps, plus the viewer's own private apps. Archived apps never show.
@@ -69,6 +71,7 @@ export class CatalogService {
         id: row.id,
         name: row.name,
         description: row.description,
+        imageUrl: imageUrl(row),
         visibility: row.visibility,
         status: row.status,
         availability: availabilityLabel(row),
@@ -87,6 +90,7 @@ export class CatalogService {
       ownerId: row.ownerId,
       name: row.name,
       description: row.description,
+      imageUrl: imageUrl(row),
       visibility: row.visibility,
       status: row.status,
       availability: availabilityLabel(row),
@@ -97,6 +101,17 @@ export class CatalogService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  async image(appId: string, viewerId: string | null) {
+    const row = await this.visible(appId, viewerId);
+    if (!row.imageKey || !row.imageType || !this.storage)
+      throw new NotFoundError("IMAGE_NOT_FOUND");
+    return this.storage.presignGet(
+      row.imageKey,
+      { filename: "agent", contentType: row.imageType, inline: true },
+      600,
+    );
   }
 
   async commands(appId: string, viewerId: string | null) {
@@ -115,6 +130,7 @@ export class CatalogService {
       id: app.id,
       name: app.name,
       description: app.description,
+      imageUrl: imageUrl(app),
       visibility: app.visibility,
       status: app.status,
       availability: availabilityLabel(app),

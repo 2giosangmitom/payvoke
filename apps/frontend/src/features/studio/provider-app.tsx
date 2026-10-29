@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
-  Check,
-  Copy,
+  ImageUp,
   KeyRound,
   MessageSquareText,
   RotateCcw,
@@ -15,14 +14,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
 import { Input } from "@/src/components/ui/input";
 import { Spinner } from "@/src/components/ui/spinner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Textarea } from "@/src/components/ui/textarea";
-import { CommandCard } from "@/src/features/apps/command-card";
 import {
   AppStatus,
   BackLink,
@@ -30,15 +28,15 @@ import {
   ErrorNotice,
   FormField,
   LoadingState,
-  PageHeader,
   PageShell,
-  SectionHeader,
   Tag,
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
 import { VisibilityField } from "@/src/features/studio/visibility-field";
+import { CopyButton, SettingsRow } from "@/src/features/keys/settings-row";
 import { authClient } from "@/src/features/auth/auth-client";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import {
   activateProviderApp,
   archiveProviderApp,
@@ -46,79 +44,198 @@ import {
   getProviderApp,
   getStoreApp,
   listProviderKeys,
-  revokeProviderKey,
+  removeAppImage,
   suspendProviderApp,
   updateProviderApp,
+  uploadAppImage,
   type ProviderAppDetail,
+  type ProviderCommand,
   type Visibility,
 } from "@/src/features/apps/api";
-import { formatCommandPrice } from "@/src/features/apps/format";
+import { formatUsdc } from "@/src/features/apps/format";
 import { newThread } from "@/src/features/chat/api";
-import { cn } from "@/src/lib/utils";
 
-function PanelIntro({ children }: { children: string }) {
-  return <p className="mb-6 max-w-2xl text-sm leading-relaxed text-muted-foreground">{children}</p>;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const IMAGE_MAX_BYTES = 1024 * 1024;
+const imageErrors: Record<string, string> = {
+  INVALID_IMAGE_TYPE: "Use a PNG, JPG, WebP or GIF image.",
+  IMAGE_TOO_LARGE: "That image is over 1 MB.",
+  PAYLOAD_TOO_LARGE: "That image is over 1 MB.",
+  FILES_DISABLED: "Image uploads aren't available on this server.",
+};
+
+const date = (value: string | Date) =>
+  new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+function useRefreshApp(appId: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ["provider", "app", appId] });
+    void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
+    void queryClient.invalidateQueries({ queryKey: ["store"] });
+  };
 }
 
-// Commands are registered by the app's agent through the API; Studio only
-// shows what buyers can call.
-const SYNC_EXAMPLE = `curl -X PUT "$PAYVOKE_API/v1/provider/apps/<appId>/commands" \\
-  -H "Authorization: Bearer $PAYVOKE_KEY" -H "Content-Type: application/json" \\
-  -d '[{"name":"summarize","description":"Summarizes text",
-        "options":[{"name":"text","type":"STRING","required":true},
-                   {"name":"file","type":"FILE","accept":["application/pdf"]}],
-        "maxAmount":"5000000",
-        "terms":{"deliverySeconds":600,"reviewSeconds":3600,
-                 "revisionPolicy":{"maxIncluded":1,"description":"One revision"},
-                 "refundPolicy":"Refund if not delivered","sideEffects":"none",
-                 "dataUse":"This request only"}}]'`;
-
-function CommandsTab({ app }: { app: ProviderAppDetail }) {
+function ImageField({ app }: { app: ProviderAppDetail }) {
+  const refresh = useRefreshApp(app.id);
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadAppImage(app.id, file),
+    onSuccess: refresh,
+    onError: (cause) => setError(imageErrors[errorMessage(cause)] ?? errorMessage(cause)),
+  });
+  const remove = useMutation({
+    mutationFn: () => removeAppImage(app.id),
+    onSuccess: refresh,
+    onError: (cause) => setError(errorMessage(cause)),
+  });
+  const busy = upload.isPending || remove.isPending;
   return (
-    <div>
-      <SectionHeader title="Slash commands" />
-      <PanelIntro>
-        Your agent registers commands with an app key: PUT the whole list and Payvoke keeps
-        unchanged commands, adds a revision for changed ones and archives the rest. Buyers see them
-        when they type / in a chat. Every job is priced by your agent's offer; a command can only
-        cap it.
-      </PanelIntro>
-      <pre className="mb-8 overflow-x-auto border border-border bg-background-deep p-4 font-mono text-[11px] leading-relaxed text-muted-foreground">
-        {SYNC_EXAMPLE.replace("<appId>", app.id)}
-      </pre>
-      {app.commands.length === 0 ? (
-        <EmptyState title="No commands yet.">
-          Register commands from your agent. The first one becomes the default.
-        </EmptyState>
-      ) : (
-        <div className="grid gap-3">
-          {app.commands.map((command) => (
-            <CommandCard
-              key={command.id}
-              name={command.name}
-              description={command.description}
-              isDefault={command.id === app.defaultCommandId}
-              revision={command.revision}
-              terms={
-                command.revision && [
-                  formatCommandPrice(command.revision),
-                  plural(command.revision.options.length, "argument"),
-                  `delivery ≤ ${Math.round(command.revision.deliverySeconds / 60)} min`,
-                  `revision ${command.revision.id.slice(0, 8)}`,
-                ]
-              }
-            />
-          ))}
+    <div className="flex flex-wrap items-center gap-5">
+      <AgentAvatar name={app.name} imageUrl={app.imageUrl} className="size-20 text-3xl" />
+      <div className="grid gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => input.current?.click()}
+          >
+            {upload.isPending ? <Spinner /> : <ImageUp />}
+            {app.imageUrl ? "Change image" : "Upload image"}
+          </Button>
+          {app.imageUrl && (
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove.mutate()}>
+              {remove.isPending && <Spinner />} Remove
+            </Button>
+          )}
         </div>
-      )}
+        <p id="agent-image-hint" className="text-xs text-faint">
+          PNG, JPG, WebP or GIF, up to 1 MB. Square images look best.
+        </p>
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept={IMAGE_TYPES.join(",")}
+        aria-label="Agent image"
+        aria-describedby="agent-image-hint"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          setError("");
+          if (!IMAGE_TYPES.includes(file.type)) return setError(imageErrors.INVALID_IMAGE_TYPE);
+          if (file.size > IMAGE_MAX_BYTES) return setError(imageErrors.IMAGE_TOO_LARGE);
+          upload.mutate(file);
+        }}
+      />
     </div>
   );
 }
 
-function KeysTab({ app }: { app: ProviderAppDetail }) {
+function ProfileForm({ app }: { app: ProviderAppDetail }) {
+  const refresh = useRefreshApp(app.id);
+  const [name, setName] = useState(app.name);
+  const [description, setDescription] = useState(app.description ?? "");
+  const [visibility, setVisibility] = useState<Visibility>(
+    app.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+  );
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const save = useMutation({
+    mutationFn: () =>
+      updateProviderApp(app.id, {
+        name: name.trim(),
+        description: description.trim() || null,
+        visibility,
+      }),
+    onSuccess: () => {
+      setSaved(true);
+      refresh();
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  });
+  const dirty =
+    name.trim() !== app.name ||
+    (description.trim() || null) !== (app.description ?? null) ||
+    visibility !== app.visibility;
+  return (
+    <form
+      className="grid gap-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError("");
+        setSaved(false);
+        save.mutate();
+      }}
+    >
+      <ImageField app={app} />
+      <FormField label="Name" htmlFor="settings-name">
+        <Input
+          id="settings-name"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setSaved(false);
+          }}
+          required
+          maxLength={80}
+        />
+      </FormField>
+      <FormField label="Description" htmlFor="settings-description">
+        <Textarea
+          id="settings-description"
+          rows={3}
+          value={description}
+          onChange={(event) => {
+            setDescription(event.target.value);
+            setSaved(false);
+          }}
+          maxLength={2000}
+          placeholder="What the agent does and when someone would hire it."
+        />
+      </FormField>
+      <VisibilityField
+        value={visibility}
+        onChange={(next) => {
+          setVisibility(next);
+          setSaved(false);
+        }}
+        descriptions={{ PUBLIC: "Listed in the store.", PRIVATE: "Only you can open it." }}
+      />
+      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+      <div className="flex items-center gap-4">
+        <Button type="submit" disabled={save.isPending || !dirty || !name.trim()}>
+          {save.isPending && <Spinner />} Save changes
+        </Button>
+        {saved && !dirty && (
+          <span role="status" className="text-sm text-muted-foreground">
+            Saved.
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+// Like a bot token: one working key, shown in full only right after it is
+// generated. Resetting revokes the old key on the spot.
+function ApiKeyPanel({ app }: { app: ProviderAppDetail }) {
   const queryClient = useQueryClient();
   const [secret, setSecret] = useState("");
-  const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState("");
   const keys = useQuery({
@@ -126,275 +243,229 @@ function KeysTab({ app }: { app: ProviderAppDetail }) {
     queryFn: () => listProviderKeys(app.id),
     staleTime: 10_000,
   });
-  const create = useMutation({
+  const issue = useMutation({
     mutationFn: () => createProviderKey(app.id),
     onSuccess: (data) => {
       setSecret(data.secret);
       setConfirm(false);
-      setCopied(false);
       void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id, "keys"] });
+      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
     },
-    onError: (cause) => setError(errorMessage(cause)),
+    onError: (cause) => {
+      setConfirm(false);
+      setError(errorMessage(cause));
+    },
   });
-  const revoke = useMutation({
-    mutationFn: (keyId: string) => revokeProviderKey(app.id, keyId),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id, "keys"] }),
-    onError: (cause) => setError(errorMessage(cause)),
-  });
-  const active = keys.data?.find((key) => !key.revokedAt && Date.parse(key.expiresAt) > Date.now());
+  if (keys.isPending) return <LoadingState className="py-2">Loading key…</LoadingState>;
+  if (keys.isError)
+    return (
+      <ErrorNotice className="my-0" onRetry={() => void keys.refetch()}>
+        {errorMessage(keys.error, "Could not load the key.")}
+      </ErrorNotice>
+    );
+  const latest = keys.data[0];
+  const active =
+    latest && !latest.revokedAt && Date.parse(latest.expiresAt) > Date.now() ? latest : null;
+  const generate = () => {
+    setError("");
+    if (active) setConfirm(true);
+    else issue.mutate();
+  };
   return (
-    <div>
-      <SectionHeader
-        title="API key"
-        aside={
-          <Button onClick={() => (active ? setConfirm(true) : create.mutate())}>
-            {create.isPending ? <Spinner /> : active ? <RotateCcw /> : <KeyRound />}
-            {active ? "Rotate key" : "Create key"}
-          </Button>
-        }
-      />
-      <PanelIntro>
-        Your worker sends this bearer key with events, reports and command writes. Rotating revokes
-        the old key right away. The secret is shown once and is never cached in the browser.
-      </PanelIntro>
-      {secret && (
-        <div
-          role="status"
-          className="mb-6 grid gap-4 border border-primary bg-primary-soft p-5 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
-        >
-          <div className="min-w-0">
-            <strong className="text-sm">Copy this key now. You won&apos;t see it again.</strong>
-            <code className="mt-2 block font-mono text-xs break-all">{secret}</code>
+    <div className="grid gap-4">
+      {secret ? (
+        <div role="status" className="grid gap-3 border border-primary bg-primary-soft p-4">
+          <p className="text-sm font-medium">
+            Copy your new key now. For your security it won&apos;t be shown again.
+          </p>
+          <code className="block bg-background-deep p-3 font-mono text-xs leading-relaxed break-all">
+            {secret}
+          </code>
+          <div className="flex flex-wrap gap-2">
+            <CopyButton value={secret} label="Copy key" />
+            <Button variant="ghost" size="sm" onClick={() => setSecret("")}>
+              Done
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => void navigator.clipboard.writeText(secret).then(() => setCopied(true))}
-          >
-            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy key"}
-          </Button>
-          <Button variant="ghost" onClick={() => setSecret("")}>
-            Dismiss
-          </Button>
         </div>
-      )}
-      {error && <ErrorNotice>{error}</ErrorNotice>}
-      {keys.isPending ? (
-        <LoadingState>Loading keys…</LoadingState>
-      ) : (keys.data ?? []).length === 0 ? (
-        <EmptyState title="No keys yet.">
-          Create one when your worker is ready to connect.
-        </EmptyState>
       ) : (
-        <div className="grid border-t border-border">
-          {keys.data?.map((key) => {
-            const revoked = Boolean(key.revokedAt);
-            const expired = Date.parse(key.expiresAt) <= Date.now();
-            return (
-              <article
-                key={key.id}
-                className={cn(
-                  "flex flex-col justify-between gap-3 border-b border-border py-4 sm:flex-row sm:items-center",
-                  (revoked || expired) && "opacity-55",
-                )}
-              >
-                <div className="grid gap-1">
-                  <code className="font-mono text-sm">{key.prefix}…</code>
-                  <span className="font-mono text-[10px] text-faint">{key.scopes.join(" · ")}</span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>
-                    {revoked ? "Revoked" : expired ? "Expired" : "Active"} · expires{" "}
-                    {new Date(key.expiresAt).toLocaleString()}
-                  </span>
-                  {!revoked && !expired && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={revoke.isPending}
-                      onClick={() => revoke.mutate(key.id)}
-                    >
-                      Revoke
-                    </Button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+        <div className="grid gap-1">
+          <code className="font-mono text-sm break-all">
+            {active ? `pvk_${active.prefix}.${"•".repeat(16)}` : "No key"}
+          </code>
+          <p className="text-sm text-muted-foreground">
+            {active
+              ? `Created ${date(active.createdAt)} · ${
+                  active.lastUsedAt ? `last used ${date(active.lastUsedAt)}` : "not used yet"
+                } · expires ${date(active.expiresAt)}`
+              : latest && !latest.revokedAt
+                ? `The last key expired on ${date(latest.expiresAt)}. Your agent can't take jobs until it has a new one.`
+                : "Your agent can't take jobs until it has a key."}
+          </p>
         </div>
       )}
+      {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+      <Button
+        variant={active ? "outline" : "default"}
+        className="justify-self-start"
+        disabled={issue.isPending}
+        onClick={generate}
+      >
+        {issue.isPending ? <Spinner /> : active ? <RotateCcw /> : <KeyRound />}
+        {active ? "Reset key" : "Generate key"}
+      </Button>
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rotate the active key?</DialogTitle>
+            <DialogTitle>Reset the API key?</DialogTitle>
             <DialogDescription>
-              The current key stops working immediately. Put the new secret in your worker&apos;s
-              deployment before it reconnects.
+              The current key stops working immediately and can&apos;t be used again. Your agent is
+              disconnected until you give it the new key.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2">
-            <Button disabled={create.isPending} onClick={() => create.mutate()}>
-              {create.isPending && <Spinner />} Rotate key
-            </Button>
+          <DialogFooter>
             <Button variant="ghost" onClick={() => setConfirm(false)}>
               Cancel
             </Button>
-          </div>
+            <Button variant="destructive" disabled={issue.isPending} onClick={() => issue.mutate()}>
+              {issue.isPending && <Spinner />} Yes, reset key
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function DangerRow({
-  eyebrow,
-  title,
-  children,
-  action,
-}: {
-  eyebrow: string;
-  title: string;
-  children: string;
-  action: React.ReactNode;
-}) {
+function CommandRow({ command, isDefault }: { command: ProviderCommand; isDefault: boolean }) {
+  const revision = command.revision;
   return (
-    <section className="flex flex-col justify-between gap-4 border-t border-border py-6 sm:flex-row sm:items-center">
-      <div className="max-w-xl">
-        <p className="mb-1 text-sm font-medium text-primary">{eyebrow}</p>
-        <h3 className="text-lg font-medium">{title}</h3>
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{children}</p>
+    <li className="grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-6">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="font-mono text-sm text-primary break-all">/{command.name}</code>
+          {isDefault && <Tag>Default</Tag>}
+        </div>
+        <p className="mt-1 text-sm leading-6">{command.description}</p>
+        {revision && revision.options.length > 0 && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {revision.options
+              .map((option) => `${option.name}${option.required ? "" : " (optional)"}`)
+              .join(", ")}
+          </p>
+        )}
       </div>
-      {action}
-    </section>
+      <div className="text-sm text-muted-foreground sm:text-right">
+        {revision ? (
+          <>
+            <p className="font-mono tabular-nums text-foreground">
+              {revision.maxGrossAmount ? `≤ ${formatUsdc(revision.maxGrossAmount)}` : "By offer"}
+            </p>
+            <p className="text-xs">{Math.round(revision.deliverySeconds / 60)} min delivery</p>
+          </>
+        ) : (
+          <p className="text-xs">Not active</p>
+        )}
+      </div>
+    </li>
   );
 }
 
-function SettingsTab({ app }: { app: ProviderAppDetail }) {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [name, setName] = useState(app.name);
-  const [description, setDescription] = useState(app.description ?? "");
-  const [visibility, setVisibility] = useState<Visibility>(
-    app.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+function CommandList({ app }: { app: ProviderAppDetail }) {
+  if (app.commands.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground">
+        No commands yet. They appear here once your agent registers them.
+      </p>
+    );
+  return (
+    <ul className="grid divide-y divide-border">
+      {app.commands.map((command) => (
+        <CommandRow
+          key={command.id}
+          command={command}
+          isDefault={command.id === app.defaultCommandId}
+        />
+      ))}
+    </ul>
   );
-  const [payout, setPayout] = useState(app.payoutAddress);
+}
+
+function AvailabilityPanel({ app }: { app: ProviderAppDetail }) {
+  const navigate = useNavigate();
+  const refresh = useRefreshApp(app.id);
+  const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState("");
-  const save = useMutation({
-    mutationFn: () =>
-      updateProviderApp(app.id, {
-        name: name.trim(),
-        description: description.trim() || null,
-        visibility,
-        payoutAddress: payout.trim(),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-    },
-    onError: (cause) => setError(errorMessage(cause)),
-  });
+  const active = app.status === "ACTIVE";
   const status = useMutation({
-    mutationFn: () =>
-      app.status === "ACTIVE" ? suspendProviderApp(app.id) : activateProviderApp(app.id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["provider", "app", app.id] });
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-      void queryClient.invalidateQueries({ queryKey: ["store"] });
-    },
+    mutationFn: () => (active ? suspendProviderApp(app.id) : activateProviderApp(app.id)),
+    onSuccess: refresh,
     onError: (cause) => setError(errorMessage(cause)),
   });
   const archive = useMutation({
     mutationFn: () => archiveProviderApp(app.id),
     onSuccess: () => void navigate({ to: "/console/studio" }),
-    onError: (cause) => setError(errorMessage(cause)),
+    onError: (cause) => {
+      setArchiving(false);
+      setError(errorMessage(cause));
+    },
   });
   return (
-    <div>
-      <SectionHeader
-        title="Listing and payout"
-        aside={<AppStatus availability={app.availability} />}
-      />
-      <form
-        className="grid max-w-2xl gap-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError("");
-          save.mutate();
-        }}
-      >
-        <FormField label="App name" htmlFor="settings-name">
-          <Input
-            id="settings-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            maxLength={80}
-          />
-        </FormField>
-        <FormField label="Description" htmlFor="settings-description">
-          <Textarea
-            id="settings-description"
-            rows={3}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            maxLength={2000}
-          />
-        </FormField>
-        <FormField label="Payout address" htmlFor="settings-payout">
-          <Input
-            id="settings-payout"
-            value={payout}
-            onChange={(event) => setPayout(event.target.value)}
-            required
-            spellCheck={false}
-            className="font-mono"
-          />
-        </FormField>
-        <VisibilityField
-          value={visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE"}
-          onChange={setVisibility}
-          descriptions={{ PUBLIC: "Listed in the store.", PRIVATE: "Only you can open it." }}
-        />
-        <Button type="submit" size="lg" className="justify-self-start" disabled={save.isPending}>
-          {save.isPending && <Spinner />} Save settings
-        </Button>
-      </form>
-      {error && <ErrorNotice>{error}</ErrorNotice>}
-      <div className="mt-12">
-        <DangerRow
-          eyebrow="Availability"
-          title={app.status === "ACTIVE" ? "Suspend this app" : "Reactivate this app"}
-          action={
-            <Button variant="outline" disabled={status.isPending} onClick={() => status.mutate()}>
-              {status.isPending && <Spinner />}
-              {app.status === "ACTIVE" ? "Suspend app" : "Activate app"}
-            </Button>
-          }
+    <div className="grid divide-y divide-border">
+      <div className="flex flex-col justify-between gap-3 pb-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-sm font-medium">{active ? "Pause new jobs" : "Take jobs again"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {active
+              ? "Stops new chats and offers. Existing chats stay readable."
+              : "Brings back the store listing; offers resume once your agent checks in."}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="shrink-0"
+          disabled={status.isPending}
+          onClick={() => status.mutate()}
         >
-          {app.status === "ACTIVE"
-            ? "Suspending stops new threads and quotes. Existing threads stay readable."
-            : "Reactivating brings back the store listing, and quotes resume once the worker checks in."}
-        </DangerRow>
-        <DangerRow
-          eyebrow="Archive"
-          title="Archive this app"
-          action={
+          {status.isPending && <Spinner />}
+          {active ? "Suspend agent" : "Activate agent"}
+        </Button>
+      </div>
+      <div className="flex flex-col justify-between gap-3 pt-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-sm font-medium">Archive</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Removes the agent from the store and revokes its key. Chats and paid receipts are kept.
+          </p>
+        </div>
+        <Button variant="destructive" className="shrink-0" onClick={() => setArchiving(true)}>
+          <Trash2 /> Archive agent
+        </Button>
+      </div>
+      {error && <ErrorNotice className="mb-0">{error}</ErrorNotice>}
+      <Dialog open={archiving} onOpenChange={setArchiving}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive {app.name}?</DialogTitle>
+            <DialogDescription>
+              It leaves the store, its key stops working and it can&apos;t take new jobs. Existing
+              chats and receipts stay readable.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setArchiving(false)}>
+              Cancel
+            </Button>
             <Button
               variant="destructive"
               disabled={archive.isPending}
-              onClick={() => {
-                if (window.confirm("Archive this app? Existing threads remain readable."))
-                  archive.mutate();
-              }}
+              onClick={() => archive.mutate()}
             >
-              <Trash2 /> Archive app
+              {archive.isPending && <Spinner />} Archive agent
             </Button>
-          }
-        >
-          Threads and paid receipts are kept, but the app leaves the store and can&apos;t take new
-          requests.
-        </DangerRow>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -418,28 +489,29 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   if (!session)
     return (
       <PageShell>
-        <PageHeader
-          compact
+        <EmptyState
+          className="mt-10"
           title="Sign in to manage this agent"
-          description="Its settings belong to the wallet that owns it."
-          actions={
+          action={
             <Button variant="outline" render={<Link to="/console/studio" />}>
               Back to Studio
             </Button>
           }
-        />
+        >
+          Its settings belong to the wallet that owns it.
+        </EmptyState>
       </PageShell>
     );
   if (app.isPending)
     return (
       <PageShell>
-        <LoadingState className="pt-20">Loading app…</LoadingState>
+        <LoadingState className="pt-20">Loading agent…</LoadingState>
       </PageShell>
     );
   if (app.isError || !app.data)
     return (
       <PageShell className="pt-16">
-        <ErrorNotice>{app.error ? errorMessage(app.error) : "App not found."}</ErrorNotice>
+        <ErrorNotice>{app.error ? errorMessage(app.error) : "Agent not found."}</ErrorNotice>
         <Button render={<Link to="/console/studio" />} variant="outline">
           Back to Studio
         </Button>
@@ -449,85 +521,84 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   return (
     <PageShell>
       <BackLink to="/console/studio">Studio</BackLink>
-      <PageHeader
-        compact
-        title={data.name}
-        description={
-          <>
-            {data.description || "No description yet."}
-            <span className="mt-5 flex flex-wrap gap-2">
+      <header className="flex flex-col gap-6 border-b border-border pt-6 pb-8 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-5">
+          <AgentAvatar name={data.name} imageUrl={data.imageUrl} className="size-16 text-2xl" />
+          <div className="min-w-0">
+            <h1 className="text-2xl leading-tight font-semibold tracking-[-0.025em] break-words">
+              {data.name}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
               <AppStatus availability={data.availability} />
-              <Tag>{data.visibility.toLowerCase()}</Tag>
-              <Tag>{plural(data.commands.length, "command")}</Tag>
-              <Tag>
-                heartbeat{" "}
+              <span>{data.visibility === "PUBLIC" ? "Public" : "Private"}</span>
+              <span>{plural(data.commands.length, "command")}</span>
+              <span>
                 {data.lastHeartbeatAt
-                  ? new Date(data.lastHeartbeatAt).toLocaleTimeString()
-                  : "never"}
-              </Tag>
-            </span>
-          </>
-        }
-        actions={
-          <>
+                  ? `Checked in ${new Date(data.lastHeartbeatAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  : "Never checked in"}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            disabled={opening || data.availability !== "AVAILABLE"}
+            onClick={() => {
+              setOpening(true);
+              setError("");
+              void newThread(data.id)
+                .then((thread) =>
+                  navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
+                )
+                .catch((cause) => setError(errorMessage(cause)))
+                .finally(() => setOpening(false));
+            }}
+          >
+            {opening ? <Spinner /> : <MessageSquareText />} Open a chat
+          </Button>
+          {data.visibility === "PUBLIC" && publicApp.data && (
             <Button
-              size="lg"
-              disabled={opening || data.availability !== "AVAILABLE"}
-              onClick={() => {
-                setOpening(true);
-                setError("");
-                void newThread(data.id)
-                  .then((thread) =>
-                    navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
-                  )
-                  .catch((cause) => setError(errorMessage(cause)))
-                  .finally(() => setOpening(false));
-              }}
+              variant="outline"
+              render={<Link to="/store/$appId" params={{ appId: data.id }} />}
             >
-              {opening ? <Spinner /> : <MessageSquareText />} Open a chat
+              Store page <ArrowUpRight />
             </Button>
-            {data.visibility === "PUBLIC" && publicApp.data && (
-              <Button
-                size="lg"
-                variant="outline"
-                render={<Link to="/store/$appId" params={{ appId: data.id }} />}
-              >
-                Store page <ArrowUpRight />
-              </Button>
-            )}
-          </>
-        }
-      />
+          )}
+        </div>
+      </header>
       {error && <ErrorNotice>{error}</ErrorNotice>}
-      <Tabs defaultValue="commands" className="mt-8 gap-8">
-        <TabsList
-          variant="line"
-          className="h-auto w-full justify-start gap-6 border-b border-border p-0"
-        >
-          {[
-            ["commands", "Commands"],
-            ["keys", "API keys"],
-            ["settings", "Settings"],
-          ].map(([value, label]) => (
-            <TabsTrigger
-              key={value}
-              value={value}
-              className="flex-none px-0 pb-3 text-[15px] after:bottom-[-1px] after:bg-primary data-active:text-foreground"
-            >
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="commands">
-          <CommandsTab app={data} />
-        </TabsContent>
-        <TabsContent value="keys">
-          <KeysTab app={data} />
-        </TabsContent>
-        <TabsContent value="settings">
-          <SettingsTab app={data} />
-        </TabsContent>
-      </Tabs>
+
+      <SettingsRow
+        id="agent-profile"
+        title="Profile"
+        description="How buyers see this agent in the store and in their chats."
+      >
+        <ProfileForm app={data} />
+      </SettingsRow>
+      <SettingsRow
+        id="agent-key"
+        title="API key"
+        description="Your agent connects to Payvoke with this key. It is shown once, when you generate or reset it."
+      >
+        <ApiKeyPanel app={data} />
+      </SettingsRow>
+      <SettingsRow
+        id="agent-commands"
+        title="Commands"
+        description="What buyers can ask this agent for. Your agent registers them itself."
+      >
+        <CommandList app={data} />
+      </SettingsRow>
+      <SettingsRow
+        id="agent-availability"
+        title="Availability"
+        description="Pause the agent for a while, or retire it for good."
+      >
+        <AvailabilityPanel app={data} />
+      </SettingsRow>
     </PageShell>
   );
 }

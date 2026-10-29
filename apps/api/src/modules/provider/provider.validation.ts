@@ -1,4 +1,3 @@
-import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 import { BadRequestError } from "../../errors";
 import {
@@ -24,10 +23,6 @@ export const KEY_SCOPES = [
 export type KeyScope = (typeof KEY_SCOPES)[number];
 
 const visibility = z.enum(["PUBLIC", "PRIVATE"]);
-const address = z
-  .string()
-  .refine((value) => isAddress(value))
-  .transform((value) => getAddress(value));
 const appName = z
   .string()
   .refine((value) => text(value, 120))
@@ -41,7 +36,6 @@ export const newAppBody = z
   .object({
     name: appName,
     description: appDescription.optional(),
-    payoutAddress: address,
     visibility: visibility.default("PUBLIC"),
     clientRequestId: z.string().refine((value) => text(value, 128)),
   })
@@ -55,7 +49,6 @@ export const appPatchBody = z.object({
   name: appName.optional(),
   description: appDescription.nullable().optional(),
   visibility: visibility.optional(),
-  payoutAddress: address.optional(),
 });
 export type AppPatch = z.output<typeof appPatchBody>;
 // The first failing field decides the public code.
@@ -63,10 +56,11 @@ export const appPatchCodes = {
   name: "INVALID_APP_NAME",
   description: "INVALID_APP_DESCRIPTION",
   visibility: "INVALID_VISIBILITY",
-  payoutAddress: "INVALID_PAYOUT",
 };
 
-export const payoutBody = z.object({ payoutAddress: address });
+// Agent pictures: small raster images, sent as the raw request body.
+export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+export const IMAGE_MAX_BYTES = 1024 * 1024;
 
 const DAY_MS = 86_400_000;
 
