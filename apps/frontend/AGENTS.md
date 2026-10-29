@@ -21,21 +21,21 @@ Payvoke is a marketplace for discovering AI agents/tools, saving starred listing
 
 Current route map:
 
-| URL                                   | Route file                                 | Responsibility                                                                                      |
-| ------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| (pathless)                            | `src/routes/_market.tsx`                   | Public site chrome: marketing header (Home, Store, Console) + footer                                |
-| `/`                                   | `src/routes/_market.index.tsx`             | Landing page                                                                                        |
-| `/store`, `/store/$appId`             | `src/routes/_market.store.*.tsx`           | Public directory and app detail; CTA opens a chat thread with the app                               |
-| `/console`                            | `src/routes/console.tsx`                   | Signed-in app shell (`ConsoleShell`): icon rail (bottom bar on phones), breadcrumb, sign-in gate    |
-| `/console/`                           | `src/routes/console.index.tsx`             | Console home: jobs that need the buyer, money in flight, running work, recent chats                 |
-| `/console/chat/...`                   | `src/routes/console.chat*.tsx`             | Every app: thread list + `ThreadChat` (assistant-ui thread over the API timeline)                   |
-| `/console/activity`                   | `src/routes/console.activity.tsx`          | Every paid invocation with hold state and next deadline                                             |
-| `/console/wallet`                     | `src/routes/console.wallet.tsx`            | USDC in the wallet, in the vault and held for jobs; deposit/withdraw, earnings, one-click pay keys  |
-| `/console/keys`                       | `src/routes/console.keys.tsx`              | Coding agents (MCP access tokens, each with an optional autopay limit) and each shared agent's worker key (`/console/connect` redirects) |
-| `/console/approve/$quoteId`           | `src/routes/console.approve.$quoteId.tsx`  | Approval link from MCP `request_payment`: the buyer reviews and pays a coding agent's quote        |
-| `/console/studio/...`                 | `src/routes/console.studio.*.tsx`          | Provider Studio: app info, keys; commands are read-only (bots register them via API)                |
-| `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx` | Redirects from old URLs into the console                                                            |
-| (document)                            | `src/routes/__root.tsx`                    | `<html>`, unhead provider and document tags, `HeadContent`, providers, `<Outlet>`, `Scripts`        |
+| URL                                   | Route file                                 | Responsibility                                                                                                                   |
+| ------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| (pathless)                            | `src/routes/_market.tsx`                   | Public site chrome: marketing header (Home, Store, Console) + footer                                                             |
+| `/`                                   | `src/routes/_market.index.tsx`             | Landing page                                                                                                                     |
+| `/store`, `/store/$appId`             | `src/routes/_market.store.*.tsx`           | Public directory and app detail; CTA opens a chat thread with the app                                                            |
+| `/console`                            | `src/routes/console.tsx`                   | Signed-in app shell (`ConsoleShell`): icon rail (bottom bar on phones), breadcrumb, sign-in gate                                 |
+| `/console/`                           | `src/routes/console.index.tsx`             | Console home: jobs that need the buyer, money in flight, running work, recent chats                                              |
+| `/console/chat/...`                   | `src/routes/console.chat*.tsx`             | Every app: thread list + `ThreadChat` (assistant-ui thread over the API timeline)                                                |
+| `/console/activity`                   | `src/routes/console.activity.tsx`          | Every paid invocation with hold state and next deadline                                                                          |
+| `/console/wallet`                     | `src/routes/console.wallet.tsx`            | USDC in the wallet, in the vault and held for jobs; deposit/withdraw, earnings, one-click pay keys                               |
+| `/console/keys`                       | `src/routes/console.keys.tsx`              | Coding agents (MCP access tokens, each with an optional autopay limit); agent keys live in Studio (`/console/connect` redirects) |
+| `/console/approve/$quoteId`           | `src/routes/console.approve.$quoteId.tsx`  | Approval link from MCP `request_payment`: the buyer reviews and pays a coding agent's quote                                      |
+| `/console/studio/...`                 | `src/routes/console.studio.*.tsx`          | Provider Studio: app info, keys; commands are read-only (bots register them via API)                                             |
+| `/chat`, `/dashboard`, `/app`, `/run` | `src/routes/{chat,dashboard,app,run}*.tsx` | Redirects from old URLs into the console                                                                                         |
+| (document)                            | `src/routes/__root.tsx`                    | `<html>`, unhead provider and document tags, `HeadContent`, providers, `<Outlet>`, `Scripts`                                     |
 
 - Public, browse-only pages are children of `_market`; anything signed-in (chat, runs, payments, Studio) is a child of `console`. Do not put marketing chrome around working surfaces.
 - Use a new pathless layout for a distinct shell (for example a future immersive chat surface) instead of sprinkling `pathname` conditionals through every page. Keep layout concerns in the parent and page concerns in the child.

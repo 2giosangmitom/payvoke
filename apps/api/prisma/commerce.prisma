@@ -44,8 +44,8 @@ model AppApiKey {
   appId      String
   prefix     String    @unique
   secretHash String    @unique
+  // Keys never expire, like a bot token: one works until it is reset or revoked.
   scopes     String[]
-  expiresAt  DateTime
   lastUsedAt DateTime?
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())

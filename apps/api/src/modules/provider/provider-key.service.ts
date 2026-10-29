@@ -31,7 +31,6 @@ export class ProviderKeyService {
       !key ||
       key.appId !== appId ||
       key.revokedAt ||
-      key.expiresAt <= new Date() ||
       key.app.status !== "ACTIVE" ||
       key.app.archivedAt
     )
@@ -51,7 +50,6 @@ export class ProviderKeyService {
         id: true,
         prefix: true,
         scopes: true,
-        expiresAt: true,
         lastUsedAt: true,
         revokedAt: true,
         createdAt: true,
@@ -63,7 +61,7 @@ export class ProviderKeyService {
 
   // Rotation: issuing a key revokes every earlier key of the app. The secret is
   // returned once and never stored.
-  async issue(appId: string, request: { scopes: string[]; expiresAt: Date }) {
+  async issue(appId: string, request: { scopes: string[] }) {
     const prefix = randomBytes(8).toString("hex");
     const secret = `pvk_${prefix}.${randomBytes(32).toString("hex")}`;
     const created = await this.db.$transaction(async (tx) => {
@@ -77,9 +75,8 @@ export class ProviderKeyService {
           prefix,
           secretHash: digest(secret),
           scopes: request.scopes,
-          expiresAt: request.expiresAt,
         },
-        select: { id: true, scopes: true, expiresAt: true },
+        select: { id: true, scopes: true },
       });
     });
     return { ...created, secret };

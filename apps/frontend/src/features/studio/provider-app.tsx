@@ -33,6 +33,7 @@ import {
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
+import { AvatarCropper } from "@/src/features/studio/avatar-cropper";
 import { VisibilityField } from "@/src/features/studio/visibility-field";
 import { CopyButton, SettingsRow } from "@/src/features/keys/settings-row";
 import { authClient } from "@/src/features/auth/auth-client";
@@ -56,11 +57,13 @@ import { formatUsdc } from "@/src/features/apps/format";
 import { newThread } from "@/src/features/chat/api";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-const IMAGE_MAX_BYTES = 1024 * 1024;
+// The picked file; the cropped upload is a 512px square well under the API limit.
+const SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const imageErrors: Record<string, string> = {
   INVALID_IMAGE_TYPE: "Use a PNG, JPG, WebP or GIF image.",
-  IMAGE_TOO_LARGE: "That image is over 1 MB.",
-  PAYLOAD_TOO_LARGE: "That image is over 1 MB.",
+  IMAGE_TOO_LARGE: "That image is too large.",
+  PAYLOAD_TOO_LARGE: "That image is too large.",
+  SOURCE_TOO_LARGE: "That image is over 10 MB.",
   FILES_DISABLED: "Image uploads aren't available on this server.",
 };
 
@@ -84,10 +87,18 @@ function ImageField({ app }: { app: ProviderAppDetail }) {
   const refresh = useRefreshApp(app.id);
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
+  const [picked, setPicked] = useState<File | null>(null);
   const upload = useMutation({
     mutationFn: (file: File) => uploadAppImage(app.id, file),
-    onSuccess: refresh,
-    onError: (cause) => setError(imageErrors[errorMessage(cause)] ?? errorMessage(cause)),
+    onSuccess: () => {
+      setPicked(null);
+      refresh();
+    },
+    // Close the cropper so the reason shows next to the field.
+    onError: (cause) => {
+      setPicked(null);
+      setError(imageErrors[errorMessage(cause)] ?? errorMessage(cause));
+    },
   });
   const remove = useMutation({
     mutationFn: () => removeAppImage(app.id),
@@ -116,7 +127,7 @@ function ImageField({ app }: { app: ProviderAppDetail }) {
           )}
         </div>
         <p id="agent-image-hint" className="text-xs text-faint">
-          PNG, JPG, WebP or GIF, up to 1 MB. Square images look best.
+          PNG, JPG, WebP or GIF, up to 10 MB. You can crop it before it&apos;s saved.
         </p>
         {error && (
           <p role="alert" className="text-xs text-destructive">
@@ -138,9 +149,16 @@ function ImageField({ app }: { app: ProviderAppDetail }) {
           if (!file) return;
           setError("");
           if (!IMAGE_TYPES.includes(file.type)) return setError(imageErrors.INVALID_IMAGE_TYPE);
-          if (file.size > IMAGE_MAX_BYTES) return setError(imageErrors.IMAGE_TOO_LARGE);
-          upload.mutate(file);
+          if (file.size > SOURCE_MAX_BYTES) return setError(imageErrors.SOURCE_TOO_LARGE);
+          setPicked(file);
         }}
+      />
+      <AvatarCropper
+        file={picked}
+        name={app.name}
+        saving={upload.isPending}
+        onCancel={() => setPicked(null)}
+        onSave={(file) => upload.mutate(file)}
       />
     </div>
   );
@@ -264,8 +282,7 @@ function ApiKeyPanel({ app }: { app: ProviderAppDetail }) {
       </ErrorNotice>
     );
   const latest = keys.data[0];
-  const active =
-    latest && !latest.revokedAt && Date.parse(latest.expiresAt) > Date.now() ? latest : null;
+  const active = latest && !latest.revokedAt ? latest : null;
   const generate = () => {
     setError("");
     if (active) setConfirm(true);
@@ -297,10 +314,8 @@ function ApiKeyPanel({ app }: { app: ProviderAppDetail }) {
             {active
               ? `Created ${date(active.createdAt)} · ${
                   active.lastUsedAt ? `last used ${date(active.lastUsedAt)}` : "not used yet"
-                } · expires ${date(active.expiresAt)}`
-              : latest && !latest.revokedAt
-                ? `The last key expired on ${date(latest.expiresAt)}. Your agent can't take jobs until it has a new one.`
-                : "Your agent can't take jobs until it has a key."}
+                }`
+              : "Your agent can't take jobs until it has a key."}
           </p>
         </div>
       )}

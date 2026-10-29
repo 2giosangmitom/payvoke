@@ -114,6 +114,14 @@ export function createApp(
       c.set("account", null);
       await next();
     })
+    // Agent images are shown by the web app, a different origin; their
+    // redirect must not carry the default same-origin resource policy. This
+    // runs after secureHeaders has set its headers.
+    .use(async (c, next) => {
+      await next();
+      if (c.req.method === "GET" && /^\/v1\/apps\/[^/]+\/image$/.test(c.req.path))
+        c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    })
     .use(secureHeaders())
     .use(
       cors({
@@ -126,7 +134,10 @@ export function createApp(
     .use(originGuard(config.WEB_ORIGIN))
     .route("/", routes)
     // Outside `routes`: MCP is not part of the RPC client.
-    .route("/", mcpRoutes((request) => self(request)));
+    .route(
+      "/",
+      mcpRoutes((request) => self(request)),
+    );
   self = (request) => app.fetch(request);
   app.onError(errorHandler(log));
   app.notFound(notFound);

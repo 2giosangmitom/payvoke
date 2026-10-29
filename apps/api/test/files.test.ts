@@ -713,6 +713,7 @@ it("pays the owner's wallet and serves the agent image the owner uploads", async
   const served = await send("GET", url);
   assert.equal(served.statusCode, 302);
   assert.match(String(served.headers.location), /^memory:\/\/get\/app-images\//);
+  assert.equal(served.headers["cross-origin-resource-policy"], "cross-origin");
 
   const replaced = await send("PUT", `/v1/provider/apps/${appId}/image`, png, {
     "content-type": "image/webp",

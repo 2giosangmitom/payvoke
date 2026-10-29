@@ -89,7 +89,7 @@ export const createProviderKey = (appId: string) =>
   call(
     provider[":appId"].keys.$post({
       param: { appId },
-      json: { expiresAt: new Date(Date.now() + 90 * 86400000).toISOString() },
+      json: {},
     }),
   );
 export const revokeProviderKey = (appId: string, keyId: string) =>

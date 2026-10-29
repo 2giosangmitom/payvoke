@@ -62,30 +62,14 @@ export const appPatchCodes = {
 export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 export const IMAGE_MAX_BYTES = 1024 * 1024;
 
-const DAY_MS = 86_400_000;
-
-export const keyRequestBody = z
-  .object({
-    scopes: z
-      .array(z.enum(KEY_SCOPES))
-      .min(1)
-      .refine((scopes) => new Set(scopes).size === scopes.length)
-      .default([...KEY_SCOPES]),
-    expiresAt: z.string().optional(),
-  })
-  .transform(({ scopes, expiresAt }, ctx) => {
-    const now = Date.now();
-    const expiry = new Date(expiresAt ?? now + 90 * DAY_MS);
-    if (
-      !Number.isFinite(expiry.getTime()) ||
-      expiry.getTime() <= now ||
-      expiry.getTime() > now + 365 * DAY_MS
-    ) {
-      ctx.addIssue({ code: "custom", path: ["expiresAt"], message: "Invalid expiry" });
-      return z.NEVER;
-    }
-    return { scopes, expiresAt: expiry };
-  });
+// App keys never expire, like a bot token: they work until reset or revoked.
+export const keyRequestBody = z.object({
+  scopes: z
+    .array(z.enum(KEY_SCOPES))
+    .min(1)
+    .refine((scopes) => new Set(scopes).size === scopes.length)
+    .default([...KEY_SCOPES]),
+});
 
 // Shape of a command definition; the service checks options, schema and terms.
 export const commandBody = z

@@ -128,7 +128,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const keys = `/v1/provider/apps/${id}/keys`;
   const key = await web("POST", keys, {
     scopes: ["products:write"],
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   assert.equal(key.statusCode, 201, key.body);
   assert.equal((await web("GET", keys, undefined, otherCookie)).statusCode, 404);
@@ -350,7 +349,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal((await web("GET", `/v1/quotes/${quoted.quoteId}`)).json().quote, null);
   const workerKey = await web("POST", keys, {
     scopes: ["events:read", "events:ack", "reports:write"],
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   assert.equal(workerKey.statusCode, 201, workerKey.body);
   const worker = workerKey.json().secret;
@@ -978,7 +976,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   );
   const rotated = await web("POST", keys, {
     scopes: ["products:write"],
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   assert.equal(rotated.statusCode, 201, rotated.body);
   assert.equal(
@@ -994,7 +991,6 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   );
   const restricted = await web("POST", keys, {
     scopes: ["events:read"],
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   assert.equal(restricted.statusCode, 201, restricted.body);
   assert.equal(
