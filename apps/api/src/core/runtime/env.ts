@@ -1,13 +1,56 @@
-import envSchema from "env-schema";
-import type { TSchema, Static } from "typebox";
+import { z } from "zod";
 
-// Every service validates only the variables it owns. Process env is read
-// explicitly so tests can pass a plain object.
-export function loadEnv<T extends TSchema>(
+// Env values arrive as strings; tests pass plain objects with real types.
+// These conversions match the env-schema/Ajv rules the config used before:
+// a value that does not convert exactly is a startup error, never a guess.
+
+// "true" and 1 are true; "false", 0 and null are false. "1", "yes" and "" fail.
+export const envBoolean = () =>
+  z.preprocess(
+    (value) =>
+      value === "true" || value === 1
+        ? true
+        : value === "false" || value === 0 || value === null
+          ? false
+          : value,
+    z.boolean(),
+  );
+
+// A non-empty integral string, a boolean or null; "" and "1.5" fail.
+export const envInteger = ({ min, max }: { min?: number; max?: number } = {}) => {
+  let integer = z.number().int();
+  if (min !== undefined) integer = integer.min(min);
+  if (max !== undefined) integer = integer.max(max);
+  return z.preprocess(
+    (value) =>
+      typeof value === "boolean" || value === null
+        ? Number(value)
+        : typeof value === "string" && value !== "" && Number(value) === Number(value)
+          ? Number(value)
+          : value,
+    integer,
+  );
+};
+
+// Numbers and booleans are stringified; null becomes "".
+export const envString = () =>
+  z.preprocess(
+    (value) =>
+      typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : value === null
+          ? ""
+          : value,
+    z.string(),
+  );
+
+// Every service validates only the variables it owns; `z.object` drops
+// unknown keys. Process env is read explicitly so tests can pass a plain object.
+export function loadEnv<T extends z.ZodObject>(
   schema: T,
-  source: NodeJS.ProcessEnv = process.env,
-): Readonly<Static<T>> {
-  return envSchema<Readonly<Static<T>>>({ schema, data: source, env: false });
+  source: Record<string, unknown> = process.env,
+): Readonly<z.output<T>> {
+  return schema.parse(source);
 }
 
 // RPC and service origins carry no credentials or fragments, and use TLS

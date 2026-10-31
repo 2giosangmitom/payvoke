@@ -44,18 +44,15 @@
     "@standard-community/standard-json": "^0.4.0",
     "@standard-community/standard-openapi": "^0.2.11",
     "@x402/core": "2.28.0",
-    "ajv": "8.20.0",
     "awilix": "13.0.5",
     "better-auth": "1.7.11",
     "close-with-grace": "^2.5.0",
     "dotenv": "^18.0.9",
-    "env-schema": "^8.0.1",
     "hono": "^4.13.14",
     "hono-openapi": "^1.5.0",
     "jsonc-parser": "3.3.1",
     "pg": "^8.23.1",
     "prisma": "^7.10.1",
-    "typebox": "^1.4.3",
     "viem": "2.57.7",
     "zod": "^4.6.7"
   },
@@ -67,6 +64,7 @@
     "@types/emscripten": "^1.41.6",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "ajv": "8.20.0",
     "typescript": "^7.0.2"
   }
 }

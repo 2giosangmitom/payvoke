@@ -1,26 +1,25 @@
-import { Type, type Static } from "typebox";
+import { z } from "zod";
 import { getAddress } from "viem";
 import { ASSET } from "@payvoke/shared/x402";
 import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
 import type { VaultDeployment } from "@payvoke/shared/x402/chain";
-import { isSafeServiceUrl } from "./env";
+import { envInteger, envString, isSafeServiceUrl } from "./env";
 
 // Shared by every process that talks to the deployed vault. Values come from an
 // approved deployment manifest (packages/vault/ignition/deployments).
 export const deploymentEnv = {
-  API_ORIGIN: Type.String(),
-  RPC_URL: Type.String(),
-  VAULT_ADDRESS: Type.String(),
-  RELAYER_ADDRESS: Type.String(),
-  EXPECTED_VAULT_CODE_HASH: Type.String(),
-  VAULT_FEE_CAP_BPS: Type.Integer(),
-  VAULT_MAX_QUOTE_LIFETIME_SECONDS: Type.Integer(),
-  VAULT_MAX_HOLD_SECONDS: Type.Integer(),
+  API_ORIGIN: envString(),
+  RPC_URL: envString(),
+  VAULT_ADDRESS: envString(),
+  RELAYER_ADDRESS: envString(),
+  EXPECTED_VAULT_CODE_HASH: envString(),
+  VAULT_FEE_CAP_BPS: envInteger(),
+  VAULT_MAX_QUOTE_LIFETIME_SECONDS: envInteger(),
+  VAULT_MAX_HOLD_SECONDS: envInteger(),
 };
-const deploymentSchema = Type.Object(deploymentEnv);
-export type DeploymentEnv = Static<typeof deploymentSchema>;
+export type DeploymentEnv = z.output<z.ZodObject<typeof deploymentEnv>>;
 
-// Semantic policy is intentionally outside env-schema: no alternate runtime
+// Semantic policy is intentionally outside the env schema: no alternate runtime
 // chain/asset switch or local-dev deployment fallback is exposed here.
 export function vaultDeployment(config: DeploymentEnv): VaultDeployment {
   if (

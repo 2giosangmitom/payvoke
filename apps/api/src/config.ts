@@ -1,30 +1,30 @@
-import { Type, type Static } from "typebox";
-import { loadEnv, type DeploymentEnv } from "#core/runtime";
+import { z } from "zod";
+import { envBoolean, envInteger, envString, loadEnv, type DeploymentEnv } from "#core/runtime";
 import { storageEnv } from "#core/storage";
 
-const optionalText = () => Type.Optional(Type.String());
-const optionalInteger = () => Type.Optional(Type.Integer());
+const optionalText = () => envString().optional();
+const optionalInteger = () => envInteger().optional();
 
-const schema = Type.Object({
-  HOST: Type.String({ default: "127.0.0.1" }),
-  PORT: Type.Integer({ default: 3001 }),
-  LOG_LEVEL: Type.String({ default: "info" }),
-  DATABASE_URL: Type.String(),
+const schema = z.object({
+  HOST: envString().default("127.0.0.1"),
+  PORT: envInteger().default(3001),
+  LOG_LEVEL: envString().default("info"),
+  DATABASE_URL: envString(),
   // Postgres connections per process; the API and its workers share them.
-  DATABASE_POOL_MAX: Type.Integer({ minimum: 1, maximum: 50, default: 5 }),
+  DATABASE_POOL_MAX: envInteger({ min: 1, max: 50 }).default(5),
   // Wake-ups, job queues and the shared rate-limit store; not a source of truth.
-  REDIS_URL: Type.String(),
-  API_ORIGIN: Type.String(),
-  WEB_ORIGIN: Type.String(),
-  BETTER_AUTH_SECRET: Type.String(),
-  CHAIN_ID: Type.Integer({ default: 43113 }),
-  USDC_ADDRESS: Type.String({ default: "0x5425890298aed601595a70AB815c96711a31Bc65" }),
+  REDIS_URL: envString(),
+  API_ORIGIN: envString(),
+  WEB_ORIGIN: envString(),
+  BETTER_AUTH_SECRET: envString(),
+  CHAIN_ID: envInteger().default(43113),
+  USDC_ADDRESS: envString().default("0x5425890298aed601595a70AB815c96711a31Bc65"),
   VAULT_ADDRESS: optionalText(),
   // true runs the in-process facilitator and needs the vault deployment below.
-  PAYMENTS_ENABLED: Type.Boolean({ default: false }),
+  PAYMENTS_ENABLED: envBoolean().default(false),
   // false = verify/preview only. true durably journals new submissions for the
   // settlement worker; journaling signs nothing.
-  SETTLEMENT_ENABLED: Type.Boolean({ default: false }),
+  SETTLEMENT_ENABLED: envBoolean().default(false),
   // Vault deployment (packages/vault/ignition/deployments), required by the
   // facilitator and both signing workers.
   RPC_URL: optionalText(),
@@ -35,22 +35,22 @@ const schema = Type.Object({
   VAULT_MAX_HOLD_SECONDS: optionalInteger(),
   // S3-compatible file storage; FILES_ENABLED=true requires the S3_* settings.
   ...storageEnv,
-  FILE_MAX_BYTES: Type.Integer({ minimum: 1, maximum: 1073741824, default: 26214400 }),
-  FILE_UPLOAD_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 600 }),
-  FILE_DOWNLOAD_TTL_SECONDS: Type.Integer({ minimum: 30, maximum: 3600, default: 300 }),
+  FILE_MAX_BYTES: envInteger({ min: 1, max: 1073741824 }).default(26214400),
+  FILE_UPLOAD_TTL_SECONDS: envInteger({ min: 60, max: 3600 }).default(600),
+  FILE_DOWNLOAD_TTL_SECONDS: envInteger({ min: 30, max: 3600 }).default(300),
   // Free pre-sale buyer messages per chat thread between paid invocations.
-  PRESALE_MESSAGE_LIMIT: Type.Integer({ minimum: 1, maximum: 500, default: 20 }),
+  PRESALE_MESSAGE_LIMIT: envInteger({ min: 1, max: 500 }).default(20),
 
   // --- Workers, run inside this process ---
   // Keyless: delivery verification and upload cleanup.
-  JOB_WORKER_ENABLED: Type.Boolean({ default: true }),
+  JOB_WORKER_ENABLED: envBoolean().default(true),
   // Signs and sends reserveHold with the relayer key.
-  SETTLEMENT_WORKER_ENABLED: Type.Boolean({ default: false }),
+  SETTLEMENT_WORKER_ENABLED: envBoolean().default(false),
   RELAYER_PRIVATE_KEY: optionalText(),
   // First block scanned for finalized holds (the vault deployment block).
   DEPLOYMENT_START_BLOCK: optionalText(),
   // Automatic refunds and releases with two distinct wallets.
-  FINANCE_WORKER_ENABLED: Type.Boolean({ default: false }),
+  FINANCE_WORKER_ENABLED: envBoolean().default(false),
   FINANCE_APPROVER_PRIVATE_KEY: optionalText(),
   FINANCE_EXECUTOR_PRIVATE_KEY: optionalText(),
   // Gas budgets: integer strings in wei. Each signing wallet has its own.
@@ -70,7 +70,7 @@ const schema = Type.Object({
   FINANCE_GAS_MAX_WINDOW_COST: optionalText(),
 });
 
-export type Config = Readonly<Static<typeof schema>>;
+export type Config = Readonly<z.output<typeof schema>>;
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   return loadEnv(schema, source);

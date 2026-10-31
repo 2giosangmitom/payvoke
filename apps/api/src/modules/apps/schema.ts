@@ -1,4 +1,4 @@
-import { schemaCompiler } from "#core/runtime";
+import { inputSchema } from "#core/runtime";
 import { minEvidenceLevels, type MinEvidence } from "#core/payments/evidence";
 
 export const COMMAND_OPTION_TYPES = ["STRING", "INTEGER", "NUMBER", "BOOLEAN", "FILE"] as const;
@@ -25,14 +25,6 @@ export type CommandOption = {
 // optionally with `accept` and `maxBytes`, alone or as array items.
 const MAX_FILE_ITEMS = 10;
 const MIME = /^[a-z]+\/(\*|[\w.+-]+)$/;
-export const inputValidator = schemaCompiler(
-  { strict: true, useDefaults: true, coerceTypes: false },
-  (ajv) => {
-    ajv.addFormat("file", /^[\w-]{1,128}$/);
-    ajv.addKeyword({ keyword: "accept", schemaType: "array" });
-    ajv.addKeyword({ keyword: "maxBytes", schemaType: "number" });
-  },
-);
 
 export const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -271,7 +263,7 @@ export function commandPositional(options: CommandOption[], requested: unknown):
 export function validateCommandInputSchema(schema: unknown): boolean {
   if (!checkJsonSchema(schema) || !record(schema) || schema.type !== "object") return false;
   try {
-    inputValidator(schema);
+    inputSchema(schema);
     return true;
   } catch {
     return false;

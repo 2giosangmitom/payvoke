@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { CryptoHasher, S3Client } from "bun";
-import { Type, type Static } from "typebox";
-import { isPrivateServiceUrl, isSafeServiceUrl } from "#core/runtime";
+import type { z } from "zod";
+import { envBoolean, envString, isPrivateServiceUrl, isSafeServiceUrl } from "#core/runtime";
 import { encodeKey, S3Signer } from "./sigv4";
 
 // A presigned request the uploader replays exactly: the signed headers are
@@ -41,18 +41,17 @@ export interface ObjectStorage {
 // Shared env fields. Required ones are optional here and enforced by
 // `createStorage` only when files are enabled, so other deployments start.
 export const storageEnv = {
-  FILES_ENABLED: Type.Boolean({ default: false }),
-  S3_ENDPOINT: Type.Optional(Type.String()),
+  FILES_ENABLED: envBoolean().default(false),
+  S3_ENDPOINT: envString().optional(),
   // Presigned URLs must be reachable by browsers and providers; defaults to S3_ENDPOINT.
-  S3_PUBLIC_ENDPOINT: Type.Optional(Type.String()),
-  S3_REGION: Type.Optional(Type.String()),
-  S3_BUCKET: Type.Optional(Type.String()),
-  S3_ACCESS_KEY_ID: Type.Optional(Type.String()),
-  S3_SECRET_ACCESS_KEY: Type.Optional(Type.String()),
-  S3_FORCE_PATH_STYLE: Type.Boolean({ default: false }),
+  S3_PUBLIC_ENDPOINT: envString().optional(),
+  S3_REGION: envString().optional(),
+  S3_BUCKET: envString().optional(),
+  S3_ACCESS_KEY_ID: envString().optional(),
+  S3_SECRET_ACCESS_KEY: envString().optional(),
+  S3_FORCE_PATH_STYLE: envBoolean().default(false),
 };
-const storageEnvSchema = Type.Object(storageEnv);
-export type StorageEnv = Static<typeof storageEnvSchema>;
+export type StorageEnv = z.output<z.ZodObject<typeof storageEnv>>;
 
 // The server-side endpoint may be a private service name (`http://rustfs:9000`);
 // the public endpoint is fetched by browsers and stays https or loopback.
