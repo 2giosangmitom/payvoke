@@ -1,13 +1,19 @@
 import { Hono } from "hono";
 import type { AppEnv, RouteContext } from "../../http/context";
 import { maxBody, rateLimit } from "../../http/limits";
+import { builderRoute } from "../../http/openapi";
 import { validate } from "../../http/validate";
 import { requireAccount } from "../auth/guard";
 import type { KeyScope } from "../provider/provider.validation";
+import { z } from "zod";
 import {
   buyerMessageBody,
+  messageView,
   offerBody,
+  offerDoc,
+  offerView,
   providerMessageBody,
+  providerMessageDoc,
   toolResultBody,
 } from "./presale.schemas";
 
@@ -61,6 +67,21 @@ export const presaleRoutes = new Hono<AppEnv>()
     `${provider}/messages`,
     maxBody(32768),
     validate("json", providerMessageBody, "INVALID_MESSAGE"),
+    builderRoute({
+      operationId: "sendMessage",
+      tag: "Threads",
+      summary: "Send a message",
+      description:
+        "Replies in a buyer's thread with markdown text, a built-in tool, or both. Free for the buyer. At most 5 provider messages in a row without a buyer reply.",
+      scope: "messages:write",
+      body: providerMessageDoc,
+      responses: { 201: { description: "The message", schema: messageView } },
+      errors: {
+        400: ["INVALID_MESSAGE", "INVALID_TOOL_CALL"],
+        404: ["THREAD_NOT_FOUND"],
+        409: ["IDEMPOTENCY_CONFLICT", "PROVIDER_MESSAGE_LIMIT"],
+      },
+    }),
     async (c) =>
       c.json(
         await c.var.cradle.presaleService.sendProviderMessage(
@@ -71,19 +92,54 @@ export const presaleRoutes = new Hono<AppEnv>()
         201,
       ),
   )
-  .post(`${provider}/messages/:messageId/acks`, async (c) =>
-    c.json(
-      await c.var.cradle.presaleService.acknowledgeMessage(
-        await providerApp(c, "events:ack"),
-        c.req.param("threadId"),
-        c.req.param("messageId"),
+  .post(
+    `${provider}/messages/:messageId/acks`,
+    builderRoute({
+      operationId: "acknowledgeMessage",
+      tag: "Threads",
+      summary: "Acknowledge a buyer message",
+      description:
+        "Removes a `thread.message` event from the feed. Until then the feed sends it again. Idempotent.",
+      scope: "events:ack",
+      responses: {
+        200: { description: "Acknowledged", schema: z.object({ acknowledged: z.literal(true) }) },
+      },
+      errors: { 404: ["MESSAGE_NOT_FOUND"] },
+    }),
+    async (c) =>
+      c.json(
+        await c.var.cradle.presaleService.acknowledgeMessage(
+          await providerApp(c, "events:ack"),
+          c.req.param("threadId"),
+          c.req.param("messageId"),
+        ),
       ),
-    ),
   )
   .post(
     `${provider}/offers`,
     maxBody(65536),
     validate("json", offerBody, "INVALID_OFFER"),
+    builderRoute({
+      operationId: "createOffer",
+      tag: "Threads",
+      summary: "Make an offer",
+      description:
+        "Proposes a priced job in reply to a buyer. Offers are immutable, and a new one supersedes the thread's open offer. The buyer accepts it by turning it into a quote and paying; the conversation so far is hashed into it. Every term except delivery time comes from the command's revision.",
+      scope: "offers:write",
+      body: offerDoc,
+      responses: { 201: { description: "The open offer", schema: offerView } },
+      errors: {
+        400: [
+          "INVALID_OFFER",
+          "INVALID_DELIVERY_SECONDS",
+          "INVALID_ARGUMENTS",
+          "INVALID_ARGUMENT_FILES",
+        ],
+        404: ["THREAD_NOT_FOUND", "COMMAND_NOT_FOUND"],
+        409: ["IDEMPOTENCY_CONFLICT", "NO_BUYER_REQUEST", "OFFER_CONFLICT"],
+        422: ["PRICE_ABOVE_MAX", "PRICE_BELOW_FLOOR", "POLICY_NOT_CONFIGURED"],
+      },
+    }),
     async (c) =>
       c.json(
         await c.var.cradle.presaleService.createOffer(
@@ -94,12 +150,23 @@ export const presaleRoutes = new Hono<AppEnv>()
         201,
       ),
   )
-  .post(`${provider}/offers/:offerId/withdrawals`, async (c) =>
-    c.json(
-      await c.var.cradle.presaleService.withdrawOffer(
-        await providerApp(c, "offers:write"),
-        c.req.param("threadId"),
-        c.req.param("offerId"),
+  .post(
+    `${provider}/offers/:offerId/withdrawals`,
+    builderRoute({
+      operationId: "withdrawOffer",
+      tag: "Threads",
+      summary: "Withdraw an offer",
+      description: "Closes an open offer before the buyer accepts it.",
+      scope: "offers:write",
+      responses: { 200: { description: "The withdrawn offer", schema: offerView } },
+      errors: { 404: ["OFFER_NOT_FOUND"], 409: ["OFFER_NOT_OPEN"] },
+    }),
+    async (c) =>
+      c.json(
+        await c.var.cradle.presaleService.withdrawOffer(
+          await providerApp(c, "offers:write"),
+          c.req.param("threadId"),
+          c.req.param("offerId"),
+        ),
       ),
-    ),
   );

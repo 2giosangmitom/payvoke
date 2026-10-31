@@ -22,6 +22,7 @@ src/
     *.service.ts          # business rules and Prisma access
   core/                   # no HTTP: db, queue, storage, runtime, payments, facilitator
   workers/                # job, settlement and finance workers, started by server.ts
+docs/                     # builder guide text, compiled into the OpenAPI spec
 prisma/                   # schema and migrations
 test/                     # API tests, e2e payments and conformance (e2e/), fixtures (kit/)
 ```
@@ -58,6 +59,12 @@ former Fastify lifecycle: rate limit, body limit, parsing and validation, then
 `requireAccount`, then the handler. Handlers return `c.json(value, status)` so
 response types reach the client; serialize JSON columns with their domain types
 (see `modules/apps/serializers.ts`).
+
+### Builder API reference
+
+The routes builders call with an app key are documented in place and generated into an OpenAPI 3.1 spec. `validate()` (built on `hono-openapi`'s validator) documents every request schema. A builder route also chains `builderRoute({ operationId, tag, summary, description, scope, responses, errors })` from `http/openapi.ts` after its validators. It adds the app-key security, the scope, the error codes and the response schemas, and a `body` that documents a request the validator only checks loosely. Response schemas are zod objects with `.meta({ id })` next to each module's request schemas.
+
+`src/builder-spec.ts` builds the spec from `routes` and the guide markdown in `docs/`, keeping only builder-tagged operations. `bun run docs` writes it, with `llms.txt` and `llms-full.txt`, into the web app (`bun run docs --check` fails when they are stale). `test/openapi.test.ts` checks that the committed copy is current and that real responses match the documented schemas.
 
 ### Dependency injection
 

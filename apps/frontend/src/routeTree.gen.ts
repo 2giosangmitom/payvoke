@@ -13,6 +13,7 @@ import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as RunRouteImport } from './routes/run'
 import { Route as MarketIndexRouteImport } from './routes/_market.index'
 import { Route as MarketAgentsRouteImport } from './routes/_market.agents'
+import { Route as MarketDocsRouteImport } from './routes/_market.docs'
 import { Route as MarketStoreRouteImport } from './routes/_market.store'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
 import { Route as ChatThreadIdRouteImport } from './routes/chat.$threadId'
@@ -23,6 +24,8 @@ import { Route as ConsoleConnectRouteImport } from './routes/console.connect'
 import { Route as ConsoleKeysRouteImport } from './routes/console.keys'
 import { Route as ConsoleWalletRouteImport } from './routes/console.wallet'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
+import { Route as MarketDocsIndexRouteImport } from './routes/_market.docs.index'
+import { Route as MarketDocsSectionRouteImport } from './routes/_market.docs.$section'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
 import { Route as MarketStoreAppIdRouteImport } from './routes/_market.store.$appId'
 import { Route as ConsoleApproveQuoteIdRouteImport } from './routes/console.approve.$quoteId'
@@ -59,6 +62,11 @@ const MarketIndexRoute = MarketIndexRouteImport.update({
 const MarketAgentsRoute = MarketAgentsRouteImport.update({
   id: '/agents',
   path: '/agents',
+  getParentRoute: () => MarketRoute,
+} as any)
+const MarketDocsRoute = MarketDocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => MarketRoute,
 } as any)
 const MarketStoreRoute = MarketStoreRouteImport.update({
@@ -111,6 +119,16 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/dashboard/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketDocsIndexRoute = MarketDocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketDocsRoute,
+} as any)
+const MarketDocsSectionRoute = MarketDocsSectionRouteImport.update({
+  id: '/$section',
+  path: '/$section',
+  getParentRoute: () => MarketDocsRoute,
+} as any)
 const MarketStoreIndexRoute = MarketStoreIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -158,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/console': typeof ConsoleRouteWithChildren
   '/run': typeof RunRoute
   '/agents': typeof MarketAgentsRoute
+  '/docs': typeof MarketDocsRouteWithChildren
   '/store': typeof MarketStoreRouteWithChildren
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
@@ -168,10 +187,12 @@ export interface FileRoutesByFullPath {
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/docs/$section': typeof MarketDocsSectionRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
+  '/docs/': typeof MarketDocsIndexRoute
   '/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
   '/console/studio/': typeof ConsoleStudioIndexRoute
@@ -190,10 +211,12 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatIndexRoute
   '/console': typeof ConsoleIndexRoute
   '/dashboard': typeof DashboardIndexRoute
+  '/docs/$section': typeof MarketDocsSectionRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
+  '/docs': typeof MarketDocsIndexRoute
   '/store': typeof MarketStoreIndexRoute
   '/console/chat': typeof ConsoleChatIndexRoute
   '/console/studio': typeof ConsoleStudioIndexRoute
@@ -206,6 +229,7 @@ export interface FileRoutesById {
   '/console': typeof ConsoleRouteWithChildren
   '/run': typeof RunRoute
   '/_market/agents': typeof MarketAgentsRoute
+  '/_market/docs': typeof MarketDocsRouteWithChildren
   '/_market/store': typeof MarketStoreRouteWithChildren
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/console/activity': typeof ConsoleActivityRoute
@@ -217,10 +241,12 @@ export interface FileRoutesById {
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/_market/docs/$section': typeof MarketDocsSectionRoute
   '/_market/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
   '/console/chat/$threadId': typeof ConsoleChatThreadIdRoute
   '/dashboard/apps/$appId': typeof DashboardAppsAppIdRoute
+  '/_market/docs/': typeof MarketDocsIndexRoute
   '/_market/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
   '/console/studio/': typeof ConsoleStudioIndexRoute
@@ -234,6 +260,7 @@ export interface FileRouteTypes {
     | '/console'
     | '/run'
     | '/agents'
+    | '/docs'
     | '/store'
     | '/chat/$threadId'
     | '/console/activity'
@@ -244,10 +271,12 @@ export interface FileRouteTypes {
     | '/chat/'
     | '/console/'
     | '/dashboard/'
+    | '/docs/$section'
     | '/store/$appId'
     | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
+    | '/docs/'
     | '/store/'
     | '/console/chat/'
     | '/console/studio/'
@@ -266,10 +295,12 @@ export interface FileRouteTypes {
     | '/chat'
     | '/console'
     | '/dashboard'
+    | '/docs/$section'
     | '/store/$appId'
     | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
+    | '/docs'
     | '/store'
     | '/console/chat'
     | '/console/studio'
@@ -281,6 +312,7 @@ export interface FileRouteTypes {
     | '/console'
     | '/run'
     | '/_market/agents'
+    | '/_market/docs'
     | '/_market/store'
     | '/chat/$threadId'
     | '/console/activity'
@@ -292,10 +324,12 @@ export interface FileRouteTypes {
     | '/chat/'
     | '/console/'
     | '/dashboard/'
+    | '/_market/docs/$section'
     | '/_market/store/$appId'
     | '/console/approve/$quoteId'
     | '/console/chat/$threadId'
     | '/dashboard/apps/$appId'
+    | '/_market/docs/'
     | '/_market/store/'
     | '/console/chat/'
     | '/console/studio/'
@@ -355,6 +389,13 @@ declare module '@tanstack/react-router' {
       path: '/agents'
       fullPath: '/agents'
       preLoaderRoute: typeof MarketAgentsRouteImport
+      parentRoute: typeof MarketRoute
+    }
+    '/_market/docs': {
+      id: '/_market/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof MarketDocsRouteImport
       parentRoute: typeof MarketRoute
     }
     '/_market/store': {
@@ -427,6 +468,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_market/docs/': {
+      id: '/_market/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof MarketDocsIndexRouteImport
+      parentRoute: typeof MarketDocsRoute
+    }
+    '/_market/docs/$section': {
+      id: '/_market/docs/$section'
+      path: '/$section'
+      fullPath: '/docs/$section'
+      preLoaderRoute: typeof MarketDocsSectionRouteImport
+      parentRoute: typeof MarketDocsRoute
+    }
     '/_market/store/': {
       id: '/_market/store/'
       path: '/'
@@ -486,6 +541,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface MarketDocsRouteChildren {
+  MarketDocsSectionRoute: typeof MarketDocsSectionRoute
+  MarketDocsIndexRoute: typeof MarketDocsIndexRoute
+}
+
+const MarketDocsRouteChildren: MarketDocsRouteChildren = {
+  MarketDocsSectionRoute: MarketDocsSectionRoute,
+  MarketDocsIndexRoute: MarketDocsIndexRoute,
+}
+
+const MarketDocsRouteWithChildren = MarketDocsRoute._addFileChildren(
+  MarketDocsRouteChildren,
+)
+
 interface MarketStoreRouteChildren {
   MarketStoreAppIdRoute: typeof MarketStoreAppIdRoute
   MarketStoreIndexRoute: typeof MarketStoreIndexRoute
@@ -502,12 +571,14 @@ const MarketStoreRouteWithChildren = MarketStoreRoute._addFileChildren(
 
 interface MarketRouteChildren {
   MarketAgentsRoute: typeof MarketAgentsRoute
+  MarketDocsRoute: typeof MarketDocsRouteWithChildren
   MarketStoreRoute: typeof MarketStoreRouteWithChildren
   MarketIndexRoute: typeof MarketIndexRoute
 }
 
 const MarketRouteChildren: MarketRouteChildren = {
   MarketAgentsRoute: MarketAgentsRoute,
+  MarketDocsRoute: MarketDocsRouteWithChildren,
   MarketStoreRoute: MarketStoreRouteWithChildren,
   MarketIndexRoute: MarketIndexRoute,
 }

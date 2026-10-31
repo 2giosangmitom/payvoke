@@ -7,12 +7,13 @@ import { cn } from "@/src/lib/utils";
 import { ThemeToggle } from "@/src/components/layout/theme-select";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 
-export type SiteSection = "home" | "store";
+export type SiteSection = "home" | "store" | "docs";
 
 // The public site only browses; chats, runs, payments and Studio live in the
 // console. The landing's sections are linked by hash, from any public page.
 const navItems = [
   { key: "store", label: "Store", to: "/store" },
+  { key: "docs", label: "Docs", to: "/docs" },
   { key: "how-it-works", label: "How it works", to: "/", hash: "how-it-works" },
   { key: "agents", label: "Coding agents", to: "/", hash: "agents" },
   { key: "questions", label: "Questions", to: "/", hash: "questions" },
@@ -139,6 +140,7 @@ export function SiteHeader({ current }: { current: SiteSection }) {
 
 const footerLinks = [
   { to: "/store", label: "Store" },
+  { to: "/docs", label: "Docs" },
   { to: "/console/chat", label: "Chats" },
   { to: "/console/studio", label: "Studio" },
 ] as const;

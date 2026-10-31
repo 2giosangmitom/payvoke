@@ -205,6 +205,15 @@ The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Codex and other 
 
 3. To pay, the host calls `pay_offer`. Each key has a vault grant signer derived from its secret (HKDF-SHA256); Payvoke stores only the signer's address. If the price fits the limits of the grant registered for that signer, the API derives the key from the presented secret for that request, signs the `DebitAuthorization` and pays. Otherwise the host gets an approval link. A copy of the database cannot spend, and the grant's on-chain caps bound what a leaked key can. Limits and expiry can be changed later from the console with `updateGrant`.
 
+### Builder docs
+
+The web app serves the builder API reference at `/docs`, plus `/llms.txt`, `/llms-full.txt` and `/openapi.json` for coding agents. All of it is generated from the API's routes and zod schemas, with the guide text in `apps/api/docs/`. After changing a builder route or its schemas, regenerate and commit the output:
+
+```sh
+bun --filter api docs          # write the spec and llms files into apps/frontend
+bun --filter api docs --check  # fail if they are stale (the API tests check it too)
+```
+
 ## Status
 
 The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The full payment path is tested locally against a Hardhat chain: quote, 402, hold, provider delivery, automatic refund or release, and reclaim. Chat works with built-in tools (forms, choices, confirmations) and offers, streamed text and OpenUI, run steps, revisions, file uploads and audio playback.

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { BadRequestError } from "../../errors";
+import { minEvidenceLevels } from "#core/payments/evidence";
+import { timestamp, usdcAmount } from "../schemas";
 import {
+  COMMAND_OPTION_TYPES,
   commandPositional,
   compileCommandInput,
   normalizeTerms,
@@ -95,6 +98,121 @@ export const commandCodes = {
 };
 // The whole command list, checked item by item by the service.
 export const commandListBody = z.array(z.unknown());
+
+// The documented command definition: what parseCommandBody accepts in full.
+const commandName = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]{0,31}$/)
+  .meta({
+    description: "Lowercase slash-command name; `help`, `cancel` and `status` are reserved.",
+  });
+const count = z.number().int().min(0);
+export const commandOption = z
+  .object({
+    name: commandName,
+    description: z.string().max(200).optional(),
+    type: z.enum(COMMAND_OPTION_TYPES),
+    required: z.boolean().optional(),
+    choices: z
+      .array(z.union([z.string(), z.number()]))
+      .min(1)
+      .max(50)
+      .optional()
+      .meta({ description: "Allowed values; strings for STRING, numbers for INTEGER and NUMBER." }),
+    min: count.optional(),
+    max: count.optional(),
+    minLength: count.optional(),
+    maxLength: count.optional(),
+    accept: z
+      .array(z.string())
+      .min(1)
+      .max(20)
+      .optional()
+      .meta({ description: "FILE only: allowed MIME types; `image/*` wildcards work." }),
+    maxBytes: z.number().int().positive().optional().meta({ description: "FILE only." }),
+    multiple: z.boolean().optional().meta({ description: "FILE only: accept up to 10 files." }),
+  })
+  .meta({
+    id: "CommandOption",
+    description:
+      "One argument of a slash command. Payvoke compiles the options into a JSON Schema.",
+  });
+export const commandTerms = z
+  .object({
+    deliverySeconds: z
+      .number()
+      .int()
+      .positive()
+      .meta({ description: "Longest time to deliver; an offer may only shorten it." }),
+    reviewSeconds: z
+      .number()
+      .int()
+      .min(0)
+      .meta({ description: "How long the buyer has to review before funds release." }),
+    revisionPolicy: z.object({
+      maxIncluded: count.meta({ description: "In-scope revisions included in the price." }),
+      description: z.string().min(1).max(1000),
+    }),
+    refundPolicy: z.string().min(1).max(2000),
+    sideEffects: z.string().min(1).max(2000),
+    dataUse: z.string().min(1).max(2000),
+    verification: z
+      .object({ minEvidence: z.enum(minEvidenceLevels) })
+      .optional()
+      .meta({ description: "Evidence floor that gates release. Defaults to `SIGN`." }),
+  })
+  .meta({
+    id: "CommandTerms",
+    description:
+      "Terms every quote of the command signs. Delivery, review, grace and quote lifetime together must fit the deployment's maximum hold.",
+  });
+export const commandDefinition = z
+  .object({
+    name: commandName,
+    description: z.string().min(1).max(2000),
+    options: z.array(commandOption).min(1).max(25),
+    positionalParameter: z.string().nullable().optional().meta({
+      description:
+        "STRING option that receives free text typed after the command. Defaults to the first required string option; null or empty for none.",
+    }),
+    maxAmount: usdcAmount
+      .optional()
+      .meta({ description: "Optional cap on every offer for this command, in atomic USDC." }),
+    terms: commandTerms,
+    expectedRevisionId: z.string().optional().meta({
+      description: "Updates only: fails with REVISION_CONFLICT unless this is the active revision.",
+    }),
+  })
+  .meta({ id: "CommandDefinition" });
+
+export const commandRevision = z
+  .object({
+    id: z.string(),
+    commandId: z.string(),
+    options: z.array(commandOption),
+    inputSchema: z
+      .record(z.string(), z.unknown())
+      .meta({ description: "JSON Schema (2020-12) compiled from the options." }),
+    outputSchema: z.record(z.string(), z.unknown()).nullable(),
+    positionalParameter: z.string().nullable(),
+    maxGrossAmount: usdcAmount.nullable(),
+    terms: commandTerms,
+    deliverySeconds: z.number().int(),
+    reviewSeconds: z.number().int(),
+    createdAt: timestamp,
+  })
+  .meta({ id: "CommandRevision", description: "An immutable version of a command." });
+export const ownedCommand = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    archivedAt: timestamp.nullable(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    revision: commandRevision.nullable(),
+  })
+  .meta({ id: "Command" });
 
 const UINT256_MAX = (1n << 256n) - 1n;
 const atomicAmount = (value: unknown): value is string =>

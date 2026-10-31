@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id } from "../schemas";
+import { id, timestamp } from "../schemas";
 
 // Downloads are attachments, so the allowlist bounds what a buyer or provider
 // can hand the other side. Only audio and images also get an inline URL, for
@@ -54,3 +54,58 @@ export const providerUploadBody = z.object(upload).strict();
 export const buyerUploadBody = z.object({ ...upload, threadId: id }).strict();
 export type UploadBody = z.infer<typeof providerUploadBody>;
 export type BuyerUploadBody = z.infer<typeof buyerUploadBody>;
+
+// Documented views (http/openapi.ts).
+export const fileManifestEntry = z
+  .object({
+    fileId: z.string(),
+    name: z.string(),
+    contentType: z.string(),
+    size: z.number().int(),
+    sha256: z.string(),
+  })
+  .meta({
+    id: "FileManifestEntry",
+    description: "A verified file, frozen into a message, quote or result.",
+  });
+
+export const fileView = z
+  .object({
+    id: z.string(),
+    purpose: z.enum(["BUYER_INPUT", "PROVIDER_ARTIFACT"]),
+    status: z.enum(["AWAITING_UPLOAD", "READY", "REJECTED", "EXPIRED"]),
+    name: z.string(),
+    contentType: z.string(),
+    size: z.number().int(),
+    sha256: z.string(),
+    durationMs: z.number().int().nullable(),
+    peaks: z.array(z.number()).nullable(),
+    threadId: z.string().nullable(),
+    invocationId: z.string().nullable(),
+    rejectionCode: z.enum(["SIZE_MISMATCH", "CHECKSUM_MISMATCH"]).nullable(),
+    readyAt: timestamp.nullable(),
+    createdAt: timestamp,
+  })
+  .meta({ id: "File" });
+
+export const uploadTicket = z
+  .object({
+    file: fileView,
+    upload: z
+      .object({
+        url: z.string(),
+        method: z.literal("PUT"),
+        headers: z.record(z.string(), z.string()),
+        expiresAt: timestamp,
+      })
+      .nullable()
+      .meta({
+        description:
+          "Presigned PUT; send exactly these headers. Null once the file left AWAITING_UPLOAD or the upload window closed.",
+      }),
+  })
+  .meta({ id: "UploadTicket" });
+
+export const downloadTarget = z
+  .object({ fileId: z.string(), name: z.string(), url: z.string(), expiresAt: timestamp })
+  .meta({ id: "DownloadTarget", description: "A short-lived presigned GET URL." });

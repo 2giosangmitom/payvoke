@@ -1,4 +1,11 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["routeTree.gen.ts", ".agents/skills/**/*.md", ".claude/skills/**/*.md"]
+  "ignorePatterns": [
+    "routeTree.gen.ts",
+    ".agents/skills/**/*.md",
+    ".claude/skills/**/*.md",
+    "apps/frontend/public/openapi.json",
+    "apps/frontend/public/llms*.txt",
+    "apps/frontend/src/features/docs/openapi.json"
+  ]
 }

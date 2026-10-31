@@ -11,39 +11,13 @@ import type { AppEnv } from "./http/context";
 import { logger } from "./logging";
 import { errorHandler, notFound } from "./http/errors";
 import { defaultBodyLimit, memoryRateStore, redisRateStore } from "./http/limits";
-import { accessTokenRoutes } from "./modules/auth/access-token.routes";
-import { authRoutes } from "./modules/auth/auth.routes";
 import { originGuard } from "./modules/auth/guard";
-import { catalogRoutes } from "./modules/catalog/catalog.routes";
-import { fileRoutes } from "./modules/files/file.routes";
 import { mcpRoutes } from "./modules/mcp/mcp.routes";
-import { openuiRoutes } from "./modules/openui/openui.routes";
 import { createGrantReader, type GrantReader } from "./modules/payments/autopay.service";
-import { grantRoutes } from "./modules/payments/grant.routes";
-import { paymentRoutes } from "./modules/payments/payments.routes";
-import { presaleRoutes } from "./modules/presale/presale.routes";
-import { providerRoutes } from "./modules/provider/provider.routes";
-import { quoteRoutes } from "./modules/quotes/quote.routes";
-import { runRoutes } from "./modules/runs/runs.routes";
-import { threadRoutes } from "./modules/threads/thread.routes";
+import { routes } from "./routes";
 import { memorySignals, type Signals } from "./signals";
 
-// Every route, chained so the RPC client (`hc<AppType>`) sees their types.
-export const routes = new Hono<AppEnv>()
-  .route("/", authRoutes)
-  .route("/", accessTokenRoutes)
-  .route("/", quoteRoutes)
-  .route("/", paymentRoutes)
-  .route("/", grantRoutes)
-  .route("/", providerRoutes)
-  .route("/", catalogRoutes)
-  .route("/", threadRoutes)
-  .route("/", runRoutes)
-  .route("/", openuiRoutes)
-  .route("/", fileRoutes)
-  .route("/", presaleRoutes);
-
-export type AppType = typeof routes;
+export { routes, type AppType } from "./routes";
 
 // The limit for a route that sets none; most set a tighter one.
 const DEFAULT_BODY_LIMIT = 1048576;
