@@ -143,7 +143,7 @@ export function StoreDirectory() {
   const { data: session } = authClient.useSession();
   const canSave = Boolean(session);
   const apps = useInfiniteQuery({
-    queryKey: ["store", deferred, savedOnly],
+    queryKey: ["store", "list", deferred, savedOnly],
     queryFn: ({ pageParam }) => listStoreApps({ q: deferred, cursor: pageParam, saved: savedOnly }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
