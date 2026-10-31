@@ -17,6 +17,8 @@ import {
 import { Input } from "@/src/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/src/components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
+import { Skeleton } from "@/src/components/ui/skeleton";
+import { cn } from "@/src/lib/utils";
 import { Spinner } from "@/src/components/ui/spinner";
 import {
   ErrorNotice,
@@ -533,7 +535,19 @@ function EditKeyForm({
         </NativeSelect>
       </FormField>
       {reading ? (
-        <LoadingState className="py-2">Reading limits</LoadingState>
+        <div role="status" aria-busy="true" className="grid gap-3">
+          <span className="sr-only">Reading limits</span>
+          <Skeleton className="h-3.5 w-24" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
+          </div>
+        </div>
       ) : (
         <PaymentsFields
           form={form}
@@ -679,7 +693,9 @@ export function ApiKeys() {
   });
 
   const list = tokens.isPending ? (
-    <LoadingState className="py-4">Loading API keys</LoadingState>
+    <LoadingState inset rows={3}>
+      Loading API keys
+    </LoadingState>
   ) : tokens.isError ? (
     <ErrorNotice onRetry={() => void tokens.refetch()}>
       {errorMessage(tokens.error, "Couldn't load API keys.")}
@@ -703,12 +719,28 @@ export function ApiKeys() {
         return (
           <li
             key={token.id}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 border-t border-border px-4 py-3 first:border-t-0 sm:px-5"
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 border-t border-border px-4 py-3.5 first:border-t-0 sm:px-5"
           >
-            <div className="grid min-w-0 gap-0.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "row-span-2 mt-0.5 grid size-8 place-items-center",
+                autopay ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <KeyRound size={15} />
+            </span>
+            <div className="grid min-w-0 gap-1">
               <span className="flex min-w-0 items-center gap-2 text-sm">
-                <span className="truncate">{token.name}</span>
-                <span className="shrink-0 border border-border px-1.5 text-xs text-muted-foreground">
+                <span className="truncate font-medium">{token.name}</span>
+                <span
+                  className={cn(
+                    "shrink-0 border px-1.5 text-xs",
+                    autopay
+                      ? "border-primary/40 text-primary"
+                      : "border-border text-muted-foreground",
+                  )}
+                >
                   {autopay ? "Autopay" : "Asks every time"}
                 </span>
               </span>
@@ -730,14 +762,17 @@ export function ApiKeys() {
               </Button>
             </div>
             {legacy ? (
-              <span className="col-span-2 text-xs text-muted-foreground">
+              <span className="col-span-2 col-start-2 text-xs text-muted-foreground">
                 Made before keys could pay by themselves. Recreate it to use autopay.
               </span>
             ) : (
               token.autopay && (
-                <div className="col-span-2 grid gap-1.5">
+                <div className="col-span-2 col-start-2 grid gap-1.5">
                   {!grant ? (
-                    <span className="text-xs text-muted-foreground">Reading limits…</span>
+                    <span role="status" aria-label="Reading limits" className="grid gap-1.5">
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-1 w-full" />
+                    </span>
                   ) : state ? (
                     <span className="text-xs text-muted-foreground">
                       Its limit is {state.toLowerCase()}, so every payment comes to you as a link.

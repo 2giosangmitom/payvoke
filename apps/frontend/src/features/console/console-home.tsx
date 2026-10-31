@@ -157,7 +157,8 @@ export function ConsoleHome() {
   });
   const saved = useQuery({ queryKey: ["stars", user], queryFn: getStars, staleTime: 20_000 });
   const store = useQuery({
-    queryKey: ["store", "", false],
+    // Not the store page's key: that one caches infinite-query pages.
+    queryKey: ["store", "home"],
     queryFn: () => listStoreApps(),
     staleTime: 60_000,
   });

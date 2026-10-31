@@ -202,29 +202,77 @@ function Loading({
   );
 }
 
-/** Rows of a list or table: a mark, a title and a line under it. */
+/**
+ * Rows of a list or table: a mark, a title and a line under it. `inset` is
+ * for a list inside a bordered card: no outer rules, rows padded like the
+ * card's own rows.
+ */
 export function LoadingState({
   children,
   rows = 4,
+  inset = false,
+  mark = true,
   className,
 }: {
   children: ReactNode;
   rows?: number;
+  inset?: boolean;
+  mark?: boolean;
   className?: string;
 }) {
   return (
-    <Loading label={children} className={cn("grid border-y border-border py-1", className)}>
+    <Loading
+      label={children}
+      className={cn("grid", !inset && "border-y border-border py-1", className)}
+    >
       {Array.from({ length: rows }, (_, index) => (
         <div
           key={index}
-          className="flex items-center gap-3 border-b border-border py-3 last:border-b-0"
+          className={cn(
+            "flex items-center gap-3 border-b border-border py-3 last:border-b-0",
+            inset && "px-4 sm:px-5",
+          )}
         >
-          <Skeleton className="size-8 shrink-0" />
+          {mark && <Skeleton className="size-8 shrink-0" />}
           <div className="grid flex-1 gap-2">
             <Skeleton className="h-3.5" style={{ width: `${56 - index * 7}%` }} />
             <Skeleton className="h-3 w-1/3" />
           </div>
           <Skeleton className="h-3.5 w-16 max-sm:hidden" />
+        </div>
+      ))}
+    </Loading>
+  );
+}
+
+/** Settings rows (label on the left, a panel on the right), as SettingsRow lays them out. */
+export function SettingsSkeleton({
+  rows = 3,
+  label = "Loading settings",
+  className,
+}: {
+  rows?: number;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <Loading label={label} className={cn("grid", className)}>
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          className="grid gap-4 border-b border-border py-8 last:border-b-0 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-12"
+        >
+          <div className="grid content-start gap-2.5 lg:pt-1">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-3/4" />
+          </div>
+          <div className="grid gap-3 border border-border bg-card p-4 sm:p-5">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-9 w-full" />
+            {index === 0 && <Skeleton className="h-20 w-full" />}
+            <Skeleton className="h-8 w-28" />
+          </div>
         </div>
       ))}
     </Loading>

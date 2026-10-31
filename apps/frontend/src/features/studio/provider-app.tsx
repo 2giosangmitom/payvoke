@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/src/components/ui/dialog";
 import { Input } from "@/src/components/ui/input";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
 import { Textarea } from "@/src/components/ui/textarea";
 import {
@@ -20,8 +21,7 @@ import {
   EmptyState,
   ErrorNotice,
   FormField,
-  LoadingState,
-  PageSkeleton,
+  SettingsSkeleton,
   PageShell,
   Tag,
   errorMessage,
@@ -192,7 +192,15 @@ function ApiKeyPanel({ app }: { app: ProviderAppDetail }) {
       setError(errorMessage(cause));
     },
   });
-  if (keys.isPending) return <LoadingState className="py-2">Loading key…</LoadingState>;
+  if (keys.isPending)
+    return (
+      <div role="status" aria-busy="true" className="grid gap-3">
+        <span className="sr-only">Loading the key</span>
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-3.5 w-64" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+    );
   if (keys.isError)
     return (
       <ErrorNotice className="my-0" onRetry={() => void keys.refetch()}>
@@ -438,7 +446,24 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   if (app.isPending)
     return (
       <PageShell>
-        <PageSkeleton label="Loading agent" />
+        <div role="status" aria-busy="true">
+          <span className="sr-only">Loading agent</span>
+          <Skeleton className="mt-8 h-5 w-20" />
+          <div className="flex flex-col gap-6 border-b border-border pt-6 pb-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-5">
+              <Skeleton className="size-16 shrink-0" />
+              <div className="grid gap-3">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-72 max-w-full" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Skeleton className="h-9 w-32" />
+              <Skeleton className="h-9 w-28" />
+            </div>
+          </div>
+        </div>
+        <SettingsSkeleton rows={4} label="Loading agent settings" />
       </PageShell>
     );
   if (app.isError || !app.data)

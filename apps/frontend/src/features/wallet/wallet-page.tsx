@@ -6,15 +6,11 @@ import { useConnection, useReadContract, useReadContracts } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
 import { vaultAdmissionAbi, vaultFinanceAbi } from "@payvoke/shared/protocol";
 import { Button } from "@/src/components/ui/button";
-import {
-  ErrorNotice,
-  FiguresSkeleton,
-  LoadingState,
-  PageHeader,
-  PageShell,
-  errorMessage,
-} from "@/src/components/layout/page-kit";
+import { Skeleton } from "@/src/components/ui/skeleton";
+import { ErrorNotice, PageHeader, PageShell, errorMessage } from "@/src/components/layout/page-kit";
 import { authClient } from "@/src/features/auth/auth-client";
+import { getStats } from "@/src/features/people/api";
+import { AmountChart } from "@/src/features/stats/day-chart";
 import { getWallet, usdc, type WalletSummary } from "@/src/features/wallet/api";
 import { OneClickSection } from "@/src/features/wallet/one-click-pay";
 import { EarningsWithdraw, FundsPanel } from "@/src/features/wallet/vault-actions";
@@ -44,24 +40,102 @@ function Figure({ amount, className }: { amount: bigint | null; className?: stri
   );
 }
 
-// Where the money is, as one line: each place a share of the total, the held
-// part in jade and the rest in neutral steps. Zero-sized parts are skipped.
-function Allocation({ rows }: { rows: Row[] }) {
-  const known = rows.filter((row) => row.amount !== null && row.amount > 0n);
-  const total = known.reduce((sum, row) => sum + (row.amount as bigint), 0n);
-  if (total === 0n)
-    return <div aria-hidden className="h-3 border border-dashed border-border-strong/60" />;
-  const tones = ["bg-foreground/70", "bg-foreground/40", "bg-foreground/20", "bg-foreground/10"];
+const NEUTRAL_TONES = [
+  "bg-foreground/70",
+  "bg-foreground/40",
+  "bg-foreground/20",
+  "bg-foreground/10",
+];
+
+// One colour per place, fixed by its position, so the bar and its legend
+// agree: the held part in jade, the rest in neutral steps.
+function tones(rows: Row[]) {
   let neutral = 0;
+  return rows.map((row) =>
+    row.accent ? "bg-primary" : NEUTRAL_TONES[neutral++ % NEUTRAL_TONES.length]!,
+  );
+}
+
+// Where the money is, as one line: each place a share of the total.
+// Zero-sized parts are skipped.
+function Allocation({ rows }: { rows: Row[] }) {
+  const colours = tones(rows);
+  const known = rows
+    .map((row, index) => ({ row, tone: colours[index]! }))
+    .filter(({ row }) => row.amount !== null && row.amount > 0n);
+  const total = known.reduce((sum, { row }) => sum + (row.amount as bigint), 0n);
+  if (total === 0n)
+    return <div aria-hidden className="h-2.5 border border-dashed border-border-strong/60" />;
   return (
-    <div aria-hidden className="flex h-3 w-full gap-px">
-      {known.map((row) => (
+    <div aria-hidden className="flex h-2.5 w-full gap-px">
+      {known.map(({ row, tone }) => (
         <span
           key={row.label}
-          className={row.accent ? "bg-primary" : tones[neutral++ % tones.length]}
+          className={cn(tone, "transition-[flex-grow] duration-500 ease-out")}
           style={{ flexGrow: Number(((row.amount as bigint) * 10000n) / total), flexBasis: 0 }}
         />
       ))}
+    </div>
+  );
+}
+
+// The legend under the bar: every place with its swatch, amount and detail.
+function PlaceTiles({ rows }: { rows: Row[] }) {
+  const colours = tones(rows);
+  return (
+    <dl className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+      {rows.map((row, index) => (
+        <div key={row.label} className="grid content-start gap-1.5 bg-card px-4 py-3.5">
+          <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span aria-hidden className={cn("size-2 shrink-0", colours[index])} />
+            {row.label}
+          </dt>
+          <dd className="grid gap-1">
+            <Figure amount={row.amount} className="text-xl" />
+            <span className="text-xs text-faint">{row.detail}</span>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function WalletSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="grid gap-10 py-8">
+      <span className="sr-only">Loading your wallet</span>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8">
+        <div className="grid gap-6 border border-border bg-card p-5 sm:p-6">
+          <div className="grid gap-2">
+            <Skeleton className="h-3.5 w-32" />
+            <Skeleton className="h-10 w-56" />
+          </div>
+          <Skeleton className="h-2.5 w-full" />
+          <div className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="grid gap-2 bg-card px-4 py-3.5">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-6 w-20" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid content-start gap-3 border border-border bg-card p-4">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-28" />
+        </div>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8">
+        <Skeleton className="h-64" />
+        <div className="grid content-start gap-3">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -150,6 +224,12 @@ export function WalletPage() {
     queryFn: getWallet,
     refetchInterval: 30_000,
   });
+  const stats = useQuery({
+    queryKey: ["account", session?.user.id, "stats"],
+    queryFn: getStats,
+    refetchInterval: 60_000,
+  });
+  const spending = stats.data?.buyer;
   const address = (connected ?? summary.data?.wallets[0]?.address) as Address | undefined;
   const chain = useChainBalances(summary.data, address);
   const data = summary.data;
@@ -243,46 +323,85 @@ export function WalletPage() {
         }
       />
       {summary.isPending ? (
-        <div className="grid gap-8 pt-8">
-          <FiguresSkeleton />
-          <LoadingState rows={3}>Loading your wallet</LoadingState>
-        </div>
+        <WalletSkeleton />
       ) : summary.isError ? (
         <ErrorNotice onRetry={() => void summary.refetch()}>
           {errorMessage(summary.error, "Couldn't load your wallet.")}
         </ErrorNotice>
       ) : (
         <div className="grid gap-12 py-8">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
-            <section aria-labelledby="where" className="grid content-start gap-5">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8">
+            <section
+              aria-labelledby="where"
+              className="grid content-start gap-6 border border-border bg-card p-5 sm:p-6"
+            >
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div className="grid gap-1">
                   <h2 id="where" className="text-sm text-muted-foreground">
                     Your USDC in total
                   </h2>
-                  <Figure amount={owned} className="text-3xl font-medium" />
+                  <Figure amount={owned} className="text-4xl font-medium tracking-[-0.02em]" />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {chain.loading ? "Reading the chain" : "Balances read from the chain every 30 s"}
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-1.5 bg-primary",
+                      chain.loading && "animate-pulse motion-reduce:animate-none",
+                    )}
+                  />
+                  {chain.loading ? "Reading the chain" : "Live from Avalanche Fuji, every 30 s"}
                 </p>
               </div>
               <Allocation rows={buyerRows} />
-              <LedgerTable title="Balances" id="ledger" rows={buyerRows} />
+              <PlaceTiles rows={buyerRows} />
             </section>
-            <section aria-labelledby="move" className="grid content-start gap-3">
-              <h2 id="move" className="text-base font-medium">
-                Move USDC
-              </h2>
+            <section
+              aria-labelledby="move"
+              className="grid content-start gap-3 border border-border bg-card p-4 sm:p-5 lg:sticky lg:top-6"
+            >
+              <div className="grid gap-1">
+                <h2 id="move" className="text-base font-medium">
+                  Move USDC
+                </h2>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Deposit into the vault to pay for jobs, or withdraw what isn&apos;t held.
+                </p>
+              </div>
+              <FundsPanel
+                token={data!.usdc as Address}
+                vault={(data!.vault ?? null) as Address | null}
+                address={connected}
+                wallet={chain.wallet}
+                available={chain.available}
+              />
+            </section>
+          </div>
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <section aria-labelledby="spent" className="grid content-start gap-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 id="spent" className="text-base font-medium">
+                  Spent, last 30 days
+                </h2>
+                {spending && (
+                  <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                    {plural(spending.jobs, "job")} hired in all
+                  </span>
+                )}
+              </div>
               <div className="border border-border bg-card p-4">
-                <FundsPanel
-                  token={data!.usdc as Address}
-                  vault={(data!.vault ?? null) as Address | null}
-                  address={connected}
-                  wallet={chain.wallet}
-                  available={chain.available}
-                />
+                {stats.isPending ? (
+                  <Skeleton className="h-48" />
+                ) : spending ? (
+                  <AmountChart series={spending.series} label="Spent" />
+                ) : (
+                  <p className="grid h-48 place-items-center text-sm text-muted-foreground">
+                    {errorMessage(stats.error, "Couldn't load your spending.")}
+                  </p>
+                )}
               </div>
             </section>
+            <LedgerTable title="Settled payments" id="history" rows={historyRows} />
           </div>
           {data?.vault && (
             <section aria-labelledby="one-click" className="grid gap-3 lg:max-w-3xl">
@@ -298,8 +417,7 @@ export function WalletPage() {
               <OneClickSection vault={data.vault as Address} connected={connected} />
             </section>
           )}
-          <div className="grid gap-12 lg:grid-cols-2">
-            <LedgerTable title="Settled payments" id="history" rows={historyRows} />
+          <div className="lg:max-w-3xl">
             {data && data.provider.apps > 0 ? (
               <div className="grid content-start gap-4">
                 <LedgerTable
