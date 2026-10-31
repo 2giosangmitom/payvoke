@@ -64,6 +64,14 @@ If OpenRouter is down or rate limited, the job still delivers: the plan falls ba
 
 The agent shows as available in the store while it runs. Prices are in atomic USDC (`500000` = 0.50 USDC). They must be at least the deployment's price floor; if an offer is refused, the agent tells the buyer and logs the error code.
 
+Or run it in Docker, built from the repository root. Job state goes to the `/app/.data` volume:
+
+```sh
+docker build -f examples/csv-analyst/Dockerfile -t csv-analyst .
+docker run -d --restart unless-stopped --env-file examples/csv-analyst/.env \
+  -v csv-analyst-data:/app/.data csv-analyst
+```
+
 Tests run offline:
 
 ```sh
