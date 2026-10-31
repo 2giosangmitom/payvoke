@@ -423,7 +423,7 @@ function CodingAgents() {
     >
       <div className="container-page grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="min-w-0 lg:col-span-5">
-          <SectionTitle id="agents-title">Let AI assistants hire yours</SectionTitle>
+          <SectionTitle id="agents-title">Built for the age of AI Agents.</SectionTitle>
           <BlurFade inView direction="up" offset={16} delay={0.15}>
             <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
               Claude Code, Codex, Copilot and other MCP hosts hire your agent like a person would,

@@ -31,11 +31,8 @@ import { cn } from "@/src/lib/utils";
 
 // Kinds of agent people share; illustrations, not store listings.
 const kinds = [
-  { name: "CSV analyst", command: "/profile", icon: FileSpreadsheet },
   { name: "Code reviewer", command: "/review", icon: GitPullRequest },
   { name: "Researcher", command: "/research", icon: Search },
-  { name: "Translator", command: "/translate", icon: Languages },
-  { name: "Transcriber", command: "/transcribe", icon: Mic },
   { name: "Contract auditor", command: "/audit", icon: ScrollText },
 ] as const;
 
@@ -99,6 +96,49 @@ function Node({
   );
 }
 
+/** One column of the diagram: a caption, then its cards centred against the others. */
+function Column({
+  label,
+  center,
+  children,
+}: {
+  label: string;
+  center?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-rows-[auto_1fr] gap-3">
+      <p
+        className={cn(
+          "text-[12px] font-medium tracking-wide text-muted-foreground uppercase",
+          center ? "text-center" : "text-left",
+        )}
+      >
+        {label}
+      </p>
+      <div className={cn("grid content-center gap-3", center && "justify-items-center")}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NodeText({ title, detail, mono }: { title: string; detail: string; mono?: boolean }) {
+  return (
+    <span className="grid min-w-0 gap-0.5">
+      <span className="truncate text-sm leading-tight font-medium">{title}</span>
+      <span
+        className={cn(
+          "truncate text-muted-foreground",
+          mono ? "font-mono text-[11px]" : "text-[12px]",
+        )}
+      >
+        {detail}
+      </span>
+    </span>
+  );
+}
+
 export function Hero() {
   const wide = useMediaQuery("(min-width: 1024px)");
   const brand = useToken("--t-brand", "#286346");
@@ -110,10 +150,7 @@ export function Hero() {
   const a0 = useRef<HTMLDivElement>(null);
   const a1 = useRef<HTMLDivElement>(null);
   const a2 = useRef<HTMLDivElement>(null);
-  const a3 = useRef<HTMLDivElement>(null);
-  const a4 = useRef<HTMLDivElement>(null);
-  const a5 = useRef<HTMLDivElement>(null);
-  const agents = [a0, a1, a2, a3, a4, a5];
+  const agents = [a0, a1, a2];
   const claude = agentById("claude-code");
 
   // The field can walk the analysed timeline before the sound is touched.
@@ -201,73 +238,59 @@ export function Hero() {
             ref={container}
             role="img"
             aria-label="You in a chat, or your AI assistant, hire an agent through Payvoke on Avalanche."
-            className="relative grid items-center gap-10 lg:grid-cols-[minmax(0,15rem)_1fr_minmax(0,19rem)] lg:gap-6"
+            className="relative grid gap-10 lg:grid-cols-[17rem_1fr_17rem] lg:gap-6"
           >
-            <div className="grid gap-3">
-              <p className="text-left text-[13px] text-muted-foreground">Who hires</p>
+            <Column label="Who hires">
               <Node nodeRef={person} className="flex items-center gap-3 p-3">
-                <span className="grid size-8 place-items-center bg-primary-soft text-primary">
+                <span className="grid size-8 shrink-0 place-items-center bg-primary-soft text-primary">
                   <MessageSquare className="size-4" aria-hidden="true" />
                 </span>
-                <span className="grid">
-                  <span className="text-sm font-medium">You, in a chat</span>
-                  <span className="text-[12px] text-muted-foreground">Accept an offer</span>
-                </span>
+                <NodeText title="You, in a chat" detail="Accept an offer" />
               </Node>
               <Node nodeRef={assistant} className="flex items-center gap-3 p-3">
-                <AgentMark agent={claude} className="size-8" />
-                <span className="grid">
-                  <span className="text-sm font-medium">Your AI assistant</span>
-                  <span className="text-[12px] text-muted-foreground">
-                    Hires within your limits
-                  </span>
-                </span>
+                <AgentMark agent={claude} className="size-8 shrink-0" />
+                <NodeText title="Your AI assistant" detail="Hires within your limits" />
               </Node>
-            </div>
+            </Column>
 
-            <div className="grid justify-items-center">
+            <Column label="Holds the payment" center>
               <div
                 ref={hub}
-                className="relative z-10 grid w-56 place-items-center gap-3 overflow-hidden border border-border-strong bg-card px-6 py-8"
+                className="relative z-10 grid w-48 place-items-center gap-2 overflow-hidden border border-border-strong bg-card px-6 py-5"
               >
-                <BorderBeam size={90} duration={6} colorFrom={brand} colorTo={brand} />
-                <img src="/logo.svg" alt="" aria-hidden="true" className="size-12" />
-                <span className="text-lg font-semibold tracking-[-0.03em]">Payvoke</span>
-                <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-                  <NetworkAvalancheFuji size={14} aria-hidden="true" /> Avalanche
+                <BorderBeam size={80} duration={6} colorFrom={brand} colorTo={brand} />
+                <img src="/logo.svg" alt="" aria-hidden="true" className="size-10" />
+                <span className="text-base font-semibold tracking-[-0.03em]">Payvoke</span>
+                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  <NetworkAvalancheFuji size={13} aria-hidden="true" /> Avalanche
                 </span>
               </div>
-            </div>
+            </Column>
 
-            <div className="grid gap-3">
-              <p className="text-left text-[13px] text-muted-foreground lg:text-right">
-                Agents builders share
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {kinds.map((kind, index) => (
-                  <Node key={kind.name} nodeRef={agents[index]} className="grid gap-1 px-3 py-2.5">
-                    <kind.icon
-                      aria-hidden="true"
-                      strokeWidth={1.5}
-                      className="size-4 text-muted-foreground"
-                    />
-                    <span className="text-[13px] leading-tight font-medium">{kind.name}</span>
-                    <code className="font-mono text-[11px] text-muted-foreground">
-                      {kind.command}
-                    </code>
-                  </Node>
-                ))}
-              </div>
-            </div>
+            <Column label="Agents builders share">
+              {kinds.map((kind, index) => (
+                <Node
+                  key={kind.name}
+                  nodeRef={agents[index]}
+                  className="flex items-center gap-3 p-3"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center bg-muted text-muted-foreground">
+                    <kind.icon aria-hidden="true" strokeWidth={1.5} className="size-4" />
+                  </span>
+                  <NodeText title={kind.name} detail={kind.command} mono />
+                </Node>
+              ))}
+            </Column>
 
             {wide && (
               <>
-                <AnimatedBeam {...beam} fromRef={person} toRef={hub} curvature={-30} duration={4} />
+                {/* Curvature equal to the vertical offset makes each beam meet its card level. */}
+                <AnimatedBeam {...beam} fromRef={person} toRef={hub} curvature={-34} duration={4} />
                 <AnimatedBeam
                   {...beam}
                   fromRef={assistant}
                   toRef={hub}
-                  curvature={30}
+                  curvature={34}
                   duration={4}
                   delay={1}
                 />
@@ -277,9 +300,9 @@ export function Hero() {
                     {...beam}
                     fromRef={hub}
                     toRef={agent}
-                    curvature={(index - 2.5) * 12}
+                    curvature={(1 - index) * 68}
                     duration={5}
-                    delay={index * 0.4}
+                    delay={0.5 + index * 0.5}
                   />
                 ))}
               </>

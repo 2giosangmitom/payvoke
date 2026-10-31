@@ -165,7 +165,7 @@ function ThreadSkeleton() {
           <Skeleton className="h-3 w-28" />
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col gap-7 px-4 pt-6 sm:px-6 [--thread-max-width:48rem]">
+      <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col gap-7 px-4 pt-6 sm:px-6 [--thread-max-width:64rem]">
         {[
           { side: "end", width: 45 },
           { side: "start", lines: [92, 78, 55] },
@@ -518,7 +518,7 @@ function ThreadView({
   return (
     <ThreadPrimitive.Root
       className="flex min-h-0 flex-1 flex-col"
-      style={{ ["--thread-max-width" as string]: "48rem" }}
+      style={{ ["--thread-max-width" as string]: "64rem" }}
     >
       <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain scroll-smooth">
         <div

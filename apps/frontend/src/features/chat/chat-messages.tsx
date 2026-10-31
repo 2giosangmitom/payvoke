@@ -75,7 +75,7 @@ export function UserMessage() {
   return (
     <MessagePrimitive.Root
       className={cn(
-        "grid max-w-[min(85%,40rem)] justify-items-end gap-1.5 self-end max-sm:max-w-[92%]",
+        "grid max-w-[min(80%,44rem)] justify-items-end gap-1.5 self-end max-sm:max-w-[92%]",
         enter,
         pending && "opacity-70",
       )}
@@ -135,7 +135,7 @@ export function AssistantMessage() {
       className={cn(
         "group flex items-start gap-3 self-start",
         enter,
-        run ? "w-full max-w-4xl" : "max-w-[min(90%,44rem)] max-sm:max-w-full",
+        run ? "w-full" : "w-full max-w-[56rem]",
       )}
     >
       <AppMark />
