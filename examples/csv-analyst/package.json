@@ -1,0 +1,24 @@
+{
+  "name": "csv-analyst",
+  "private": true,
+  "description": "Example Payvoke agent: CSV profiling and analysis with Mastra and OpenRouter.",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.81.0",
+    "papaparse": "^5.5.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@openuidev/lang-core": "^1.0.1",
+    "@payvoke/shared": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "@types/papaparse": "^5.3.16",
+    "typescript": "^7.0.2"
+  }
+}

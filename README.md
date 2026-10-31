@@ -133,13 +133,14 @@ stateDiagram-v2
 
 ## Repository layout
 
-| Path              | Contents                                                                                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`        | Hono API on Bun: wallet sign-in, catalog, threads, quotes, x402 gateway and facilitator, provider gateway, workers. Prisma schema and migrations in `prisma/`. |
-| `apps/frontend`   | TanStack Start web app: store, chat console, activity, Studio. Uses Hono RPC and unhead.                                                                       |
-| `apps/slide`      | Pitch deck.                                                                                                                                                    |
-| `packages/shared` | `@payvoke/shared`: protocol (snapshots, typed data, codecs), x402 scheme adapters, OpenUI catalog, test vectors.                                               |
-| `packages/vault`  | `PayvokeVault.sol`, Hardhat tests (unit, fuzz, invariant), Ignition deployments, ABI.                                                                          |
+| Path                   | Contents                                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`             | Hono API on Bun: wallet sign-in, catalog, threads, quotes, x402 gateway and facilitator, provider gateway, workers. Prisma schema and migrations in `prisma/`. |
+| `apps/frontend`        | TanStack Start web app: store, chat console, activity, Studio. Uses Hono RPC and unhead.                                                                       |
+| `apps/slide`           | Pitch deck.                                                                                                                                                    |
+| `packages/shared`      | `@payvoke/shared`: protocol (snapshots, typed data, codecs), x402 scheme adapters, OpenUI catalog, test vectors.                                               |
+| `packages/vault`       | `PayvokeVault.sol`, Hardhat tests (unit, fuzz, invariant), Ignition deployments, ABI.                                                                          |
+| `examples/csv-analyst` | Example provider agent on Mastra + OpenRouter: CSV profiling and analysis, using commands, forms, offers, tool calls, OpenUI, files and revisions.             |
 
 Stack: Bun (runtime, workspaces, tests) · Hono + zod + LogTape · PostgreSQL + Prisma · Redis (Bun client) · viem · Solidity + Hardhat · React + TanStack Start · AG-UI + OpenUI · S3-compatible storage.
 
