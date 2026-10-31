@@ -265,7 +265,8 @@ export class TimelineService {
         type: "text",
         id: row.id,
         text: row.content,
-        format: "plain",
+        // Buyers type plain text; agent replies are markdown (docs/threads.md).
+        format: row.role === "BUYER" ? "plain" : "markdown",
         streaming: false,
       });
     if (row.tool) {

@@ -1,3 +1,5 @@
+// Must run before @openuidev/react-lang is evaluated (see the module).
+import "@/src/features/chat/openui-devtools-off";
 import {
   createLibrary,
   defineComponent,

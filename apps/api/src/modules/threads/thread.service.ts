@@ -1,7 +1,7 @@
 import type { Cradle } from "../../container";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 import { availabilityLabel, threadSlotReleased } from "../apps/schema";
-import { serializeCommand } from "../apps/serializers";
+import { imageUrl, serializeCommand } from "../apps/serializers";
 import { revisionPolicy } from "../runs/run-rules";
 
 export type NewThreadBody = { appId: string; clientRequestId: string; title?: string };
@@ -98,6 +98,7 @@ export class ThreadService {
             status: true,
             defaultCommandId: true,
             lastHeartbeatAt: true,
+            imageKey: true,
           },
         },
       },
@@ -113,6 +114,7 @@ export class ThreadService {
           id: row.app.id,
           name: row.app.name,
           description: row.app.description,
+          imageUrl: imageUrl(row.app),
           availability: availabilityLabel(row.app),
         },
         lastMessageAt: row.lastMessageAt,
@@ -173,6 +175,7 @@ export class ThreadService {
         description: thread.app.description,
         visibility: thread.app.visibility,
         status: thread.app.status,
+        imageUrl: imageUrl(thread.app),
         availability: availabilityLabel(thread.app),
       },
       activeQuoteId: resolved ? null : thread.activeQuoteId,

@@ -235,7 +235,9 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
             <WalletAccess variant="header" />
           </div>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto max-md:pb-14 *:[main]:flex-1">
+        {/* Console pages scroll down only; wide content (tables, code) scrolls
+            inside its own box, so nothing can push the page sideways. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto max-md:pb-14 *:[main]:flex-1">
           {isPending ? (
             <LoadingState className="px-8">Checking wallet session</LoadingState>
           ) : session ? (

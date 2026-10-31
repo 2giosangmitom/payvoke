@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ToolCallMessagePartProps } from "@assistant-ui/react";
+import type { DataMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { HandCoins, RotateCcw, ShieldQuestion, SquareSlash } from "lucide-react";
 import { ApprovalCard } from "@/src/components/assistant-ui/elements/approval-card";
 import { ElicitationForm } from "@/src/components/assistant-ui/elements/elicitation-form";
@@ -215,11 +215,21 @@ export function OfferTool({ toolCallId, args }: ToolProps) {
 }
 
 // The slash command a buyer message ran, shown as a chip with its arguments.
-export function CommandTool({ args }: ToolProps) {
-  const { chat } = useToolState("");
-  const commandId = typeof args.commandId === "string" ? args.commandId : "";
+// Buyer messages are user messages, which assistant-ui only lets carry data
+// parts (never tool calls), so this renders a `data` part named "command".
+export function CommandData({ data }: DataMessagePartProps<Record<string, unknown>>) {
+  const chat = useThreadChat();
+  const commandId = typeof data?.commandId === "string" ? data.commandId : "";
   const name = chat.thread?.commands.find((item) => item.id === commandId)?.name ?? "command";
-  const values = record(args.arguments) ? Object.entries(args.arguments) : [];
+  // File arguments are file ids, and the file itself is attached to the
+  // message as a card, so the chip lists only the other arguments.
+  const isFile = (value: unknown) =>
+    (typeof value === "string" && chat.files.has(value)) ||
+    (Array.isArray(value) && value.length > 0 && value.every((v) => chat.files.has(String(v))));
+  const values = record(data?.arguments)
+    ? Object.entries(data.arguments).filter(([, value]) => !isFile(value) && value !== "")
+    : [];
+  const show = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
   return (
     <div className="grid justify-items-end gap-1">
       <span className="inline-flex items-center gap-1.5 border border-primary/40 px-2 py-0.5 font-mono text-xs text-primary">
@@ -230,9 +240,7 @@ export function CommandTool({ args }: ToolProps) {
           {values.map(([key, value]) => (
             <div key={key} className="contents">
               <dt className="text-muted-foreground">{key}</dt>
-              <dd className="break-words">
-                {typeof value === "string" ? value : JSON.stringify(value)}
-              </dd>
+              <dd className="break-words">{show(value)}</dd>
             </div>
           ))}
         </dl>
@@ -282,7 +290,6 @@ export const toolUIs = {
   ask_choice: AskChoiceTool,
   confirm: ConfirmTool,
   offer: OfferTool,
-  command: CommandTool,
   render_ui: RenderUiTool,
   revision: RevisionTool,
   result: ResultTool,

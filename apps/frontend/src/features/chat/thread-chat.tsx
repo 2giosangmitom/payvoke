@@ -55,6 +55,7 @@ import {
 } from "@/src/features/chat/thread-runtime";
 import { timelineKey, useThreadTimeline } from "@/src/features/chat/use-timeline";
 import { quoteFor } from "@/src/features/payments/api";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { cn } from "@/src/lib/utils";
 
 const MAX_QUOTE_FILES = 10;
@@ -322,6 +323,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     threadId,
     thread: thread.data,
     appName: thread.data?.app.name ?? "App",
+    appImageUrl: thread.data?.app.imageUrl ?? null,
     ...maps,
     uploadFile: (file) => uploadThreadFile(threadId, file),
     refresh,
@@ -350,6 +352,11 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       <AssistantRuntimeProvider runtime={runtime}>
         <div className="flex h-full min-h-0 flex-col">
           <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-3 sm:px-6">
+            <AgentAvatar
+              name={data.app.name}
+              imageUrl={data.app.imageUrl}
+              className="size-10 text-base"
+            />
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-lg font-medium tracking-[-0.02em]">
                 {data.title || data.app.name}
@@ -390,7 +397,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
           )}
 
           <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-            <ThreadPrimitive.Viewport className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-6 sm:px-[clamp(1.5rem,4vw,3.5rem)]">
+            <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-6 sm:px-[clamp(1.5rem,4vw,3.5rem)]">
               <div className="sticky top-0 z-10 flex justify-center empty:hidden">
                 <ConnectionState
                   phase={connection.phase}

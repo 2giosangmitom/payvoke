@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/componen
 import { Input } from "@/src/components/ui/input";
 import { Spinner } from "@/src/components/ui/spinner";
 import { Eyebrow, FormField, StatusDot, errorMessage } from "@/src/components/layout/page-kit";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { cn } from "@/src/lib/utils";
 import { authClient } from "@/src/features/auth/auth-client";
 import {
@@ -40,15 +41,22 @@ function ThreadRow({
         to="/console/chat/$threadId"
         params={{ threadId: thread.id }}
         aria-current={active ? "page" : undefined}
-        className="grid min-w-0 flex-1 gap-1 py-2.5 pr-2 pl-3"
+        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-2 pl-3"
       >
-        <span className="truncate text-[13px] font-semibold">
-          {thread.title || thread.app.name}
+        <AgentAvatar
+          name={thread.app.name}
+          imageUrl={thread.app.imageUrl}
+          className="size-8 text-sm"
+        />
+        <span className="grid min-w-0 gap-1">
+          <span className="truncate text-[13px] font-semibold">
+            {thread.title || thread.app.name}
+          </span>
+          <small className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[10px] text-faint">
+            <StatusDot availability={thread.app.availability} />
+            {thread.app.name}
+          </small>
         </span>
-        <small className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[10px] text-faint">
-          <StatusDot availability={thread.app.availability} />
-          {thread.app.name}
-        </small>
       </Link>
       <div className="flex shrink-0 pr-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
         <Button

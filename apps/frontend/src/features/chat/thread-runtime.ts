@@ -35,6 +35,11 @@ const status = (message: TimelineMessage): ThreadMessageLike["status"] => {
 const isStep = (part: TimelineMessage["parts"][number]) =>
   part.type === "tool-call" && part.toolName === "progress";
 
+// A buyer's slash command: the chip shows the command and its arguments, so
+// the typed "/command ..." text under it would only repeat them.
+const isCommand = (part: TimelineMessage["parts"][number]) =>
+  part.type === "tool-call" && part.toolName === "command";
+
 // Timeline message to assistant-ui's message shape. Tool calls keep their
 // API status and result; the tool UIs read both from context by id.
 export function toThreadMessage(message: TimelineMessage): ThreadMessageLike {
@@ -56,7 +61,11 @@ export function toThreadMessage(message: TimelineMessage): ThreadMessageLike {
           ...message.parts.filter((part) => isStep(part)),
           ...message.parts.filter((part) => !isStep(part)),
         ]
-      : message.parts
+      : message.role === "user" && message.parts.some(isCommand)
+        ? message.parts.filter(
+            (part) => !(part.type === "text" && part.text.trim().startsWith("/")),
+          )
+        : message.parts
     ).map((part) => {
       switch (part.type) {
         case "text":
@@ -71,6 +80,15 @@ export function toThreadMessage(message: TimelineMessage): ThreadMessageLike {
             filename: part.name,
           };
         default:
+          // assistant-ui rejects tool calls in user messages: a buyer's
+          // slash command travels as a data part instead.
+          if (message.role === "user")
+            return {
+              type: "data" as const,
+              id: part.toolCallId,
+              name: part.toolName,
+              data: part.args ?? {},
+            };
           return {
             type: "tool-call" as const,
             toolCallId: part.toolCallId,
@@ -146,6 +164,7 @@ export type ThreadChatValue = {
   threadId: string;
   thread: ThreadDetail | undefined;
   appName: string;
+  appImageUrl: string | null;
   tools: Map<string, TimelineToolPart>;
   files: Map<string, TimelineFilePart>;
   runs: Map<string, TimelineRun>;

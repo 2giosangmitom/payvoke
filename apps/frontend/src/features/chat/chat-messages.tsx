@@ -11,33 +11,36 @@ import {
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/src/components/assistant-ui/elements/tooltip-icon-button";
 import { TypingIndicator } from "@/src/components/assistant-ui/elements/typing-indicator";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
+import { StreamdownText } from "@/src/features/chat/assistant-ui/streamdown-text";
 import { FilePart } from "@/src/features/chat/file-part";
 import { RunBody } from "@/src/features/chat/run-message";
 import { ThreadChatContext, type MessageKind } from "@/src/features/chat/thread-runtime";
-import { toolUIs } from "@/src/features/chat/tool-uis";
+import { CommandData, toolUIs } from "@/src/features/chat/tool-uis";
 import { cn } from "@/src/lib/utils";
 
 const time = (date: Date | undefined) =>
   date ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 
+// The agent's own picture (its initial when it has none), the same square
+// avatar the store uses, so a buyer recognises the agent across the app.
 function AppMark({ className }: { className?: string }) {
-  const name = useContext(ThreadChatContext)?.appName ?? "App";
+  const chat = useContext(ThreadChatContext);
   return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "grid size-8 shrink-0 place-items-center border border-border-strong font-mono text-xs font-semibold text-foreground uppercase max-sm:hidden",
-        className,
-      )}
-    >
-      {name.trim().slice(0, 2) || "AP"}
-    </span>
+    <AgentAvatar
+      name={chat?.appName ?? "App"}
+      imageUrl={chat?.appImageUrl}
+      className={cn("size-8 text-sm max-sm:hidden", className)}
+    />
   );
 }
 
-// Bot chat text is shown verbatim: no markdown, so nothing in it can pass
-// for Payvoke UI. Paid run output renders as markdown in the run body.
-function PlainText({ text }: TextMessagePartProps) {
+// Buyer text is shown verbatim. Agent replies are markdown, rendered by the
+// same hardened Streamdown as paid run output: no raw HTML, no images, and
+// every link opens behind a confirmation.
+function MessageText({ text }: TextMessagePartProps) {
+  const role = useAuiState((s) => s.message.role);
+  if (role === "assistant") return <StreamdownText />;
   return <p className="leading-relaxed break-words whitespace-pre-wrap">{text}</p>;
 }
 
@@ -49,9 +52,10 @@ function Tool(props: ToolCallMessagePartProps) {
 }
 
 const partComponents = {
-  Text: PlainText,
+  Text: MessageText,
   File: FilePart,
   tools: { Override: Tool },
+  data: { by_name: { command: CommandData } },
 };
 
 export function UserMessage() {
@@ -76,6 +80,26 @@ export function UserMessage() {
   );
 }
 
+function MessageHeader({
+  name,
+  label,
+  createdAt,
+}: {
+  name: string;
+  label?: string;
+  createdAt: Date | undefined;
+}) {
+  return (
+    <span className="flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{name}</span>
+      {label && <span>{label}</span>}
+      <time className="font-mono text-[11px] text-faint" dateTime={createdAt?.toISOString()}>
+        {time(createdAt)}
+      </time>
+    </span>
+  );
+}
+
 export function AssistantMessage() {
   const chat = useContext(ThreadChatContext);
   const id = useAuiState((s) => s.message.id);
@@ -87,9 +111,12 @@ export function AssistantMessage() {
 
   if (kind === "offer")
     return (
-      <MessagePrimitive.Root className="flex items-start gap-3 self-start">
-        <AppMark className="invisible" />
-        <MessagePrimitive.Parts components={partComponents} />
+      <MessagePrimitive.Root className="flex max-w-full items-start gap-3 self-start">
+        <AppMark />
+        <div className="grid min-w-0 gap-2">
+          <MessageHeader name={chat?.appName ?? "App"} createdAt={createdAt} />
+          <MessagePrimitive.Parts components={partComponents} />
+        </div>
       </MessagePrimitive.Root>
     );
 
@@ -102,11 +129,11 @@ export function AssistantMessage() {
     >
       <AppMark />
       <div className="grid min-w-0 flex-1 gap-2">
-        <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{chat?.appName ?? "App"}</span>
-          {run ? "Paid job" : null}
-          <span className="font-mono text-[11px] text-faint">{time(createdAt)}</span>
-        </span>
+        <MessageHeader
+          name={chat?.appName ?? "App"}
+          label={run ? "Paid job" : undefined}
+          createdAt={createdAt}
+        />
         {run ? (
           <RunBody run={run} />
         ) : (
