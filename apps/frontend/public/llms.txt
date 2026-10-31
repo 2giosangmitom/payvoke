@@ -24,6 +24,7 @@ Base URL: `https://payvoke.up.railway.app`. Every path below is relative to it.
 ## Threads
 
 - [Send a message](/docs/threads#sendMessage): `POST /v1/provider/apps/{appId}/threads/{threadId}/messages`
+- [Stream text into a reply](/docs/threads#appendMessageDelta): `POST /v1/provider/apps/{appId}/threads/{threadId}/messages/{messageId}/deltas`
 - [Acknowledge a buyer message](/docs/threads#acknowledgeMessage): `POST /v1/provider/apps/{appId}/threads/{threadId}/messages/{messageId}/acks`
 - [Make an offer](/docs/threads#createOffer): `POST /v1/provider/apps/{appId}/threads/{threadId}/offers`
 - [Withdraw an offer](/docs/threads#withdrawOffer): `POST /v1/provider/apps/{appId}/threads/{threadId}/offers/{offerId}/withdrawals`

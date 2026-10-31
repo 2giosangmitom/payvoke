@@ -1,14 +1,7 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowUpRight,
-  ImageUp,
-  KeyRound,
-  MessageSquareText,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { ArrowUpRight, KeyRound, MessageSquareText, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import {
   Dialog,
@@ -28,12 +21,13 @@ import {
   ErrorNotice,
   FormField,
   LoadingState,
+  PageSkeleton,
   PageShell,
   Tag,
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
-import { AvatarCropper } from "@/src/features/studio/avatar-cropper";
+import { ImageField } from "@/src/features/studio/image-field";
 import { VisibilityField } from "@/src/features/studio/visibility-field";
 import { CopyButton, SettingsRow } from "@/src/features/keys/settings-row";
 import { authClient } from "@/src/features/auth/auth-client";
@@ -56,17 +50,6 @@ import {
 import { formatUsdc } from "@/src/features/apps/format";
 import { newThread } from "@/src/features/chat/api";
 
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-// The picked file; the cropped upload is a 512px square well under the API limit.
-const SOURCE_MAX_BYTES = 10 * 1024 * 1024;
-const imageErrors: Record<string, string> = {
-  INVALID_IMAGE_TYPE: "Use a PNG, JPG, WebP or GIF image.",
-  IMAGE_TOO_LARGE: "That image is too large.",
-  PAYLOAD_TOO_LARGE: "That image is too large.",
-  SOURCE_TOO_LARGE: "That image is over 10 MB.",
-  FILES_DISABLED: "Image uploads aren't available on this server.",
-};
-
 const date = (value: string | Date) =>
   new Date(value).toLocaleDateString(undefined, {
     month: "short",
@@ -83,84 +66,19 @@ function useRefreshApp(appId: string) {
   };
 }
 
-function ImageField({ app }: { app: ProviderAppDetail }) {
+function AgentImage({ app }: { app: ProviderAppDetail }) {
   const refresh = useRefreshApp(app.id);
-  const input = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState("");
-  const [picked, setPicked] = useState<File | null>(null);
-  const upload = useMutation({
-    mutationFn: (file: File) => uploadAppImage(app.id, file),
-    onSuccess: () => {
-      setPicked(null);
-      refresh();
-    },
-    // Close the cropper so the reason shows next to the field.
-    onError: (cause) => {
-      setPicked(null);
-      setError(imageErrors[errorMessage(cause)] ?? errorMessage(cause));
-    },
-  });
-  const remove = useMutation({
-    mutationFn: () => removeAppImage(app.id),
-    onSuccess: refresh,
-    onError: (cause) => setError(errorMessage(cause)),
-  });
-  const busy = upload.isPending || remove.isPending;
   return (
-    <div className="flex flex-wrap items-center gap-5">
-      <AgentAvatar name={app.name} imageUrl={app.imageUrl} className="size-20 text-3xl" />
-      <div className="grid gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => input.current?.click()}
-          >
-            {upload.isPending ? <Spinner /> : <ImageUp />}
-            {app.imageUrl ? "Change image" : "Upload image"}
-          </Button>
-          {app.imageUrl && (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove.mutate()}>
-              {remove.isPending && <Spinner />} Remove
-            </Button>
-          )}
-        </div>
-        <p id="agent-image-hint" className="text-xs text-faint">
-          PNG, JPG, WebP or GIF, up to 10 MB. You can crop it before it&apos;s saved.
-        </p>
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-      <input
-        ref={input}
-        type="file"
-        accept={IMAGE_TYPES.join(",")}
-        aria-label="Agent image"
-        aria-describedby="agent-image-hint"
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (!file) return;
-          setError("");
-          if (!IMAGE_TYPES.includes(file.type)) return setError(imageErrors.INVALID_IMAGE_TYPE);
-          if (file.size > SOURCE_MAX_BYTES) return setError(imageErrors.SOURCE_TOO_LARGE);
-          setPicked(file);
-        }}
-      />
-      <AvatarCropper
-        file={picked}
-        name={app.name}
-        saving={upload.isPending}
-        onCancel={() => setPicked(null)}
-        onSave={(file) => upload.mutate(file)}
-      />
-    </div>
+    <ImageField
+      id="agent-image"
+      name={app.name}
+      label="Agent image"
+      preview={<AgentAvatar name={app.name} imageUrl={app.imageUrl} className="size-20 text-3xl" />}
+      hasImage={Boolean(app.imageUrl)}
+      upload={(file) => uploadAppImage(app.id, file)}
+      remove={() => removeAppImage(app.id)}
+      onDone={refresh}
+    />
   );
 }
 
@@ -200,7 +118,7 @@ function ProfileForm({ app }: { app: ProviderAppDetail }) {
         save.mutate();
       }}
     >
-      <ImageField app={app} />
+      <AgentImage app={app} />
       <FormField label="Name" htmlFor="settings-name">
         <Input
           id="settings-name"
@@ -520,7 +438,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   if (app.isPending)
     return (
       <PageShell>
-        <LoadingState className="pt-20">Loading agent…</LoadingState>
+        <PageSkeleton label="Loading agent" />
       </PageShell>
     );
   if (app.isError || !app.data)

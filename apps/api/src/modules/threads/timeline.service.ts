@@ -63,6 +63,8 @@ export type TimelineMessage = {
 };
 export type Timeline = { cursor: string; messages: TimelineMessage[] };
 
+// How long an open streamed reply still shows as being written.
+const STREAM_STALE_MS = 5 * 60_000;
 const HISTORY_LIMIT = 100000;
 // Live text deltas address their run message by this id.
 export const runMessageId = (invocationId: string) => `run-${invocationId}`;
@@ -260,14 +262,16 @@ export class TimelineService {
         result: null,
         status: "done",
       });
-    if (row.content)
+    // A streamed reply nobody closed stops reading as live after a while.
+    const streaming = row.streaming && Date.now() - row.createdAt.getTime() < STREAM_STALE_MS;
+    if (row.content || streaming)
       parts.push({
         type: "text",
         id: row.id,
         text: row.content,
         // Buyers type plain text; agent replies are markdown (docs/threads.md).
         format: row.role === "BUYER" ? "plain" : "markdown",
-        streaming: false,
+        streaming,
       });
     if (row.tool) {
       const call = storedToolCall(row.tool);
@@ -285,7 +289,7 @@ export class TimelineService {
       id: row.id,
       role: row.role === "BUYER" ? "user" : "assistant",
       createdAt: row.createdAt,
-      status: row.tool && !row.reply ? "requires-action" : "complete",
+      status: streaming ? "running" : row.tool && !row.reply ? "requires-action" : "complete",
       parts,
       run: null,
     };

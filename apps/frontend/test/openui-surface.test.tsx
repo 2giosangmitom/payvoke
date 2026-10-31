@@ -17,7 +17,7 @@ it("renders an OpenUI Lang program with the latest definition of each statement"
       ].join("\n")}
     />,
   );
-  assert.match(html, /App widget/);
+  assert.match(html, /Live view from the agent/);
   assert.match(html, /Updated as statements arrive/);
   assert.doesNotMatch(html, /Draft/);
   assert.match(html, /Score/);

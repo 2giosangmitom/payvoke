@@ -3,7 +3,14 @@ import { NotFoundError } from "../../errors";
 import { availabilityLabel, isAvailable } from "../apps/schema";
 import { imageUrl, priceCap, serializeCommand } from "../apps/serializers";
 
-export type CatalogQuery = { q?: string; cursor?: string; limit: number; savedBy?: string };
+export type CatalogQuery = {
+  q?: string;
+  cursor?: string;
+  limit: number;
+  savedBy?: string;
+  // Only this developer's agents.
+  ownerId?: string;
+};
 
 const activeCommands = {
   where: { archivedAt: null, activeRevisionId: { not: null } },
@@ -13,10 +20,26 @@ const activeCommands = {
 export class CatalogService {
   private readonly db: Cradle["db"];
   private readonly storage: Cradle["storage"];
+  private readonly statsService: Cradle["statsService"];
+  private readonly profileService: Cradle["profileService"];
 
-  constructor({ db, storage }: Cradle) {
+  constructor({ db, storage, statsService, profileService }: Cradle) {
     this.db = db;
     this.storage = storage;
+    this.statsService = statsService;
+    this.profileService = profileService;
+  }
+
+  // Who shares each agent and how much it is used, for store cards.
+  private async extras(rows: { id: string; ownerId: string }[]) {
+    const [usage, people] = await Promise.all([
+      this.statsService.usage(rows.map((row) => row.id)),
+      this.profileService.people(rows.map((row) => row.ownerId)),
+    ]);
+    return (row: { id: string; ownerId: string }) => ({
+      owner: people.get(row.ownerId)!,
+      ...usage.get(row.id)!,
+    });
   }
 
   // Public apps, plus the viewer's own private apps. Archived apps never show.
@@ -33,7 +56,7 @@ export class CatalogService {
     return row;
   }
 
-  async list({ q, cursor, limit, savedBy }: CatalogQuery) {
+  async list({ q, cursor, limit, savedBy, ownerId }: CatalogQuery) {
     const search = q?.trim();
     const rows = await this.db.app.findMany({
       where: {
@@ -60,14 +83,17 @@ export class CatalogService {
             }
           : {}),
         ...(savedBy ? { stars: { some: { userId: savedBy } } } : {}),
+        ...(ownerId ? { ownerId } : {}),
         ...(cursor ? { id: { gt: cursor } } : {}),
       },
       include: { commands: activeCommands },
       orderBy: { id: "asc" },
       take: limit + 1,
     });
+    const page = rows.slice(0, limit);
+    const extras = await this.extras(page);
     return {
-      items: rows.slice(0, limit).map((row) => ({
+      items: page.map((row) => ({
         id: row.id,
         name: row.name,
         description: row.description,
@@ -77,6 +103,8 @@ export class CatalogService {
         availability: availabilityLabel(row),
         commandCount: row.commands.length,
         priceCap: priceCap(row.commands),
+        ...extras(row),
+        createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
       nextCursor: rows.length > limit ? rows[limit - 1].id : null,
@@ -85,9 +113,11 @@ export class CatalogService {
 
   async get(appId: string, viewerId: string | null) {
     const row = await this.visible(appId, viewerId);
+    const extras = await this.extras([row]);
     return {
       id: row.id,
       ownerId: row.ownerId,
+      ...extras(row),
       name: row.name,
       description: row.description,
       imageUrl: imageUrl(row),

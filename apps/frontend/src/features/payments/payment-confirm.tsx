@@ -54,10 +54,13 @@ export function PaymentConfirm({
   quote,
   onPaid,
   onHide,
+  embedded = false,
 }: {
   quote: QuoteDocument;
   onPaid: (quote: QuoteDocument) => void | Promise<void>;
   onHide?: () => void;
+  // Inside a job card, which already shows the amount, command and terms.
+  embedded?: boolean;
 }) {
   const vault = quote.vault as Address;
   const buyer = quote.protocolQuote.buyer as Address;
@@ -232,6 +235,52 @@ export function PaymentConfirm({
       </div>
     );
 
+  const countdown = expired ? (
+    "Quote expired"
+  ) : (
+    <>
+      Quote valid for{" "}
+      <span className="font-mono text-foreground tabular-nums">
+        {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+      </span>
+    </>
+  );
+  const balance = (
+    <span className="font-mono text-foreground tabular-nums">
+      {available.data === undefined ? "…" : `${usdc(available.data)} USDC`}
+    </span>
+  );
+  const shortBy = shortfall > 0n && !expired && (
+    <div className="grid gap-2 border-l border-warning pl-3">
+      <p className="text-sm">
+        Your vault is <span className="font-mono tabular-nums">{usdc(shortfall)} USDC</span> short.
+      </p>
+      {isBuyer ? (
+        <QuickDeposit
+          token={quote.asset as Address}
+          vault={vault}
+          address={address}
+          amount={shortfall}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">Connect {short(buyer)} to deposit.</p>
+      )}
+    </div>
+  );
+
+  if (embedded)
+    return (
+      <div aria-label="Quote awaiting payment" role="group" className="grid gap-3">
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>{countdown}</span>
+          <span>Vault balance {balance}</span>
+        </p>
+        {shortBy}
+        {action}
+        {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+      </div>
+    );
+
   return (
     <section
       aria-label="Quote awaiting payment"
@@ -243,19 +292,7 @@ export function PaymentConfirm({
           <strong className="font-mono text-lg font-semibold">
             {formatUsdc(quote.grossAmount)}
           </strong>
-          <span className="text-xs text-muted-foreground">
-            {expired ? (
-              "Quote expired"
-            ) : (
-              <>
-                Quote valid for{" "}
-                <span className="font-mono tabular-nums">
-                  {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
-                </span>
-              </>
-            )}{" "}
-            · Avalanche Fuji
-          </span>
+          <span className="text-xs text-muted-foreground">{countdown} · Avalanche Fuji</span>
         </div>
         {onHide && (
           <Button
@@ -285,30 +322,9 @@ export function PaymentConfirm({
       </dl>
       <p className="text-xs leading-relaxed text-muted-foreground">
         The vault holds this amount before the agent gets your request and refunds it if the job
-        isn&apos;t delivered. Vault balance{" "}
-        <span className="font-mono text-foreground tabular-nums">
-          {available.data === undefined ? "…" : `${usdc(available.data)} USDC`}
-        </span>
-        .
+        isn&apos;t delivered. Vault balance {balance}.
       </p>
-      {shortfall > 0n && !expired && (
-        <div className="grid gap-2 border-l border-primary pl-3">
-          <p className="text-sm">
-            Your vault is <span className="font-mono tabular-nums">{usdc(shortfall)} USDC</span>{" "}
-            short.
-          </p>
-          {isBuyer ? (
-            <QuickDeposit
-              token={quote.asset as Address}
-              vault={vault}
-              address={address}
-              amount={shortfall}
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">Connect {short(buyer)} to deposit.</p>
-          )}
-        </div>
-      )}
+      {shortBy}
       {action}
       {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
     </section>

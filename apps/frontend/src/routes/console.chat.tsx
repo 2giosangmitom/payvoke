@@ -18,7 +18,7 @@ function ChatLayout() {
       <div className={cn("min-h-0 md:contents", !listing && "max-md:hidden")}>
         <ThreadSidebar />
       </div>
-      <div className="flex min-h-[70dvh] min-w-0 flex-col bg-card md:min-h-0 md:overflow-hidden *:[main]:flex *:[main]:min-h-0 *:[main]:flex-1 *:[main]:flex-col">
+      <div className="relative flex min-h-[70dvh] min-w-0 flex-col bg-card md:min-h-0 md:overflow-hidden *:[main]:flex *:[main]:min-h-0 *:[main]:flex-1 *:[main]:flex-col">
         <Outlet />
       </div>
     </div>

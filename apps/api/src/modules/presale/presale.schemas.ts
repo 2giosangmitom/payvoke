@@ -19,7 +19,14 @@ export const buyerMessageBody = z.object({
 export const providerMessageBody = z.object({
   content: z.string().optional(),
   tool: z.unknown().optional(),
+  streaming: z.boolean().optional(),
   clientRequestId: requestId,
+});
+
+export const messageDeltaBody = z.object({
+  sequence: z.number().int().min(1),
+  delta: z.string().max(4000),
+  done: z.boolean().optional(),
 });
 
 export const offerBody = z.object({
@@ -46,11 +53,26 @@ export const providerMessageDoc = z
       description: "Markdown text. Optional when `tool` carries its own prompt.",
     }),
     tool: toolCall.optional(),
+    streaming: z.boolean().optional().meta({
+      description:
+        "Opens a reply that streams in: `content` may be empty, and text is added with message deltas until one has `done: true`.",
+    }),
     clientRequestId: requestId.meta({
       description: "Idempotency key: a retry with the same id returns the first message.",
     }),
   })
   .meta({ id: "ProviderMessage" });
+
+export const messageDeltaDoc = z
+  .object({
+    sequence: z.number().int().min(1).meta({
+      description:
+        "1 for the first delta of the message, then one more each time. A retried sequence is applied once.",
+    }),
+    delta: z.string().max(4000).meta({ description: "Markdown text to append. May be empty." }),
+    done: z.boolean().optional().meta({ description: "Closes the reply." }),
+  })
+  .meta({ id: "MessageDelta" });
 
 export const offerDoc = z
   .object({
@@ -87,6 +109,7 @@ export const messageView = z
     files: z.array(fileManifestEntry),
     tool: toolCall.nullable(),
     replyToId: z.string().nullable(),
+    streaming: z.boolean().meta({ description: "True while a streamed reply is still open." }),
     createdAt: timestamp,
   })
   .meta({ id: "Message" });

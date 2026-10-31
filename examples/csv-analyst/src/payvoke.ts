@@ -154,8 +154,14 @@ export class Payvoke {
 
   sendMessage = (
     threadId: string,
-    body: { clientRequestId: string; content?: string; tool?: ToolCall },
-  ) => this.call<{ id: string }>("POST", `/threads/${threadId}/messages`, body);
+    body: { clientRequestId: string; content?: string; tool?: ToolCall; streaming?: boolean },
+  ) => this.call<{ id: string; streaming: boolean }>("POST", `/threads/${threadId}/messages`, body);
+
+  appendDelta = (
+    threadId: string,
+    messageId: string,
+    body: { sequence: number; delta: string; done?: boolean },
+  ) => this.call<{ id: string }>("POST", `/threads/${threadId}/messages/${messageId}/deltas`, body);
 
   ackMessage = (threadId: string, messageId: string) =>
     this.call("POST", `/threads/${threadId}/messages/${messageId}/acks`);
@@ -279,6 +285,66 @@ export class Payvoke {
       await sleep(backoff);
       backoff = Math.min(backoff * 2, 30_000);
     }
+  }
+}
+
+// A chat reply that streams in while the model writes it. Tokens are batched
+// into one delta per ~250 ms; deltas are numbered, so a retry is applied once.
+export class Reply {
+  // A reply holds at most 4000 characters; stop a little short of that.
+  static readonly MAX = 3900;
+  private sequence = 0;
+  private pending = "";
+  private written = "";
+  private flushedAt = Date.now();
+
+  private constructor(
+    readonly api: Payvoke,
+    readonly threadId: string,
+    readonly messageId: string,
+    private closed: boolean,
+  ) {}
+
+  // A redelivered event reopens the same message; if it was already closed,
+  // writing to it does nothing.
+  static async open(
+    api: Payvoke,
+    threadId: string,
+    body: { clientRequestId: string; tool?: ToolCall },
+  ) {
+    const message = await api.sendMessage(threadId, { ...body, streaming: true });
+    return new Reply(api, threadId, message.id, !message.streaming);
+  }
+
+  get text() {
+    return this.written + this.pending;
+  }
+
+  async write(delta: string) {
+    if (this.closed) return;
+    this.pending += delta.slice(0, Math.max(0, Reply.MAX - this.text.length));
+    if (this.pending.length >= 200 || Date.now() - this.flushedAt >= 250) await this.flush(false);
+  }
+
+  private async flush(done: boolean) {
+    if (!this.pending && !done) return;
+    const delta = this.pending;
+    this.pending = "";
+    this.flushedAt = Date.now();
+    await this.api.appendDelta(this.threadId, this.messageId, {
+      sequence: ++this.sequence,
+      delta,
+      ...(done ? { done: true } : {}),
+    });
+    this.written += delta;
+  }
+
+  // Closes the reply; `fallback` is its text when nothing was written.
+  async close(fallback: string) {
+    if (this.closed) return;
+    if (!this.text.trim()) this.pending = fallback;
+    await this.flush(true);
+    this.closed = true;
   }
 }
 

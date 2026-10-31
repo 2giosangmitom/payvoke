@@ -6,7 +6,7 @@ import {
 } from "@payvoke/shared/x402";
 import { vaultAdmissionAbi } from "@payvoke/shared/protocol";
 import type { Address, Hex } from "viem";
-import { apiOrigin, call, callAs, client } from "@/src/lib/api/client";
+import { ApiError, apiOrigin, call, callAs, client } from "@/src/lib/api/client";
 
 const invocations = client.v1.invocations;
 
@@ -126,10 +126,46 @@ export async function submitSigned(
     signature,
     new URL("/v1/invocations", apiOrigin).href,
   );
-  return call(
-    invocations.$post(
-      { json: { quoteId: quote.quoteId } },
-      { headers: { "idempotency-key": quote.invocationId, "payment-signature": header } },
-    ),
-  );
+  try {
+    await call(
+      invocations.$post(
+        { json: { quoteId: quote.quoteId } },
+        { headers: { "idempotency-key": quote.invocationId, "payment-signature": header } },
+      ),
+    );
+  } catch (cause) {
+    // The first answer is usually "not settled yet": the API journaled the
+    // signed authorization and its worker is putting the hold on chain.
+    // The status endpoint, not that answer, says how it ends.
+    if (!(cause instanceof ApiError) || ![402, 503].includes(cause.status)) throw cause;
+    await waitForHold(quote.invocationId, cause);
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Polls the payment until the vault holds it or it stops for good. A hold
+// takes a few blocks plus finality, so this allows two minutes.
+async function waitForHold(invocationId: string, first: ApiError) {
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    let status: { paymentStatus: string; failure: { code: string } | null };
+    try {
+      status = await call(invocations[":id"].$get({ param: { id: invocationId } }));
+    } catch (cause) {
+      // No journaled payment at all: the first error is the real one.
+      if (cause instanceof ApiError && cause.status === 404) throw first;
+      throw cause;
+    }
+    if (status.paymentStatus === "HELD") return;
+    if (status.paymentStatus === "REJECTED")
+      throw new Error(`Payment rejected: ${status.failure?.code ?? "unknown reason"}.`);
+    if (status.paymentStatus === "QUARANTINED")
+      throw new Error(
+        "Payment is held for review and was not taken. Contact support with this job id: " +
+          invocationId,
+      );
+    await sleep(3_000);
+  }
+  throw new Error("The payment is still settling. It will show in this thread once it is held.");
 }

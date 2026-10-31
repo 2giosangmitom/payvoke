@@ -25,6 +25,12 @@ import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { createProviderApp, listProviderApps } from "@/src/features/apps/api";
+import { RatingLine, UsageLine } from "@/src/features/apps/agent-facts";
+import { getStats } from "@/src/features/people/api";
+import { JobsSpark } from "@/src/features/stats/day-chart";
+import { FigureStrip, sum } from "@/src/features/stats/earnings";
+
+const toUsdc = (atomic: string) => Number(BigInt(atomic)) / 1_000_000;
 
 export function DashboardHome() {
   const queryClient = useQueryClient();
@@ -43,6 +49,13 @@ export function DashboardHome() {
     enabled: Boolean(session),
     staleTime: 10_000,
   });
+  const stats = useQuery({
+    queryKey: ["account", session?.user.id, "stats"],
+    queryFn: getStats,
+    enabled: Boolean(session),
+    refetchInterval: 60_000,
+  });
+  const usage = new Map((stats.data?.provider?.apps ?? []).map((app) => [app.id, app]));
   const create = useMutation({
     mutationFn: () =>
       createProviderApp({
@@ -156,10 +169,39 @@ export function DashboardHome() {
         </BlurFade>
       )}
 
-      <section aria-labelledby="apps-title" className="mt-12">
+      {stats.data?.provider && (
+        <section aria-label="Earnings" className="mt-8 grid gap-3">
+          <FigureStrip
+            figures={[
+              {
+                label: "Earned after fees",
+                value: toUsdc(sum(stats.data.provider.released, stats.data.provider.held)),
+                unit: "USDC",
+                decimals: 2,
+              },
+              { label: "Paid jobs", value: stats.data.provider.jobs },
+              { label: "Users", value: stats.data.provider.users },
+              {
+                label: "Paid out",
+                value: toUsdc(stats.data.provider.released),
+                unit: "USDC",
+                decimals: 2,
+              },
+            ]}
+          />
+          <Link
+            to="/console/profile"
+            className="inline-flex items-center gap-1 justify-self-end text-sm text-muted-foreground hover:text-foreground"
+          >
+            Earnings by day and by agent <ArrowUpRight size={13} />
+          </Link>
+        </section>
+      )}
+
+      <section aria-labelledby="apps-title" className="mt-10">
         <SectionHeader id="apps-title" title="Your agents" aside={plural(items.length, "agent")} />
         {apps.isPending ? (
-          <LoadingState>Loading agents…</LoadingState>
+          <LoadingState rows={3}>Loading agents</LoadingState>
         ) : apps.isError ? (
           <ErrorNotice onRetry={() => void apps.refetch()}>
             {errorMessage(apps.error, "Could not load agents.")}
@@ -196,7 +238,26 @@ export function DashboardHome() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2">
+                    {usage.get(app.id) && (
+                      <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <RatingLine rating={usage.get(app.id)!.rating} />
+                        <UsageLine
+                          jobs={usage.get(app.id)!.jobs}
+                          users={usage.get(app.id)!.users}
+                        />
+                        <JobsSpark
+                          series={usage.get(app.id)!.series}
+                          className="h-8 w-24 max-lg:hidden"
+                        />
+                        <span className="font-mono text-xs tabular-nums">
+                          {toUsdc(
+                            sum(usage.get(app.id)!.released, usage.get(app.id)!.held),
+                          ).toFixed(2)}
+                          <span className="ml-1 text-muted-foreground">USDC</span>
+                        </span>
+                      </span>
+                    )}
                     <Tag>{app.visibility.toLowerCase()}</Tag>
                     <Tag>
                       <Radio className="size-3" /> {app.status.toLowerCase()}

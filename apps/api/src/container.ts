@@ -11,6 +11,9 @@ import { createAuth } from "./modules/auth/auth";
 import { AccessTokenService } from "./modules/auth/access-token.service";
 import { AuthService } from "./modules/auth/auth.service";
 import { CatalogService } from "./modules/catalog/catalog.service";
+import { RatingService } from "./modules/catalog/rating.service";
+import { ProfileService } from "./modules/people/profile.service";
+import { StatsService } from "./modules/stats/stats.service";
 import { FileService } from "./modules/files/file.service";
 import { PresaleService } from "./modules/presale/presale.service";
 import { ProviderAppService } from "./modules/provider/provider-app.service";
@@ -43,6 +46,9 @@ export interface Cradle {
   accessTokenService: AccessTokenService;
   authService: AuthService;
   catalogService: CatalogService;
+  ratingService: RatingService;
+  profileService: ProfileService;
+  statsService: StatsService;
   providerAppService: ProviderAppService;
   providerCommandService: ProviderCommandService;
   providerKeyService: ProviderKeyService;
@@ -90,6 +96,9 @@ export function createAppContainer(
     accessTokenService: asClass(AccessTokenService).singleton(),
     authService: asClass(AuthService).singleton(),
     catalogService: asClass(CatalogService).singleton(),
+    ratingService: asClass(RatingService).singleton(),
+    profileService: asClass(ProfileService).singleton(),
+    statsService: asClass(StatsService).singleton(),
     providerAppService: asClass(ProviderAppService).singleton(),
     providerCommandService: asClass(ProviderCommandService).singleton(),
     providerKeyService: asClass(ProviderKeyService).singleton(),

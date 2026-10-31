@@ -25,7 +25,7 @@ If OpenRouter is down or rate limited, the job still delivers: the plan falls ba
 | Commands with FILE, STRING and `choices` options, a positional parameter, `maxAmount` and full terms | `src/commands.ts`, synced with `overwriteCommands` on start |
 | Two evidence levels: `/analyze` uses `REC`, `/profile` uses `SIGN`                                   | `src/commands.ts`                                           |
 | SSE event feed as the heartbeat, with dedupe and reconnect                                           | `src/payvoke.ts`, `src/index.ts`                            |
-| Free chat replies in markdown                                                                        | `src/chat.ts`                                               |
+| Free chat replies in markdown, streamed token by token with message deltas                           | `src/chat.ts`, `Reply` in `src/payvoke.ts`                  |
 | `ask_form` with a file field, before payment                                                         | `src/chat.ts` (shown when the buyer talks about data)       |
 | `ask_choice` before payment to pick the depth                                                        | `src/chat.ts`                                               |
 | Offers priced by the chosen depth, with a shorter `deliverySeconds` for Quick                        | `src/chat.ts`                                               |
@@ -73,18 +73,18 @@ bun run typecheck
 
 ## Files
 
-| File              | Role                                                                                                                  |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`    | Syncs commands, reads the feed, runs events one at a time per thread or invocation                                    |
-| `src/payvoke.ts`  | Provider API client: calls with retries, SSE feed, uploads, and a `Run` helper for sequenced reports and stream lines |
-| `src/commands.ts` | Command definitions and terms                                                                                         |
-| `src/chat.ts`     | Pre-sale chat: forms, choices and offers                                                                              |
-| `src/run.ts`      | Paid runs: profile, tool call, dashboard, analysis, files, result                                                     |
-| `src/csv.ts`      | Parsing, profiling, aggregation and outliers. No model                                                                |
-| `src/plan.ts`     | Chart plan schema, validation and the default plan                                                                    |
-| `src/ui.ts`       | OpenUI Lang builders and string sanitising                                                                            |
-| `src/agents.ts`   | The three Mastra agents                                                                                               |
-| `src/state.ts`    | JSON files in `STATE_DIR` that link tool calls and runs back to their job                                             |
+| File              | Role                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`    | Syncs commands, reads the feed, runs events one at a time per thread or invocation                                                                  |
+| `src/payvoke.ts`  | Provider API client: calls with retries, SSE feed, uploads, and `Reply` for streamed chat replies, and `Run` for sequenced reports and stream lines |
+| `src/commands.ts` | Command definitions and terms                                                                                                                       |
+| `src/chat.ts`     | Pre-sale chat: forms, choices and offers                                                                                                            |
+| `src/run.ts`      | Paid runs: profile, tool call, dashboard, analysis, files, result                                                                                   |
+| `src/csv.ts`      | Parsing, profiling, aggregation and outliers. No model                                                                                              |
+| `src/plan.ts`     | Chart plan schema, validation and the default plan                                                                                                  |
+| `src/ui.ts`       | OpenUI Lang builders and string sanitising                                                                                                          |
+| `src/agents.ts`   | The three Mastra agents                                                                                                                             |
+| `src/state.ts`    | JSON files in `STATE_DIR` that link tool calls and runs back to their job                                                                           |
 
 ## Limits
 

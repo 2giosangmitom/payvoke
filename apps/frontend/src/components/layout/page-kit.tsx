@@ -12,7 +12,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/src/components/ui/empty";
-import { Spinner } from "@/src/components/ui/spinner";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { cn } from "@/src/lib/utils";
 
 // Small building blocks shared by store, chat and Studio pages, so every page
@@ -183,14 +183,124 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-export function LoadingState({ children, className }: { children: ReactNode; className?: string }) {
+// Loading placeholders keep the shape of what is coming, so nothing jumps
+// when it arrives. The label is for screen readers only.
+function Loading({
+  label,
+  className,
+  children,
+}: {
+  label: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <div
-      className={cn("flex items-center gap-3 py-10 text-sm text-muted-foreground", className)}
-      aria-live="polite"
-    >
-      <Spinner className="text-primary" /> {children}
+    <div role="status" aria-live="polite" aria-busy="true" className={className}>
+      <span className="sr-only">{label}</span>
+      {children}
     </div>
+  );
+}
+
+/** Rows of a list or table: a mark, a title and a line under it. */
+export function LoadingState({
+  children,
+  rows = 4,
+  className,
+}: {
+  children: ReactNode;
+  rows?: number;
+  className?: string;
+}) {
+  return (
+    <Loading label={children} className={cn("grid border-y border-border py-1", className)}>
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          className="flex items-center gap-3 border-b border-border py-3 last:border-b-0"
+        >
+          <Skeleton className="size-8 shrink-0" />
+          <div className="grid flex-1 gap-2">
+            <Skeleton className="h-3.5" style={{ width: `${56 - index * 7}%` }} />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+          <Skeleton className="h-3.5 w-16 max-sm:hidden" />
+        </div>
+      ))}
+    </Loading>
+  );
+}
+
+/** A grid of store cards. */
+export function CardGridSkeleton({
+  count = 6,
+  label = "Loading agents",
+  className,
+}: {
+  count?: number;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <Loading label={label} className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}>
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="flex min-h-64 flex-col border border-border bg-card">
+          <div className="flex items-center gap-3 px-5 pt-5">
+            <Skeleton className="size-10" />
+            <Skeleton className="h-5 w-20" />
+          </div>
+          <div className="grid flex-1 content-start gap-2.5 px-5 pt-5">
+            <Skeleton className="h-6 w-3/5" />
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-4/5" />
+          </div>
+          <div className="flex justify-between border-t border-border px-5 py-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+      ))}
+    </Loading>
+  );
+}
+
+/** A row of figures, as on the console home and the profile. */
+export function FiguresSkeleton({ count = 4, className }: { count?: number; className?: string }) {
+  return (
+    <Loading
+      label="Loading figures"
+      className={cn(
+        "grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4",
+        className,
+      )}
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="grid gap-2.5 bg-card px-4 py-4">
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-7 w-24" />
+        </div>
+      ))}
+    </Loading>
+  );
+}
+
+/** A detail page: its header, then a few blocks. */
+export function PageSkeleton({ label }: { label: string }) {
+  return (
+    <Loading label={label} className="grid gap-10 pt-10">
+      <div className="flex items-center gap-5">
+        <Skeleton className="size-16 shrink-0" />
+        <div className="grid flex-1 gap-3">
+          <Skeleton className="h-9 w-2/5" />
+          <Skeleton className="h-4 w-3/5" />
+        </div>
+      </div>
+      <FiguresSkeleton />
+      <div className="grid gap-3">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+    </Loading>
   );
 }
 

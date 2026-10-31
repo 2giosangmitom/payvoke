@@ -8,12 +8,14 @@ import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { CommandCard } from "@/src/features/apps/command-card";
+import { OwnerLink, RatingLine, UsageLine } from "@/src/features/apps/agent-facts";
+import { AgentRatings } from "@/src/features/store/agent-ratings";
 import {
   AppStatus,
   BackLink,
   EmptyState,
   ErrorNotice,
-  LoadingState,
+  PageSkeleton,
   PageHeader,
   PageShell,
   SectionHeader,
@@ -40,7 +42,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
     staleTime: 15_000,
   });
   usePageMeta({
-    title: detail.data?.name ?? "App",
+    title: detail.data?.name ?? "Agent",
     description: detail.data?.description ?? undefined,
   });
   const stars = useQuery({
@@ -74,7 +76,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
   if (detail.isPending)
     return (
       <PageShell>
-        <LoadingState className="pt-20">Loading app…</LoadingState>
+        <PageSkeleton label="Loading agent" />
       </PageShell>
     );
   if (detail.isError || !detail.data)
@@ -109,7 +111,12 @@ export function StoreAppDetail({ appId }: { appId: string }) {
         description={
           <>
             {app.description || "No description yet."}
-            <span className="mt-5 flex flex-wrap gap-2">
+            <span className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+              <OwnerLink owner={app.owner} className="text-sm" />
+              <RatingLine rating={app.rating} />
+              <UsageLine jobs={app.jobs} users={app.users} />
+            </span>
+            <span className="mt-4 flex flex-wrap gap-2">
               <AppStatus availability={app.availability} />
               <Tag>
                 {app.priceCap ? `Offers up to ${formatUsdc(app.priceCap)}` : "Priced by offer"}
@@ -186,6 +193,8 @@ export function StoreAppDetail({ appId }: { appId: string }) {
           </div>
         )}
       </section>
+
+      <AgentRatings appId={app.id} />
 
       <section className="mt-14 flex flex-col justify-between gap-4 border-t border-border pt-8 sm:flex-row sm:items-center">
         <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">

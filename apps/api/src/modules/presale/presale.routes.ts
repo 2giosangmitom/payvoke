@@ -8,6 +8,8 @@ import type { KeyScope } from "../provider/provider.validation";
 import { z } from "zod";
 import {
   buyerMessageBody,
+  messageDeltaBody,
+  messageDeltaDoc,
   messageView,
   offerBody,
   offerDoc,
@@ -90,6 +92,36 @@ export const presaleRoutes = new Hono<AppEnv>()
           c.req.valid("json"),
         ),
         201,
+      ),
+  )
+  .post(
+    `${provider}/messages/:messageId/deltas`,
+    rateLimit("message-deltas", 600),
+    maxBody(16384),
+    validate("json", messageDeltaBody, "INVALID_MESSAGE"),
+    builderRoute({
+      operationId: "appendMessageDelta",
+      tag: "Threads",
+      summary: "Stream text into a reply",
+      description:
+        "Appends text to a message opened with `streaming: true`, so the buyer sees the reply as it is written. Send deltas in `sequence` order; `done: true` closes the reply. A reply holds at most 4000 characters.",
+      scope: "messages:write",
+      body: messageDeltaDoc,
+      responses: { 200: { description: "The message so far", schema: messageView } },
+      errors: {
+        400: ["INVALID_MESSAGE", "MESSAGE_TOO_LONG"],
+        404: ["THREAD_NOT_FOUND", "MESSAGE_NOT_FOUND"],
+        409: ["MESSAGE_CLOSED", "STREAM_SEQUENCE_GAP"],
+      },
+    }),
+    async (c) =>
+      c.json(
+        await c.var.cradle.presaleService.appendMessageDelta(
+          await providerApp(c, "messages:write"),
+          c.req.param("threadId"),
+          c.req.param("messageId"),
+          c.req.valid("json"),
+        ),
       ),
   )
   .post(

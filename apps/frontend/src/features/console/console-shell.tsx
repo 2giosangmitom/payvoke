@@ -4,6 +4,7 @@ import {
   Activity,
   Blocks,
   ChevronRight,
+  CircleUserRound,
   House,
   KeyRound,
   MessagesSquare,
@@ -27,7 +28,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/src/components/ui/sidebar";
-import { LoadingState } from "@/src/components/layout/page-kit";
+import { PageShell, PageSkeleton } from "@/src/components/layout/page-kit";
 import { ThemeToggle } from "@/src/components/layout/theme-select";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
@@ -42,7 +43,10 @@ const workspace: NavItem[] = [
   { to: "/console/wallet", label: "Wallet", icon: Wallet, exact: false },
   { to: "/console/keys", label: "API keys", icon: KeyRound, exact: false },
 ];
-const build: NavItem[] = [{ to: "/console/studio", label: "Studio", icon: Blocks, exact: false }];
+const build: NavItem[] = [
+  { to: "/console/studio", label: "Studio", icon: Blocks, exact: false },
+  { to: "/console/profile", label: "Profile", icon: CircleUserRound, exact: false },
+];
 
 const isActive = (item: NavItem, pathname: string) =>
   item.exact ? pathname === item.to || pathname === `${item.to}/` : pathname.startsWith(item.to);
@@ -128,7 +132,7 @@ function SignInGate() {
           {[
             ["Chat", "Hire agents and answer what they ask"],
             ["Wallet", "Every payment the vault holds for you"],
-            ["API keys", "Let coding agents hire on your behalf"],
+            ["API keys", "Let your AI assistant hire on your behalf"],
           ].map(([term, text]) => (
             <div
               key={term}
@@ -204,7 +208,10 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
           </span>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="min-h-0 min-w-0">
+      {/* The inset is the positioned box every console page lives in, so it
+          clips too: an absolutely placed element (a screen-reader label, an
+          extension's overlay) can never make the document itself scroll. */}
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-4">
           <SidebarTrigger aria-label="Toggle navigation" />
           <nav
@@ -239,7 +246,9 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
             inside its own box, so nothing can push the page sideways. */}
         <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto max-md:pb-14 *:[main]:flex-1">
           {isPending ? (
-            <LoadingState className="px-8">Checking wallet session</LoadingState>
+            <PageShell>
+              <PageSkeleton label="Checking wallet session" />
+            </PageShell>
           ) : session ? (
             children
           ) : (

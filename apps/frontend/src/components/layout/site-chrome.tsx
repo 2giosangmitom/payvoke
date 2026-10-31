@@ -6,6 +6,7 @@ import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
 import { ThemeToggle } from "@/src/components/layout/theme-select";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
+import { DiaTextReveal } from "@/src/components/ui/dia-text-reveal";
 
 export type SiteSection = "home" | "store" | "docs";
 
@@ -15,7 +16,7 @@ const navItems = [
   { key: "store", label: "Store", to: "/store" },
   { key: "docs", label: "Docs", to: "/docs" },
   { key: "how-it-works", label: "How it works", to: "/", hash: "how-it-works" },
-  { key: "agents", label: "Coding agents", to: "/", hash: "agents" },
+  { key: "agents", label: "AI assistants", to: "/", hash: "agents" },
   { key: "questions", label: "Questions", to: "/", hash: "questions" },
 ] as const;
 
@@ -138,11 +139,22 @@ export function SiteHeader({ current }: { current: SiteSection }) {
   );
 }
 
-const footerLinks = [
-  { to: "/store", label: "Store" },
-  { to: "/docs", label: "Docs" },
-  { to: "/console/chat", label: "Chats" },
-  { to: "/console/studio", label: "Studio" },
+const footerGroups = [
+  {
+    title: "Hire",
+    links: [
+      { to: "/store", label: "Store" },
+      { to: "/console/chat", label: "Chats" },
+      { to: "/console/keys", label: "API keys" },
+    ],
+  },
+  {
+    title: "Build",
+    links: [
+      { to: "/console/studio", label: "Studio" },
+      { to: "/docs", label: "Docs" },
+    ],
+  },
 ] as const;
 
 /** `clearDock` leaves room for the landing's music card in the bottom-left corner. */
@@ -150,19 +162,57 @@ export function SiteFooter({ clearDock = false }: { clearDock?: boolean }) {
   return (
     <footer
       className={cn(
-        "container-page grid gap-2 pt-24 pb-8 text-sm text-muted-foreground sm:grid-cols-[1fr_auto_1fr] sm:items-baseline sm:gap-6 sm:pt-32",
+        "container-page mt-24 grid gap-12 border-t border-border pt-14 pb-8 sm:mt-32",
         clearDock && "pb-24 sm:pb-20",
       )}
     >
-      <span>Payvoke, AI agents for hire on Avalanche</span>
-      <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2">
-        {footerLinks.map((link) => (
-          <Link key={link.to} to={link.to} className="text-foreground hover:text-primary">
-            {link.label}
-          </Link>
+      <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-12 lg:gap-8">
+        <div className="grid content-start gap-4 lg:col-span-5">
+          <Brand small />
+          <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
+            A store for AI agents. Each job is paid in USDC and held in a vault on Avalanche until
+            the work arrives.
+          </p>
+        </div>
+        {footerGroups.map((group) => (
+          <nav
+            key={group.title}
+            aria-label={group.title}
+            className="grid content-start gap-3 lg:col-span-2"
+          >
+            <span className="text-sm font-medium">{group.title}</span>
+            {group.links.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="text-[15px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         ))}
-      </nav>
-      <span className="sm:text-right">© 2026 · Avalanche Fuji testnet</span>
+        <p className="grid content-start gap-1 text-[15px] text-muted-foreground lg:col-span-3">
+          <span className="text-sm font-medium text-foreground">Network</span>
+          Avalanche Fuji testnet, with test USDC. There is no mainnet deployment.
+        </p>
+      </div>
+
+      {clearDock && (
+        // The name, large, swept once by a jade band as it scrolls into view.
+        <DiaTextReveal
+          text="payvoke"
+          colors={["var(--t-brand)", "var(--color-primary-soft)", "var(--t-brand)"]}
+          textColor="var(--t-brand)"
+          duration={1.8}
+          className="-ml-[0.04em] block pb-[0.12em] text-[clamp(4.5rem,22.5vw,21rem)] leading-[0.9] font-bold tracking-[-0.07em] select-none"
+        />
+      )}
+
+      <div className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
+        <span>© 2026 Payvoke</span>
+        <span>Built on Avalanche</span>
+      </div>
     </footer>
   );
 }

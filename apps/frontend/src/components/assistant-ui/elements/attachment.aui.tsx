@@ -179,12 +179,12 @@ export const ComposerAddAttachment: FC = () => {
           side="bottom"
           variant="ghost"
           size="icon"
-          className="aui-composer-add-attachment text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 dark:border-muted-foreground/15 dark:hover:bg-muted-foreground/30 size-8 active:scale-[0.96] motion-reduce:transition-none"
+          className="aui-composer-add-attachment text-muted-foreground hover:text-foreground hover:bg-muted dark:border-muted-foreground/15 dark:hover:bg-muted size-9 active:scale-[0.96] disabled:opacity-40 motion-reduce:transition-none"
           aria-label="Add Attachment"
         />
       }
     >
-      <PlusIcon className="aui-attachment-add-icon size-4" />
+      <PlusIcon className="aui-attachment-add-icon size-[18px]" />
     </ComposerPrimitive.AddAttachment>
   );
 };

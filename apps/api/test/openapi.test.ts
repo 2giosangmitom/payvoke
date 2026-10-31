@@ -61,6 +61,7 @@ afterAll(async () => {
 });
 
 const BUILDER_OPERATIONS = [
+  "appendMessageDelta",
   "listCommands",
   "overwriteCommands",
   "createCommand",

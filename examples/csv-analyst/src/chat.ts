@@ -2,7 +2,7 @@ import { concierge } from "./agents";
 import type { CommandName } from "./commands";
 import { config, usdc } from "./config";
 import { MAX_BYTES } from "./csv";
-import type { FileEntry, Payvoke, ThreadMessageEvent } from "./payvoke";
+import { Reply, type FileEntry, type Payvoke, type ThreadMessageEvent } from "./payvoke";
 import { tools } from "./state";
 
 // Pre-sale chat: free for the buyer. Every path ends in a text reply, a
@@ -65,14 +65,13 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
   if (csv) return askDepth(api, ev.threadId, reply("depth"), csv.fileId, text(ev.content));
 
   // 4. Plain chat. Offer the upload form when the buyer seems ready.
-  const answer = await chatReply(ev);
   const withForm = WANTS_ANALYSIS.test(ev.content);
-  const message = await api.sendMessage(ev.threadId, {
+  const answer = await Reply.open(api, ev.threadId, {
     clientRequestId: reply("chat"),
-    content: answer,
     ...(withForm ? { tool: intakeForm } : {}),
   });
-  if (withForm) await tools.put(message.id, { kind: "intake", threadId: ev.threadId });
+  if (withForm) await tools.put(answer.messageId, { kind: "intake", threadId: ev.threadId });
+  await chatReply(ev, answer);
 }
 
 const intakeForm = {
@@ -185,7 +184,7 @@ function offerAnalyze(
   });
 }
 
-async function chatReply(ev: ThreadMessageEvent): Promise<string> {
+async function chatReply(ev: ThreadMessageEvent, answer: Reply) {
   type Turn = { role: "user"; content: string } | { role: "assistant"; content: string };
   const history: Turn[] = ev.conversation.slice(-10).map((m): Turn => {
     const content = m.content || "(attachment)";
@@ -193,10 +192,13 @@ async function chatReply(ev: ThreadMessageEvent): Promise<string> {
   });
   if (history.at(-1)?.content !== ev.content) history.push({ role: "user", content: ev.content });
   try {
-    const out = await concierge.generate(history, { abortSignal: AbortSignal.timeout(30_000) });
-    if (out.text.trim()) return out.text.trim().slice(0, 3900);
+    // The buyer watches the reply appear token by token.
+    const out = await concierge.stream(history, { abortSignal: AbortSignal.timeout(30_000) });
+    for await (const delta of out.textStream) await answer.write(delta);
   } catch (error) {
     console.error(`chat model failed: ${error instanceof Error ? error.message : error}`);
   }
-  return "I analyze CSV files. Run **/profile** for a quick column profile, or **/analyze** for charts, outliers and a written analysis. You can also upload a CSV here.";
+  await answer.close(
+    "I analyze CSV files. Run **/profile** for a quick column profile, or **/analyze** for charts, outliers and a written analysis. You can also upload a CSV here.",
+  );
 }

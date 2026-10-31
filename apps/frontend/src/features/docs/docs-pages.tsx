@@ -49,10 +49,10 @@ export function DocsOverview() {
       </section>
       <section aria-labelledby="docs-agents" className="grid gap-4">
         <h2 id="docs-agents" className="text-xl font-semibold tracking-[-0.02em]">
-          For coding agents
+          For AI assistants
         </h2>
         <p className="text-[15px] leading-7 text-muted-foreground">
-          The same reference as plain files. Point your coding agent at{" "}
+          The same reference as plain files. Point your AI assistant at{" "}
           <code className="font-mono text-sm text-foreground">llms.txt</code> and it can build the
           integration for you.
         </p>

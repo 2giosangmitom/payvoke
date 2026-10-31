@@ -8,6 +8,7 @@ import { vaultAdmissionAbi, vaultFinanceAbi } from "@payvoke/shared/protocol";
 import { Button } from "@/src/components/ui/button";
 import {
   ErrorNotice,
+  FiguresSkeleton,
   LoadingState,
   PageHeader,
   PageShell,
@@ -242,7 +243,10 @@ export function WalletPage() {
         }
       />
       {summary.isPending ? (
-        <LoadingState>Loading your wallet</LoadingState>
+        <div className="grid gap-8 pt-8">
+          <FiguresSkeleton />
+          <LoadingState rows={3}>Loading your wallet</LoadingState>
+        </div>
       ) : summary.isError ? (
         <ErrorNotice onRetry={() => void summary.refetch()}>
           {errorMessage(summary.error, "Couldn't load your wallet.")}

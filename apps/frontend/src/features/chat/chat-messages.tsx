@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react";
 import {
   ActionBarPrimitive,
   MessagePrimitive,
@@ -10,7 +10,7 @@ import {
 } from "@assistant-ui/react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/src/components/assistant-ui/elements/tooltip-icon-button";
-import { TypingIndicator } from "@/src/components/assistant-ui/elements/typing-indicator";
+import { ThinkingIndicator } from "@/src/components/assistant-ui/elements/thinking-indicator";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { StreamdownText } from "@/src/features/chat/assistant-ui/streamdown-text";
 import { FilePart } from "@/src/features/chat/file-part";
@@ -18,6 +18,10 @@ import { RunBody } from "@/src/features/chat/run-message";
 import { ThreadChatContext, type MessageKind } from "@/src/features/chat/thread-runtime";
 import { CommandData, toolUIs } from "@/src/features/chat/tool-uis";
 import { cn } from "@/src/lib/utils";
+
+// Messages rise into place once, when they first mount; reduced motion keeps them still.
+const enter =
+  "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out";
 
 const time = (date: Date | undefined) =>
   date ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
@@ -40,6 +44,11 @@ function AppMark({ className }: { className?: string }) {
 // every link opens behind a confirmation.
 function MessageText({ text }: TextMessagePartProps) {
   const role = useAuiState((s) => s.message.role);
+  const running = useAuiState((s) => s.message.status?.type === "running");
+  const chat = useContext(ThreadChatContext);
+  // A streamed reply that has no text yet: the agent is still thinking.
+  if (role === "assistant" && running && !text)
+    return <ThinkingIndicator label={`${chat?.appName ?? "The agent"} is writing`} />;
   if (role === "assistant") return <StreamdownText />;
   return <p className="leading-relaxed break-words whitespace-pre-wrap">{text}</p>;
 }
@@ -67,6 +76,7 @@ export function UserMessage() {
     <MessagePrimitive.Root
       className={cn(
         "grid max-w-[min(85%,40rem)] justify-items-end gap-1.5 self-end max-sm:max-w-[92%]",
+        enter,
         pending && "opacity-70",
       )}
     >
@@ -111,7 +121,7 @@ export function AssistantMessage() {
 
   if (kind === "offer")
     return (
-      <MessagePrimitive.Root className="flex max-w-full items-start gap-3 self-start">
+      <MessagePrimitive.Root className={cn("flex max-w-full items-start gap-3 self-start", enter)}>
         <AppMark />
         <div className="grid min-w-0 gap-2">
           <MessageHeader name={chat?.appName ?? "App"} createdAt={createdAt} />
@@ -124,7 +134,8 @@ export function AssistantMessage() {
     <MessagePrimitive.Root
       className={cn(
         "group flex items-start gap-3 self-start",
-        run ? "w-full" : "max-w-[min(90%,44rem)] max-sm:max-w-full",
+        enter,
+        run ? "w-full max-w-4xl" : "max-w-[min(90%,44rem)] max-sm:max-w-full",
       )}
     >
       <AppMark />
@@ -162,14 +173,24 @@ export function AssistantMessage() {
   );
 }
 
-// The other side owes a reply: the bot answering free chat.
+// The other side owes a reply: the bot answering free chat. The label
+// shimmers and the seconds count up, so a slow model still reads as alive.
 export function ReplyingIndicator({ label }: { label: string }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
   return (
-    <div role="status" aria-live="polite" className="flex items-center gap-3 self-start">
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn("flex items-center gap-3 self-start", enter)}
+    >
       <AppMark className="opacity-70" />
       <div className="flex items-center gap-3 border border-border bg-card px-4 py-3">
-        <TypingIndicator variant="bare" aria-hidden />
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <ThinkingIndicator label={label} elapsed={seconds >= 3 ? `${seconds}s` : undefined} />
       </div>
     </div>
   );

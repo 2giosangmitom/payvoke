@@ -3,6 +3,7 @@ import { vaultFinanceAbi } from "@payvoke/shared/protocol";
 import type { QuoteDocument } from "@payvoke/shared/x402";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
+import { imageUrl } from "../apps/serializers";
 
 export type FinancialIntentBody = { action: "reclaim" };
 
@@ -189,7 +190,7 @@ export class PaymentStatusService {
       include: {
         quote: {
           include: {
-            app: { select: { id: true, name: true } },
+            app: { select: { id: true, name: true, imageKey: true } },
             commandRevision: { select: { command: { select: { name: true } } } },
           },
         },
@@ -212,7 +213,7 @@ export class PaymentStatusService {
         return {
           invocationId: row.id,
           threadId: row.quote.threadId,
-          app: row.quote.app,
+          app: { id: row.quote.app.id, name: row.quote.app.name, imageUrl: imageUrl(row.quote.app) },
           commandName: row.quote.commandRevision?.command.name ?? null,
           grossAmount: quote.grossAmount,
           paymentStatus:

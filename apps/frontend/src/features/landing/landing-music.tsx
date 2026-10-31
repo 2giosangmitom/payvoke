@@ -158,8 +158,8 @@ export function LandingMusic() {
       </button>
 
       <span className="flex min-w-0 flex-1 flex-col justify-center pr-2 pl-3 leading-tight [@media(max-width:480px)_and_(max-height:740px)]:hidden max-sm:group-data-[compact=true]/card:hidden">
-        <span className="truncate text-[12px] font-medium text-foreground">{TRACK.title}</span>
-        <span className="relative mt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+        <span className="truncate text-[14px] font-medium text-foreground">{TRACK.title}</span>
+        <span className="relative mt-0.5 text-[13px] text-muted-foreground tabular-nums">
           <span className="block truncate transition-opacity duration-150 ease-out group-has-[input:hover]/card:opacity-0 group-has-[input:focus-visible]/card:opacity-0 group-has-[input:active]/card:opacity-0">
             {error ? "Unavailable" : TRACK.artist}
           </span>

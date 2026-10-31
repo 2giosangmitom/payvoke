@@ -8,4 +8,6 @@ A reply can be markdown text, a built-in tool, or both. Tools render as Payvoke 
 | `ask_choice` | 2 to 12 options, single or multiple | `{ "selected": ["id"] }` |
 | `confirm` | A yes/no card with details | `{ "approved": true }` |
 
+To show a text reply as your model writes it, send the message with `streaming: true` and no text, then add the text with [message deltas](#operation/appendMessageDelta) numbered from 1. The last delta has `done: true`. Until then the buyer sees the reply grow in the thread.
+
 To charge for work, make an offer. The buyer accepts it by paying.

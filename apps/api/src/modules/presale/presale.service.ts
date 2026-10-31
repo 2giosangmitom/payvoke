@@ -27,7 +27,13 @@ export type BuyerMessageBody = {
   fileIds?: unknown;
   clientRequestId?: unknown;
 };
-export type ProviderMessageBody = { content?: unknown; tool?: unknown; clientRequestId?: unknown };
+export type ProviderMessageBody = {
+  content?: unknown;
+  tool?: unknown;
+  clientRequestId?: unknown;
+  streaming?: unknown;
+};
+export type MessageDeltaBody = { sequence: number; delta: string; done?: boolean };
 export type OfferBody = {
   clientRequestId?: unknown;
   commandId?: unknown;
@@ -64,6 +70,7 @@ export const messageView = (message: ThreadMessage) => ({
   files: message.fileManifest ?? [],
   tool: message.tool,
   replyToId: message.replyToId,
+  streaming: message.streaming,
   createdAt: message.createdAt,
 });
 
@@ -348,9 +355,13 @@ export class PresaleService {
 
   async sendProviderMessage(app: App, threadId: string, body: ProviderMessageBody | undefined) {
     const tool = body?.tool === undefined ? null : parseToolCall(body.tool);
-    // A tool carries its own prompt, so its message text is optional.
+    if (body?.streaming !== undefined && typeof body.streaming !== "boolean")
+      throw new BadRequestError("INVALID_MESSAGE");
+    const streaming = body?.streaming === true;
+    // A tool carries its own prompt, and a streamed reply starts empty, so
+    // their text is optional.
     const text =
-      tool && (body?.content === undefined || body.content === "")
+      (tool || streaming) && (body?.content === undefined || body.content === "")
         ? ""
         : content(body?.content, CONTENT_MAX);
     if (text === null || !requestId(body?.clientRequestId))
@@ -360,7 +371,10 @@ export class PresaleService {
     const thread = await this.providerThread(app, threadId);
     const prior = await this.db.threadMessage.findUnique({ where: key });
     if (prior) {
-      if (prior.content !== text) throw new ConflictError("IDEMPOTENCY_CONFLICT");
+      // A streamed reply has grown since it was opened; a retry of its
+      // opening request still names the same message.
+      if (streaming ? prior.streamSequence === 0 && prior.content !== text : prior.content !== text)
+        throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return messageView(prior);
     }
     try {
@@ -381,6 +395,7 @@ export class PresaleService {
             role: "PROVIDER",
             content: text,
             ...(tool ? { tool: json(tool) } : {}),
+            streaming,
             clientRequestId,
           },
         });
@@ -391,6 +406,44 @@ export class PresaleService {
       if (!isUniqueViolation(error)) throw error;
       return messageView(await this.db.threadMessage.findUniqueOrThrow({ where: key }));
     }
+  }
+
+  // Appends text to a reply opened with `streaming: true`. Deltas carry a
+  // per-message sequence from 1, so a retried delta is applied once; `done`
+  // closes the reply, after which it is an ordinary message.
+  async appendMessageDelta(app: App, threadId: string, messageId: string, body: MessageDeltaBody) {
+    await this.providerThread(app, threadId);
+    const message = await this.db.threadMessage.findFirst({
+      where: { id: messageId, threadId, role: "PROVIDER" },
+    });
+    if (!message) throw new NotFoundError("MESSAGE_NOT_FOUND");
+    // Already applied: a retry answers with the message as it stands.
+    if (body.sequence <= message.streamSequence) return messageView(message);
+    if (!message.streaming) throw new ConflictError("MESSAGE_CLOSED");
+    if (body.sequence !== message.streamSequence + 1)
+      throw new ConflictError("STREAM_SEQUENCE_GAP");
+    const text = message.content + body.delta;
+    if (text.length > CONTENT_MAX) throw new BadRequestError("MESSAGE_TOO_LONG");
+    if (body.done && !text.trim() && !message.tool) throw new BadRequestError("INVALID_MESSAGE");
+    const applied = await this.db.$transaction(async (tx) => {
+      // Fenced on the sequence it read, so two racing deltas apply once each.
+      const { count } = await tx.threadMessage.updateMany({
+        where: { id: message.id, streaming: true, streamSequence: message.streamSequence },
+        data: { content: text, streamSequence: body.sequence, streaming: !body.done },
+      });
+      // The thread's live view rebuilds when its last activity moves.
+      if (count)
+        await tx.chatThread.update({
+          where: { id: threadId },
+          data: { lastMessageAt: new Date() },
+        });
+      return count > 0;
+    });
+    const current = await this.db.threadMessage.findUniqueOrThrow({ where: { id: message.id } });
+    if (!applied && current.streamSequence < body.sequence)
+      throw new ConflictError("STREAM_SEQUENCE_GAP");
+    this.ring(app.id, threadId);
+    return messageView(current);
   }
 
   // Offers are immutable. A new one supersedes the thread's open offer. The

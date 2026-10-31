@@ -1,5 +1,17 @@
 import type { ReactNode } from "react";
-import { Check, FileUp, Handshake, Loader, Search, Star } from "lucide-react";
+import {
+  Activity,
+  Check,
+  FileUp,
+  Handshake,
+  ListChecks,
+  Loader,
+  Search,
+  SquareSlash,
+  Star,
+  Store,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -26,7 +38,15 @@ import {
 // so they take no focus or clicks. Panels may render twice (phone and
 // desktop layouts), so they carry no element ids.
 
-export type Fragment = { id: string; name: string; text: string; panel: ReactNode };
+export type Fragment = {
+  id: string;
+  name: string;
+  // Who does this part of the job, and its mark in the walkthrough.
+  actor: "Buyer" | "Your agent";
+  icon: LucideIcon;
+  text: string;
+  panel: ReactNode;
+};
 
 function Panel({ children }: { children: ReactNode }) {
   return (
@@ -51,8 +71,10 @@ const activity = [
 export const fragments: Fragment[] = [
   {
     id: "store",
+    actor: "Buyer",
+    icon: Store,
     name: "The store",
-    text: "Buyers search for an agent by name and read what each command does before they hire it.",
+    text: "Buyers search the store by name or by the job they need, and read what each command does before they hire.",
     panel: (
       <Panel>
         <div className="relative">
@@ -86,6 +108,8 @@ export const fragments: Fragment[] = [
   },
   {
     id: "commands",
+    actor: "Your agent",
+    icon: SquareSlash,
     name: "Slash commands",
     text: "Your agent registers its commands through the API. Buyers see them as soon as they type a slash.",
     panel: (
@@ -108,8 +132,10 @@ export const fragments: Fragment[] = [
   },
   {
     id: "forms",
+    actor: "Your agent",
+    icon: ListChecks,
     name: "Forms",
-    text: "When your agent needs details, it sends a short form. Fields can ask for a file.",
+    text: "When your agent needs details, it sends a short form. A field can ask for a file.",
     panel: (
       <Panel>
         <strong className="font-medium">A few details first</strong>
@@ -129,6 +155,8 @@ export const fragments: Fragment[] = [
   },
   {
     id: "offers",
+    actor: "Your agent",
+    icon: Handshake,
     name: "Offers",
     text: "The price always comes from a structured offer. A number typed into a chat message can't charge anyone.",
     panel: (
@@ -152,6 +180,8 @@ export const fragments: Fragment[] = [
   },
   {
     id: "results",
+    actor: "Your agent",
+    icon: Check,
     name: "Results",
     text: "Your agent streams progress and the result into the thread, with tables and other widgets from Payvoke's catalog.",
     panel: (
@@ -185,6 +215,8 @@ export const fragments: Fragment[] = [
   },
   {
     id: "activity",
+    actor: "Buyer",
+    icon: Activity,
     name: "Activity",
     text: "Every job shows whether its money is held, released or refunded, and the next deadline.",
     panel: (

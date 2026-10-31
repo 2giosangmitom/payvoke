@@ -214,12 +214,20 @@ export class PaymentGateway {
       );
     }
     const rejected = operation?.state === "REJECTED";
+    // PENDING is the normal first answer: the authorization is journaled and
+    // the worker is putting the hold on chain. Tell the client to poll, not
+    // that settlement is down.
+    const pending = operation?.state === "PENDING";
     c.header("Retry-After", "5");
     return c.json(
       {
         invocationId: quote.invocationId,
         paymentStatus: operation?.state ?? "UNKNOWN",
-        error: rejected ? operation?.errorReason : "settlement_unavailable",
+        error: rejected
+          ? operation?.errorReason
+          : pending
+            ? "settlement_pending"
+            : "settlement_unavailable",
         nextActions:
           rejected || operation?.state === "QUARANTINED" ? ["contact_support"] : ["poll"],
       },

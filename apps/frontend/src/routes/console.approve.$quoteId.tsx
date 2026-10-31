@@ -5,7 +5,7 @@ export const Route = createFileRoute("/console/approve/$quoteId")({
   component: ApproveRoute,
   staticData: {
     title: "Approve payment",
-    description: "Approve a payment your coding agent asked for.",
+    description: "Approve a payment your AI assistant asked for.",
   },
 });
 

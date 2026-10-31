@@ -5,7 +5,7 @@ import { CircleCheck } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import {
   ErrorNotice,
-  LoadingState,
+  PageSkeleton,
   PageHeader,
   PageShell,
   errorMessage,
@@ -14,7 +14,7 @@ import { getThread } from "@/src/features/chat/api";
 import { getPendingQuote } from "@/src/features/payments/api";
 import { PaymentConfirm } from "@/src/features/payments/payment-confirm";
 
-// Where a coding agent's approval link lands (MCP request_payment). The API
+// Where an AI assistant's approval link lands (MCP request_payment). The API
 // only returns the quote to the buyer it was issued to, so a link opened by
 // anyone else shows nothing. The agent never sees this page or its key.
 export function ApprovePage({ quoteId }: { quoteId: string }) {
@@ -40,7 +40,7 @@ export function ApprovePage({ quoteId }: { quoteId: string }) {
       <PageHeader
         compact
         title="Approve payment"
-        description="Your coding agent wants to pay for this job. Approve only if you asked for it."
+        description="Your AI assistant wants to pay for this job. Approve only if you asked for it."
       />
       <div className="grid max-w-2xl gap-6 py-8">
         {paid ? (
@@ -67,7 +67,7 @@ export function ApprovePage({ quoteId }: { quoteId: string }) {
             )}
           </section>
         ) : quote.isPending ? (
-          <LoadingState>Loading the payment</LoadingState>
+          <PageSkeleton label="Loading the payment" />
         ) : quote.isError ? (
           <ErrorNotice onRetry={() => void quote.refetch()}>
             {errorMessage(quote.error, "Couldn't load this payment.")}
@@ -76,7 +76,7 @@ export function ApprovePage({ quoteId }: { quoteId: string }) {
           <section className="grid gap-3 border border-border p-5">
             <p className="font-medium">This payment link has expired or was already used.</p>
             <p className="text-sm text-muted-foreground">
-              Ask your coding agent for a new link, or check your payments in Activity.
+              Ask your AI assistant for a new link, or check your payments in Activity.
             </p>
             <Button
               variant="outline"

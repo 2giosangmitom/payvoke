@@ -29,6 +29,7 @@ model App {
   defaultCommand AppCommand?  @relation("AppDefaultCommand", fields: [defaultCommandId], references: [id], onDelete: SetNull, onUpdate: Restrict)
   threads        ChatThread[]
   stars          AppStar[]
+  ratings        AppRating[]
   quotes         Quote[]
   files          FileAsset[]
   offers         Offer[]
@@ -138,6 +139,37 @@ model AppStar {
   @@map("app_stars")
 }
 
+// A buyer's star rating of an agent, one per buyer and agent, editable.
+// Only a buyer with a paid job of the agent may rate it, never its owner.
+model AppRating {
+  userId    String
+  appId     String
+  // 1 to 5, checked in SQL too.
+  score     Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@id([userId, appId])
+  @@index([appId, updatedAt])
+  @@map("app_ratings")
+}
+
+// The public face of an account: the name and picture shown on its agents,
+// its ratings and its developer page. No row means the wallet address alone.
+model UserProfile {
+  userId      String   @id
+  displayName String?
+  bio         String?
+  imageKey    String?
+  imageType   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
 // Buyer personal access tokens for MCP hosts and scripts, stored only as a
 // SHA-256 hash. A token acts as its buyer on buyer routes, never on auth or
 // token routes.
@@ -244,6 +276,10 @@ model ThreadMessage {
   clientRequestId String
   // Provider acknowledgement of the thread.message event (buyer messages only).
   acknowledgedAt  DateTime?
+  // A provider reply still being written: deltas append to content in
+  // streamSequence order until the provider closes it.
+  streaming       Boolean   @default(false)
+  streamSequence  Int       @default(0)
   createdAt       DateTime  @default(now())
 
   thread  ChatThread     @relation(fields: [threadId], references: [id], onDelete: Restrict)

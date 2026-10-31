@@ -24,15 +24,15 @@ const label = (value: unknown) =>
     ? String(value)
     : "";
 
-const widgetCard = "border border-border p-4";
-const widgetTitle = "mb-2.5 font-semibold";
+const isNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value);
 
 const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } = {
   Stack: ({ props, renderNode }) => (
     <div
       className={cn(
-        "grid min-w-0 gap-3",
-        props.direction === "horizontal" && "flex flex-wrap *:min-w-0 *:flex-[1_1_11rem]",
+        "grid min-w-0 gap-4",
+        props.direction === "horizontal" &&
+          "grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-px border border-border bg-border",
       )}
     >
       {renderNode(props.children)}
@@ -40,60 +40,96 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
   ),
   Text: ({ props }) =>
     props.variant === "heading" ? (
-      <h3 className="leading-relaxed font-semibold whitespace-pre-wrap">{props.value}</h3>
+      <h3 className="text-base font-semibold tracking-[-0.01em] break-words">{props.value}</h3>
     ) : (
       <p
         className={cn(
-          "leading-relaxed whitespace-pre-wrap",
-          props.variant === "caption" && "text-xs text-faint",
+          "leading-relaxed break-words whitespace-pre-wrap",
+          props.variant === "caption" ? "-mt-3 text-xs text-muted-foreground" : "text-sm",
         )}
       >
         {props.value}
       </p>
     ),
   Card: ({ props, renderNode }) => (
-    <section className={widgetCard}>
-      <h3 className={widgetTitle}>{props.title}</h3>
-      {props.description && (
-        <p className="leading-relaxed whitespace-pre-wrap text-muted-foreground">
-          {props.description}
-        </p>
-      )}
-      {props.children && <div className="mt-3">{renderNode(props.children)}</div>}
+    <section className="grid min-w-0 gap-3">
+      <header className="grid gap-0.5">
+        <h3 className="text-sm font-medium">{props.title}</h3>
+        {props.description && (
+          <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            {props.description}
+          </p>
+        )}
+      </header>
+      {props.children && renderNode(props.children)}
     </section>
   ),
+  // A figure cell: inside a horizontal stack the cells share hairlines.
   Metric: ({ props }) => (
-    <div className="flex items-baseline gap-2.5">
-      <small className="text-faint">{props.label}</small>
-      <strong className="font-mono text-3xl font-semibold">{label(props.value)}</strong>
-      {props.unit && <span className="text-faint">{props.unit}</span>}
+    <div className="grid min-w-0 gap-1 bg-card px-3.5 py-3">
+      <span className="truncate text-xs text-muted-foreground">{props.label}</span>
+      <span className="flex items-baseline gap-1.5">
+        <strong className="font-mono text-2xl font-semibold tracking-tight tabular-nums">
+          {label(props.value)}
+        </strong>
+        {props.unit && <span className="text-xs text-muted-foreground">{props.unit}</span>}
+      </span>
     </div>
   ),
   Table: ({ props }) => {
     const columns = props.columns
       .slice(0, 12)
       .map((column) => (typeof column === "string" ? { key: column, label: column } : column));
-    const cell = "border border-border p-2.5 text-left";
+    const rows = props.rows.slice(0, 100);
+    // A column of numbers reads right-aligned, so the digits line up.
+    const numeric = new Set(
+      columns
+        .filter((column) =>
+          rows.every((row) => {
+            const value = Object.hasOwn(row, column.key) ? row[column.key] : null;
+            return value === null || value === undefined || isNumber(value);
+          }),
+        )
+        .map((column) => column.key),
+    );
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-xs">
-          <thead>
+      <div className="max-w-full overflow-x-auto border border-border">
+        <table className="w-full border-collapse text-xs">
+          <thead className="bg-muted/60">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className={cn(cell, "font-mono font-medium text-faint")}>
+                <th
+                  key={column.key}
+                  scope="col"
+                  className={cn(
+                    "border-b border-border px-3 py-2 font-medium whitespace-nowrap text-muted-foreground",
+                    numeric.has(column.key) ? "text-right" : "text-left",
+                  )}
+                >
                   {column.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {props.rows.slice(0, 100).map((row, index) => (
-              <tr key={index}>
-                {columns.map((column) => (
-                  <td key={column.key} className={cell}>
-                    {label(Object.hasOwn(row, column.key) ? row[column.key] : undefined)}
-                  </td>
-                ))}
+            {rows.map((row, index) => (
+              <tr key={index} className="border-b border-border last:border-b-0">
+                {columns.map((column) => {
+                  const value = Object.hasOwn(row, column.key) ? row[column.key] : undefined;
+                  return (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "px-3 py-2 align-top",
+                        numeric.has(column.key)
+                          ? "text-right font-mono tabular-nums whitespace-nowrap"
+                          : "min-w-[8rem] break-words",
+                      )}
+                    >
+                      {label(value)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -105,21 +141,28 @@ const renderers: { [N in ComponentName]: ComponentRenderer<ComponentProps<N>> } 
     const points = props.points.slice(0, 20);
     const max = Math.max(1, ...points.map((point) => Math.max(0, point.value)));
     return (
-      <div className="grid gap-2" role="img" aria-label={props.title || "Bar chart"}>
-        {points.map((point, index) => (
-          <div
-            key={index}
-            className="grid grid-cols-[6.25rem_minmax(0,1fr)_3.5rem] items-center gap-2.5 font-mono text-xs"
-          >
-            <span className="truncate">{point.label}</span>
-            <i
-              className="block h-3 bg-primary transition-[width] duration-500"
-              style={{ width: `${(Math.max(0, point.value) / max) * 100}%` }}
-            />
-            <strong className="text-right font-medium">{point.value}</strong>
-          </div>
-        ))}
-      </div>
+      <figure className="grid min-w-0 gap-3">
+        {props.title && <figcaption className="text-sm font-medium">{props.title}</figcaption>}
+        <div className="grid gap-1.5" role="img" aria-label={props.title || "Bar chart"}>
+          {points.map((point, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-[minmax(3rem,7rem)_minmax(0,1fr)_auto] items-center gap-3 text-xs"
+            >
+              <span className="truncate text-muted-foreground">{point.label}</span>
+              <span className="h-2.5 bg-muted">
+                <i
+                  className="block h-full bg-primary"
+                  style={{ width: `${(Math.max(0, point.value) / max) * 100}%` }}
+                />
+              </span>
+              <strong className="text-right font-mono font-medium tabular-nums">
+                {point.value}
+              </strong>
+            </div>
+          ))}
+        </div>
+      </figure>
     );
   },
 };
@@ -133,7 +176,7 @@ export const openuiLibrary = createLibrary({
 export function OpenUISurface({ source }: { source: string }) {
   if (typeof source !== "string" || !source.trim()) return null;
   return (
-    <ChatWidget label="App widget" aria-label="App widget">
+    <ChatWidget label="Live view from the agent" aria-label="Live view from the agent">
       <Renderer response={source} library={openuiLibrary} />
     </ChatWidget>
   );

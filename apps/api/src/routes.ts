@@ -7,6 +7,7 @@ import { fileRoutes } from "./modules/files/file.routes";
 import { openuiRoutes } from "./modules/openui/openui.routes";
 import { grantRoutes } from "./modules/payments/grant.routes";
 import { paymentRoutes } from "./modules/payments/payments.routes";
+import { peopleRoutes } from "./modules/people/people.routes";
 import { presaleRoutes } from "./modules/presale/presale.routes";
 import { providerRoutes } from "./modules/provider/provider.routes";
 import { quoteRoutes } from "./modules/quotes/quote.routes";
@@ -28,6 +29,7 @@ export const routes = new Hono<AppEnv>()
   .route("/", runRoutes)
   .route("/", openuiRoutes)
   .route("/", fileRoutes)
-  .route("/", presaleRoutes);
+  .route("/", presaleRoutes)
+  .route("/", peopleRoutes);
 
 export type AppType = typeof routes;

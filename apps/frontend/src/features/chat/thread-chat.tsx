@@ -26,7 +26,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
-import { ErrorNotice, LoadingState } from "@/src/components/layout/page-kit";
+import { ErrorNotice } from "@/src/components/layout/page-kit";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { formatCommandPrice } from "@/src/features/apps/format";
 import {
   getThread,
@@ -145,6 +146,44 @@ function unavailableNotice(thread: ThreadDetail) {
   if (thread.app.availability !== "AVAILABLE")
     return "This app is offline until its worker checks in again. Earlier messages and results stay readable.";
   return null;
+}
+
+// The thread's shape while it loads: a header, a few messages on both sides
+// and the composer, in the column the real messages use.
+function ThreadSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="flex min-h-0 flex-1 flex-col">
+      <span className="sr-only">Loading the thread</span>
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:px-6">
+        <Skeleton className="size-8" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <div className="flex flex-1 flex-col gap-7 px-4 py-6 sm:pr-[max(1.5rem,calc(100%-57.5rem))] sm:pl-6">
+        {[
+          { side: "start", lines: [88, 64] },
+          { side: "end", lines: [40] },
+          { side: "start", lines: [92, 80, 52] },
+        ].map((message, index) =>
+          message.side === "end" ? (
+            <Skeleton key={index} className="h-11 w-2/5 self-end" />
+          ) : (
+            <div key={index} className="flex w-full max-w-[44rem] gap-3">
+              <Skeleton className="size-8 shrink-0 max-sm:hidden" />
+              <div className="grid flex-1 gap-2.5 pt-1">
+                <Skeleton className="h-3 w-24" />
+                {message.lines.map((width) => (
+                  <Skeleton key={width} className="h-3.5" style={{ width: `${width}%` }} />
+                ))}
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+      <div className="shrink-0 border-t border-border bg-card px-3 py-3 sm:px-6">
+        <Skeleton className="h-12 max-w-4xl" />
+      </div>
+    </div>
+  );
 }
 
 export function ThreadChat({ threadId }: { threadId: string }) {
@@ -337,7 +376,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     },
   };
 
-  if (thread.isPending) return <LoadingState className="px-8">Loading the thread</LoadingState>;
+  if (thread.isPending) return <ThreadSkeleton />;
   if (thread.isError || !thread.data)
     return (
       <ErrorNotice className="m-6">
@@ -397,7 +436,9 @@ export function ThreadChat({ threadId }: { threadId: string }) {
           )}
 
           <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-            <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-6 sm:px-[clamp(1.5rem,4vw,3.5rem)]">
+            {/* Messages start at the thread's left edge in a column as wide as
+                the composer (56rem); wide output scrolls inside its own box. */}
+            <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-7 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 sm:pr-[max(1.5rem,calc(100%-57.5rem))] sm:pl-6">
               <div className="sticky top-0 z-10 flex justify-center empty:hidden">
                 <ConnectionState
                   phase={connection.phase}
@@ -407,7 +448,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
               </div>
               <ThreadPrimitive.Empty>
                 <div className="mx-auto my-auto grid w-full max-w-2xl gap-5 py-10">
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:ease-out">
                     <h2 className="text-2xl font-medium tracking-[-0.03em]">
                       What should {data.app.name} do?
                     </h2>
@@ -419,8 +460,12 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                   </div>
                   {commands.length > 0 && (
                     <ul aria-label="Commands" className="grid border-y border-border">
-                      {commands.slice(0, 6).map((command) => (
-                        <li key={command.id} className="border-b border-border last:border-b-0">
+                      {commands.slice(0, 6).map((command, index) => (
+                        <li
+                          key={command.id}
+                          className="border-b border-border last:border-b-0 motion-safe:animate-in motion-safe:fill-mode-both motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:ease-out"
+                          style={{ animationDelay: `${120 + index * 60}ms` }}
+                        >
                           <button
                             type="button"
                             onClick={() => setDialog({ command, text: "", fileIds: [] })}
@@ -457,10 +502,10 @@ export function ThreadChat({ threadId }: { threadId: string }) {
               </ThreadPrimitive.ViewportFooter>
             </ThreadPrimitive.Viewport>
 
-            <div className="shrink-0 border-t border-border bg-card px-3 pt-3 pb-3 sm:px-[clamp(1.5rem,4vw,3.5rem)]">
+            <div className="shrink-0 border-t border-border bg-card px-3 py-3 sm:px-6">
               {error && <ErrorNotice className="mt-0 mb-3">{error}</ErrorNotice>}
               <ComposerPrimitive.TriggerPopoverRoot>
-                <ComposerPrimitive.Root className="relative border border-border-strong bg-background transition-colors focus-within:border-primary">
+                <ComposerPrimitive.Root className="relative max-w-4xl border border-border-strong bg-background transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--color-primary-soft)] has-[textarea:disabled]:bg-muted/50">
                   <ComposerTriggerPopover
                     char="/"
                     adapter={slash.adapter}
@@ -469,32 +514,30 @@ export function ThreadChat({ threadId }: { threadId: string }) {
                     emptyItemsLabel="No command with that name"
                     className="w-[min(28rem,calc(100vw-2rem))] border-border-strong shadow-float"
                   />
-                  <div className="px-3 pt-3 empty:hidden">
+                  <div className="px-2 pt-2 empty:hidden">
                     <ComposerAttachments />
                   </div>
-                  <ComposerPrimitive.Input
-                    rows={1}
-                    autoFocus
-                    placeholder={
-                      notice
-                        ? "History is read-only"
-                        : data.activeQuoteId
-                          ? "A paid job is running. Answer its requests above."
-                          : "Describe what you need, or type / for commands"
-                    }
-                    aria-label={`Message ${data.app.name}`}
-                    className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed outline-none placeholder:text-faint"
-                  />
-                  <div className="flex items-center gap-2 px-2 pb-2">
+                  {/* One row: attach, the message, send. */}
+                  <div className="flex items-end gap-1.5 p-1.5">
                     <ComposerAddAttachment />
-                    <span className="hidden items-center gap-1.5 text-xs text-faint sm:inline-flex">
-                      <SquareSlash size={13} aria-hidden /> commands
-                    </span>
+                    <ComposerPrimitive.Input
+                      rows={1}
+                      autoFocus
+                      placeholder={
+                        notice
+                          ? "This thread is read-only"
+                          : data.activeQuoteId
+                            ? "A paid job is running. Answer its requests above."
+                            : "Message, or type / for commands"
+                      }
+                      aria-label={`Message ${data.app.name}`}
+                      className="block max-h-48 min-h-9 flex-1 resize-none bg-transparent px-1.5 py-2 text-[15px] leading-5 outline-none placeholder:text-faint disabled:cursor-not-allowed"
+                    />
                     <ComposerPrimitive.Send
                       aria-label="Send message"
-                      className="ml-auto grid size-9 shrink-0 place-items-center bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+                      className="grid size-9 shrink-0 place-items-center bg-primary text-primary-foreground transition-[background-color,scale,opacity] duration-150 ease-out hover:bg-primary-hover active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35"
                     >
-                      <ArrowUp size={17} />
+                      <ArrowUp size={18} />
                     </ComposerPrimitive.Send>
                   </div>
                 </ComposerPrimitive.Root>

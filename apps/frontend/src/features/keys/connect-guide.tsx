@@ -89,11 +89,11 @@ export function ConnectGuide() {
     >
       <div className="grid gap-1.5">
         <h2 id="connect-agent-title" className="text-base font-medium">
-          Connect your agent
+          Connect your AI assistant
         </h2>
         <p className={prose}>
-          Payvoke is an MCP server. Add it to your harness and your agent can find, chat with and
-          pay agents from your vault.
+          Payvoke is an MCP server. Add it to your AI assistant and it can find, chat with and pay
+          agents from your vault.
         </p>
       </div>
 
@@ -102,9 +102,9 @@ export function ConnectGuide() {
       <ol className="grid grid-cols-[minmax(0,1fr)]">
         <Step n={1} title="Create an API key">
           <p className={prose}>
-            Click <span className="text-foreground">Create API key</span> above, one per
-            machine. Choose <span className="text-foreground">Pay by itself up to a limit</span> to
-            let it pay small jobs unasked. The key is shown once.
+            Click <span className="text-foreground">Create API key</span> above, one per machine.
+            Choose <span className="text-foreground">Pay by itself up to a limit</span> to let it
+            pay small jobs unasked. The key is shown once.
           </p>
         </Step>
 

@@ -22,8 +22,10 @@ import { Route as ConsoleActivityRouteImport } from './routes/console.activity'
 import { Route as ConsoleChatRouteImport } from './routes/console.chat'
 import { Route as ConsoleConnectRouteImport } from './routes/console.connect'
 import { Route as ConsoleKeysRouteImport } from './routes/console.keys'
+import { Route as ConsoleProfileRouteImport } from './routes/console.profile'
 import { Route as ConsoleWalletRouteImport } from './routes/console.wallet'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
+import { Route as MarketDevelopersUserIdRouteImport } from './routes/_market.developers.$userId'
 import { Route as MarketDocsIndexRouteImport } from './routes/_market.docs.index'
 import { Route as MarketDocsSectionRouteImport } from './routes/_market.docs.$section'
 import { Route as MarketStoreIndexRouteImport } from './routes/_market.store.index'
@@ -109,6 +111,11 @@ const ConsoleKeysRoute = ConsoleKeysRouteImport.update({
   path: '/keys',
   getParentRoute: () => ConsoleRoute,
 } as any)
+const ConsoleProfileRoute = ConsoleProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => ConsoleRoute,
+} as any)
 const ConsoleWalletRoute = ConsoleWalletRouteImport.update({
   id: '/wallet',
   path: '/wallet',
@@ -118,6 +125,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/dashboard/',
   path: '/dashboard/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const MarketDevelopersUserIdRoute = MarketDevelopersUserIdRouteImport.update({
+  id: '/developers/$userId',
+  path: '/developers/$userId',
+  getParentRoute: () => MarketRoute,
 } as any)
 const MarketDocsIndexRoute = MarketDocsIndexRouteImport.update({
   id: '/',
@@ -183,10 +195,12 @@ export interface FileRoutesByFullPath {
   '/console/chat': typeof ConsoleChatRouteWithChildren
   '/console/connect': typeof ConsoleConnectRoute
   '/console/keys': typeof ConsoleKeysRoute
+  '/console/profile': typeof ConsoleProfileRoute
   '/console/wallet': typeof ConsoleWalletRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/developers/$userId': typeof MarketDevelopersUserIdRoute
   '/docs/$section': typeof MarketDocsSectionRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
@@ -206,11 +220,13 @@ export interface FileRoutesByTo {
   '/console/activity': typeof ConsoleActivityRoute
   '/console/connect': typeof ConsoleConnectRoute
   '/console/keys': typeof ConsoleKeysRoute
+  '/console/profile': typeof ConsoleProfileRoute
   '/console/wallet': typeof ConsoleWalletRoute
   '/': typeof MarketIndexRoute
   '/chat': typeof ChatIndexRoute
   '/console': typeof ConsoleIndexRoute
   '/dashboard': typeof DashboardIndexRoute
+  '/developers/$userId': typeof MarketDevelopersUserIdRoute
   '/docs/$section': typeof MarketDocsSectionRoute
   '/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
@@ -236,11 +252,13 @@ export interface FileRoutesById {
   '/console/chat': typeof ConsoleChatRouteWithChildren
   '/console/connect': typeof ConsoleConnectRoute
   '/console/keys': typeof ConsoleKeysRoute
+  '/console/profile': typeof ConsoleProfileRoute
   '/console/wallet': typeof ConsoleWalletRoute
   '/_market/': typeof MarketIndexRoute
   '/chat/': typeof ChatIndexRoute
   '/console/': typeof ConsoleIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/_market/developers/$userId': typeof MarketDevelopersUserIdRoute
   '/_market/docs/$section': typeof MarketDocsSectionRoute
   '/_market/store/$appId': typeof MarketStoreAppIdRoute
   '/console/approve/$quoteId': typeof ConsoleApproveQuoteIdRoute
@@ -267,10 +285,12 @@ export interface FileRouteTypes {
     | '/console/chat'
     | '/console/connect'
     | '/console/keys'
+    | '/console/profile'
     | '/console/wallet'
     | '/chat/'
     | '/console/'
     | '/dashboard/'
+    | '/developers/$userId'
     | '/docs/$section'
     | '/store/$appId'
     | '/console/approve/$quoteId'
@@ -290,11 +310,13 @@ export interface FileRouteTypes {
     | '/console/activity'
     | '/console/connect'
     | '/console/keys'
+    | '/console/profile'
     | '/console/wallet'
     | '/'
     | '/chat'
     | '/console'
     | '/dashboard'
+    | '/developers/$userId'
     | '/docs/$section'
     | '/store/$appId'
     | '/console/approve/$quoteId'
@@ -319,11 +341,13 @@ export interface FileRouteTypes {
     | '/console/chat'
     | '/console/connect'
     | '/console/keys'
+    | '/console/profile'
     | '/console/wallet'
     | '/_market/'
     | '/chat/'
     | '/console/'
     | '/dashboard/'
+    | '/_market/developers/$userId'
     | '/_market/docs/$section'
     | '/_market/store/$appId'
     | '/console/approve/$quoteId'
@@ -454,6 +478,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleKeysRouteImport
       parentRoute: typeof ConsoleRoute
     }
+    '/console/profile': {
+      id: '/console/profile'
+      path: '/profile'
+      fullPath: '/console/profile'
+      preLoaderRoute: typeof ConsoleProfileRouteImport
+      parentRoute: typeof ConsoleRoute
+    }
     '/console/wallet': {
       id: '/console/wallet'
       path: '/wallet'
@@ -467,6 +498,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/'
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_market/developers/$userId': {
+      id: '/_market/developers/$userId'
+      path: '/developers/$userId'
+      fullPath: '/developers/$userId'
+      preLoaderRoute: typeof MarketDevelopersUserIdRouteImport
+      parentRoute: typeof MarketRoute
     }
     '/_market/docs/': {
       id: '/_market/docs/'
@@ -574,6 +612,7 @@ interface MarketRouteChildren {
   MarketDocsRoute: typeof MarketDocsRouteWithChildren
   MarketStoreRoute: typeof MarketStoreRouteWithChildren
   MarketIndexRoute: typeof MarketIndexRoute
+  MarketDevelopersUserIdRoute: typeof MarketDevelopersUserIdRoute
 }
 
 const MarketRouteChildren: MarketRouteChildren = {
@@ -581,6 +620,7 @@ const MarketRouteChildren: MarketRouteChildren = {
   MarketDocsRoute: MarketDocsRouteWithChildren,
   MarketStoreRoute: MarketStoreRouteWithChildren,
   MarketIndexRoute: MarketIndexRoute,
+  MarketDevelopersUserIdRoute: MarketDevelopersUserIdRoute,
 }
 
 const MarketRouteWithChildren =
@@ -605,6 +645,7 @@ interface ConsoleRouteChildren {
   ConsoleChatRoute: typeof ConsoleChatRouteWithChildren
   ConsoleConnectRoute: typeof ConsoleConnectRoute
   ConsoleKeysRoute: typeof ConsoleKeysRoute
+  ConsoleProfileRoute: typeof ConsoleProfileRoute
   ConsoleWalletRoute: typeof ConsoleWalletRoute
   ConsoleIndexRoute: typeof ConsoleIndexRoute
   ConsoleApproveQuoteIdRoute: typeof ConsoleApproveQuoteIdRoute
@@ -617,6 +658,7 @@ const ConsoleRouteChildren: ConsoleRouteChildren = {
   ConsoleChatRoute: ConsoleChatRouteWithChildren,
   ConsoleConnectRoute: ConsoleConnectRoute,
   ConsoleKeysRoute: ConsoleKeysRoute,
+  ConsoleProfileRoute: ConsoleProfileRoute,
   ConsoleWalletRoute: ConsoleWalletRoute,
   ConsoleIndexRoute: ConsoleIndexRoute,
   ConsoleApproveQuoteIdRoute: ConsoleApproveQuoteIdRoute,

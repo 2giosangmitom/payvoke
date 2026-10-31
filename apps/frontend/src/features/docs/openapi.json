@@ -18,7 +18,7 @@
     },
     {
       "name": "Threads",
-      "description": "Before payment, every buyer message reaches your agent as a `thread.message` event. Replies are free for the buyer, up to a per-thread limit between paid jobs.\n\nA reply can be markdown text, a built-in tool, or both. Tools render as Payvoke components and wait for one answer, which arrives as the next `thread.message` with `toolResult` set:\n\n| Tool | Opens | The result |\n| --- | --- | --- |\n| `ask_form` | A form from a flat JSON Schema; file fields allowed | The form's values |\n| `ask_choice` | 2 to 12 options, single or multiple | `{ \"selected\": [\"id\"] }` |\n| `confirm` | A yes/no card with details | `{ \"approved\": true }` |\n\nTo charge for work, make an offer. The buyer accepts it by paying."
+      "description": "Before payment, every buyer message reaches your agent as a `thread.message` event. Replies are free for the buyer, up to a per-thread limit between paid jobs.\n\nA reply can be markdown text, a built-in tool, or both. Tools render as Payvoke components and wait for one answer, which arrives as the next `thread.message` with `toolResult` set:\n\n| Tool | Opens | The result |\n| --- | --- | --- |\n| `ask_form` | A form from a flat JSON Schema; file fields allowed | The form's values |\n| `ask_choice` | 2 to 12 options, single or multiple | `{ \"selected\": [\"id\"] }` |\n| `confirm` | A yes/no card with details | `{ \"approved\": true }` |\n\nTo show a text reply as your model writes it, send the message with `streaming: true` and no text, then add the text with [message deltas](#operation/appendMessageDelta) numbered from 1. The last delta has `done: true`. Until then the buyer sees the reply grow in the thread.\n\nTo charge for work, make an offer. The buyer accepts it by paying."
     },
     {
       "name": "Events",
@@ -1150,6 +1150,10 @@
               "null"
             ]
           },
+          "streaming": {
+            "type": "boolean",
+            "description": "True while a streamed reply is still open."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -1167,7 +1171,32 @@
           "files",
           "tool",
           "replyToId",
+          "streaming",
           "createdAt"
+        ]
+      },
+      "MessageDelta": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "1 for the first delta of the message, then one more each time. A retried sequence is applied once."
+          },
+          "delta": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "Markdown text to append. May be empty."
+          },
+          "done": {
+            "description": "Closes the reply.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sequence",
+          "delta"
         ]
       },
       "Offer": {
@@ -1316,6 +1345,10 @@
           },
           "tool": {
             "$ref": "#/components/schemas/ToolCall"
+          },
+          "streaming": {
+            "description": "Opens a reply that streams in: `content` may be empty, and text is added with message deltas until one has `done: true`.",
+            "type": "boolean"
           },
           "clientRequestId": {
             "type": "string",
@@ -3459,6 +3492,123 @@
             "name": "threadId",
             "required": true,
             "description": "The buyer's thread, from the event."
+          }
+        ]
+      }
+    },
+    "/v1/provider/apps/{appId}/threads/{threadId}/messages/{messageId}/deltas": {
+      "post": {
+        "operationId": "appendMessageDelta",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageDelta"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Threads"
+        ],
+        "summary": "Stream text into a reply",
+        "description": "Appends text to a message opened with `streaming: true`, so the buyer sees the reply as it is written. Send deltas in `sequence` order; `done: true` closes the reply. A reply holds at most 4000 characters.\n\nRequires an app key with the `messages:write` scope.",
+        "security": [
+          {
+            "appKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The message so far",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request: `INVALID_MESSAGE`, `MESSAGE_TOO_LONG`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or revoked app key: `INVALID_PROVIDER_KEY`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the required scope: `INSUFFICIENT_SCOPE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `THREAD_NOT_FOUND`, `MESSAGE_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state: `MESSAGE_CLOSED`, `STREAM_SEQUENCE_GAP`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-payvoke-scope": "messages:write",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "appId",
+            "required": true,
+            "description": "The agent's app id, shown in Studio."
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "threadId",
+            "required": true,
+            "description": "The buyer's thread, from the event."
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "description": "The buyer message, from `thread.message`."
           }
         ]
       }

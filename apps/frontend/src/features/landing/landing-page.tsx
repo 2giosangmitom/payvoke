@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ArrowUpRight, Check, Lock, RotateCcw } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowRight, Check } from "lucide-react";
 import { NetworkAvalancheFuji, TokenUSDC } from "@web3icons/react";
 import {
   AnimatePresence,
@@ -16,21 +16,19 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/src/components/ui/accordion";
-import { AnimatedShinyText } from "@/src/components/ui/animated-shiny-text";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
-import { HeroPixelField } from "@/src/components/ui/hero-pixel-field";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import { Marquee } from "@/src/components/ui/marquee";
 import { OrbitingCircles } from "@/src/components/ui/orbiting-circles";
-import { ParticleText } from "@/src/components/ui/particle-text";
 import { ScrollProgress } from "@/src/components/ui/scroll-progress";
 import { Switch } from "@/src/components/ui/switch";
 import { AnimatedSpan, Terminal, TypingAnimation } from "@/src/components/ui/terminal";
 import { TextAnimate } from "@/src/components/ui/text-animate";
-import { TextReveal } from "@/src/components/ui/text-reveal";
+import Text3DFlip from "@/src/components/ui/text-3d-flip";
+import { TypingAnimation as TypedWords } from "@/src/components/ui/typing-animation";
 import { ToggleGroup, ToggleGroupItem } from "@/src/components/ui/toggle-group";
 import {
   Tooltip,
@@ -38,11 +36,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/src/components/ui/tooltip";
-import { WordRotate } from "@/src/components/ui/word-rotate";
 import { useMediaQuery } from "@/src/hooks/use-media-query";
 import { AgentMark, agentById, codingAgents } from "@/src/features/landing/coding-agents";
-import { landingAudio } from "@/src/features/landing/landing-audio";
 import { DemoThread } from "@/src/features/landing/landing-demo";
+import { Hero, Steady } from "@/src/features/landing/landing-hero";
 import { fragments } from "@/src/features/landing/landing-fragments";
 import { LandingMusic } from "@/src/features/landing/landing-music";
 import { cn } from "@/src/lib/utils";
@@ -52,10 +49,7 @@ export function LandingPage() {
     <main>
       <ScrollProgress />
       <Hero />
-      <TextReveal className="bg-background-deep">
-        Someone builds an agent that saves them an afternoon. Someone else hires it and pays only
-        when the work arrives. Payvoke is the store and the vault on Avalanche between them.
-      </TextReveal>
+      <Intro />
       <Jobs />
       <TryIt />
       <Showcase />
@@ -90,124 +84,44 @@ function SectionTitle({ id, children }: { id: string; children: string }) {
   );
 }
 
-const jobs = ["summarize a report", "review a pull request", "clean a CSV", "research a market"];
+/* The product in one line: the jobs people hire agents for, typed out. */
 
-const facts = [
-  { icon: <TokenUSDC size={18} aria-hidden="true" />, label: "Paid in USDC on Avalanche" },
-  { icon: <Lock size={16} aria-hidden="true" />, label: "Held until the work arrives" },
-  { icon: <RotateCcw size={16} aria-hidden="true" />, label: "Refunded if it's late" },
+const typedJobs = [
+  "summarize a 40-page report",
+  "review a pull request",
+  "clean a messy CSV",
+  "transcribe a meeting",
 ];
+const longestJob = typedJobs.reduce((a, b) => (b.length > a.length ? b : a));
 
-function Hero() {
-  const hero = useRef<HTMLElement>(null);
-  // The copy drifts up and fades as the hero scrolls away; the field and the
-  // wordmark stay put behind it.
-  const { scrollYProgress } = useScroll({ target: hero, offset: ["start start", "end start"] });
-  const copyY = useTransform(scrollYProgress, [0, 1], [0, -90]);
-  const copyOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
-
-  // The field can walk the analysed timeline before the sound is touched.
-  useEffect(() => {
-    landingAudio.prime();
-  }, []);
-
+function Intro() {
   return (
-    <section
-      id="top"
-      ref={hero}
-      className="relative isolate flex min-h-[calc(100svh-4rem)] flex-col overflow-hidden bg-field-bg"
-    >
-      <HeroPixelField sample={(now) => landingAudio.sample(now)} />
-
-      <div className="relative z-10 container-page flex flex-1 items-center justify-center pt-16 pb-36 sm:pt-20 sm:pb-40">
-        <div className="flex w-full flex-col items-center text-center">
-          <BlurFade delay={0.05}>
-            <p className="mb-[clamp(1.25rem,4vh,2.6rem)] inline-flex items-center gap-2.5 border border-primary/40 bg-field-bg/85 px-3 py-1.5 font-mono text-[10px] tracking-wider sm:text-[11px]">
-              <NetworkAvalancheFuji size={16} aria-hidden="true" />
-              <AnimatedShinyText shimmerWidth={120}>RUNNING ON AVALANCHE FUJI</AnimatedShinyText>
-            </p>
-          </BlurFade>
-
-          <div
-            data-field-anchor
-            className="relative h-[clamp(5.75rem,16vw,13.6rem)] w-full max-w-245"
-          >
-            <ParticleText
-              text="PAYVOKE"
-              density={3}
-              particleSize={3}
-              color="var(--field-crest)"
-              highlightColor="var(--field-hover)"
-              fontSize="clamp(3.4rem, 17vw, 12rem)"
-              fontWeight={800}
-              shape="square"
-              intro="gather"
-              scatter={90}
-              gatherDuration={1500}
-              stagger={420}
-              idleDrift={0.7}
-              glow
-              clickBurst
-              // The canvas overhangs the slot so the scattered intro has room;
-              // inside the slot alone, the gather was cut off by a hard edge.
-              className="absolute! -inset-x-[12%] -inset-y-[55%] size-auto!"
+    <section aria-labelledby="intro-title" className="bg-background-deep py-24 lg:py-32">
+      <div className="container-page grid gap-8 lg:grid-cols-12 lg:items-end lg:gap-8">
+        <h2
+          id="intro-title"
+          className="text-[clamp(2rem,4.4vw,4rem)] leading-[1.05] font-semibold tracking-[-0.045em] lg:col-span-8"
+        >
+          Hire an agent to{" "}
+          {/* The longest job holds its place, so typing never reflows the page. */}
+          <Steady longest={`${longestJob}|`} className="text-primary">
+            <TypedWords
+              words={typedJobs}
+              loop
+              typeSpeed={55}
+              deleteSpeed={30}
+              pauseDelay={1600}
+              cursorStyle="line"
+              className="leading-[inherit] tracking-[inherit]"
             />
-          </div>
-
-          <motion.div
-            style={{ y: copyY, opacity: copyOpacity }}
-            className="flex w-full flex-col items-center motion-reduce:[transform:none!important]"
-          >
-            <TextAnimate
-              as="h1"
-              by="word"
-              animation="blurInUp"
-              duration={0.6}
-              delay={0.15}
-              startOnView={false}
-              once
-              className="mt-6 max-w-3xl font-mono text-[clamp(1.25rem,2.7vw,2rem)] leading-snug font-medium tracking-[-0.045em] text-balance"
-            >
-              Share your AI agent. Let anyone hire it.
-            </TextAnimate>
-            <BlurFade delay={0.45}>
-              <p className="mt-5 max-w-xl text-[15px] leading-7 text-pretty text-muted-foreground">
-                Hire an agent to{" "}
-                <WordRotate words={jobs} duration={2600} className="font-medium text-foreground" />.
-                Each job is paid in USDC and held in a vault on Avalanche until the work is
-                delivered.
-              </p>
-            </BlurFade>
-            <BlurFade
-              delay={0.6}
-              className="mt-8 flex w-full flex-col justify-center gap-3 min-[420px]:w-auto min-[420px]:flex-row"
-            >
-              <Button size="lg" render={<Link to="/console/studio" />}>
-                Share your agent <ArrowRight />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-field-bg"
-                render={<Link to="/store" />}
-              >
-                Hire an agent <ArrowUpRight />
-              </Button>
-            </BlurFade>
-            <ul className="mt-10 flex flex-wrap justify-center gap-x-7 gap-y-3 text-[14px]">
-              {facts.map((fact, index) => (
-                <li key={fact.label}>
-                  <BlurFade delay={0.75 + index * 0.08}>
-                    <span className="inline-flex items-center gap-2 bg-field-bg/85 px-1.5 py-0.5">
-                      <span className="text-primary">{fact.icon}</span>
-                      {fact.label}
-                    </span>
-                  </BlurFade>
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-        </div>
+          </Steady>
+        </h2>
+        <BlurFade inView direction="up" offset={16} delay={0.15} className="lg:col-span-4">
+          <p className="max-w-md text-[17px] leading-[1.6]">
+            Someone builds an agent that saves them an afternoon. You hire it for one job, and the
+            payment waits on Avalanche until the work arrives.
+          </p>
+        </BlurFade>
       </div>
     </section>
   );
@@ -304,10 +218,45 @@ function TryIt() {
   );
 }
 
-/* Each part of a thread, pinned beside its explanation while the list scrolls. */
+/* Each part of a thread, pinned beside its explanation while the list scrolls.
+   The panel sits in a thread window, so every part reads as one conversation. */
+
+function ThreadWindow({ index }: { index: number }) {
+  const fragment = fragments[index];
+  return (
+    <div data-ui className="border border-border-strong bg-card shadow-float">
+      <div className="flex items-center gap-3 border-b border-border bg-background-deep px-4 py-2.5">
+        <span className="grid size-7 place-items-center bg-primary text-[13px] font-semibold text-primary-foreground">
+          B
+        </span>
+        <span className="grid leading-tight">
+          <span className="text-sm font-medium">Briefly</span>
+          <span className="text-[12px] text-muted-foreground">Thread</span>
+        </span>
+        <span className="ml-auto bg-primary-soft px-2 py-0.5 text-[12px] font-medium text-primary">
+          {fragment.actor}
+        </span>
+      </div>
+      <div className="p-4">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={fragment.id}
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+          >
+            {fragment.panel}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
 
 function Showcase() {
   const list = useRef<HTMLOListElement>(null);
+  const items = useRef<Array<HTMLLIElement | null>>([]);
   const [active, setActive] = useState(0);
   const { scrollYProgress } = useScroll({ target: list, offset: ["start center", "end center"] });
   useMotionValueEvent(scrollYProgress, "change", (value) => {
@@ -322,7 +271,15 @@ function Showcase() {
     >
       <div className="container-page grid gap-6 lg:grid-cols-12 lg:items-end">
         <div className="lg:col-span-6">
-          <SectionTitle id="thread-title">Everything happens in the thread</SectionTitle>
+          <Text3DFlip
+            as="h2"
+            id="thread-title"
+            className={cn(sectionTitle, "cursor-default")}
+            rotateDirection="top"
+            staggerDuration={0.02}
+          >
+            Everything happens in the thread
+          </Text3DFlip>
         </div>
         <BlurFade
           inView
@@ -332,8 +289,8 @@ function Showcase() {
           className="lg:col-span-5 lg:col-start-8"
         >
           <p className="max-w-md text-[17px] leading-[1.6]">
-            Buyers open a thread with your agent. Commands, forms, offers and results all happen
-            there.
+            A buyer opens one thread with your agent, and the whole job stays in it, from the first
+            slash command to the delivered file.
           </p>
         </BlurFade>
       </div>
@@ -343,39 +300,63 @@ function Showcase() {
           {fragments.map((fragment, index) => (
             <li
               key={fragment.id}
-              className={cn(
-                "flex flex-col justify-center gap-3 py-8 transition-opacity duration-300 lg:min-h-[52vh] lg:py-0",
-                index !== active && "lg:opacity-30",
-              )}
+              ref={(element) => {
+                items.current[index] = element;
+              }}
+              className="flex flex-col justify-center py-8 lg:min-h-[52vh] lg:py-0"
             >
-              <h3 className="text-[clamp(1.5rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-[-0.03em]">
-                {fragment.name}
-              </h3>
-              <p className="max-w-md text-[17px] leading-[1.6]">{fragment.text}</p>
-              <div className="mt-4 max-w-md lg:hidden">{fragment.panel}</div>
+              <motion.div
+                animate={{ opacity: index === active ? 1 : 0.35, x: index === active ? 0 : -8 }}
+                transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+                className="grid gap-3 max-lg:opacity-100! max-lg:transform-none!"
+              >
+                <span className="flex items-center gap-2 text-[13px] font-medium text-primary">
+                  <fragment.icon className="size-4" aria-hidden="true" />
+                  {fragment.actor}
+                </span>
+                <h3 className="text-[clamp(1.5rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-[-0.03em]">
+                  {fragment.name}
+                </h3>
+                <p className="max-w-md text-[17px] leading-[1.6]">{fragment.text}</p>
+              </motion.div>
+              <div className="mt-6 max-w-md lg:hidden">
+                <ThreadWindow index={index} />
+              </div>
             </li>
           ))}
         </ol>
         <div className="relative hidden lg:col-span-6 lg:col-start-7 lg:block">
-          <div className="sticky top-[calc(50vh-12rem)] flex gap-6">
-            <motion.span
-              aria-hidden="true"
-              style={{ scaleY: scrollYProgress }}
-              className="w-1 origin-top bg-primary"
-            />
-            <div className="min-h-96 flex-1">
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={fragments[active].id}
-                  initial={{ opacity: 0, y: 24, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: -16, filter: "blur(6px)" }}
-                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  className="max-w-md"
+          <div className="sticky top-[calc(50vh-14rem)] grid gap-5">
+            <div className="flex gap-6">
+              <motion.span
+                aria-hidden="true"
+                style={{ scaleY: scrollYProgress }}
+                className="w-1 origin-top bg-primary"
+              />
+              <div className="min-h-[26rem] max-w-md flex-1">
+                <ThreadWindow index={active} />
+              </div>
+            </div>
+            {/* Jump to a part; the list and the window follow the scroll. */}
+            <div className="ml-7 flex flex-wrap gap-1.5" aria-label="Parts of a thread">
+              {fragments.map((fragment, index) => (
+                <button
+                  key={fragment.id}
+                  type="button"
+                  aria-current={index === active ? "step" : undefined}
+                  onClick={() =>
+                    items.current[index]?.scrollIntoView({ behavior: "smooth", block: "center" })
+                  }
+                  className={cn(
+                    "px-2.5 py-1 text-[13px] transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97]",
+                    index === active
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  {fragments[active].panel}
-                </motion.div>
-              </AnimatePresence>
+                  {fragment.name}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -384,7 +365,7 @@ function Showcase() {
   );
 }
 
-/* Coding agents as buyers: they circle Payvoke, joined through MCP. */
+/* AI assistants as buyers: they circle Payvoke, joined through MCP. */
 
 const toolCall = "flex items-center gap-2";
 
@@ -442,7 +423,7 @@ function CodingAgents() {
     >
       <div className="container-page grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="min-w-0 lg:col-span-5">
-          <SectionTitle id="agents-title">Let coding agents hire yours</SectionTitle>
+          <SectionTitle id="agents-title">Let AI assistants hire yours</SectionTitle>
           <BlurFade inView direction="up" offset={16} delay={0.15}>
             <p className="mt-6 max-w-md text-[17px] leading-[1.6]">
               Claude Code, Codex, Copilot and other MCP hosts hire your agent like a person would,
@@ -499,7 +480,10 @@ function CodingAgents() {
             }
             className="bg-background-deep text-[13px] leading-relaxed"
           >
-            <TypingAnimation className="text-[13px] text-foreground" duration={28}>
+            <TypingAnimation
+              className="min-h-[3lh] text-[13px] text-foreground sm:min-h-[2lh] lg:min-h-[1lh]"
+              duration={28}
+            >
               {"> Review PR #128. Hire a reviewer on Payvoke if you want a second pass."}
             </TypingAnimation>
             <AnimatedSpan className={toolCall}>
@@ -702,7 +686,8 @@ const safeguards = [
   {
     id: "late",
     when: "Your agent misses its delivery deadline.",
-    result: "The buyer gets the full 0.40 USDC back automatically, with no dispute to open.",
+    result:
+      "The buyer gets the full 0.40 USDC back automatically. Payvoke has no dispute step to wait on.",
     field: "bg-primary-soft",
   },
   {
@@ -826,7 +811,7 @@ const questions = [
     a: "Your agent starts only once the buyer's money is in a finalized block. Avalanche finalizes in a second or two, and gas is small next to a job's price.",
   },
   {
-    q: "Can a coding agent hire on Payvoke?",
+    q: "Can an AI assistant hire on Payvoke?",
     a: "Yes. Create an API key in the console and add Payvoke's MCP endpoint to Claude Code, Codex or any MCP host. A spend key on your machine signs each payment within your caps.",
   },
   {

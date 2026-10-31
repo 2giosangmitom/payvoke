@@ -5,6 +5,7 @@ import { Archive, Pencil, Plus, Search } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog";
 import { Input } from "@/src/components/ui/input";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
 import { Eyebrow, FormField, StatusDot, errorMessage } from "@/src/components/layout/page-kit";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
@@ -33,8 +34,10 @@ function ThreadRow({
   return (
     <div
       className={cn(
-        "group relative flex min-w-0 items-center border border-transparent transition-colors hover:border-border-strong hover:bg-card",
-        active && "border-border-strong bg-card",
+        // The console's one selection mark: a 1px jade line on the row's edge.
+        "group relative flex min-w-0 items-center transition-colors hover:bg-card",
+        "before:absolute before:inset-y-1.5 before:left-0 before:w-px",
+        active && "bg-card before:bg-primary",
       )}
     >
       <Link
@@ -52,7 +55,7 @@ function ThreadRow({
           <span className="truncate text-[13px] font-semibold">
             {thread.title || thread.app.name}
           </span>
-          <small className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[10px] text-faint">
+          <small className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
             <StatusDot availability={thread.app.availability} />
             {thread.app.name}
           </small>
@@ -144,9 +147,15 @@ export function ThreadSidebar() {
       {!session ? (
         <p className={note}>Sign in to keep your threads across apps.</p>
       ) : threads.isPending ? (
-        <p className={note}>
-          <Spinner className="size-3.5" /> Loading threads…
-        </p>
+        <div role="status" aria-busy="true" className="grid gap-1 px-2 py-1">
+          <span className="sr-only">Loading threads</span>
+          {[72, 54, 64, 46].map((width) => (
+            <div key={width} className="grid gap-1.5 px-2 py-2">
+              <Skeleton className="h-3.5" style={{ width: `${width}%` }} />
+              <Skeleton className="h-2.5 w-1/3" />
+            </div>
+          ))}
+        </div>
       ) : threads.isError ? (
         <p className={cn(note, "text-destructive")} role="alert">
           {errorMessage(threads.error, "Could not load threads.")}

@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import type { DataMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
-import { HandCoins, RotateCcw, ShieldQuestion, SquareSlash } from "lucide-react";
+import { RotateCcw, ShieldQuestion, SquareSlash } from "lucide-react";
 import { ApprovalCard } from "@/src/components/assistant-ui/elements/approval-card";
 import { ElicitationForm } from "@/src/components/assistant-ui/elements/elicitation-form";
 import { OptionList } from "@/src/components/assistant-ui/elements/option-list";
-import { formatUsdc } from "@/src/features/apps/format";
 import type { AskChoiceArgs, AskFormArgs, ConfirmArgs, OfferArgs } from "@/src/features/chat/api";
 import { OpenUISurface } from "@/src/features/chat/openui-surface";
+import { QuoteCard } from "@/src/features/chat/quote-card";
 import { ResultView } from "@/src/features/chat/result-view";
 import { SchemaForm, schemaFields } from "@/src/features/chat/schema-form";
 import { useThreadChat } from "@/src/features/chat/thread-runtime";
@@ -157,53 +157,29 @@ export function OfferTool({ toolCallId, args }: ToolProps) {
     task.catch((cause) => setError(readable(cause))).finally(() => setBusy(null));
   };
   const closed = record(result) && typeof result.status === "string" ? result.status : null;
-  const expires = new Date(offer.expiresAt).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
   return (
-    <div className="grid w-full max-w-md gap-1.5">
-      <ApprovalCard
-        icon={<HandCoins className="size-4" />}
-        title={`${formatUsdc(offer.grossAmount)} for /${offer.command.name}`}
-        subtitle={status === "open" ? `Offer · valid until ${expires}` : "Offer"}
-        description={offer.summary}
-        details={[
+    <div className="grid w-full max-w-lg gap-1.5">
+      <QuoteCard
+        command={offer.command.name}
+        amount={offer.grossAmount}
+        summary={offer.summary}
+        terms={[
           { label: "Delivery", value: formatDuration(offer.deliverySeconds) },
           ...(terms
             ? [
                 { label: "Review", value: formatDuration(terms.reviewSeconds) },
-                {
-                  label: "Revisions",
-                  value: `${terms.revisionPolicy.maxIncluded} included`,
-                },
-                { label: "Refund", value: terms.refundPolicy },
+                { label: "Revisions", value: String(terms.revisionPolicy.maxIncluded) },
               ]
             : []),
         ]}
-        state={
-          busy
-            ? "running"
-            : status === "open"
-              ? "request"
-              : closed === "ACCEPTED"
-                ? "done"
-                : "denied"
-        }
-        statusLabel={
-          busy === "accept"
-            ? "Preparing the quote"
-            : busy === "decline"
-              ? "Declining"
-              : closed
-                ? closedOffer[closed]
-                : undefined
-        }
-        allowOnceLabel="Accept and pay"
-        denyLabel="Decline"
-        onAllowOnce={() => run("accept")}
-        onDeny={() => run("decline")}
-        className="max-w-md"
+        refund={terms?.refundPolicy}
+        expiresAt={offer.expiresAt}
+        open={status === "open"}
+        closedLabel={closed ? closedOffer[closed] : undefined}
+        closedTone={closed === "ACCEPTED" ? "done" : "neutral"}
+        busy={busy}
+        onAccept={() => run("accept")}
+        onDecline={() => run("decline")}
       />
       {error && (
         <p role="alert" className="text-xs text-destructive">
