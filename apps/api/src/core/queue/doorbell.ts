@@ -1,4 +1,4 @@
-import type { Redis } from "ioredis";
+import type { Redis, Subscriber } from "./redis";
 
 // A doorbell only says "something changed, read Postgres again". It carries no
 // data, so a lost ring costs latency (the listener's timeout), never correctness.
@@ -15,9 +15,13 @@ export interface Listener {
   close(): void;
 }
 
-// Publish-only ring for processes that never listen (workers).
-export function ring(publisher: Redis, channel: string, onError: (error: unknown) => void) {
-  publisher.publish(channel, "").catch(onError);
+// Fire and forget: a lost ring only costs the listener's timeout.
+export async function ring(publisher: Redis, channel: string, onError: (error: unknown) => void) {
+  try {
+    await publisher.publish(channel, "");
+  } catch (error) {
+    onError(error);
+  }
 }
 
 export const channels = {
@@ -104,33 +108,33 @@ export class MemoryDoorbell implements Doorbell {
   }
 }
 
-// Cross-process doorbell over Redis pub/sub. One subscriber connection per
-// process; channels are subscribed while at least one local listener exists.
+// Cross-process doorbell over Redis pub/sub on the process's one subscriber
+// connection; channels are subscribed while at least one local listener exists.
 export class RedisDoorbell implements Doorbell {
   private readonly hub = new Hub();
+  // One handler for every channel, so the last listener to leave unsubscribes
+  // the same function the first one subscribed.
+  private readonly deliver = (_message: string, channel: string) => this.hub.deliver(channel);
 
   constructor(
     private readonly publisher: Redis,
-    private readonly subscriber: Redis,
+    private readonly subscriber: Subscriber,
     private readonly onError: (error: unknown) => void,
-  ) {
-    subscriber.on("message", (channel: string) => this.hub.deliver(channel));
-  }
+  ) {}
 
   ring(channel: string) {
-    ring(this.publisher, channel, this.onError);
+    void ring(this.publisher, channel, this.onError);
   }
 
   listen(channel: string) {
     const { listener, first } = this.hub.add(channel, () => {
-      this.subscriber.unsubscribe(channel).catch(this.onError);
+      this.subscriber.unsubscribe(channel, this.deliver).catch(this.onError);
     });
-    if (first) this.subscriber.subscribe(channel).catch(this.onError);
+    if (first) this.subscriber.subscribe(channel, this.deliver).catch(this.onError);
     return listener;
   }
 
   async close() {
     this.hub.closeAll();
-    this.subscriber.disconnect();
   }
 }

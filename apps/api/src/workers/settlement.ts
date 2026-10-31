@@ -1,5 +1,4 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { Worker } from "bullmq";
 import { createPublicClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { VaultChain } from "@payvoke/shared/x402/chain";
@@ -8,11 +7,11 @@ import type { PrismaClient } from "#core/db";
 import { scanFinancialLifecycle } from "#core/payments/finance-ledger";
 import { scanFinalizedHolds } from "#core/payments/scanner";
 import { SettlementWorker, validateGasPolicy } from "#core/payments/worker";
-import { channels, connectRedis, idleWorker, queues, QueueJobs, ring, serial, throttled } from "#core/queue";
+import { channels, serial } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
-import type { InvocationJob } from "#core/queue";
 import { deploymentConfig, gasBudget, type Config } from "../config";
 import { logger } from "../logging";
+import type { WorkerSignals } from "../signals";
 
 // `settle` jobs wake the worker as soon as the facilitator journals an intent;
 // the sweep still finds deferred operations and any job Redis lost.
@@ -21,7 +20,11 @@ const SWEEP_MS = 5000;
 const log = logger("worker", "settlement");
 
 // Signs and sends reserveHold. The only code path that uses RELAYER_PRIVATE_KEY.
-export async function startSettlementWorker(config: Config, db: PrismaClient) {
+export async function startSettlementWorker(
+  config: Config,
+  db: PrismaClient,
+  { bus, doorbell, jobs }: WorkerSignals,
+) {
   const budget = gasBudget(config, "SETTLEMENT");
   validateGasPolicy(budget);
   const deployment = vaultDeployment(deploymentConfig(config));
@@ -38,13 +41,6 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
   // Role revocation must stop admission, not receipt recovery for old attempts.
   await admission.initialize({ requireRelayerRole: false });
   await chain.finalized();
-  const onError = throttled(
-    (error) => log.error("Settlement worker Redis error ({error})", { error: errorTag(error) }),
-    errorTag,
-  );
-  const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
-  const producer = await connectRedis(config.REDIS_URL, "producer", onError);
-  const jobs = new QueueJobs(producer, onError);
   const worker = new SettlementWorker(
     db,
     admission,
@@ -53,21 +49,23 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
     new URL("/v1/invocations", config.API_ORIGIN).href,
     budget,
     // The hold committed with an invocation.ready item on the provider feed.
-    ({ appId }) => ring(producer, channels.app(appId), onError),
+    ({ appId }) => doorbell.ring(channels.app(appId)),
   );
   // One relayer, one nonce lane: jobs and the sweep never run concurrently.
   const lane = serial();
-  const settler = new Worker<InvocationJob>(
-    queues.settlement,
-    (job) => lane(() => worker.handle(job.data.invocationId)),
-    { connection: consumer, concurrency: 1, ...idleWorker },
+  const settler = await bus.consume(
+    "settlement",
+    async (job) => {
+      if (job.kind === "settle") await lane(() => worker.handle(job.invocationId));
+    },
+    {
+      concurrency: 1,
+      onFailed: (error) =>
+        log.error("Settlement job failed; durable state retained ({error})", {
+          error: errorTag(error),
+        }),
+    },
   );
-  settler.on("failed", (_job, error) =>
-    log.error("Settlement job failed; durable state retained ({error})", {
-      error: errorTag(error),
-    }),
-  );
-  settler.on("error", onError);
 
   let stopping = false;
   const scheduled = new Set<string>();
@@ -86,7 +84,7 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
           const lifecycle = await scanFinancialLifecycle(db, chain, start);
           // Finance acts at each hold's deadlines; schedule a wake-up for both.
           // Only holds not scheduled yet cost Redis calls; a restart reschedules
-          // once, and the job ids make that harmless.
+          // once, and the job keys make that harmless.
           const open = new Set<string>();
           let fresh = false;
           for (const hold of lifecycle.open) {
@@ -118,9 +116,6 @@ export async function startSettlementWorker(config: Config, db: PrismaClient) {
       stopping = true;
       await settler.close();
       await loop;
-      await jobs.close();
-      consumer.disconnect();
-      producer.disconnect();
     },
   };
 }

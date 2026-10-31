@@ -29,7 +29,7 @@ try {
   app = createApp(config, undefined, signals);
   await app.ready();
   const running = app;
-  workers = await startWorkers(config, running.cradle.db, running.cradle.storage);
+  workers = await startWorkers(config, running.cradle.db, running.cradle.storage, signals);
   const server = Bun.serve({
     hostname: config.HOST,
     port: config.PORT,

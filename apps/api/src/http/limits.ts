@@ -50,12 +50,12 @@ export function redisRateStore(redis: Redis): RateStore {
     async hit(key, windowMs) {
       const name = `payvoke-rl:${key}`;
       // One command per request, atomic with the expiry of the window's first hit.
-      return (await redis.eval(
+      return (await redis.send("EVAL", [
         "local c = redis.call('INCR', KEYS[1]) if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end return c",
-        1,
+        "1",
         name,
-        windowMs,
-      )) as number;
+        String(windowMs),
+      ])) as number;
     },
   };
 }

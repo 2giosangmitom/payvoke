@@ -3,6 +3,9 @@ generator client {
   provider        = "prisma-client"
   output          = "../src/core/db/generated/prisma"
   previewFeatures = ["partialIndexes"]
+  // Half the size of the "fast" query compiler, which matters more on a
+  // 512 MB instance than per-query compile speed.
+  compilerBuild   = "small"
 }
 
 datasource db {

@@ -1,9 +1,9 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import type { Cradle } from "../../container";
 import type { Prisma } from "#core/db";
 import { channels } from "#core/queue";
+import { outputValidator } from "#core/runtime";
 import {
   BadRequestError,
   ConflictError,
@@ -330,10 +330,7 @@ export class ProviderRunService {
       throw new BadRequestError("INVALID_RESULT_OUTPUT");
     if (typeof output === "string" && (!output.trim() || output.length > MAX_TEXT_OUTPUT))
       throw new BadRequestError("INVALID_RESULT_OUTPUT");
-    if (
-      definition.outputSchema &&
-      !new Ajv2020({ strict: true }).compile(definition.outputSchema as object)(output)
-    )
+    if (definition.outputSchema && !outputValidator(definition.outputSchema as object)(output))
       throw new BadRequestError("INVALID_RESULT_OUTPUT");
     const latest = await this.db.paymentDeliveryEvidence.findFirst({
       where: { invocationId: invocation.id },

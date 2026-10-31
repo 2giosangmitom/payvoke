@@ -39,8 +39,8 @@ services:
       timeout: 3s
       retries: 20
 
-  # Wake-ups and job queues only; Postgres stays the source of truth. noeviction
-  # keeps BullMQ from silently losing queued jobs under memory pressure.
+  # Pub/sub wake-ups and rate-limit counters only; Postgres stays the source
+  # of truth, and nothing stored here outlives its expiry.
   redis:
     image: redis:8-alpine
     restart: unless-stopped

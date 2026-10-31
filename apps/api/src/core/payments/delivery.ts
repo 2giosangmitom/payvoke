@@ -1,6 +1,6 @@
-import Ajv2020 from "ajv/dist/2020.js";
 import { hashSnapshot, type Json } from "@payvoke/shared/protocol";
 import type { PrismaClient } from "#core/db";
+import { outputValidator } from "#core/runtime";
 import type { ObjectStorage } from "#core/storage";
 import { parseManifest, storedFilesIntact } from "./files";
 import { recordPaymentDelivery } from "./finance";
@@ -71,10 +71,7 @@ export async function verifyStructuredDelivery(
   if (output === null && !files.length) return false;
   if (command.outputSchema) {
     if (!object(command.outputSchema)) return false;
-    const validate = new Ajv2020({ strict: true, useDefaults: false }).compile(
-      command.outputSchema,
-    );
-    if (!validate(output)) return false;
+    if (!outputValidator(command.outputSchema)(output)) return false;
   }
   if (files.length && (!storage || !(await storedFilesIntact(db, storage, invocation.id, files))))
     return false;

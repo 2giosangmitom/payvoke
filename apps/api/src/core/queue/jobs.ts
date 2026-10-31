@@ -1,23 +1,24 @@
-import { Queue, type JobsOptions } from "bullmq";
-import { Redis } from "ioredis";
+import type { Redis, Subscriber } from "./redis";
 
 export const queues = {
-  delivery: "delivery-verify",
-  settlement: "settlement",
-  finance: "finance",
+  delivery: "payvoke:jobs:delivery",
+  settlement: "payvoke:jobs:settlement",
+  finance: "payvoke:jobs:finance",
 } as const;
+export type QueueName = keyof typeof queues;
 
-// Redis is metered per command, so idle workers poll as rarely as BullMQ allows.
-// A new job still wakes a blocked worker at once, and delayed jobs shorten the
-// wait to their due time; the stalled check only recovers crashed workers, and
-// every consumer has a database sweep behind it.
-export const idleWorker = { drainDelay: 300, stalledInterval: 300000 } as const;
-
-export type InvocationJob = { invocationId: string };
+// A job is a wake-up over Redis pub/sub, not a stored record: it costs one
+// PUBLISH and nothing while idle. A job published while no worker listens is
+// lost, which only delays work: every consumer keeps a database sweep.
+export type Job =
+  | { kind: "verify"; invocationId: string; artifactVersion: number }
+  | { kind: "settle"; invocationId: string }
+  | { kind: "wake" }
+  // Runs `delayMs` after it is received; lost on restart, like any timer.
+  | { kind: "due"; invocationId: string; dueAt: string; delayMs: number };
 
 // Producer side of the job queues. Callers enqueue only after their Postgres
-// transaction has committed, and nothing here throws: every consumer keeps a
-// database sweep, so a lost job only delays work it would have found anyway.
+// transaction has committed, and nothing here throws.
 export interface Jobs {
   verifyDelivery(invocationId: string, artifactVersion: number): Promise<void>;
   settle(invocationId: string): Promise<void>;
@@ -27,76 +28,46 @@ export interface Jobs {
   close(): Promise<void>;
 }
 
-// Finished and failed jobs are dropped so the sweep can re-add the same job id;
-// handlers are idempotent and failures are logged by the consuming worker.
-const defaults: JobsOptions = {
-  attempts: 3,
-  backoff: { type: "exponential", delay: 5000 },
-  removeOnComplete: true,
-  removeOnFail: true,
-};
 // Finality on Fuji trails wall time slightly; wake a little after the deadline.
 const DUE_SLACK_MS = 5000;
 
-export class QueueJobs implements Jobs {
-  private readonly delivery: Queue;
-  private readonly settlement: Queue;
-  private readonly finance: Queue;
-
+export class RedisJobs implements Jobs {
   constructor(
-    connection: Redis,
+    private readonly publisher: Redis,
     private readonly onError: (error: unknown) => void,
-  ) {
-    const options = { connection, defaultJobOptions: defaults };
-    this.delivery = new Queue(queues.delivery, options);
-    this.settlement = new Queue(queues.settlement, options);
-    this.finance = new Queue(queues.finance, options);
-    for (const queue of [this.delivery, this.settlement, this.finance]) queue.on("error", onError);
-  }
+  ) {}
 
-  private async add(queue: Queue, name: string, data: object, opts: JobsOptions) {
+  private async publish(queue: QueueName, job: Job) {
     try {
-      await queue.add(name, data, opts);
+      await this.publisher.publish(queues[queue], JSON.stringify(job));
     } catch (error) {
       this.onError(error);
     }
   }
 
   verifyDelivery(invocationId: string, artifactVersion: number) {
-    return this.add(
-      this.delivery,
-      "verify",
-      { invocationId },
-      { jobId: `verify-${invocationId}-${artifactVersion}` },
-    );
+    return this.publish("delivery", { kind: "verify", invocationId, artifactVersion });
   }
 
   settle(invocationId: string) {
-    return this.add(
-      this.settlement,
-      "settle",
-      { invocationId },
-      { jobId: `settle-${invocationId}` },
-    );
+    return this.publish("settlement", { kind: "settle", invocationId });
   }
 
   wakeFinance() {
-    return this.add(this.finance, "wake", {}, { deduplication: { id: "finance-wake", ttl: 2000 } });
+    return this.publish("finance", { kind: "wake" });
   }
 
   financeDue(invocationId: string, dueAt: bigint, now: bigint) {
     const seconds = dueAt > now ? Number(dueAt - now) : 0;
-    return this.add(
-      this.finance,
-      "due",
-      { invocationId },
-      { jobId: `due-${invocationId}-${dueAt}`, delay: seconds * 1000 + DUE_SLACK_MS },
-    );
+    return this.publish("finance", {
+      kind: "due",
+      invocationId,
+      dueAt: String(dueAt),
+      delayMs: seconds * 1000 + DUE_SLACK_MS,
+    });
   }
 
-  async close() {
-    await Promise.all([this.delivery.close(), this.settlement.close(), this.finance.close()]);
-  }
+  async close() {}
 }
 
 // Records calls instead of enqueuing; used by tests and single-process tools.
@@ -122,20 +93,140 @@ export class MemoryJobs implements Jobs {
   async close() {}
 }
 
-// Producers fail fast while Redis is down instead of queueing commands in
-// memory; workers and subscribers retry forever, as BullMQ requires.
-// `onError` is attached before connecting, so no error is ever unhandled.
-export async function connectRedis(
-  url: string,
-  role: "producer" | "consumer",
-  onError: (error: unknown) => void,
-) {
-  const redis = new Redis(url, {
-    lazyConnect: true,
-    maxRetriesPerRequest: role === "producer" ? 1 : null,
-    enableOfflineQueue: role === "consumer",
-  });
-  redis.on("error", onError);
-  await redis.connect();
-  return redis;
+// One key per job: a job already waiting is not added twice, and one arriving
+// while its key runs runs once more afterwards.
+const jobKey = (job: Job) => {
+  switch (job.kind) {
+    case "verify":
+      return `verify-${job.invocationId}-${job.artifactVersion}`;
+    case "settle":
+      return `settle-${job.invocationId}`;
+    case "wake":
+      return "finance-wake";
+    case "due":
+      return `due-${job.invocationId}-${job.dueAt}`;
+  }
+};
+
+const parse = (message: string): Job | null => {
+  try {
+    const job = JSON.parse(message) as Job;
+    return job && typeof job === "object" && typeof job.kind === "string" ? job : null;
+  } catch {
+    return null;
+  }
+};
+
+export type ConsumerOptions = {
+  concurrency: number;
+  // Called once a job has failed every attempt.
+  onFailed(error: unknown): void;
+  attempts?: number;
+  backoffMs?: number;
+};
+
+export type Consumer = { close(): Promise<void> };
+
+// Consumer side: runs each queue's jobs in this process with per-key
+// deduplication, delays, bounded concurrency and retries with exponential
+// backoff.
+export class JobBus {
+  constructor(private readonly subscriber: Pick<Subscriber, "subscribe" | "unsubscribe">) {}
+
+  async consume(
+    queue: QueueName,
+    handler: (job: Job) => Promise<unknown>,
+    { concurrency, onFailed, attempts = 3, backoffMs = 5000 }: ConsumerOptions,
+  ): Promise<Consumer> {
+    // Keys waiting for a timer or a free slot, and keys running now.
+    const waiting = new Set<string>();
+    const running = new Map<string, { again: Job | null }>();
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const slots: (() => void)[] = [];
+    const tasks = new Set<Promise<void>>();
+    let active = 0;
+    let closed = false;
+
+    const later = (ms: number, run: () => void) => {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        run();
+      }, ms);
+      timers.add(timer);
+    };
+
+    // A released slot passes straight to the next waiter, in arrival order.
+    const slot = () => {
+      if (active < concurrency) {
+        active++;
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => slots.push(resolve));
+    };
+    const release = () => {
+      const next = slots.shift();
+      if (next) next();
+      else active--;
+    };
+
+    const run = (key: string, job: Job, attempt: number) => {
+      const task = (async () => {
+        await slot();
+        if (closed) return release();
+        waiting.delete(key);
+        running.set(key, { again: null });
+        let failure: unknown = null;
+        try {
+          await handler(job);
+        } catch (error) {
+          failure = error;
+        }
+        const { again } = running.get(key)!;
+        running.delete(key);
+        release();
+        if (closed) return;
+        if (failure !== null && attempt < attempts) {
+          waiting.add(key);
+          later(backoffMs * 2 ** (attempt - 1), () => run(key, job, attempt + 1));
+        } else {
+          if (failure !== null) onFailed(failure);
+          if (again) add(again);
+        }
+      })();
+      tasks.add(task);
+      void task.finally(() => tasks.delete(task));
+    };
+
+    const add = (job: Job) => {
+      if (closed) return;
+      const key = jobKey(job);
+      if (waiting.has(key)) return;
+      const current = running.get(key);
+      if (current) {
+        current.again = job;
+        return;
+      }
+      waiting.add(key);
+      if (job.kind === "due") later(Math.max(0, job.delayMs), () => run(key, job, 1));
+      else run(key, job, 1);
+    };
+
+    const onMessage = (message: string) => {
+      const job = parse(message);
+      if (job) add(job);
+    };
+    await this.subscriber.subscribe(queues[queue], onMessage);
+
+    return {
+      close: async () => {
+        closed = true;
+        await this.subscriber.unsubscribe(queues[queue], onMessage).catch(() => {});
+        for (const timer of timers) clearTimeout(timer);
+        timers.clear();
+        for (const resolve of slots.splice(0)) resolve();
+        // Settlement and finance may be mid-transaction; let them finish.
+        await Promise.all(tasks);
+      },
+    };
+  }
 }

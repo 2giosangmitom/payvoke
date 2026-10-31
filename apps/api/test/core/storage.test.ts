@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { it } from "bun:test";
-import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { attachment, createStorage, MemoryStorage } from "#core/storage";
+import { S3Signer } from "../../src/core/storage/sigv4";
 
 const complete = {
   FILES_ENABLED: true,
@@ -67,12 +67,15 @@ it.skipIf(!s3)("round-trips presigned uploads against a real S3 endpoint", async
     S3_SECRET_ACCESS_KEY: process.env.TEST_S3_SECRET_ACCESS_KEY ?? "payvoke-secret",
     S3_FORCE_PATH_STYLE: true,
   };
-  await new S3Client({
-    endpoint: s3,
+  const created = await new S3Signer({
+    endpoint: s3!,
     region: env.S3_REGION,
+    bucket: env.S3_BUCKET,
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
     forcePathStyle: true,
-    credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY },
-  }).send(new CreateBucketCommand({ Bucket: env.S3_BUCKET }));
+  }).fetch("PUT", "");
+  assert.ok(created.ok, await created.text());
   const storage = createStorage(env)!;
   const body = Buffer.from("payvoke file body");
 
@@ -87,10 +90,20 @@ it.skipIf(!s3)("round-trips presigned uploads against a real S3 endpoint", async
     body,
   });
   assert.ok(!wrongType.ok, "a different content type must break the signature");
+  const wrongSize = await fetch(upload.url, {
+    method: "PUT",
+    headers: upload.headers,
+    body: Buffer.concat([body, body]),
+  });
+  assert.ok(!wrongSize.ok, "a different length must break the signature");
   const put = await fetch(upload.url, { method: upload.method, headers: upload.headers, body });
   assert.ok(put.ok, await put.text());
 
-  await storage.copy("staging/x", "files/x");
+  // Keys with spaces and non-ASCII must survive signing and the copy source.
+  await storage.copy("staging/x", "files/kết quả x");
+  await storage.copy("files/kết quả x", "files/x");
+  await storage.delete("files/kết quả x");
+  await assert.rejects(storage.copy("staging/missing", "files/y"), { name: "NoSuchKey" });
   // A replayed upload URL only reaches staging, never the verified copy.
   await fetch(upload.url, {
     method: "PUT",
@@ -108,6 +121,12 @@ it.skipIf(!s3)("round-trips presigned uploads against a real S3 endpoint", async
   const got = await fetch(download.url);
   assert.equal(Buffer.from(await got.arrayBuffer()).toString(), body.toString());
   assert.match(got.headers.get("content-disposition") ?? "", /^attachment;/);
+  assert.equal(got.headers.get("content-type"), "text/plain");
+  assert.equal(await storage.head("files/missing"), null);
+  assert.equal(await storage.sha256("files/missing"), null);
+  await storage.put("files/image", new Uint8Array([1, 2, 3]), "image/png");
+  assert.deepEqual(await storage.head("files/image"), { size: 3 });
+  await storage.delete("files/image");
 
   await storage.delete("staging/x");
   await storage.delete("files/x");

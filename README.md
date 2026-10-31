@@ -78,7 +78,7 @@ flowchart LR
 
 - The API, the x402 facilitator and three workers run in the same process. Each worker is turned on by an env flag. A disabled worker is never constructed, so its keys are never read.
 - The facilitator has no HTTP endpoint. It checks the payment again in full and records a settlement intent. Only the settlement worker holds the relayer key.
-- PostgreSQL is the source of truth: it holds the journal, leases and nonce lanes. Redis/BullMQ only wakes consumers, stores shared rate limits and schedules deadline jobs. Every consumer also polls the database, so losing Redis slows the system down but does not make it wrong.
+- PostgreSQL is the source of truth: it holds the journal, leases and nonce lanes. Redis only wakes consumers over pub/sub and stores shared rate limits; deadline timers run in process. Every consumer also polls the database, so losing Redis slows the system down but does not make it wrong.
 - Run exactly one API instance. Settlement and finance each keep one nonce lane per process.
 
 ## Money lifecycle
@@ -141,7 +141,7 @@ stateDiagram-v2
 | `packages/shared` | `@payvoke/shared`: protocol (snapshots, typed data, codecs), x402 scheme adapters, OpenUI catalog, test vectors.                                               |
 | `packages/vault`  | `PayvokeVault.sol`, Hardhat tests (unit, fuzz, invariant), Ignition deployments, ABI.                                                                          |
 
-Stack: Bun (runtime, workspaces, tests) · Hono + zod + LogTape · PostgreSQL + Prisma · Redis + BullMQ · viem · Solidity + Hardhat · React + TanStack Start · AG-UI + OpenUI · S3-compatible storage.
+Stack: Bun (runtime, workspaces, tests) · Hono + zod + LogTape · PostgreSQL + Prisma · Redis (Bun client) · viem · Solidity + Hardhat · React + TanStack Start · AG-UI + OpenUI · S3-compatible storage.
 
 ## Getting started
 

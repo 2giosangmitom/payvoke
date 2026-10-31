@@ -34,7 +34,7 @@ export function createApp(
   grantReader: GrantReader | null = createGrantReader(config),
 ) {
   const log = logger("api");
-  const db = database ?? createDatabase(config.DATABASE_URL);
+  const db = database ?? createDatabase(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   const payments =
     facilitator !== undefined
       ? facilitator

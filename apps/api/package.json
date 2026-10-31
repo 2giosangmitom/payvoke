@@ -29,8 +29,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1149.0",
-    "@aws-sdk/s3-request-presigner": "3.1149.0",
     "@better-auth/prisma-adapter": "1.7.11",
     "@hono/mcp": "^0.3.4",
     "@hono/standard-validator": "^0.4.1",
@@ -49,13 +47,11 @@
     "ajv": "8.20.0",
     "awilix": "13.0.5",
     "better-auth": "1.7.11",
-    "bullmq": "6.3.13",
     "close-with-grace": "^2.5.0",
     "dotenv": "^18.0.9",
     "env-schema": "^8.0.1",
     "hono": "^4.13.14",
     "hono-openapi": "^1.5.0",
-    "ioredis": "6.0.0",
     "jsonc-parser": "3.3.1",
     "pg": "^8.23.1",
     "prisma": "^7.10.1",

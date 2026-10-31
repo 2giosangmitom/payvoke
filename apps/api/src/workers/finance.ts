@@ -1,5 +1,4 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { Worker } from "bullmq";
 import { createPublicClient, getAddress, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { SettlementChain } from "@payvoke/shared/x402/settlement";
@@ -7,10 +6,11 @@ import type { PrismaClient } from "#core/db";
 import { FinanceService } from "#core/payments/finance";
 import { AutoFinance } from "#core/payments/finance-policy";
 import { validateGasPolicy } from "#core/payments/worker";
-import { connectRedis, idleWorker, queues, serial, throttled } from "#core/queue";
+import { serial } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
 import { deploymentConfig, gasBudget, type Config } from "../config";
 import { logger } from "../logging";
+import type { WorkerSignals } from "../signals";
 
 // Jobs wake finance on new evidence, failed runs and hold deadlines; the sweep
 // only backs up wake-ups Redis lost.
@@ -20,7 +20,7 @@ const log = logger("worker", "finance");
 
 // Automatic refunds of undelivered, failed or late invocations and releases of
 // verified deliveries after the review window.
-export async function startFinanceWorker(config: Config, db: PrismaClient) {
+export async function startFinanceWorker(config: Config, db: PrismaClient, { bus }: WorkerSignals) {
   const budget = gasBudget(config, "FINANCE");
   validateGasPolicy(budget);
   const deployment = vaultDeployment(deploymentConfig(config));
@@ -38,11 +38,6 @@ export async function startFinanceWorker(config: Config, db: PrismaClient) {
   });
   const chain = new SettlementChain(client, deployment);
   await chain.finalized();
-  const onError = throttled(
-    (error) => log.error("Finance worker Redis error ({error})", { error: errorTag(error) }),
-    errorTag,
-  );
-  const consumer = await connectRedis(config.REDIS_URL, "consumer", onError);
   const auto = new AutoFinance(
     new FinanceService(db, chain, executor.address, budget),
     approver,
@@ -56,15 +51,11 @@ export async function startFinanceWorker(config: Config, db: PrismaClient) {
       await auto.propose();
       if (!stopping) await auto.execute();
     });
-  const waker = new Worker(queues.finance, () => cycle(), {
-    connection: consumer,
+  const waker = await bus.consume("finance", () => cycle(), {
     concurrency: 1,
-    ...idleWorker,
+    onFailed: (error) =>
+      log.error("Finance job failed; durable state retained ({error})", { error: errorTag(error) }),
   });
-  waker.on("failed", (_job, error) =>
-    log.error("Finance job failed; durable state retained ({error})", { error: errorTag(error) }),
-  );
-  waker.on("error", onError);
   const loop = (async () => {
     while (!stopping) {
       try {
@@ -83,7 +74,6 @@ export async function startFinanceWorker(config: Config, db: PrismaClient) {
       stopping = true;
       await waker.close();
       await loop;
-      consumer.disconnect();
     },
   };
 }

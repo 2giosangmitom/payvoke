@@ -1,6 +1,7 @@
 import type { PrismaClient } from "#core/db";
 import type { ObjectStorage } from "#core/storage";
 import type { Config } from "../config";
+import type { WorkerSignals } from "../signals";
 import { startFinanceWorker } from "./finance";
 import { startJobWorker } from "./job";
 import { startSettlementWorker } from "./settlement";
@@ -14,6 +15,7 @@ export async function startWorkers(
   config: Config,
   db: PrismaClient,
   storage: ObjectStorage | null,
+  signals: WorkerSignals,
 ) {
   const running: Running[] = [];
   const close = async () => {
@@ -21,9 +23,10 @@ export async function startWorkers(
     await Promise.all(running.map((worker) => worker.close()));
   };
   try {
-    if (config.JOB_WORKER_ENABLED) running.push(await startJobWorker(config, db, storage));
-    if (config.SETTLEMENT_WORKER_ENABLED) running.push(await startSettlementWorker(config, db));
-    if (config.FINANCE_WORKER_ENABLED) running.push(await startFinanceWorker(config, db));
+    if (config.JOB_WORKER_ENABLED) running.push(await startJobWorker(db, storage, signals));
+    if (config.SETTLEMENT_WORKER_ENABLED)
+      running.push(await startSettlementWorker(config, db, signals));
+    if (config.FINANCE_WORKER_ENABLED) running.push(await startFinanceWorker(config, db, signals));
   } catch (error) {
     await close().catch(() => {});
     throw error;

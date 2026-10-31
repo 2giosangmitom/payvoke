@@ -1,16 +1,8 @@
 import { createHash } from "node:crypto";
-import type { Readable } from "node:stream";
-import {
-  CopyObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { CryptoHasher, S3Client } from "bun";
 import { Type, type Static } from "typebox";
 import { isPrivateServiceUrl, isSafeServiceUrl } from "#core/runtime";
+import { encodeKey, S3Signer } from "./sigv4";
 
 // A presigned request the uploader replays exactly: the signed headers are
 // part of the signature, so a different type or length is rejected by S3.
@@ -80,25 +72,27 @@ export function createStorage(env: StorageEnv): ObjectStorage | null {
   const server = endpoint(env.S3_ENDPOINT, { allowPrivate: true });
   if (!server || !S3_REGION || !S3_BUCKET || !S3_ACCESS_KEY_ID || !S3_SECRET_ACCESS_KEY)
     throw new Error("Files require S3 endpoint, region, bucket and credentials");
-  const options = {
+  const credentials = {
     region: S3_REGION,
-    forcePathStyle: env.S3_FORCE_PATH_STYLE,
-    credentials: { accessKeyId: S3_ACCESS_KEY_ID, secretAccessKey: S3_SECRET_ACCESS_KEY },
-    // Default CRC checksums would leak into presigned URLs and are not
-    // implemented by every S3-compatible store.
-    requestChecksumCalculation: "WHEN_REQUIRED" as const,
-    responseChecksumValidation: "WHEN_REQUIRED" as const,
+    bucket: S3_BUCKET,
+    accessKeyId: S3_ACCESS_KEY_ID,
+    secretAccessKey: S3_SECRET_ACCESS_KEY,
   };
+  const publicEndpoint = endpoint(env.S3_PUBLIC_ENDPOINT) ?? server;
+  const client = (at: string) =>
+    new S3Client({ ...credentials, endpoint: at, virtualHostedStyle: !env.S3_FORCE_PATH_STYLE });
+  const signer = (at: string) =>
+    new S3Signer({ ...credentials, endpoint: at, forcePathStyle: env.S3_FORCE_PATH_STYLE });
   return new S3Storage(
-    new S3Client({ ...options, endpoint: server }),
-    new S3Client({ ...options, endpoint: endpoint(env.S3_PUBLIC_ENDPOINT) ?? server }),
+    { client: client(server), signer: signer(server) },
+    { client: client(publicEndpoint), signer: signer(publicEndpoint) },
     S3_BUCKET,
   );
 }
 
 const missing = (error: unknown) => {
-  const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-  return e?.name === "NotFound" || e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404;
+  const e = error as { code?: string; name?: string };
+  return e?.code === "NoSuchKey" || e?.code === "NotFound" || e?.name === "NoSuchKey";
 };
 
 // RFC 6266 disposition with an ASCII fallback.
@@ -107,25 +101,24 @@ export function attachment(filename: string, type: "attachment" | "inline" = "at
   return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
+type Endpoint = { client: S3Client; signer: S3Signer };
+
 export class S3Storage implements ObjectStorage {
   constructor(
-    private readonly client: S3Client,
+    private readonly server: Endpoint,
     // Same credentials, public endpoint: used only to sign URLs.
-    private readonly signer: S3Client,
+    private readonly browser: Endpoint,
     private readonly bucket: string,
   ) {}
 
   async presignPut(key: string, object: { contentType: string; size: number }, expiresIn: number) {
-    const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ContentType: object.contentType,
-      ContentLength: object.size,
-    });
-    const url = await getSignedUrl(this.signer, command, {
+    // Content-Length is signed, so S3 rejects a body of any other size.
+    const url = this.browser.signer.presign(
+      "PUT",
+      key,
+      { "content-type": object.contentType, "content-length": String(object.size) },
       expiresIn,
-      signableHeaders: new Set(["content-type", "content-length"]),
-    });
+    );
     return {
       url,
       method: "PUT" as const,
@@ -139,23 +132,17 @@ export class S3Storage implements ObjectStorage {
     object: { filename: string; contentType: string; inline?: boolean },
     expiresIn: number,
   ) {
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ResponseContentType: object.contentType,
-      ResponseContentDisposition: attachment(
-        object.filename,
-        object.inline ? "inline" : "attachment",
-      ),
+    const url = this.browser.client.presign(key, {
+      expiresIn,
+      type: object.contentType,
+      contentDisposition: attachment(object.filename, object.inline ? "inline" : "attachment"),
     });
-    const url = await getSignedUrl(this.signer, command, { expiresIn });
     return { url, expiresAt: new Date(Date.now() + expiresIn * 1000) };
   }
 
   async head(key: string) {
     try {
-      const head = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return { size: head.ContentLength ?? 0 };
+      return { size: (await this.server.client.stat(key)).size };
     } catch (error) {
       if (missing(error)) return null;
       throw error;
@@ -163,33 +150,26 @@ export class S3Storage implements ObjectStorage {
   }
 
   async copy(from: string, to: string) {
-    await this.client.send(
-      new CopyObjectCommand({
-        Bucket: this.bucket,
-        Key: to,
-        CopySource: `${this.bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
-      }),
-    );
+    const response = await this.server.signer.fetch("PUT", to, {
+      "x-amz-copy-source": `/${this.bucket}/${encodeKey(from)}`,
+    });
+    const body = await response.text();
+    // CopyObject can fail after a 200 status, with the error in the body.
+    if (!response.ok || body.includes("<Error>"))
+      throw Object.assign(new Error("S3 copy failed"), {
+        name: /<Code>NoSuchKey<\/Code>/.test(body) ? "NoSuchKey" : "S3Error",
+        status: response.status,
+      });
   }
 
   async put(key: string, bytes: Uint8Array, contentType: string) {
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: bytes,
-        ContentType: contentType,
-      }),
-    );
+    await this.server.client.write(key, bytes, { type: contentType });
   }
 
   async sha256(key: string) {
     try {
-      const object = await this.client.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      );
-      const hash = createHash("sha256");
-      for await (const chunk of object.Body as Readable) hash.update(chunk as Buffer);
+      const hash = new CryptoHasher("sha256");
+      for await (const chunk of this.server.client.file(key).stream()) hash.update(chunk);
       return hash.digest("hex");
     } catch (error) {
       if (missing(error)) return null;
@@ -198,7 +178,7 @@ export class S3Storage implements ObjectStorage {
   }
 
   async delete(key: string) {
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+    await this.server.client.delete(key);
   }
 }
 

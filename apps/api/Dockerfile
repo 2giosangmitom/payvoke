@@ -15,7 +15,10 @@ RUN --mount=type=cache,id=bun,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --filter api --filter @payvoke/shared
 WORKDIR /app/apps/api
 # Filtered installs skip the root postinstall; the bundle embeds this client.
-RUN bunx prisma generate && bun build src/server.ts --target=bun --outfile dist/server.js
+# The externals are schema converters for libraries the API does not use
+# (only reachable through dynamic imports), left out to keep the bundle small.
+RUN bunx prisma generate && bun build src/server.ts --target=bun --minify \
+    --external effect --external zod-to-json-schema --outfile dist/server.js
 
 # The Prisma CLI is the only runtime dependency left outside the bundle.
 FROM base AS migrate
@@ -39,4 +42,5 @@ COPY --from=build /app/apps/api/dist/server.js server.js
 USER bun
 ENV HOST=0.0.0.0 PORT=3001
 EXPOSE 3001
-CMD ["bun", "server.js"]
+# --smol trades a little throughput for a smaller heap (512 MB instances).
+CMD ["bun", "--smol", "server.js"]

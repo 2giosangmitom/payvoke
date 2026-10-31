@@ -4,9 +4,8 @@ import { BadRequestError, ServiceUnavailableError } from "../../errors";
 import { inputValidator } from "../apps/schema";
 
 // Validates command arguments against a stored revision schema and returns
-// them with schema defaults applied. Do not retain freshly loaded schema object
-// identities in an unbounded process-wide Ajv cache: this is preparation, not
-// the paid hot path.
+// them with schema defaults applied. Compiled validators live in a bounded
+// cache keyed by schema content, never by the freshly loaded object.
 export function effectiveArguments(schema: Prisma.JsonValue, args: unknown) {
   if (!schema || typeof schema !== "object" || Array.isArray(schema) || "$async" in schema)
     throw new ServiceUnavailableError("INVALID_COMMAND_SCHEMA");
