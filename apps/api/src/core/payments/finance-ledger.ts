@@ -74,7 +74,11 @@ export async function scanFinancialLifecycle(
         create: { id, blockNumber: startBlock - 1n, blockHash: parent.hash },
       });
     }
-    if (head.number < cursor.blockNumber) throw new FinancialInvariantError("finality_regressed");
+    // A finalized head below the cursor means this RPC node lags (the public
+    // Fuji endpoint is load-balanced); Avalanche finality does not roll back.
+    // Retry next tick like the admission scanners do. A replaced block still
+    // latches below, through the cursor's hash check.
+    if (head.number < cursor.blockNumber) throw new VaultValidationError("finality_regressed", 503);
     await chain.canonical(cursor.blockNumber, cursor.blockHash as Hex);
     if (head.number === cursor.blockNumber)
       return {

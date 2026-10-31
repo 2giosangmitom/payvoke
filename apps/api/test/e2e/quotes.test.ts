@@ -2593,6 +2593,23 @@ describe("quotes, x402 and isolated settlement", () => {
       const cursor = await db.settlementScanCursor.findUniqueOrThrow({
         where: { id: `finance:43113:${evm.vault.toLowerCase()}` },
       });
+      // A lagging RPC node reports an older finalized head: retry, never latch.
+      const finalized = evm.settlement.finalized.bind(evm.settlement);
+      const lagging = spyOn(evm.settlement, "finalized").mockImplementation(async () => {
+        const head = await finalized();
+        return { ...head, number: cursor.blockNumber - 1n };
+      });
+      await assert.rejects(sync(), /finality_regressed/);
+      lagging.mockRestore();
+      assert.equal(
+        (
+          await db.vaultFinancialHealth.findUniqueOrThrow({
+            where: { id: `43113:${evm.vault.toLowerCase()}` },
+          })
+        ).blocked,
+        false,
+        "a lagging finalized head is not an incident",
+      );
       await evm.test.mine({ blocks: 1 });
       const read = evm.client.readContract.bind(evm.client);
       const inconsistentRead = spyOn(evm.client, "readContract").mockImplementation(((
