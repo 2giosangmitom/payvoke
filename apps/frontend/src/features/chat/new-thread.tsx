@@ -1,76 +1,168 @@
 import { useDeferredValue, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowRight, Search, Star, Store } from "lucide-react";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
 import {
-  AppStatus,
   EmptyState,
   ErrorNotice,
-  Eyebrow,
-  LoadingState,
+  StatusDot,
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
-import { listProviderApps, listStoreApps } from "@/src/features/apps/api";
+import { AgentAvatar } from "@/src/features/apps/agent-avatar";
+import { getStars, listProviderApps } from "@/src/features/apps/api";
 import { newThread } from "@/src/features/chat/api";
+import { cn } from "@/src/lib/utils";
 
+type Pick = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  availability: string;
+  commandCount?: number;
+};
+
+const matches = (app: Pick, q: string) =>
+  !q || app.name.toLowerCase().includes(q) || (app.description ?? "").toLowerCase().includes(q);
+
+function AgentPick({
+  app,
+  note,
+  busy,
+  disabled,
+  onStart,
+}: {
+  app: Pick;
+  note: string;
+  busy: boolean;
+  disabled: boolean;
+  onStart: () => void;
+}) {
+  const available = app.availability === "AVAILABLE";
+  return (
+    <button
+      type="button"
+      disabled={disabled || !available}
+      onClick={onStart}
+      className="group flex w-full items-center gap-4 border border-border bg-background p-4 text-left transition-[border-color,background-color] duration-150 ease-out hover:border-primary/50 hover:bg-primary-soft/40 focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background"
+    >
+      <AgentAvatar name={app.name} imageUrl={app.imageUrl} className="size-11" />
+      <span className="grid min-w-0 flex-1 gap-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{app.name}</span>
+          <StatusDot availability={app.availability} />
+        </span>
+        <span className="line-clamp-1 text-sm text-muted-foreground">
+          {app.description || "No description yet."}
+        </span>
+        <span className="font-mono text-[11px] text-faint">
+          {available ? note : "Offline right now"}
+        </span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "grid size-9 shrink-0 place-items-center border border-border text-muted-foreground transition-[color,border-color,translate] duration-150 ease-out group-hover:border-primary group-hover:text-primary group-enabled:group-hover:translate-x-0.5",
+        )}
+      >
+        {busy ? <Spinner /> : <ArrowRight size={16} />}
+      </span>
+      <span className="sr-only">Start a chat with {app.name}</span>
+    </button>
+  );
+}
+
+function PickSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div role="status" aria-busy="true" className="grid gap-3 lg:grid-cols-2">
+      <span className="sr-only">Loading your agents</span>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center gap-4 border border-border bg-background p-4">
+          <Skeleton className="size-11 shrink-0" />
+          <div className="grid flex-1 gap-2">
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3.5 w-4/5" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+          <Skeleton className="size-9 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Group({
+  id,
+  icon,
+  title,
+  count,
+  children,
+}: {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="grid gap-3">
+      <h2 id={id} className="flex items-center gap-2 text-sm font-medium">
+        <span className="text-primary">{icon}</span>
+        {title}
+        <span className="font-mono text-xs text-faint tabular-nums">{count}</span>
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+// A new chat starts from the agents the buyer already chose: the ones they
+// saved in the store and the ones they share themselves. Finding new agents
+// is the store's job, so this screen does not search it.
 export function NewThread() {
   const navigate = useNavigate();
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const user = session?.user.id;
   const [search, setSearch] = useState("");
-  const deferred = useDeferredValue(search);
+  const q = useDeferredValue(search).trim().toLowerCase();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const publicApps = useQuery({
-    queryKey: ["store", "new-thread", deferred],
-    queryFn: () => listStoreApps({ q: deferred }),
+  const stars = useQuery({
+    queryKey: ["stars", user],
+    queryFn: getStars,
+    enabled: Boolean(user),
     staleTime: 20_000,
   });
   const owned = useQuery({
-    queryKey: ["provider", "apps", session?.user.id],
+    queryKey: ["provider", "apps", user],
     queryFn: listProviderApps,
-    enabled: Boolean(session),
+    enabled: Boolean(user),
     staleTime: 20_000,
   });
-  const seen = new Set<string>();
-  const apps = [
-    ...(publicApps.data?.items ?? []).map((app) => ({
+  const savedApps: Pick[] = (stars.data ?? []).filter((app) => app.status !== "ARCHIVED");
+  const savedIds = new Set(savedApps.map((app) => app.id));
+  const ownApps: Pick[] = (owned.data ?? [])
+    .filter((app) => !app.archivedAt && !savedIds.has(app.id))
+    .map((app) => ({
       id: app.id,
       name: app.name,
       description: app.description,
+      imageUrl: app.imageUrl ?? null,
       availability: app.availability,
-      visibility: app.visibility,
-      commandCount: app.commandCount,
-    })),
-    ...(owned.data ?? [])
-      .filter((app) => {
-        if (app.archivedAt) return false;
-        const q = deferred.trim().toLowerCase();
-        return (
-          !q ||
-          app.name.toLowerCase().includes(q) ||
-          (app.description ?? "").toLowerCase().includes(q)
-        );
-      })
-      .map((app) => ({
-        id: app.id,
-        name: app.name,
-        description: app.description,
-        availability: app.availability,
-        visibility: app.visibility,
-        commandCount: undefined as number | undefined,
-      })),
-  ].filter((app) => {
-    if (seen.has(app.id)) return false;
-    seen.add(app.id);
-    return true;
-  });
+    }));
+  const saved = savedApps.filter((app) => matches(app, q));
+  const own = ownApps.filter((app) => matches(app, q));
+  const total = savedApps.length + ownApps.length;
+  const loading = sessionPending || (Boolean(user) && (stars.isPending || owned.isPending));
+
   const start = useMutation({
     mutationFn: (appId: string) => newThread(appId),
     onMutate: (appId) => {
@@ -79,109 +171,131 @@ export function NewThread() {
     },
     onSuccess: (thread) =>
       void navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
-    onError: (cause) => setError(errorMessage(cause, "Could not start a thread.")),
+    onError: (cause) => setError(errorMessage(cause, "Could not start a chat.")),
     onSettled: () => setBusy(""),
   });
 
+  const pick = (app: Pick, note: string) => (
+    <AgentPick
+      key={app.id}
+      app={app}
+      note={note}
+      busy={busy === app.id}
+      disabled={Boolean(busy)}
+      onStart={() => start.mutate(app.id)}
+    />
+  );
+
   return (
-    <main className="overflow-y-auto px-5 py-10 sm:px-10 lg:px-14">
-      <BlurFade>
-        <header className="max-w-2xl">
-          <Eyebrow className="mb-4">New chat</Eyebrow>
-          <h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.05em]">
-            Which app do you want to use?
-          </h1>
-          <p className="mt-4 leading-7 text-muted-foreground">
-            Every app works in a chat. Run its slash commands at their listed price, or describe the
-            job and get an offer. You see a quote before anything is charged. Browse more in the{" "}
-            <Link to="/store" className="text-primary hover:underline">
-              store
-            </Link>
-            .
-          </p>
-        </header>
-      </BlurFade>
-      <label className="relative mt-8 block max-w-2xl">
-        <Search
-          size={16}
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
-        />
-        <span className="sr-only">Search apps to chat with</span>
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search apps"
-          className="h-11 pl-10"
-        />
-      </label>
-      {!session && (
-        <section className="mt-6 flex max-w-2xl flex-col justify-between gap-4 border border-border-strong bg-background-deep p-5 sm:flex-row sm:items-center">
-          <div>
-            <Eyebrow className="mb-2">Sign in required</Eyebrow>
-            <h2 className="text-lg font-medium">Threads belong to your wallet.</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Connect an Avalanche Fuji wallet to open a thread.
+    <main className="overflow-y-auto">
+      <div className="mx-auto grid w-full max-w-4xl gap-8 px-5 py-10 sm:px-8 lg:py-14">
+        <BlurFade>
+          <header className="grid gap-3">
+            <h1 className="text-[clamp(1.75rem,3.5vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.04em]">
+              Who do you want to talk to?
+            </h1>
+            <p className="max-w-xl leading-7 text-muted-foreground">
+              Pick one of your saved agents. Chatting is free; an agent sends an offer before any
+              job is charged.
             </p>
-          </div>
-          <WalletAccess />
-        </section>
-      )}
-      <div className="mt-8">
-        {publicApps.isPending || (Boolean(session) && owned.isPending) ? (
-          <LoadingState>Loading apps…</LoadingState>
-        ) : publicApps.isError ? (
-          <ErrorNotice onRetry={() => void publicApps.refetch()}>
-            {errorMessage(publicApps.error, "Could not load apps.")}
-          </ErrorNotice>
-        ) : apps.length === 0 ? (
-          <EmptyState
-            eyebrow="No agents found"
-            title="No agent to chat with yet."
-            action={<Button render={<Link to="/store" />}>Browse the store</Button>}
-          >
-            Public agents appear here once their owner publishes a command.
-          </EmptyState>
-        ) : (
-          <section aria-label="Apps" className="grid gap-3 xl:grid-cols-2">
-            {apps.map((app, index) => {
-              const available = app.availability === "AVAILABLE";
-              return (
-                <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
-                  <article className="flex h-full flex-col justify-between gap-5 border border-border bg-background p-5 transition-colors hover:border-border-strong">
-                    <div className="min-w-0">
-                      <AppStatus availability={app.availability} />
-                      <h2 className="mt-3 text-lg font-medium tracking-[-0.02em] break-words">
-                        {app.name}
-                      </h2>
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {app.description || "No description yet."}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-mono text-[11px] text-faint">
-                        {app.commandCount !== undefined
-                          ? plural(app.commandCount, "command")
-                          : app.visibility === "PRIVATE"
-                            ? "Private app"
-                            : "Public app"}
-                      </span>
-                      <Button
-                        variant="outline"
-                        disabled={!session || !available || busy === app.id}
-                        onClick={() => start.mutate(app.id)}
-                      >
-                        {busy === app.id ? <Spinner /> : <ArrowUpRight />}
-                        {available ? "Start chat" : "Offline"}
-                      </Button>
-                    </div>
-                  </article>
-                </BlurFade>
-              );
-            })}
+          </header>
+        </BlurFade>
+
+        {!session && !sessionPending ? (
+          <section className="flex flex-col justify-between gap-4 border border-border-strong bg-background-deep p-5 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-lg font-medium">Sign in to chat</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Chats belong to your wallet. Connect an Avalanche Fuji wallet to start one.
+              </p>
+            </div>
+            <WalletAccess />
           </section>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <label className="relative flex-1">
+                <Search
+                  size={16}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
+                />
+                <span className="sr-only">Filter your agents</span>
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Filter your agents"
+                  className="h-11 pl-10"
+                  disabled={loading || total === 0}
+                />
+              </label>
+              <Button variant="outline" size="lg" className="h-11" render={<Link to="/store" />}>
+                <Store /> Find agents in the store
+              </Button>
+            </div>
+
+            {stars.isError && (
+              <ErrorNotice onRetry={() => void stars.refetch()}>
+                {errorMessage(stars.error, "Could not load your saved agents.")}
+              </ErrorNotice>
+            )}
+            {error && <ErrorNotice>{error}</ErrorNotice>}
+
+            {loading ? (
+              <PickSkeleton />
+            ) : total === 0 ? (
+              <EmptyState
+                eyebrow="No saved agents"
+                title="Save an agent to chat with it."
+                action={
+                  <Button render={<Link to="/store" />}>
+                    <Store /> Browse the store
+                  </Button>
+                }
+              >
+                Star an agent in the store and it shows up here, ready for a new chat.
+              </EmptyState>
+            ) : saved.length + own.length === 0 ? (
+              <p className="border border-dashed border-border-strong/60 px-4 py-6 text-center text-sm text-muted-foreground">
+                None of your agents match “{search.trim()}”.
+              </p>
+            ) : (
+              <div className="grid gap-8">
+                {saved.length > 0 && (
+                  <Group
+                    id="saved-agents"
+                    icon={<Star size={14} fill="currentColor" aria-hidden="true" />}
+                    title="Saved agents"
+                    count={saved.length}
+                  >
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {saved.map((app) =>
+                        pick(
+                          app,
+                          app.commandCount !== undefined
+                            ? plural(app.commandCount, "command")
+                            : "Saved",
+                        ),
+                      )}
+                    </div>
+                  </Group>
+                )}
+                {own.length > 0 && (
+                  <Group
+                    id="own-agents"
+                    icon={<span className="block size-2 bg-primary" aria-hidden="true" />}
+                    title="Your agents"
+                    count={own.length}
+                  >
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {own.map((app) => pick(app, "You share this agent"))}
+                    </div>
+                  </Group>
+                )}
+              </div>
+            )}
+          </>
         )}
-        {error && <ErrorNotice>{error}</ErrorNotice>}
       </div>
     </main>
   );

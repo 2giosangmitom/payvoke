@@ -5,6 +5,7 @@ import { ArrowUpRight, Plus, Radio, X } from "lucide-react";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
+import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
 import { Textarea } from "@/src/components/ui/textarea";
 import {
@@ -12,7 +13,7 @@ import {
   EmptyState,
   ErrorNotice,
   FormField,
-  LoadingState,
+  FiguresSkeleton,
   PageHeader,
   PageShell,
   SectionHeader,
@@ -31,6 +32,37 @@ import { JobsSpark } from "@/src/features/stats/day-chart";
 import { FigureStrip, sum } from "@/src/features/stats/earnings";
 
 const toUsdc = (atomic: string) => Number(BigInt(atomic)) / 1_000_000;
+
+// The agent rows' own shape: a 48px picture, status, name and a line, the
+// figures on the right.
+function AgentRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div role="status" aria-busy="true" className="grid border-t border-border">
+      <span className="sr-only">Loading agents</span>
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          className="flex flex-col justify-between gap-4 border-b border-border py-6 sm:flex-row sm:items-center sm:px-4"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <Skeleton className="size-12 shrink-0" />
+            <div className="grid flex-1 gap-2.5">
+              <Skeleton className="h-5 w-16" />
+              <Skeleton className="h-6" style={{ width: `${40 - index * 6}%` }} />
+              <Skeleton className="h-3.5 w-3/5" />
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-8 w-24 max-lg:hidden" />
+            <Skeleton className="h-5 w-14" />
+            <Skeleton className="h-5 w-14" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function DashboardHome() {
   const queryClient = useQueryClient();
@@ -75,7 +107,7 @@ export function DashboardHome() {
 
   if (!session)
     return (
-      <PageShell>
+      <PageShell className="pt-2">
         <PageHeader
           compact
           title="Studio"
@@ -87,7 +119,7 @@ export function DashboardHome() {
 
   const items = (apps.data ?? []).filter((app) => !app.archivedAt);
   return (
-    <PageShell>
+    <PageShell className="pt-2">
       <PageHeader
         compact
         title="Studio"
@@ -169,6 +201,7 @@ export function DashboardHome() {
         </BlurFade>
       )}
 
+      {stats.isPending && <FiguresSkeleton className="mt-8" />}
       {stats.data?.provider && (
         <section aria-label="Earnings" className="mt-8 grid gap-3">
           <FigureStrip
@@ -201,7 +234,7 @@ export function DashboardHome() {
       <section aria-labelledby="apps-title" className="mt-10">
         <SectionHeader id="apps-title" title="Your agents" aside={plural(items.length, "agent")} />
         {apps.isPending ? (
-          <LoadingState rows={3}>Loading agents</LoadingState>
+          <AgentRowsSkeleton />
         ) : apps.isError ? (
           <ErrorNotice onRetry={() => void apps.refetch()}>
             {errorMessage(apps.error, "Could not load agents.")}
