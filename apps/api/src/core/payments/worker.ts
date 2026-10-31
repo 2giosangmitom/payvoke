@@ -61,9 +61,17 @@ export class SettlementWorker {
   // Database time, not application clock, determines scheduling and ownership.
   // Prisma stores these columns as UTC `timestamp`, so compare against the clock
   // in UTC; a bare timestamptz comparison would shift by the session time zone.
-  private readonly dueFilter = Prisma.sql`state = 'PENDING'
+  //
+  // Only operations signed for this deployment's resource URL are due here. A
+  // second deployment sharing the database (a staging or local API with its
+  // own origin and vault) must neither settle nor quarantine them: its checks
+  // would fail on the foreign binding and wrongly quarantine a valid payment.
+  private get dueFilter() {
+    return Prisma.sql`state = 'PENDING'
+      AND "paymentPayload"->'resource'->>'url' = ${this.resourceUrl}
       AND "nextCheckAt" <= (clock_timestamp() AT TIME ZONE 'UTC')
       AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= (clock_timestamp() AT TIME ZONE 'UTC'))`;
+  }
 
   async tick() {
     const due = await this.db.$queryRaw<{ invocationId: string }[]>`
