@@ -29,9 +29,8 @@ export async function builderSpec() {
       },
       servers: [
         {
-          url: "{apiOrigin}",
-          description: "The Payvoke API",
-          variables: { apiOrigin: { default: "http://localhost:3001" } },
+          url: "https://payvoke.up.railway.app",
+          description: "Payvoke API (Avalanche Fuji testnet)",
         },
       ],
       tags,

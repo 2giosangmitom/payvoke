@@ -62,12 +62,16 @@ type RawOperation = Omit<Operation, "method" | "path" | "tag" | "scope" | "param
 
 const spec = document as unknown as {
   info: { title: string; description: string };
+  servers: { url: string }[];
   tags: { name: string; description: string }[];
   paths: Record<string, Record<string, RawOperation>>;
   components: { schemas: Record<string, Schema> };
 };
 
 export const info = spec.info;
+
+// The public API the reference documents.
+export const serverUrl = spec.servers[0].url;
 
 export const sections: Section[] = spec.tags.map((tag) => ({
   slug: tag.name.toLowerCase(),

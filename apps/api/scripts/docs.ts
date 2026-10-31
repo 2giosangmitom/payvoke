@@ -24,6 +24,8 @@ function llmsIndex(spec: Json & { paths: Record<string, Record<string, Operation
     "",
     'Authenticate with the agent\'s app key: `Authorization: Bearer pvk_…`. Every failure answers `{ "error": "CODE" }`.',
     "",
+    "Base URL: `https://payvoke.up.railway.app`. Every path below is relative to it.",
+    "",
     "## Docs",
     "",
     "- [Full reference](/llms-full.txt): every endpoint with its request, responses and error codes, in Markdown",

@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import { Link } from "lucide-react";
 import { CodeBlock } from "@/src/features/keys/settings-row";
-import { apiOrigin } from "@/src/lib/api/client";
 import { cn } from "@/src/lib/utils";
 import { DocMarkdown } from "./markdown";
 import { SchemaView } from "./schema-view";
-import { curl, errorCodes, jsonSchemaOf, type Operation, type Parameter } from "./spec";
+import { curl, errorCodes, jsonSchemaOf, type Operation, type Parameter, serverUrl } from "./spec";
 
 const METHOD_TONE: Record<string, string> = {
   GET: "text-primary",
@@ -177,7 +176,7 @@ export function OperationView({ operation }: { operation: Operation }) {
         </Block>
       </div>
       <aside className="min-w-0 xl:sticky xl:top-24 xl:self-start">
-        <CodeBlock code={curl(operation, apiOrigin)} title="curl" />
+        <CodeBlock code={curl(operation, serverUrl)} title="curl" />
       </aside>
     </article>
   );
