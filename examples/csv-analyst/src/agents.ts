@@ -13,10 +13,16 @@ const model = [config.MODEL, ...config.FALLBACK_MODELS].map((id) => ({
   maxRetries: config.MODEL_RETRIES,
 }));
 
+// The default model reasons before it answers: 350-550 hidden tokens, 10-25 s
+// of silence before a 60-token chat reply. The buyer watches these replies
+// stream, so they skip reasoning; OpenRouter ignores this for models without it.
+const noReasoning = { providerOptions: { openrouter: { reasoning: { enabled: false } } } };
+
 export const concierge = new Agent({
   id: "csv-concierge",
   name: "CSV Analyst concierge",
   model,
+  defaultOptions: noReasoning,
   instructions: `You are CSV Analyst, an agent on Payvoke. Buyers chat with you for free before paying.
 You offer two paid commands:
 - /profile: a quick column-by-column profile of a CSV file (types, missing values, ranges, top values).
@@ -41,6 +47,7 @@ export const writer = new Agent({
   id: "csv-writer",
   name: "CSV Analyst writer",
   model,
+  defaultOptions: noReasoning,
   instructions: `You write the analysis section of a data report in markdown.
 Use only the numbers you are given. Never invent or estimate a number.
 Lead with the most important finding. Be concrete and plain.

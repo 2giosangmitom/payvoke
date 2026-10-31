@@ -1643,6 +1643,25 @@ describe("quotes, x402 and isolated settlement", () => {
     },
   );
 
+  it("tells the buyer why the facilitator refused a payment it never journaled", async () => {
+    const q = await quote();
+    const p = await payment(q);
+    const f = await facilitator(q);
+    await app.close();
+    app = createApp({ ...config, PAYMENTS_ENABLED: true }, db, undefined, undefined, f.f);
+    await app.ready();
+    f.state.grant.revoked = true;
+    const refused = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.ok([402, 503].includes(refused.statusCode), refused.body);
+    assert.equal(refused.json().error, "grant_revoked");
+    f.state.grant.revoked = false;
+    // Settlement turned off on this deployment: a valid payment cannot be held.
+    const disabled = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
+    assert.equal(disabled.statusCode, 503, disabled.body);
+    assert.equal(disabled.json().error, "settlement_unavailable");
+    assert.equal(await db.settlementOperation.count(), 0);
+  });
+
   it("runs SDK upfront through the gateway, preserving pending/finalized receipts and expired replay", async () => {
     const q = await quote();
     const p = await payment(q);

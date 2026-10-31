@@ -20,6 +20,9 @@ import { parseFinancialJson } from "#core/runtime";
 import type { Facilitator } from "#core/facilitator";
 import { getAddress } from "viem";
 import { BadRequestError, ServiceUnavailableError } from "../../errors";
+import { logger } from "../../logging";
+
+const log = logger("payments", "gateway");
 
 const PATH = "/v1/invocations";
 
@@ -134,7 +137,7 @@ export class PaymentGateway {
       const encoded = Object.entries(result.response.headers).find(
         ([key]) => key.toLowerCase() === "payment-response",
       )?.[1];
-      return this.unsettled(quote, encoded, c);
+      return this.unsettled(quote, encoded, c, result.response.body);
     }
     if (result.type !== "payment-verified" || !result.beforeHandlerSettlement?.result.success)
       throw new ServiceUnavailableError("SETTLEMENT_NOT_FINALIZED");
@@ -167,7 +170,12 @@ export class PaymentGateway {
 
   // A facilitator payment error. The durable journal, not the SDK response,
   // decides what the buyer is told.
-  private async unsettled(quote: QuoteDocument, encoded: string | undefined, c: Context) {
+  private async unsettled(
+    quote: QuoteDocument,
+    encoded: string | undefined,
+    c: Context,
+    body: unknown,
+  ) {
     const operation = await this.db.settlementOperation.findUnique({
       where: { invocationId: quote.invocationId },
       include: { attempt: true },
@@ -213,6 +221,46 @@ export class PaymentGateway {
         }),
       );
     }
+    // Nothing journaled: the facilitator refused before recording an intent.
+    // Its reason (a vault code such as grant_exhausted or quote_expired) is
+    // what the buyer needs; exception text is never forwarded.
+    if (!operation) {
+      const verifyReason = facilitatorCode(
+        body && typeof body === "object" ? (body as { error?: unknown }).error : undefined,
+      );
+      let settleReason: string | undefined;
+      try {
+        if (encoded)
+          settleReason = facilitatorCode(decodePaymentResponseHeader(encoded).errorReason);
+      } catch {
+        /* No readable receipt. */
+      }
+      log.warn("Payment refused before settlement ({invocationId}): {reason}", {
+        invocationId: quote.invocationId,
+        reason: verifyReason ?? settleReason ?? "unknown",
+      });
+      // A verify refusal will not pass on retry; a settle refusal may be transient.
+      if (verifyReason && !encoded)
+        return c.json(
+          {
+            invocationId: quote.invocationId,
+            paymentStatus: "UNKNOWN",
+            error: verifyReason,
+            nextActions: [],
+          },
+          402,
+        );
+      c.header("Retry-After", "5");
+      return c.json(
+        {
+          invocationId: quote.invocationId,
+          paymentStatus: "UNKNOWN",
+          error: settleReason ?? "settlement_unavailable",
+          nextActions: ["poll"],
+        },
+        503,
+      );
+    }
     const rejected = operation?.state === "REJECTED";
     // PENDING is the normal first answer: the authorization is journaled and
     // the worker is putting the hold on chain. Tell the client to poll, not
@@ -235,3 +283,8 @@ export class PaymentGateway {
     );
   }
 }
+
+// Facilitator reasons are snake_case codes; anything else is an exception
+// message or core's prose and stays server-side.
+const facilitatorCode = (value: unknown) =>
+  typeof value === "string" && /^[a-z][a-z0-9_]{2,63}$/.test(value) ? value : undefined;
