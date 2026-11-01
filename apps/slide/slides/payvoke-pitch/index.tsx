@@ -793,7 +793,7 @@ const Quote: Page = () => (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
       <Field k="Parties">Buyer và provider</Field>
       <Field k="Command">Agent ID, command, version</Field>
-      <Field k="Evidence">SHA-256 của input và terms</Field>
+      <Field k="Hash">keccak256 của input, terms, policy</Field>
       <Field k="Amount">USDC, giá, fee</Field>
       <Field k="Deadline">deliveryDeadline, resolveBy</Field>
       <Field k="Replay">Invocation key, dùng một lần</Field>
@@ -918,7 +918,7 @@ const GenUI: Page = () => (
     >
       <div>
         <Spec k="Ngôn ngữ" w={220}>
-          OpenUI, JSON patch tăng dần
+          OpenUI Lang, patch nối thêm
         </Spec>
         <Spec k="Catalog" w={220}>
           6 component cố định
@@ -1036,7 +1036,7 @@ const RiskCheck: Page = () => (
       <Signal name="Payment pressure">Text nhắm assistant để ép trả tiền</Signal>
       <Signal name="Tự tăng giá">Offer sau cao hơn Offer trước</Signal>
       <Signal name="Giá bất thường">Cao hơn 3× median 20 job gần nhất</Signal>
-      <Signal name="Refund cao">Trên 50% trong 20 job gần nhất</Signal>
+      <Signal name="Refund cao">Từ 50% trong 20 job gần nhất</Signal>
       <Signal name="Agent mới">Dưới 3 job, đòi hơn 1 USDC</Signal>
     </div>
     <Statement style={{ marginTop: 40 }}>
@@ -1090,10 +1090,10 @@ const Architecture: Page = () => (
       <Node x={480} y={480} w={250} h={70} title="Settlement" tone="key" />
       <Node x={745} y={480} w={250} h={70} title="Finance" tone="key" />
       <Node x={1010} y={480} w={210} h={70} title="Job" />
-      <Node x={1340} y={40} w={340} h={130} title="Storage" sub="Postgres, S3" />
+      <Node x={1340} y={40} w={340} h={130} title="Storage" sub="Postgres, Redis, S3" />
       <Node x={1340} y={440} w={340} h={110} title="PayvokeVault" sub="Avalanche" tone="brand" />
     </div>
-    <Note style={{ marginTop: 16 }}>API không giữ key. Worker tắt thì key không được nạp.</Note>
+    <Note style={{ marginTop: 16 }}>Gateway không giữ key. Worker tắt thì key không được nạp.</Note>
   </Frame>
 );
 
@@ -1341,9 +1341,9 @@ const Contract: Page = () => (
   <Frame n="Phần 4" label="Smart contract" title="Vault: immutable, tách quyền">
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "56px 96px" }}>
       <Block title="Roles">Relayer, approver, executor: ba key riêng.</Block>
-      <Block title="Pause">Chỉ chặn hold mới; user vẫn withdraw, reclaim.</Block>
+      <Block title="Pause">Chặn nạp, grant, hold mới; withdraw, reclaim vẫn chạy.</Block>
       <Block title="Immutable">Không proxy, không hàm sửa balance.</Block>
-      <Block title="Fee">Trần fee là hằng số; fee chốt trong quote.</Block>
+      <Block title="Fee">Trần fee cố định lúc deploy; fee chốt trong quote.</Block>
     </div>
   </Frame>
 );
@@ -1620,7 +1620,7 @@ Stream theo AG-UI: text qua TEXT_MESSAGE, mỗi delta tối đa 4.096 ký tự; 
 
   // 10. Generative UI
   `(~30s)
-Kết quả không chỉ là text. Agent mô tả UI bằng OpenUI và stream từng JSON patch.
+Kết quả không chỉ là text. Agent mô tả UI bằng OpenUI Lang và stream từng patch; Payvoke parse lại cả chương trình sau mỗi patch.
 [→] Payvoke render bằng 6 component cố định: Stack, Text, Card, Metric, Table, Chart. Biểu đồ và số liệu hiện ngay trong thread.
 Catalog chỉ để hiển thị: không script, không iframe, không link. Nên agent không thể chèn UI độc hại.`,
 
@@ -1643,7 +1643,7 @@ Trên web, key sinh trong browser và không rời máy. Với assistant, key de
   // 13. Risk check
   `(~35s)
 Hạn mức giới hạn số tiền, nhưng prompt injection vẫn có thể dụ assistant tiêu hết. Risk Check chặn trước khi ký, với 5 tín hiệu:
-text nhắm assistant để ép trả tiền; Offer sau cao hơn Offer trước; giá cao hơn 3 lần median 20 job gần nhất; agent có trên 50% job bị refund; agent mới dưới 3 job mà đòi hơn 1 USDC.
+text nhắm assistant để ép trả tiền; Offer sau cao hơn Offer trước; giá cao hơn 3 lần median 20 job gần nhất; từ 50% job gần nhất của agent bị refund; agent mới dưới 3 job mà đòi hơn 1 USDC.
 Có tín hiệu là chuyển sang user duyệt, không tự trả.`,
 
   // 14. Phần 3
@@ -1652,7 +1652,7 @@ Phần 3: bên dưới nút Accept, tiền thực sự đi đâu.`,
 
   // 15. Quote
   `(~30s)
-Khi buyer Accept, Payvoke đóng băng giao kèo thành Quote EIP-712: buyer, provider, command và version, hash của input và terms, giá USDC và fee, deliveryDeadline, resolveBy, và invocation key dùng một lần.
+Khi buyer Accept, Payvoke đóng băng giao kèo thành Quote EIP-712: buyer, provider, command và version, hash của input, terms và policy, giá USDC và fee, deliveryDeadline, resolveBy, và invocation key dùng một lần.
 Chữ ký debit gắn quote với grant và epoch. Ký xong thì không sửa được điều khoản nào.
 
 Nếu bị hỏi "builder đổi giá sau khi ký thì sao?":
@@ -1700,8 +1700,8 @@ Agent chỉ chạy sau finalized. Cùng invocation ID gửi lại luôn nhận c
   `(~30s)
 Vault có bốn nguyên tắc.
 Ba role relayer, approver, executor dùng ba key khác nhau; approver không được trùng executor.
-Pause chỉ chặn hold mới; user vẫn withdraw và reclaim nên không ai giam được tiền.
-Không proxy, không hàm sửa balance. Trần fee là hằng số và fee chốt trong quote.`,
+Pause chặn nạp, grant và hold mới; user vẫn withdraw, revoke và reclaim nên không ai giam được tiền.
+Không proxy, không hàm sửa balance. Trần fee là immutable, đặt lúc deploy, và fee chốt trong quote.`,
 
   // 23. Closing
   `(~20s)
