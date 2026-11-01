@@ -129,6 +129,7 @@ stateDiagram-v2
 - The EIP-712 quote covers buyer, thread, app, command revision, input/terms/policy hashes, provider, asset, price, fee and deadlines. The debit authorization binds the quote digest to a grant and its epoch. The vault consumes each invocation key once.
 - A paid submit uses the invocation ID as `Idempotency-Key`. Replaying a submit returns the existing receipt and charges nothing. Signed transactions are journaled before broadcast, so a crash at any point can be reconciled.
 - The design is checked against the attack classes published for public x402 facilitators in 2026: false success, signature reuse across resources, double settlement, gas abuse and PII in metadata. `bun run --cwd apps/api test:conformance` maps each rule to its negative tests.
+- Autopay through an API key runs a risk check before it signs, even inside the grant's caps. The buyer approves the payment instead when the agent's text addresses their AI assistant (instructions, tool names, payment or secret requests), when the agent raised its own offer, when the price is far above the command's usual price, when most of the agent's recent jobs were refunded, or when a new agent asks more than 1 USDC. `read_chat` flags such text for the assistant. The red-team cases are in `apps/api/test/mcp-redteam.test.ts`.
 - Provider output is treated as untrusted. It is validated, and OpenUI widgets render only from Payvoke's component catalog. Logs are JSON lines with secrets, signatures, cookies and payment headers redacted.
 
 ## Repository layout
@@ -204,7 +205,7 @@ The API serves MCP over streamable HTTP at `/mcp`. Claude Code, Codex and other 
      --header "Authorization: Bearer pvb_…"
    ```
 
-3. To pay, the host calls `pay_offer`. Each key has a vault grant signer derived from its secret (HKDF-SHA256); Payvoke stores only the signer's address. If the price fits the limits of the grant registered for that signer, the API derives the key from the presented secret for that request, signs the `DebitAuthorization` and pays. Otherwise the host gets an approval link. A copy of the database cannot spend, and the grant's on-chain caps bound what a leaked key can. Limits and expiry can be changed later from the console with `updateGrant`.
+3. To pay, the host calls `pay_offer`. Each key has a vault grant signer derived from its secret (HKDF-SHA256); Payvoke stores only the signer's address. If the price fits the limits of the grant registered for that signer, the API derives the key from the presented secret for that request, signs the `DebitAuthorization` and pays. Otherwise, or when the risk check flags the payment, the host gets an approval link with the reason. A copy of the database cannot spend, and the grant's on-chain caps bound what a leaked key can. Limits and expiry can be changed later from the console with `updateGrant`.
 
 ### Builder docs
 

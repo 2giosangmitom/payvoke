@@ -23,6 +23,7 @@ import { AutopayService, type GrantReader } from "./modules/payments/autopay.ser
 import { GrantService } from "./modules/payments/grant.service";
 import { InvocationService } from "./modules/payments/invocation.service";
 import { PaymentGateway } from "./modules/payments/payment-gateway";
+import { PaymentRiskService } from "./modules/payments/payment-risk.service";
 import { PaymentStatusService } from "./modules/payments/payment-status.service";
 import { QuoteService } from "./modules/quotes/quote.service";
 import { ContinuationService } from "./modules/runs/continuation.service";
@@ -57,6 +58,7 @@ export interface Cradle {
   // Null without a vault address.
   grantReader: GrantReader | null;
   autopayService: AutopayService;
+  paymentRiskService: PaymentRiskService;
   invocationService: InvocationService;
   paymentGateway: PaymentGateway;
   paymentStatusService: PaymentStatusService;
@@ -106,6 +108,7 @@ export function createAppContainer(
     grantService: asClass(GrantService).singleton(),
     grantReader: asValue(grantReader),
     autopayService: asClass(AutopayService).singleton(),
+    paymentRiskService: asClass(PaymentRiskService).singleton(),
     invocationService: asClass(InvocationService).singleton(),
     paymentGateway: asClass(PaymentGateway).singleton(),
     paymentStatusService: asClass(PaymentStatusService).singleton(),

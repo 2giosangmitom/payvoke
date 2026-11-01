@@ -4,6 +4,7 @@ import { vaultAdmissionAbi } from "@payvoke/shared/protocol";
 import type { QuoteDocument } from "@payvoke/shared/x402";
 import type { Cradle } from "../../container";
 import type { Config } from "../../config";
+import type { RiskSignal } from "./payment-risk.service";
 
 export type OnChainGrant = {
   config: {
@@ -80,7 +81,8 @@ export type ApprovalReason =
   | "over_daily"
   | "over_total"
   | "low_balance"
-  | "chain_unavailable";
+  | "chain_unavailable"
+  | RiskSignal;
 
 // An API key's spending policy is its linked vault grant, whose signer is
 // derived from the key. The vault enforces the limits; reading them here
@@ -89,10 +91,12 @@ export type ApprovalReason =
 export class AutopayService {
   private readonly db: Cradle["db"];
   private readonly reader: Cradle["grantReader"];
+  private readonly risk: Cradle["paymentRiskService"];
 
-  constructor({ db, grantReader }: Cradle) {
+  constructor({ db, grantReader, paymentRiskService }: Cradle) {
     this.db = db;
     this.reader = grantReader;
+    this.risk = paymentRiskService;
   }
 
   // The token's limits with today's spending, or null when the token has no
@@ -146,12 +150,15 @@ export class AutopayService {
     return row?.buyer.toLowerCase();
   }
 
-  // Whether the token's grant can pay this quote by itself.
+  // Whether the token's grant can pay this quote by itself. A quote within
+  // the caps still goes to the buyer when the risk layer flags it.
   async decide(
     tokenId: string,
     signer: string | null,
     quote: QuoteDocument,
-  ): Promise<{ autopay: Limits } | { approve: ApprovalReason; limits: Limits | null }> {
+  ): Promise<
+    { autopay: Limits } | { approve: ApprovalReason; limits: Limits | null; risk?: RiskSignal[] }
+  > {
     let limits: Limits | null;
     try {
       limits = await this.limits(tokenId, signer);
@@ -167,6 +174,8 @@ export class AutopayService {
     if (limits.spentToday + amount > limits.maxPerDay) return { approve: "over_daily", limits };
     if (limits.spentTotal + amount > limits.maxTotal) return { approve: "over_total", limits };
     if (limits.available < amount) return { approve: "low_balance", limits };
+    const risk = await this.risk.assess(quote.quoteId);
+    if (risk.length) return { approve: risk[0], limits, risk };
     return { autopay: limits };
   }
 }

@@ -211,4 +211,25 @@ export const rules: Rule[] = [
       backend("keeps payment metadata uncacheable and free of prompts, PII and signatures"),
     ],
   },
+  {
+    id: "AP1",
+    source: "P12",
+    requirement:
+      "Agent-written text aimed at the buyer's assistant never makes autopay sign a debit",
+    evidence: [
+      backend("red team: an injected agent message cannot make autopay sign"),
+      backend("red team: injection in an offer or a built-in tool cannot make autopay sign"),
+      backend("detects agent text aimed at the buyer's assistant"),
+      backend("sees through zero-width characters and full-width look-alikes"),
+    ],
+  },
+  {
+    id: "DL1",
+    source: "P10",
+    requirement: "Autopay defers to the buyer on a raised or unusual price or an unproven agent",
+    evidence: [
+      backend("red team: an agent that raises its own offer needs the user's approval"),
+      backend("decision layer: unusual prices and unreliable agents need the user's approval"),
+    ],
+  },
 ];

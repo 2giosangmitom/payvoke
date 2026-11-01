@@ -1,6 +1,7 @@
 import type { QuoteDocument } from "@payvoke/shared/x402";
 import type { Cradle } from "../../container";
 import { imageUrl } from "../apps/serializers";
+import { holdOutcomes } from "./hold-outcomes";
 
 // Days a series covers, ending today (UTC).
 export const SERIES_DAYS = 30;
@@ -75,24 +76,14 @@ export class StatsService {
 
   // Where each job's money stands, from the hold's finalized projection.
   private async classify(rows: JobRow[]) {
-    const keys = rows.flatMap((row) => row.settlement?.invocationKey ?? []);
-    const projections = keys.length
-      ? await this.db.vaultHoldProjection.findMany({
-          where: { holdId: { in: keys } },
-          select: { holdId: true, status: true },
-        })
-      : [];
-    const closed = new Map(projections.map((row) => [row.holdId, row.status]));
+    const outcome = await holdOutcomes(
+      this.db,
+      rows.flatMap((row) => row.settlement?.invocationKey ?? []),
+    );
     return rows.flatMap((row) => {
       const settlement = row.settlement;
       if (settlement?.state !== "HELD") return [];
-      const status = closed.get(settlement.invocationKey);
-      const bucket: keyof Money =
-        status === "RELEASED"
-          ? "released"
-          : status === "REFUNDED" || status === "RECLAIMED"
-            ? "refunded"
-            : "held";
+      const bucket: keyof Money = outcome(settlement.invocationKey);
       const document = row.quote.document as QuoteDocument;
       const gross = BigInt(document.grossAmount);
       return [{ row, bucket, gross, net: gross - (gross * BigInt(document.feeBps)) / 10_000n }];
@@ -154,7 +145,10 @@ export class StatsService {
     const spendByApp = new Map<string, bigint>();
     for (const job of spent)
       if (job.bucket !== "refunded")
-        spendByApp.set(job.row.quote.appId, (spendByApp.get(job.row.quote.appId) ?? 0n) + job.gross);
+        spendByApp.set(
+          job.row.quote.appId,
+          (spendByApp.get(job.row.quote.appId) ?? 0n) + job.gross,
+        );
     if (spendByApp.size) {
       const rows = await this.db.app.findMany({
         where: { id: { in: [...spendByApp.keys()] } },
@@ -169,7 +163,11 @@ export class StatsService {
       topApps: [...spendByApp]
         .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
         .slice(0, 5)
-        .map(([id, amount]) => ({ id, name: appNames.get(id) ?? "Agent", amount: amount.toString() })),
+        .map(([id, amount]) => ({
+          id,
+          name: appNames.get(id) ?? "Agent",
+          amount: amount.toString(),
+        })),
     };
     if (!apps.length) return { buyer, provider: null };
 
