@@ -23,6 +23,7 @@ import {
   PageHeader,
   PageShell,
   errorMessage,
+  SettlementNote,
 } from "@/src/components/layout/page-kit";
 import { authClient } from "@/src/features/auth/auth-client";
 import { relative, stageOf, type Stage } from "@/src/features/activity/activity";
@@ -150,6 +151,7 @@ export function ActivityPage() {
         ) : (
           <FiguresSkeleton />
         )}
+        <SettlementNote className="mt-3" />
       </div>
       <div className="mt-8 flex flex-col gap-3 border-b border-border sm:flex-row sm:items-end sm:justify-between">
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>

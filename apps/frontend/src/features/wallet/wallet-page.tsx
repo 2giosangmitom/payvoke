@@ -7,7 +7,13 @@ import { avalancheFuji } from "wagmi/chains";
 import { vaultAdmissionAbi, vaultFinanceAbi } from "@payvoke/shared/protocol";
 import { Button } from "@/src/components/ui/button";
 import { Skeleton } from "@/src/components/ui/skeleton";
-import { ErrorNotice, PageHeader, PageShell, errorMessage } from "@/src/components/layout/page-kit";
+import {
+  ErrorNotice,
+  PageHeader,
+  PageShell,
+  SettlementNote,
+  errorMessage,
+} from "@/src/components/layout/page-kit";
 import { authClient } from "@/src/features/auth/auth-client";
 import { getStats } from "@/src/features/people/api";
 import { AmountChart } from "@/src/features/stats/day-chart";
@@ -83,7 +89,7 @@ function Allocation({ rows }: { rows: Row[] }) {
 function PlaceTiles({ rows }: { rows: Row[] }) {
   const colours = tones(rows);
   return (
-    <dl className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+    <dl className="grid gap-px border border-border bg-border sm:grid-cols-3">
       {rows.map((row, index) => (
         <div key={row.label} className="grid content-start gap-1.5 bg-card px-4 py-3.5">
           <dt className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -111,8 +117,8 @@ function WalletSkeleton() {
             <Skeleton className="h-10 w-56" />
           </div>
           <Skeleton className="h-2.5 w-full" />
-          <div className="grid gap-px border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
+          <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+            {Array.from({ length: 3 }, (_, index) => (
               <div key={index} className="grid gap-2 bg-card px-4 py-3.5">
                 <Skeleton className="h-3.5 w-24" />
                 <Skeleton className="h-6 w-20" />
@@ -171,8 +177,9 @@ function LedgerTable({ title, id, rows }: { title: string; id: string; rows: Row
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-// Live balances: USDC in the wallet, the vault's free balance for it, and
-// what the vault owes the account's payout addresses. Null when unreadable.
+// Live balances: USDC in the wallet (only offered as the deposit max), the
+// vault's free balance, and what the vault owes the account's payout
+// addresses. Null when unreadable.
 function useChainBalances(summary: WalletSummary | undefined, address: Address | undefined) {
   const vault = (summary?.vault ?? undefined) as Address | undefined;
   const payouts = (summary?.provider.payoutAddresses ?? []) as Address[];
@@ -237,17 +244,6 @@ export function WalletPage() {
 
   const buyerRows: Row[] = data
     ? [
-        {
-          label: "In your wallet",
-          detail: address ? (
-            <code className="font-mono">
-              {address.slice(0, 6)}…{address.slice(-4)}
-            </code>
-          ) : (
-            "Connect your wallet to read it"
-          ),
-          amount: chain.wallet,
-        },
         {
           label: "Available in the vault",
           detail: data.vault ? "Ready to pay for the next job" : "Vault not configured",
@@ -315,7 +311,7 @@ export function WalletPage() {
       <PageHeader
         compact
         title="Wallet"
-        description="Your USDC on Avalanche Fuji: wallet, vault and jobs in progress."
+        description="Your USDC on Avalanche Fuji: in the vault and held for jobs in progress."
         actions={
           <Button variant="outline" render={<Link to="/console/activity" />}>
             Payment activity
@@ -338,7 +334,7 @@ export function WalletPage() {
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div className="grid gap-1">
                   <h2 id="where" className="text-sm text-muted-foreground">
-                    Your USDC in total
+                    Your USDC in Payvoke
                   </h2>
                   <Figure amount={owned} className="text-4xl font-medium tracking-[-0.02em]" />
                 </div>
@@ -350,11 +346,12 @@ export function WalletPage() {
                       chain.loading && "animate-pulse motion-reduce:animate-none",
                     )}
                   />
-                  {chain.loading ? "Reading the chain" : "Live from Avalanche Fuji, every 30 s"}
+                  {chain.loading ? "Reading the chain" : "Avalanche Fuji"}
                 </p>
               </div>
               <Allocation rows={buyerRows} />
               <PlaceTiles rows={buyerRows} />
+              <SettlementNote />
             </section>
             <section
               aria-labelledby="move"

@@ -14,6 +14,7 @@ import {
 import { Input } from "@/src/components/ui/input";
 import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Textarea } from "@/src/components/ui/textarea";
 import {
   AppStatus,
@@ -27,6 +28,7 @@ import {
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
+import { AgentOverview } from "@/src/features/studio/agent-overview";
 import { ImageField } from "@/src/features/studio/image-field";
 import { VisibilityField } from "@/src/features/studio/visibility-field";
 import { CopyButton, SettingsRow } from "@/src/features/keys/settings-row";
@@ -411,7 +413,17 @@ function AvailabilityPanel({ app }: { app: ProviderAppDetail }) {
   );
 }
 
-export function ProviderAppPage({ appId }: { appId: string }) {
+export type AgentTab = "overview" | "settings";
+
+export function ProviderAppPage({
+  appId,
+  tab,
+  onTab,
+}: {
+  appId: string;
+  tab: AgentTab;
+  onTab: (tab: AgentTab) => void;
+}) {
   const navigate = useNavigate();
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
@@ -479,7 +491,7 @@ export function ProviderAppPage({ appId }: { appId: string }) {
   return (
     <PageShell>
       <BackLink to="/console/studio">Studio</BackLink>
-      <header className="flex flex-col gap-6 border-b border-border pt-6 pb-8 lg:flex-row lg:items-center lg:justify-between">
+      <header className="flex flex-col gap-6 pt-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-5">
           <AgentAvatar name={data.name} imageUrl={data.imageUrl} className="size-16 text-2xl" />
           <div className="min-w-0">
@@ -529,43 +541,70 @@ export function ProviderAppPage({ appId }: { appId: string }) {
       </header>
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
-      <SettingsRow
-        id="agent-profile"
-        title="Profile"
-        description="How buyers see this agent in the store and in their chats."
-      >
-        <ProfileForm app={data} />
-      </SettingsRow>
-      <SettingsRow
-        id="agent-key"
-        title="API key"
-        description={
-          <>
-            Your agent connects to Payvoke with this key. You see it only once, when you generate or
-            reset it. The{" "}
-            <Link to="/docs" className="text-primary hover:underline">
-              builder docs
-            </Link>{" "}
-            show how to use it.
-          </>
-        }
-      >
-        <ApiKeyPanel app={data} />
-      </SettingsRow>
-      <SettingsRow
-        id="agent-commands"
-        title="Commands"
-        description="What buyers can ask this agent for. The agent registers its own commands."
-      >
-        <CommandList app={data} />
-      </SettingsRow>
-      <SettingsRow
-        id="agent-availability"
-        title="Availability"
-        description="Pause the agent for a while, or retire it for good."
-      >
-        <AvailabilityPanel app={data} />
-      </SettingsRow>
+      <Tabs value={tab} onValueChange={(value) => onTab(value as AgentTab)} className="mt-6 gap-0">
+        <TabsList
+          variant="line"
+          aria-label="Agent views"
+          className="h-10 w-full justify-start gap-5 border-b border-border px-0"
+        >
+          {(
+            [
+              ["overview", "Overview"],
+              ["settings", "Settings"],
+            ] as const
+          ).map(([value, label]) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="flex-none px-0 group-data-horizontal/tabs:after:bottom-[-4px] after:bg-primary"
+            >
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="overview" className="pt-6">
+          <AgentOverview appId={data.id} onSetup={() => onTab("settings")} />
+        </TabsContent>
+        <TabsContent value="settings">
+          <SettingsRow
+            id="agent-profile"
+            title="Profile"
+            description="How buyers see this agent in the store and in their chats."
+          >
+            <ProfileForm app={data} />
+          </SettingsRow>
+          <SettingsRow
+            id="agent-key"
+            title="API key"
+            description={
+              <>
+                Your agent connects to Payvoke with this key. You see it only once, when you
+                generate or reset it. The{" "}
+                <Link to="/docs" className="text-primary hover:underline">
+                  builder docs
+                </Link>{" "}
+                show how to use it.
+              </>
+            }
+          >
+            <ApiKeyPanel app={data} />
+          </SettingsRow>
+          <SettingsRow
+            id="agent-commands"
+            title="Commands"
+            description="What buyers can ask this agent for. The agent registers its own commands."
+          >
+            <CommandList app={data} />
+          </SettingsRow>
+          <SettingsRow
+            id="agent-availability"
+            title="Availability"
+            description="Pause the agent for a while, or retire it for good."
+          >
+            <AvailabilityPanel app={data} />
+          </SettingsRow>
+        </TabsContent>
+      </Tabs>
     </PageShell>
   );
 }

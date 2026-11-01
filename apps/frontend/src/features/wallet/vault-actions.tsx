@@ -21,6 +21,9 @@ function useRefreshChain() {
     });
 }
 
+// Appended to every finished move: the workers record it a little later.
+const LAG = " It may take a minute to show up here.";
+
 // Runs one money move with its pending, error and done states.
 function useMove() {
   const refresh = useRefreshChain();
@@ -33,7 +36,7 @@ function useMove() {
     setDone("");
     setBusy(label);
     try {
-      setDone(await move(setBusy));
+      setDone((await move(setBusy)) + LAG);
       await refresh();
     } catch (cause) {
       setError(chainError(cause));
@@ -48,6 +51,7 @@ function AmountForm({
   id,
   label,
   max,
+  source = "Up to",
   action,
   busy,
   onSubmit,
@@ -55,6 +59,8 @@ function AmountForm({
   id: string;
   label: string;
   max: bigint | null;
+  // Words before the max amount, e.g. which wallet it comes from.
+  source?: string;
   action: string;
   busy: string;
   onSubmit: (amount: bigint) => void;
@@ -76,7 +82,7 @@ function AmountForm({
         hint={
           max === null ? undefined : (
             <>
-              Up to{" "}
+              {source}{" "}
               <button
                 type="button"
                 className="font-mono text-foreground underline underline-offset-4"
@@ -228,6 +234,7 @@ export function FundsPanel({
         <AmountForm
           id="deposit-amount"
           label="Amount"
+          source={`In your wallet ${address.slice(0, 6)}…${address.slice(-4)}:`}
           max={wallet}
           action="Deposit"
           busy={move.busy}

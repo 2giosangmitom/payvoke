@@ -1,12 +1,26 @@
 import { useState } from "react";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Plus, Radio, X } from "lucide-react";
-import { BlurFade } from "@/src/components/ui/blur-fade";
+import { ArrowUpRight, Plus } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/src/components/ui/dialog";
 import { Input } from "@/src/components/ui/input";
 import { Skeleton } from "@/src/components/ui/skeleton";
 import { Spinner } from "@/src/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/src/components/ui/table";
 import { Textarea } from "@/src/components/ui/textarea";
 import {
   AppStatus,
@@ -17,6 +31,7 @@ import {
   PageHeader,
   PageShell,
   SectionHeader,
+  SettlementNote,
   Tag,
   errorMessage,
   plural,
@@ -26,55 +41,134 @@ import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { createProviderApp, listProviderApps } from "@/src/features/apps/api";
-import { RatingLine, UsageLine } from "@/src/features/apps/agent-facts";
+import { RatingLine } from "@/src/features/apps/agent-facts";
 import { getStats } from "@/src/features/people/api";
-import { JobsSpark } from "@/src/features/stats/day-chart";
+import { ChartCard, EarnedBars } from "@/src/features/stats/charts";
+import { AmountChart, JobsSpark } from "@/src/features/stats/day-chart";
 import { FigureStrip, sum } from "@/src/features/stats/earnings";
 
 const toUsdc = (atomic: string) => Number(BigInt(atomic)) / 1_000_000;
 
-// The agent rows' own shape: a 48px picture, status, name and a line, the
-// figures on the right.
+// Table rows in the shape of the agent table: picture and name, then figures.
 function AgentRowsSkeleton({ rows = 3 }: { rows?: number }) {
   return (
     <div role="status" aria-busy="true" className="grid border-t border-border">
       <span className="sr-only">Loading agents</span>
       {Array.from({ length: rows }, (_, index) => (
-        <div
-          key={index}
-          className="flex flex-col justify-between gap-4 border-b border-border py-6 sm:flex-row sm:items-center sm:px-4"
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-4">
-            <Skeleton className="size-12 shrink-0" />
-            <div className="grid flex-1 gap-2.5">
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-6" style={{ width: `${40 - index * 6}%` }} />
-              <Skeleton className="h-3.5 w-3/5" />
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-3.5 w-24" />
-            <Skeleton className="h-8 w-24 max-lg:hidden" />
-            <Skeleton className="h-5 w-14" />
-            <Skeleton className="h-5 w-14" />
-          </div>
+        <div key={index} className="flex items-center gap-4 border-b border-border px-2 py-3">
+          <Skeleton className="size-8 shrink-0" />
+          <Skeleton className="h-4" style={{ width: `${32 - index * 5}%` }} />
+          <Skeleton className="ml-auto h-4 w-16" />
+          <Skeleton className="h-6 w-24 max-lg:hidden" />
+          <Skeleton className="h-4 w-20" />
         </div>
       ))}
     </div>
   );
 }
 
-export function DashboardHome() {
+function CreateAgentDialog({
+  open,
+  onOpenChange,
+  initialName,
+  initialVisibility,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialName: string;
+  initialVisibility: "PUBLIC" | "PRIVATE";
+}) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState("");
+  const [visibility, setVisibility] = useState(initialVisibility);
+  const [error, setError] = useState("");
+  const create = useMutation({
+    mutationFn: () =>
+      createProviderApp({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        visibility,
+      }),
+    onSuccess: (app) => {
+      setName("");
+      setDescription("");
+      setError("");
+      onOpenChange(false);
+      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
+      void queryClient.invalidateQueries({ queryKey: ["account"] });
+      void navigate({
+        to: "/console/studio/apps/$appId",
+        params: { appId: app.id },
+        search: { tab: "settings" },
+      });
+    },
+    onError: (cause) => setError(errorMessage(cause, "Could not create agent.")),
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New agent</DialogTitle>
+          <DialogDescription>
+            Name it now. You get its API key on the next screen.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate();
+          }}
+        >
+          <FormField label="Name" htmlFor="app-name">
+            <Input
+              id="app-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+              maxLength={80}
+              placeholder="Summarizer"
+            />
+          </FormField>
+          <FormField label="Description" htmlFor="app-description">
+            <Textarea
+              id="app-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="What the agent does and when someone would hire it."
+            />
+          </FormField>
+          <VisibilityField
+            value={visibility}
+            onChange={setVisibility}
+            descriptions={{
+              PUBLIC: "Listed in the store. Anyone can open a thread.",
+              PRIVATE: "Only you can open it. Never listed.",
+            }}
+          />
+          {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
+              {create.isPending && <Spinner />} Create agent
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function DashboardHome() {
   const { data: session } = authClient.useSession();
   const handoff = useSearch({ from: "/console/studio/" });
   const [open, setOpen] = useState(Boolean(handoff.name));
-  const [name, setName] = useState(handoff.name ?? "");
-  const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">(
-    handoff.visibility ?? "PRIVATE",
-  );
-  const [error, setError] = useState("");
   const apps = useQuery({
     queryKey: ["provider", "apps", session?.user.id],
     queryFn: listProviderApps,
@@ -87,23 +181,8 @@ export function DashboardHome() {
     enabled: Boolean(session),
     refetchInterval: 60_000,
   });
-  const usage = new Map((stats.data?.provider?.apps ?? []).map((app) => [app.id, app]));
-  const create = useMutation({
-    mutationFn: () =>
-      createProviderApp({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        visibility,
-      }),
-    onSuccess: () => {
-      setName("");
-      setDescription("");
-      setOpen(false);
-      setError("");
-      void queryClient.invalidateQueries({ queryKey: ["provider", "apps"] });
-    },
-    onError: (cause) => setError(errorMessage(cause, "Could not create agent.")),
-  });
+  const provider = stats.data?.provider;
+  const usage = new Map((provider?.apps ?? []).map((app) => [app.id, app]));
 
   if (!session)
     return (
@@ -123,111 +202,62 @@ export function DashboardHome() {
       <PageHeader
         compact
         title="Studio"
-        description="Your shared agents. Each uses an API key from here to register commands and price jobs."
+        description="Your shared agents and what they earn. Each one takes jobs with its own API key."
         actions={
-          <Button size="lg" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+          <Button onClick={() => setOpen(true)}>
             <Plus /> New agent
           </Button>
         }
       />
-
-      {open && (
-        <BlurFade>
-          <section
-            aria-labelledby="create-app-title"
-            className="mt-8 border border-border-strong bg-card p-6 sm:p-8"
-          >
-            <div className="mb-6 flex items-start justify-between gap-4">
-              <div>
-                <h2 id="create-app-title" className="text-xl font-semibold tracking-[-0.02em]">
-                  New agent
-                </h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close"
-                onClick={() => setOpen(false)}
-              >
-                <X />
-              </Button>
-            </div>
-            <form
-              className="grid max-w-2xl gap-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                create.mutate();
-              }}
-            >
-              <FormField label="Name" htmlFor="app-name">
-                <Input
-                  id="app-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  required
-                  maxLength={80}
-                  placeholder="Summarizer"
-                />
-              </FormField>
-              <FormField label="Description" htmlFor="app-description">
-                <Textarea
-                  id="app-description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="What the agent does and when someone would hire it."
-                />
-              </FormField>
-              <VisibilityField
-                value={visibility}
-                onChange={setVisibility}
-                descriptions={{
-                  PUBLIC: "Listed in the store. Anyone can open a thread.",
-                  PRIVATE: "Only you can open it. Never listed.",
-                }}
-              />
-              {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
-              <Button
-                type="submit"
-                size="lg"
-                className="justify-self-start"
-                disabled={create.isPending || !name.trim()}
-              >
-                {create.isPending && <Spinner />} Create agent
-              </Button>
-            </form>
-          </section>
-        </BlurFade>
-      )}
+      <CreateAgentDialog
+        open={open}
+        onOpenChange={setOpen}
+        initialName={handoff.name ?? ""}
+        initialVisibility={handoff.visibility ?? "PRIVATE"}
+      />
 
       {stats.isPending && <FiguresSkeleton className="mt-8" />}
-      {stats.data?.provider && (
-        <section aria-label="Earnings" className="mt-8 grid gap-3">
-          <FigureStrip
-            figures={[
-              {
-                label: "Earned after fees",
-                value: toUsdc(sum(stats.data.provider.released, stats.data.provider.held)),
-                unit: "USDC",
-                decimals: 2,
-              },
-              { label: "Paid jobs", value: stats.data.provider.jobs },
-              { label: "Users", value: stats.data.provider.users },
-              {
-                label: "Paid out",
-                value: toUsdc(stats.data.provider.released),
-                unit: "USDC",
-                decimals: 2,
-              },
-            ]}
-          />
-          <Link
-            to="/console/profile"
-            className="inline-flex items-center gap-1 justify-self-end text-sm text-muted-foreground hover:text-foreground"
-          >
-            Earnings by day and by agent <ArrowUpRight size={13} />
-          </Link>
+      {provider && (
+        <section aria-label="Earnings" className="mt-8 grid gap-4">
+          <div className="grid gap-3">
+            <FigureStrip
+              figures={[
+                {
+                  label: "Earned after fees",
+                  value: toUsdc(sum(provider.released, provider.held)),
+                  unit: "USDC",
+                  decimals: 2,
+                },
+                {
+                  label: "Held for you",
+                  value: toUsdc(provider.held),
+                  unit: "USDC",
+                  decimals: 2,
+                  note: "Paid out after review",
+                },
+                { label: "Paid jobs", value: provider.jobs },
+                { label: "Buyers", value: provider.users },
+              ]}
+            />
+            <SettlementNote />
+          </div>
+          {provider.jobs > 0 && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+              <ChartCard title="All agents, last 30 days">
+                <AmountChart series={provider.series} label="Earned" views />
+              </ChartCard>
+              <ChartCard title="By agent">
+                <EarnedBars
+                  limit={6}
+                  rows={provider.apps.map((app) => ({
+                    name: app.name,
+                    earned: sum(app.released, app.held),
+                    jobs: app.jobs,
+                  }))}
+                />
+              </ChartCard>
+            </div>
+          )}
         </section>
       )}
 
@@ -247,63 +277,75 @@ export function DashboardHome() {
             Name it, then issue an API key so it can take jobs.
           </EmptyState>
         ) : (
-          <div className="grid border-t border-border">
-            {items.map((app, index) => (
-              <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
-                <Link
-                  to="/console/studio/apps/$appId"
-                  params={{ appId: app.id }}
-                  className="group flex flex-col justify-between gap-4 border-b border-border py-6 transition-colors hover:bg-card sm:flex-row sm:items-center sm:px-4"
-                >
-                  <div className="flex min-w-0 items-center gap-4">
-                    <AgentAvatar
-                      name={app.name}
-                      imageUrl={app.imageUrl}
-                      className="size-12 text-xl"
-                    />
-                    <div className="min-w-0">
-                      <AppStatus availability={app.availability} />
-                      <h3 className="mt-2 text-xl font-medium tracking-[-0.03em] break-words group-hover:text-primary">
-                        {app.name}
-                      </h3>
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {app.description || "No description yet."}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2">
-                    {usage.get(app.id) && (
-                      <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        <RatingLine rating={usage.get(app.id)!.rating} />
-                        <UsageLine
-                          jobs={usage.get(app.id)!.jobs}
-                          users={usage.get(app.id)!.users}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Agent</TableHead>
+                <TableHead className="max-md:hidden">Status</TableHead>
+                <TableHead className="max-lg:hidden">Rating</TableHead>
+                <TableHead className="text-right max-sm:hidden">Jobs</TableHead>
+                <TableHead className="max-lg:hidden">30 days</TableHead>
+                <TableHead className="text-right">Earned</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((app) => {
+                const own = usage.get(app.id);
+                return (
+                  <TableRow key={app.id} className="group relative">
+                    <TableCell className="max-w-72">
+                      <Link
+                        to="/console/studio/apps/$appId"
+                        params={{ appId: app.id }}
+                        className="flex min-w-0 items-center gap-3 after:absolute after:inset-0"
+                      >
+                        <AgentAvatar
+                          name={app.name}
+                          imageUrl={app.imageUrl}
+                          className="size-8 text-sm"
                         />
-                        <JobsSpark
-                          series={usage.get(app.id)!.series}
-                          className="h-8 w-24 max-lg:hidden"
-                        />
-                        <span className="font-mono text-xs tabular-nums">
-                          {toUsdc(
-                            sum(usage.get(app.id)!.released, usage.get(app.id)!.held),
-                          ).toFixed(2)}
-                          <span className="ml-1 text-muted-foreground">USDC</span>
+                        <span className="grid min-w-0">
+                          <span className="truncate font-medium group-hover:text-primary">
+                            {app.name}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {app.visibility === "PUBLIC" ? "Public" : "Private"}
+                            {app.description ? ` · ${app.description}` : ""}
+                          </span>
                         </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="max-md:hidden">
+                      <span className="flex items-center gap-2">
+                        <AppStatus availability={app.availability} />
+                        {app.status !== "ACTIVE" && <Tag>{app.status.toLowerCase()}</Tag>}
                       </span>
-                    )}
-                    <Tag>{app.visibility.toLowerCase()}</Tag>
-                    <Tag>
-                      <Radio className="size-3" /> {app.status.toLowerCase()}
-                    </Tag>
-                    <ArrowUpRight
-                      size={18}
-                      className="ml-2 text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                    />
-                  </div>
-                </Link>
-              </BlurFade>
-            ))}
-          </div>
+                    </TableCell>
+                    <TableCell className="max-lg:hidden">
+                      {own ? <RatingLine rating={own.rating} /> : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums max-sm:hidden">
+                      {own?.jobs ?? 0}
+                    </TableCell>
+                    <TableCell className="max-lg:hidden">
+                      {own && <JobsSpark series={own.series} className="h-7 w-24" />}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      <span className="inline-flex items-center gap-2">
+                        {own ? toUsdc(sum(own.released, own.held)).toFixed(2) : "0.00"}
+                        <span className="text-xs text-muted-foreground">USDC</span>
+                        <ArrowUpRight
+                          size={14}
+                          aria-hidden="true"
+                          className="text-faint group-hover:text-primary"
+                        />
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </section>
     </PageShell>

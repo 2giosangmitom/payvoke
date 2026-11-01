@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, CircleAlert } from "lucide-react";
+import { ArrowLeft, CircleAlert, Clock } from "lucide-react";
 import { Alert, AlertAction, AlertDescription } from "@/src/components/ui/alert";
 import { Badge } from "@/src/components/ui/badge";
 import { BlurFade } from "@/src/components/ui/blur-fade";
@@ -349,6 +349,20 @@ export function PageSkeleton({ label }: { label: string }) {
         <Skeleton className="h-24" />
       </div>
     </Loading>
+  );
+}
+
+/**
+ * The one line that explains why money figures can trail the chain: the
+ * payment workers confirm deposits, holds and releases a little after the
+ * transaction lands.
+ */
+export function SettlementNote({ className }: { className?: string }) {
+  return (
+    <p className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
+      <Clock aria-hidden="true" className="size-3.5 shrink-0" />
+      Payments can take a minute or two to show up here while they&apos;re confirmed.
+    </p>
   );
 }
 

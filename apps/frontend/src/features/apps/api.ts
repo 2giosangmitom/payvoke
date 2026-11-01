@@ -10,6 +10,7 @@ export type StarredApp = Body<typeof client.v1.stars.$get>[number];
 export type ProviderApp = Body<typeof provider.$get>[number];
 export type ProviderAppDetail = Body<(typeof provider)[":appId"]["$get"]>;
 export type ProviderCommand = ProviderAppDetail["commands"][number];
+export type AppStats = Body<(typeof provider)[":appId"]["stats"]["$get"]>;
 export type ProviderKey = Body<(typeof provider)[":appId"]["keys"]["$get"]>[number];
 export type Visibility = "PUBLIC" | "PRIVATE";
 
@@ -46,6 +47,8 @@ export const createProviderApp = (body: {
   );
 export const getProviderApp = (appId: string) =>
   call(provider[":appId"].$get({ param: { appId } }));
+export const getAppStats = (appId: string) =>
+  call(provider[":appId"].stats.$get({ param: { appId } }));
 export const updateProviderApp = (
   appId: string,
   json: {

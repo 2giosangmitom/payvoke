@@ -12,6 +12,7 @@ import {
   PageHeader,
   PageShell,
   errorMessage,
+  SettlementNote,
 } from "@/src/components/layout/page-kit";
 import { ActivityLink, StageBadge } from "@/src/features/activity/activity-page";
 import { stageOf } from "@/src/features/activity/activity";
@@ -333,6 +334,7 @@ export function ConsoleHome() {
               ]}
             />
           )}
+          <SettlementNote className="mt-3" />
         </Section>
 
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_20rem]">

@@ -4,6 +4,7 @@ import { maxBody, rateLimit } from "../../http/limits";
 import { builderRoute } from "../../http/openapi";
 import { validate } from "../../http/validate";
 import { z } from "zod";
+import { noStore } from "../../http/financial-json";
 import { requireAccount } from "../auth/guard";
 import {
   appPatchBody,
@@ -78,6 +79,10 @@ export const providerRoutes = new Hono<AppEnv>()
   .get(base, requireAccount, async (c) =>
     c.json(await c.var.cradle.providerAppService.detail(await owned(c))),
   )
+  .get(`${base}/stats`, noStore, requireAccount, async (c) => {
+    const app = await owned(c);
+    return c.json(await c.var.cradle.statsService.app(app.id));
+  })
   .patch(
     base,
     maxBody(8192),

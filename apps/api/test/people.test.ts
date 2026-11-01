@@ -293,7 +293,12 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
 
   // The other wallet hires the agent once; its payment is held.
   const threadId = (
-    await web("POST", "/v1/threads", { appId: agent.appId, clientRequestId: randomUUID() }, otherCookie)
+    await web(
+      "POST",
+      "/v1/threads",
+      { appId: agent.appId, clientRequestId: randomUUID() },
+      otherCookie,
+    )
   ).json().id as string;
   await web(
     "POST",
@@ -351,4 +356,28 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
   assert.equal(spent.provider, null);
   assert.equal(spent.buyer.held, "20000");
   assert.equal(spent.buyer.topApps[0].id, agent.appId);
+
+  // The owner's per-agent overview; nobody else can read it.
+  const overview = await web("GET", `/v1/provider/apps/${agent.appId}/stats`);
+  assert.equal(overview.statusCode, 200, overview.body);
+  const stats = overview.json();
+  assert.equal(stats.jobs, 1);
+  assert.equal(stats.held, "20000");
+  assert.equal(stats.averageJob, "20000");
+  assert.equal(stats.byCommand.length, 1);
+  assert.equal(stats.byCommand[0].jobs, 1);
+  assert.equal(stats.outcomes.inProgress, 1);
+  assert.equal(
+    stats.byHour.reduce((a: number, b: number) => a + b, 0),
+    1,
+  );
+  assert.deepEqual(stats.rating.distribution, [0, 1, 0, 0, 0]);
+  assert.equal(stats.series.at(-1).jobs, 1);
+  const foreign = await web(
+    "GET",
+    `/v1/provider/apps/${agent.appId}/stats`,
+    undefined,
+    otherCookie,
+  );
+  assert.equal(foreign.statusCode, 404);
 });
