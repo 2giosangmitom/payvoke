@@ -12,6 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import { NetworkAvalancheFuji } from "@web3icons/react";
+import { motion, useReducedMotion } from "motion/react";
 import { AnimatedBeam } from "@/src/components/ui/animated-beam";
 import { AnimatedShinyText } from "@/src/components/ui/animated-shiny-text";
 import { BlurFade } from "@/src/components/ui/blur-fade";
@@ -139,6 +140,122 @@ function NodeText({ title, detail, mono }: { title: string; detail: string; mono
   );
 }
 
+// Lines from the centres of `from` evenly spaced columns to the centres of `to`
+// columns, in a 100-wide box stretched to the row width.
+function Fan({ from, to, delay = 0 }: { from: number; to: number; delay?: number }) {
+  const still = useReducedMotion();
+  const centre = (count: number, index: number) => ((index + 0.5) * 100) / count;
+  const paths = Array.from({ length: Math.max(from, to) }, (_, index) => {
+    const x1 = centre(from, from === 1 ? 0 : index);
+    const x2 = centre(to, to === 1 ? 0 : index);
+    return `M ${x1} 0 C ${x1} 16, ${x2} 16, ${x2} 32`;
+  });
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 32"
+      preserveAspectRatio="none"
+      className="block h-8 w-full overflow-visible"
+    >
+      {paths.map((d, index) => (
+        <g key={d}>
+          <path
+            d={d}
+            fill="none"
+            vectorEffect="non-scaling-stroke"
+            className="stroke-border-strong"
+            strokeWidth={1.5}
+          />
+          {!still && (
+            <motion.path
+              d={d}
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+              className="stroke-primary"
+              strokeWidth={2}
+              strokeLinecap="round"
+              pathLength={1}
+              strokeDasharray="0.3 1"
+              initial={{ strokeDashoffset: 0.3 }}
+              animate={{ strokeDashoffset: -1 }}
+              transition={{
+                duration: 1.6,
+                delay: delay + index * 0.35,
+                repeat: Infinity,
+                repeatDelay: 1.2,
+                ease: "easeInOut",
+              }}
+            />
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** The hero diagram below `lg`: hirers, Payvoke, agents, stacked and joined by fans. */
+function MobileFlow({ className }: { className?: string }) {
+  const claude = agentById("claude-code");
+  const brand = useToken("--t-brand", "#286346");
+  return (
+    <div
+      role="img"
+      aria-label="You in a chat, or your AI assistant, hire an agent through Payvoke on Avalanche."
+      className={cn("mx-auto w-full max-w-md", className)}
+    >
+      <p className="mb-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        Who hires
+      </p>
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="flex items-center gap-2.5 border border-border-strong bg-card p-2.5 text-left">
+          <span className="grid size-7 shrink-0 place-items-center bg-primary-soft text-primary">
+            <MessageSquare className="size-3.5" aria-hidden="true" />
+          </span>
+          <span className="text-[13px] leading-tight font-medium">You, in a chat</span>
+        </div>
+        <div className="flex items-center gap-2.5 border border-border-strong bg-card p-2.5 text-left">
+          <AgentMark agent={claude} className="size-7 shrink-0" />
+          <span className="text-[13px] leading-tight font-medium">Your AI assistant</span>
+        </div>
+      </div>
+
+      <Fan from={2} to={1} />
+
+      <div className="relative flex items-center gap-3 overflow-hidden border border-border-strong bg-card px-4 py-3 text-left">
+        <BorderBeam size={70} duration={6} colorFrom={brand} colorTo={brand} />
+        <img src="/logo.svg" alt="" aria-hidden="true" className="size-8 shrink-0" />
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="text-[15px] leading-tight font-semibold tracking-[-0.03em]">
+            Payvoke holds the payment
+          </span>
+          <span className="text-[12px] text-muted-foreground">Released when the work arrives</span>
+        </span>
+        <NetworkAvalancheFuji size={18} aria-hidden="true" className="shrink-0" />
+      </div>
+
+      <Fan from={1} to={3} delay={0.8} />
+
+      <div className="grid grid-cols-3 gap-2.5">
+        {kinds.map((kind) => (
+          <div
+            key={kind.name}
+            className="grid justify-items-center gap-1.5 border border-border-strong bg-card px-1.5 py-3"
+          >
+            <span className="grid size-7 place-items-center bg-muted text-muted-foreground">
+              <kind.icon aria-hidden="true" strokeWidth={1.5} className="size-3.5" />
+            </span>
+            <span className="text-[12px] leading-tight font-medium text-balance">{kind.name}</span>
+            <span className="font-mono text-[10.5px] text-muted-foreground">{kind.command}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        Agents builders share
+      </p>
+    </div>
+  );
+}
+
 export function Hero() {
   const wide = useMediaQuery("(min-width: 1024px)");
   const brand = useToken("--t-brand", "#286346");
@@ -175,7 +292,7 @@ export function Hero() {
     >
       <HeroPixelField sample={(now) => landingAudio.sample(now)} />
 
-      <div className="relative z-10 container-page flex flex-col items-center pt-14 pb-24 text-center sm:pt-20 lg:pb-28">
+      <div className="relative z-10 container-page flex flex-col items-center pt-14 pb-16 text-center sm:pt-20 sm:pb-24 lg:pb-28">
         <BlurFade delay={0.05}>
           <p className="inline-flex items-center gap-2.5 border border-primary/40 bg-field-bg/85 px-3 py-1.5 text-[13px] font-medium">
             <NetworkAvalancheFuji size={16} aria-hidden="true" />
@@ -233,12 +350,13 @@ export function Hero() {
         </BlurFade>
 
         {/* Who hires, Payvoke in the middle, the agents doing the work. */}
-        <BlurFade delay={0.7} className="mt-16 w-full max-w-5xl">
+        <BlurFade delay={0.7} className="mt-12 w-full max-w-5xl lg:mt-16">
+          <MobileFlow className="lg:hidden" />
           <div
             ref={container}
             role="img"
             aria-label="You in a chat, or your AI assistant, hire an agent through Payvoke on Avalanche."
-            className="relative grid gap-10 lg:grid-cols-[17rem_1fr_17rem] lg:gap-6"
+            className="relative hidden grid-cols-[17rem_1fr_17rem] gap-6 lg:grid"
           >
             <Column label="Who hires">
               <Node nodeRef={person} className="flex items-center gap-3 p-3">
