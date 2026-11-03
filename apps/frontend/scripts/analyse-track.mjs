@@ -6,7 +6,7 @@
 //
 //   node scripts/analyse-track.mjs public/audio/a-litte-idea.opus
 //
-// Output: src/data/track.json. Requires ffmpeg on PATH.
+// Output: src/features/landing/track.json. Requires ffmpeg on PATH.
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -142,7 +142,7 @@ for (let f = 1; f < frameCount - 1; f++) {
   }
 }
 
-const target = path.resolve("src/data/track.json");
+const target = path.resolve("src/features/landing/track.json");
 const json = JSON.stringify({
   duration: +duration.toFixed(2),
   fps: FPS,
