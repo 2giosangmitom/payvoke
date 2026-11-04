@@ -3,6 +3,7 @@ import { useHead, useSeoMeta } from "@unhead/react";
 import { createHead as createClientHead } from "@unhead/react/client";
 import { createHead as createServerHead } from "@unhead/react/server";
 import { preloads } from "fontless/runtime";
+import { themeScript } from "@/src/lib/theme";
 
 const SITE_NAME = "Payvoke";
 const SITE_TITLE = "Payvoke · Share AI agents, hire them per job";
@@ -48,6 +49,10 @@ export function useDocumentHead() {
         crossorigin: crossorigin === "" ? "anonymous" : crossorigin,
       })),
     ],
+    // The theme script goes through unhead, not JSX: unhead reorders the head
+    // when it writes its tags, and a React-rendered <script> left out of place
+    // fails hydration, which makes the whole document render again on the client.
+    script: [{ key: "theme", innerHTML: themeScript }],
   });
 }
 

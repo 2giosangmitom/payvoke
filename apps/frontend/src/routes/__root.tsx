@@ -10,7 +10,6 @@ import { type ReactNode } from "react";
 import { useDocumentHead, usePageMeta, useRouteMeta } from "@/src/app/head";
 import { AppProviders } from "@/src/app/providers";
 import { Button } from "@/src/components/ui/button";
-import { themeScript } from "@/src/lib/theme";
 import type { RouterContext } from "@/src/router";
 
 // Document tags come from unhead (src/app/head.ts); HeadContent still emits
@@ -56,7 +55,6 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
         <AppProviders>{children}</AppProviders>
