@@ -42,6 +42,8 @@
   --color-destructive: var(--t-danger);
   --color-destructive-soft: var(--t-danger-soft);
   --color-overlay: var(--t-overlay);
+  --color-avax: var(--t-avax);
+  --color-avax-foreground: var(--t-avax-ink);
 
   --color-sidebar: var(--t-bg-deep);
   --color-sidebar-foreground: var(--t-text);
@@ -157,6 +159,9 @@
   --t-danger-soft: #fbe9e7;
   --t-overlay: #14291fc0;
   --t-shadow: 0 20px 60px #183a2420;
+  /* Avalanche red, darkened from #e84142 so ivory text keeps 5:1. */
+  --t-avax: #c8262f;
+  --t-avax-ink: #f8fbf9;
 
   /* Hero pixel field and visualizer ink, read by the canvases at runtime. */
   --field-bg: #eef3ef;
@@ -223,10 +228,62 @@
   color: var(--color-primary);
 }
 
+/* Landing motion. Content is visible by default and motion is added only where
+   the visitor allows it, so the reduced or script-less page is the finished page. */
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    translate: 0 28px;
+  }
+}
+@keyframes rise-line {
+  from {
+    translate: 0 105%;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+
+/* Rises once as it scrolls into view; stagger with --reveal-start / --reveal-end. */
+@utility reveal {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-rise linear both;
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 0%) entry var(--reveal-end, 70%);
+    }
+  }
+}
+
+/* One line of a headline, rising from behind its own baseline on load. */
+@utility rise-line {
+  display: block;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: rise-line 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--rise-delay, 0ms);
+  }
+}
+
+/* Fades up on load, after the headline. */
+@utility fade-up {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--rise-delay, 0ms);
+  }
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
     scroll-padding-top: 2rem;
+  }
+  /* Lenis does the smoothing on the landing; native smoothing would fight it. */
+  html.lenis {
+    scroll-behavior: auto;
   }
   body {
     @apply min-w-80 bg-background font-sans text-foreground antialiased;

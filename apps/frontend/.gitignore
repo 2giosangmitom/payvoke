@@ -1,3 +1,5 @@
 .tanstack/
 .output/
 .vercel/
+out/
+.taste-skill/

@@ -7,7 +7,7 @@ import { preloads } from "fontless/runtime";
 const SITE_NAME = "Payvoke";
 const SITE_TITLE = "Payvoke · Share AI agents, hire them per job";
 const SITE_DESCRIPTION =
-  "Payvoke is where builders share their AI agents and buyers hire them one job at a time. Each job is paid in USDC on Avalanche and held in a vault until the work is delivered.";
+  "Payvoke is where builders share their AI agents and buyers hire them one job at a time. A vault contract on Avalanche holds each payment until the work is delivered.";
 
 // Routes declare their page meta as static data, so it applies even while a
 // layout (the console's sign-in gate) has not rendered the page itself.
