@@ -35,6 +35,7 @@ import { Route as ConsoleChatIndexRouteImport } from './routes/console.chat.inde
 import { Route as ConsoleChatThreadIdRouteImport } from './routes/console.chat.$threadId'
 import { Route as ConsoleStudioIndexRouteImport } from './routes/console.studio.index'
 import { Route as DashboardAppsAppIdRouteImport } from './routes/dashboard.apps.$appId'
+import { Route as ConsoleChatNewAppIdRouteImport } from './routes/console.chat.new.$appId'
 import { Route as ConsoleStudioAppsAppIdRouteImport } from './routes/console.studio.apps.$appId'
 
 const MarketRoute = MarketRouteImport.update({
@@ -176,6 +177,11 @@ const DashboardAppsAppIdRoute = DashboardAppsAppIdRouteImport.update({
   path: '/dashboard/apps/$appId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConsoleChatNewAppIdRoute = ConsoleChatNewAppIdRouteImport.update({
+  id: '/new/$appId',
+  path: '/new/$appId',
+  getParentRoute: () => ConsoleChatRoute,
+} as any)
 const ConsoleStudioAppsAppIdRoute = ConsoleStudioAppsAppIdRouteImport.update({
   id: '/studio/apps/$appId',
   path: '/studio/apps/$appId',
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
   '/console/studio/': typeof ConsoleStudioIndexRoute
+  '/console/chat/new/$appId': typeof ConsoleChatNewAppIdRoute
   '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRoutesByTo {
@@ -236,6 +243,7 @@ export interface FileRoutesByTo {
   '/store': typeof MarketStoreIndexRoute
   '/console/chat': typeof ConsoleChatIndexRoute
   '/console/studio': typeof ConsoleStudioIndexRoute
+  '/console/chat/new/$appId': typeof ConsoleChatNewAppIdRoute
   '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRoutesById {
@@ -268,6 +276,7 @@ export interface FileRoutesById {
   '/_market/store/': typeof MarketStoreIndexRoute
   '/console/chat/': typeof ConsoleChatIndexRoute
   '/console/studio/': typeof ConsoleStudioIndexRoute
+  '/console/chat/new/$appId': typeof ConsoleChatNewAppIdRoute
   '/console/studio/apps/$appId': typeof ConsoleStudioAppsAppIdRoute
 }
 export interface FileRouteTypes {
@@ -300,6 +309,7 @@ export interface FileRouteTypes {
     | '/store/'
     | '/console/chat/'
     | '/console/studio/'
+    | '/console/chat/new/$appId'
     | '/console/studio/apps/$appId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/store'
     | '/console/chat'
     | '/console/studio'
+    | '/console/chat/new/$appId'
     | '/console/studio/apps/$appId'
   id:
     | '__root__'
@@ -357,6 +368,7 @@ export interface FileRouteTypes {
     | '/_market/store/'
     | '/console/chat/'
     | '/console/studio/'
+    | '/console/chat/new/$appId'
     | '/console/studio/apps/$appId'
   fileRoutesById: FileRoutesById
 }
@@ -569,6 +581,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAppsAppIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/console/chat/new/$appId': {
+      id: '/console/chat/new/$appId'
+      path: '/new/$appId'
+      fullPath: '/console/chat/new/$appId'
+      preLoaderRoute: typeof ConsoleChatNewAppIdRouteImport
+      parentRoute: typeof ConsoleChatRoute
+    }
     '/console/studio/apps/$appId': {
       id: '/console/studio/apps/$appId'
       path: '/studio/apps/$appId'
@@ -629,11 +648,13 @@ const MarketRouteWithChildren =
 interface ConsoleChatRouteChildren {
   ConsoleChatThreadIdRoute: typeof ConsoleChatThreadIdRoute
   ConsoleChatIndexRoute: typeof ConsoleChatIndexRoute
+  ConsoleChatNewAppIdRoute: typeof ConsoleChatNewAppIdRoute
 }
 
 const ConsoleChatRouteChildren: ConsoleChatRouteChildren = {
   ConsoleChatThreadIdRoute: ConsoleChatThreadIdRoute,
   ConsoleChatIndexRoute: ConsoleChatIndexRoute,
+  ConsoleChatNewAppIdRoute: ConsoleChatNewAppIdRoute,
 }
 
 const ConsoleChatRouteWithChildren = ConsoleChatRoute._addFileChildren(

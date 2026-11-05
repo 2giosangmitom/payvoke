@@ -50,7 +50,6 @@ import {
   type Visibility,
 } from "@/src/features/apps/api";
 import { formatUsdc } from "@/src/features/apps/format";
-import { newThread } from "@/src/features/chat/api";
 
 const date = (value: string | Date) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -426,7 +425,6 @@ export function ProviderAppPage({
 }) {
   const navigate = useNavigate();
   const [opening, setOpening] = useState(false);
-  const [error, setError] = useState("");
   const { data: session } = authClient.useSession();
   const app = useQuery({
     queryKey: ["provider", "app", appId],
@@ -518,13 +516,10 @@ export function ProviderAppPage({
             disabled={opening || data.availability !== "AVAILABLE"}
             onClick={() => {
               setOpening(true);
-              setError("");
-              void newThread(data.id)
-                .then((thread) =>
-                  navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
-                )
-                .catch((cause) => setError(errorMessage(cause)))
-                .finally(() => setOpening(false));
+              void navigate({
+                to: "/console/chat/new/$appId",
+                params: { appId: data.id },
+              }).finally(() => setOpening(false));
             }}
           >
             {opening ? <Spinner /> : <MessageSquareText />} Open a chat
@@ -539,7 +534,6 @@ export function ProviderAppPage({
           )}
         </div>
       </header>
-      {error && <ErrorNotice>{error}</ErrorNotice>}
 
       <Tabs value={tab} onValueChange={(value) => onTab(value as AgentTab)} className="mt-6 gap-0">
         <TabsList

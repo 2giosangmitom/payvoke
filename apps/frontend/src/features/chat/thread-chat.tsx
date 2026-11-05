@@ -1,7 +1,8 @@
 "use client";
 
 import { usePageMeta } from "@/src/app/head";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AssistantRuntimeProvider,
@@ -32,9 +33,11 @@ import {
 } from "@/src/components/ui/dialog";
 import { ErrorNotice } from "@/src/components/layout/page-kit";
 import { Skeleton } from "@/src/components/ui/skeleton";
+import { getStoreApp, type StoreAppDetail } from "@/src/features/apps/api";
 import { formatCommandPrice } from "@/src/features/apps/format";
 import {
   getThread,
+  newThread,
   sendMessage,
   submitToolResult,
   type ThreadCommand,
@@ -66,8 +69,40 @@ import { cn } from "@/src/lib/utils";
 const MAX_QUOTE_FILES = 10;
 const readable = (cause: unknown) => (cause instanceof Error ? cause.message : "Request failed.");
 
+// What the chat shows about its thread. A draft (no thread yet) has no
+// free-message allowance to show until the thread exists.
+type ChatDetail = Omit<ThreadDetail, "presale"> & { presale: ThreadDetail["presale"] | null };
+
+// A new chat before its first message: the agent's store entry stands in for
+// the thread, so the composer is ready without a round trip that creates one.
+function draftDetail(app: StoreAppDetail): ChatDetail {
+  // Same pick as the API's thread view: the default command, else the first.
+  const command = app.commands.find((item) => item.id === app.defaultCommandId) ?? app.commands[0];
+  return {
+    id: "",
+    appId: app.id,
+    title: null,
+    archivedAt: null,
+    app: {
+      id: app.id,
+      name: app.name,
+      description: app.description,
+      visibility: app.visibility,
+      status: app.status,
+      imageUrl: app.imageUrl,
+      availability: app.availability,
+    },
+    activeQuoteId: null,
+    defaultCommandId: command?.id ?? "",
+    chatTextParameter: command?.revision?.positionalParameter ?? null,
+    revisionPolicy: command?.revision?.terms.revisionPolicy ?? null,
+    commands: app.commands,
+    presale: null,
+  };
+}
+
 // Plain text is a message to the bot; `/name rest` picks one of its commands.
-function commandForText(thread: ThreadDetail, text: string) {
+function commandForText(thread: ChatDetail, text: string) {
   const commands = thread.commands.filter((command) => command.revision);
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return { command: undefined, input: trimmed, explicit: false };
@@ -141,7 +176,7 @@ function lookups(messages: TimelineMessage[]) {
   return { tools, files, runs };
 }
 
-function unavailableNotice(thread: ThreadDetail) {
+function unavailableNotice(thread: ChatDetail) {
   if (thread.archivedAt) return "This thread is archived. Start a new thread to keep going.";
   if (thread.app.status === "ARCHIVED")
     return "This app is archived. Earlier messages and results stay readable.";
@@ -198,13 +233,31 @@ function ThreadSkeleton() {
   );
 }
 
-export function ThreadChat({ threadId }: { threadId: string }) {
+// One chat. With `threadId` it shows that thread. With `appId` it is a draft:
+// the composer opens at once and the thread is created only when the buyer
+// sends the first message (or attaches the first file, which needs a thread
+// to upload into). After that first send the page moves to the thread's URL.
+export function ThreadChat(props: { threadId: string } | { appId: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const draftAppId = "appId" in props ? props.appId : null;
+  const [threadId, setThreadId] = useState<string | null>(
+    "threadId" in props ? props.threadId : null,
+  );
   const thread = useQuery({
     queryKey: ["thread", threadId, "details"],
-    queryFn: () => getThread(threadId),
+    queryFn: () => getThread(threadId!),
+    enabled: Boolean(threadId),
   });
-  usePageMeta({ title: thread.data?.title || thread.data?.app.name || "Chat" });
+  const draftApp = useQuery({
+    queryKey: ["store", "app", draftAppId],
+    queryFn: () => getStoreApp(draftAppId!),
+    enabled: Boolean(draftAppId),
+    staleTime: 30_000,
+  });
+  const detail: ChatDetail | undefined =
+    thread.data ?? (draftApp.data ? draftDetail(draftApp.data) : undefined);
+  usePageMeta({ title: detail?.title || detail?.app.name || "Chat" });
   const { timeline, connection } = useThreadTimeline(threadId);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<{
@@ -212,21 +265,67 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     text: string;
     fileIds: string[];
   } | null>(null);
-  const messages = useMemo(() => timeline.data?.messages ?? [], [timeline.data]);
+  // Messages typed before the thread exists; they seed its timeline.
+  const [draft, setDraftState] = useState<TimelineMessage[]>([]);
+  const draftRef = useRef<TimelineMessage[]>([]);
+  const setDraft = (update: (current: TimelineMessage[]) => TimelineMessage[]) => {
+    draftRef.current = update(draftRef.current);
+    setDraftState(draftRef.current);
+  };
+  const creating = useRef<Promise<string> | null>(null);
+  const timelineMessages = timeline.data?.messages;
+  const messages = useMemo(
+    () => (threadId ? (timelineMessages ?? []) : draft),
+    [threadId, timelineMessages, draft],
+  );
   const maps = useMemo(() => lookups(messages), [messages]);
-  const attachments = useMemo(() => new ThreadAttachmentAdapter(threadId), [threadId]);
   const commands = useMemo(
-    () => (thread.data?.commands ?? []).filter((command) => command.revision),
-    [thread.data],
+    () => (detail?.commands ?? []).filter((command) => command.revision),
+    [detail],
   );
 
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["thread", threadId] });
+  // The thread, created once on first need. A failed create is retried by
+  // the next send.
+  const threadRef = useRef(threadId);
+  threadRef.current = threadId;
+  const ensureThread = (): Promise<string> => {
+    if (threadRef.current) return Promise.resolve(threadRef.current);
+    if (!draftAppId) return Promise.reject(new Error("This chat has no thread."));
+    creating.current ??= newThread(draftAppId)
+      .then((created) => {
+        queryClient.setQueryData<Timeline>(timelineKey(created.id), {
+          cursor: "0",
+          messages: draftRef.current,
+        });
+        threadRef.current = created.id;
+        setThreadId(created.id);
+        void queryClient.invalidateQueries({ queryKey: ["threads"] });
+        return created.id;
+      })
+      .catch((cause) => {
+        creating.current = null;
+        throw cause;
+      });
+    return creating.current;
   };
-  const setTimeline = (update: (current: Timeline) => Timeline) =>
-    queryClient.setQueryData<Timeline>(timelineKey(threadId), (current) =>
-      current ? update(current) : current,
+  const ensureRef = useRef(ensureThread);
+  ensureRef.current = ensureThread;
+  // One adapter for the chat's life; it reaches the thread through the ref.
+  const [attachments] = useState(() => new ThreadAttachmentAdapter(() => ensureRef.current()));
+
+  const refresh = async () => {
+    if (threadRef.current)
+      await queryClient.invalidateQueries({ queryKey: ["thread", threadRef.current] });
+  };
+  // Edits the messages wherever they live now: the draft, or the thread's
+  // cached timeline.
+  const editMessages = (update: (current: TimelineMessage[]) => TimelineMessage[]) => {
+    const id = threadRef.current;
+    if (!id) return setDraft(update);
+    queryClient.setQueryData<Timeline>(timelineKey(id), (current) =>
+      current ? { ...current, messages: update(current.messages) } : current,
     );
+  };
 
   // The message shows at once and is swapped for the stored one when the
   // API answers; a failure takes it back out and says why.
@@ -243,46 +342,45 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       const part = maps.files.get(id);
       return part ? [part] : [];
     });
-    setTimeline((current) => ({
+    editMessages((current) => [
       ...current,
-      messages: [
-        ...current.messages,
-        {
-          id: localId,
-          role: "user",
-          createdAt: new Date().toISOString(),
-          status: "complete",
-          run: null,
-          parts: [
-            ...(options.command
-              ? [
-                  {
-                    type: "tool-call" as const,
-                    toolCallId: `command-${localId}`,
-                    toolName: "command",
-                    args: {
-                      commandId: options.command.id,
-                      arguments: options.arguments ?? {},
-                    } as TimelineToolPart["args"],
-                    result: null,
-                    status: "done" as const,
-                  },
-                ]
-              : []),
-            {
-              type: "text" as const,
-              id: localId,
-              text: content,
-              format: "plain" as const,
-              streaming: false,
-            },
-            ...files,
-          ],
-        },
-      ],
-    }));
+      {
+        id: localId,
+        role: "user",
+        createdAt: new Date().toISOString(),
+        status: "complete",
+        run: null,
+        parts: [
+          ...(options.command
+            ? [
+                {
+                  type: "tool-call" as const,
+                  toolCallId: `command-${localId}`,
+                  toolName: "command",
+                  args: {
+                    commandId: options.command.id,
+                    arguments: options.arguments ?? {},
+                  } as TimelineToolPart["args"],
+                  result: null,
+                  status: "done" as const,
+                },
+              ]
+            : []),
+          {
+            type: "text" as const,
+            id: localId,
+            text: content,
+            format: "plain" as const,
+            streaming: false,
+          },
+          ...files,
+        ],
+      },
+    ]);
+    let id: string | null = null;
     try {
-      await sendMessage(threadId, {
+      id = await ensureThread();
+      await sendMessage(id, {
         content,
         ...(options.command
           ? { commandId: options.command.id, arguments: options.arguments ?? {} }
@@ -291,19 +389,28 @@ export function ThreadChat({ threadId }: { threadId: string }) {
       });
       setError("");
     } catch (cause) {
-      setTimeline((current) => ({
-        ...current,
-        messages: current.messages.filter((message) => message.id !== localId),
-      }));
+      editMessages((current) => current.filter((message) => message.id !== localId));
       setError(readable(cause));
       throw cause;
     } finally {
-      void queryClient.invalidateQueries({ queryKey: timelineKey(threadId) });
+      if (id) void queryClient.invalidateQueries({ queryKey: timelineKey(id) });
+    }
+    // A draft becomes a real thread: load it, then take its URL. Its details
+    // and timeline are cached, so the thread page opens without a skeleton.
+    if (draftAppId) {
+      const threadId = id;
+      await queryClient
+        .ensureQueryData({
+          queryKey: ["thread", threadId, "details"],
+          queryFn: () => getThread(threadId),
+        })
+        .catch(() => undefined);
+      void navigate({ to: "/console/chat/$threadId", params: { threadId }, replace: true });
     }
   }
 
   async function onNew(message: AppendMessage) {
-    if (!thread.data) return;
+    if (!detail) return;
     const text = message.content
       .flatMap((part) => (part.type === "text" ? [part.text] : []))
       .join("\n")
@@ -311,7 +418,7 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     const fileIds = (message.attachments ?? []).flatMap((attachment) =>
       (attachment.content ?? []).flatMap((part) => (part.type === "file" ? [part.data] : [])),
     );
-    const resolved = commandForText(thread.data, text);
+    const resolved = commandForText(detail, text);
     if (!resolved.explicit) return send(text || "Sent files", { fileIds });
     if (!resolved.command) {
       setError(`Unknown slash command ${text.split(/\s/)[0]}.`);
@@ -337,22 +444,21 @@ export function ThreadChat({ threadId }: { threadId: string }) {
     removeOnExecute: true,
   });
 
-  const notice = thread.data ? unavailableNotice(thread.data) : null;
-  const presale = thread.data?.presale;
+  const notice = detail ? unavailableNotice(detail) : null;
+  const presale = detail?.presale;
   const last = messages.at(-1);
   const replying =
     !notice &&
     last?.role === "user" &&
     !last.id.startsWith("local-") &&
     !last.parts.some((part) => part.type === "tool-call" && part.toolName === "revision");
-  const sendBlocked =
-    Boolean(notice) || presale?.remaining === 0 || Boolean(thread.data?.activeQuoteId);
+  const sendBlocked = Boolean(notice) || presale?.remaining === 0 || Boolean(detail?.activeQuoteId);
 
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: toThreadMessage,
     onNew,
-    isLoading: timeline.isPending,
+    isLoading: Boolean(threadId) && timeline.isPending && !timelineMessages,
     isDisabled: Boolean(notice),
     isSendDisabled: sendBlocked,
     adapters: { attachments },
@@ -371,31 +477,38 @@ export function ThreadChat({ threadId }: { threadId: string }) {
   );
 
   const value: ThreadChatValue = {
-    threadId,
+    threadId: threadId ?? "",
     thread: thread.data,
-    appName: thread.data?.app.name ?? "App",
-    appImageUrl: thread.data?.app.imageUrl ?? null,
+    appName: detail?.app.name ?? "App",
+    appImageUrl: detail?.app.imageUrl ?? null,
     ...maps,
-    uploadFile: (file) => uploadThreadFile(threadId, file),
+    uploadFile: async (file) => uploadThreadFile(await ensureThread(), file),
     refresh,
     submitTool: async (toolCallId, result) => {
-      await submitToolResult(threadId, toolCallId, result);
-      await queryClient.invalidateQueries({ queryKey: timelineKey(threadId) });
+      const id = await ensureThread();
+      await submitToolResult(id, toolCallId, result);
+      await queryClient.invalidateQueries({ queryKey: timelineKey(id) });
     },
     acceptOffer: async (offerId) => {
-      await quoteFor(threadId, offerId, buyerFiles);
+      await quoteFor(await ensureThread(), offerId, buyerFiles);
       await refresh();
     },
   };
 
-  if (thread.isPending) return <ThreadSkeleton />;
-  if (thread.isError || !thread.data)
+  const pending = draftAppId ? draftApp.isPending : thread.isPending;
+  const failure = draftAppId ? draftApp.error : thread.error;
+  if (!detail && pending) return <ThreadSkeleton />;
+  if (!detail)
     return (
       <ErrorNotice className="m-6">
-        {thread.error ? readable(thread.error) : "This thread is not available."}
+        {failure
+          ? readable(failure)
+          : draftAppId
+            ? "This agent is not available."
+            : "This thread is not available."}
       </ErrorNotice>
     );
-  const data = thread.data;
+  const data = detail;
   const offline = data.app.availability !== "AVAILABLE";
 
   return (

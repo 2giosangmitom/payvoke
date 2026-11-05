@@ -28,7 +28,6 @@ import { authClient } from "@/src/features/auth/auth-client";
 import { getStoreApp, getStars, starApp, unstarApp } from "@/src/features/apps/api";
 import { formatCommandPrice, formatUsdc } from "@/src/features/apps/format";
 import { formatDuration } from "@/src/features/payments/payment-confirm";
-import { newThread } from "@/src/features/chat/api";
 
 export function StoreAppDetail({ appId }: { appId: string }) {
   const navigate = useNavigate();
@@ -58,16 +57,13 @@ export function StoreAppDetail({ appId }: { appId: string }) {
     onError: (cause) => setError(errorMessage(cause, "Could not save.")),
   });
 
-  // Every app is used from a chat thread.
+  // Every app is used from a chat. The thread is created on the first message.
   async function open() {
     if (!session) return;
     setError("");
     setOpening(true);
     try {
-      const thread = await newThread(appId);
-      await navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } });
-    } catch (cause) {
-      setError(errorMessage(cause, "Could not open a thread."));
+      await navigate({ to: "/console/chat/new/$appId", params: { appId } });
     } finally {
       setOpening(false);
     }

@@ -103,12 +103,13 @@ export function toThreadMessage(message: TimelineMessage): ThreadMessageLike {
 }
 
 // Uploads start as soon as a file is added, so sending only waits for the
-// slowest one. A failed upload stays in the composer as an error tile.
+// slowest one. A failed upload stays in the composer as an error tile. A
+// draft chat resolves its thread on the first upload, creating it then.
 export class ThreadAttachmentAdapter implements AttachmentAdapter {
   accept = ACCEPTED_FILE_TYPES.join(",");
   private readonly uploads = new Map<string, Promise<ThreadFile>>();
 
-  constructor(private readonly threadId: string) {}
+  constructor(private readonly thread: () => Promise<string>) {}
 
   async *add({ file }: { file: File }): AsyncGenerator<PendingAttachment, void> {
     const base = {
@@ -118,7 +119,7 @@ export class ThreadAttachmentAdapter implements AttachmentAdapter {
       contentType: file.type,
       file,
     };
-    const upload = uploadThreadFile(this.threadId, file);
+    const upload = this.thread().then((threadId) => uploadThreadFile(threadId, file));
     this.uploads.set(base.id, upload);
     yield { ...base, status: { type: "running", reason: "uploading", progress: 0 } };
     try {
