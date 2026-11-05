@@ -286,13 +286,6 @@ function Features() {
                 </h3>
                 <p className={lead}>{feature.text}</p>
                 <Points items={feature.points} />
-                <Button
-                  variant="link"
-                  className="justify-self-start px-0 text-[16px]"
-                  render={<Link to="/docs" />}
-                >
-                  Read the docs <ArrowRight />
-                </Button>
               </div>
               {/* Opacity and transform only: a filter here would repaint every video frame. */}
               <div
