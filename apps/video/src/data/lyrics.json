@@ -1,0 +1,1660 @@
+{
+  "sections": [
+    {
+      "name": "Intro",
+      "style": "Powerful Nostalgic Synthwave",
+      "notes": [
+        "12s Instrumental",
+        "Deep driving bass, steady four-on-the-floor kick, shimmering arpeggios, vintage analog synth melody"
+      ],
+      "start": 0,
+      "end": 40.04
+    },
+    {
+      "name": "Verse 1",
+      "style": "Husky Raspy Male Voice",
+      "notes": ["Mid-High Register, Relaxed Rhythmic Storytelling"],
+      "start": 40.04,
+      "end": 68.16
+    },
+    {
+      "name": "Pre-Chorus",
+      "style": "Steady Rhythmic Male Vocal",
+      "notes": ["Building Synth Layers, Driving Bass"],
+      "start": 68.16,
+      "end": 78.02
+    },
+    {
+      "name": "Chorus",
+      "style": "Catchy, Rhythmic, Slightly Raspy Male Vocal",
+      "notes": ["Powerful Dance Beat, Simple Melodic Hook"],
+      "start": 78.02,
+      "end": 97.42
+    },
+    {
+      "name": "Instrumental Drop",
+      "style": "Powerful Melodic Synthwave EDM",
+      "notes": [
+        "16s, Huge euphoric supersaw chords, pounding kick, short expressive vintage synth solo"
+      ],
+      "start": 97.42,
+      "end": 122.46
+    },
+    {
+      "name": "Verse 2",
+      "style": "Confident Husky Male Storytelling",
+      "notes": [],
+      "start": 122.46,
+      "end": 141.4
+    },
+    {
+      "name": "Pre-Chorus",
+      "style": "Strong Driving Groove",
+      "notes": ["Layered Retro Arpeggios"],
+      "start": 141.4,
+      "end": 150.64
+    },
+    {
+      "name": "Chorus",
+      "style": "Catchy, Rhythmic Male Vocal",
+      "notes": ["Full Synthwave EDM Instrumentation"],
+      "start": 150.64,
+      "end": 177.2
+    },
+    {
+      "name": "Bridge",
+      "style": "Deep Husky Male Voice",
+      "notes": ["Heavy Bass Pulse, Spacious Analog Synths"],
+      "start": 177.2,
+      "end": 193.3
+    },
+    {
+      "name": "Final Instrumental Drop",
+      "style": "Massive Retro Melodic EDM",
+      "notes": [
+        "20s, Wide euphoric supersaws, heavy pounding kick, deep sidechained bass, memorable retro synth lead"
+      ],
+      "start": 193.3,
+      "end": 209.82
+    },
+    {
+      "name": "Final Chorus",
+      "style": "Rhythmic Male Voice, Doubled Vocal Hook",
+      "notes": [],
+      "start": 209.82,
+      "end": 228.1
+    },
+    {
+      "name": "Outro",
+      "style": "Nostalgic Synthwave Instrumental",
+      "notes": ["10s, Deep bass pulse, fading arpeggios, atmospheric analog synth"],
+      "start": 228.1,
+      "end": 270.23
+    }
+  ],
+  "lines": [
+    {
+      "section": 1,
+      "text": "I was stuck with an idea in my head",
+      "start": 40.64,
+      "end": 45.3,
+      "words": [
+        {
+          "text": "I",
+          "start": 40.64,
+          "end": 41.6
+        },
+        {
+          "text": "was",
+          "start": 41.6,
+          "end": 41.78
+        },
+        {
+          "text": "stuck",
+          "start": 41.78,
+          "end": 42.16
+        },
+        {
+          "text": "with",
+          "start": 42.16,
+          "end": 42.52
+        },
+        {
+          "text": "an",
+          "start": 42.52,
+          "end": 42.72
+        },
+        {
+          "text": "idea",
+          "start": 42.72,
+          "end": 43.3
+        },
+        {
+          "text": "in",
+          "start": 43.3,
+          "end": 43.7
+        },
+        {
+          "text": "my",
+          "start": 43.7,
+          "end": 44.18
+        },
+        {
+          "text": "head",
+          "start": 44.18,
+          "end": 45.3
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "Another late night, still not in bed",
+      "start": 45.3,
+      "end": 49.58,
+      "words": [
+        {
+          "text": "Another",
+          "start": 45.3,
+          "end": 46.2
+        },
+        {
+          "text": "late",
+          "start": 46.2,
+          "end": 46.68
+        },
+        {
+          "text": "night,",
+          "start": 46.68,
+          "end": 47.34
+        },
+        {
+          "text": "still",
+          "start": 47.74,
+          "end": 48.16
+        },
+        {
+          "text": "not",
+          "start": 48.16,
+          "end": 48.46
+        },
+        {
+          "text": "in",
+          "start": 48.46,
+          "end": 48.82
+        },
+        {
+          "text": "bed",
+          "start": 48.82,
+          "end": 49.58
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "Had a hundred things I wanted to try",
+      "start": 49.58,
+      "end": 53.94,
+      "words": [
+        {
+          "text": "Had",
+          "start": 49.58,
+          "end": 51.02
+        },
+        {
+          "text": "a",
+          "start": 51.02,
+          "end": 51.18
+        },
+        {
+          "text": "hundred",
+          "start": 51.18,
+          "end": 51.4
+        },
+        {
+          "text": "things",
+          "start": 51.4,
+          "end": 52
+        },
+        {
+          "text": "I",
+          "start": 52,
+          "end": 52.3
+        },
+        {
+          "text": "wanted",
+          "start": 52.3,
+          "end": 52.92
+        },
+        {
+          "text": "to",
+          "start": 52.92,
+          "end": 53.28
+        },
+        {
+          "text": "try",
+          "start": 53.28,
+          "end": 53.94
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "But every little step was taking time",
+      "start": 53.94,
+      "end": 58.46,
+      "words": [
+        {
+          "text": "But",
+          "start": 53.94,
+          "end": 55.2
+        },
+        {
+          "text": "every",
+          "start": 55.2,
+          "end": 55.44
+        },
+        {
+          "text": "little",
+          "start": 55.44,
+          "end": 55.68
+        },
+        {
+          "text": "step",
+          "start": 55.68,
+          "end": 56.32
+        },
+        {
+          "text": "was",
+          "start": 56.32,
+          "end": 57.36
+        },
+        {
+          "text": "taking",
+          "start": 57.36,
+          "end": 57.84
+        },
+        {
+          "text": "time",
+          "start": 57.84,
+          "end": 58.46
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "So I built a tool to clear the way",
+      "start": 59.08,
+      "end": 61.72,
+      "words": [
+        {
+          "text": "So",
+          "start": 59.08,
+          "end": 59.64
+        },
+        {
+          "text": "I",
+          "start": 59.64,
+          "end": 59.8
+        },
+        {
+          "text": "built",
+          "start": 59.8,
+          "end": 60.02
+        },
+        {
+          "text": "a",
+          "start": 60.02,
+          "end": 60.22
+        },
+        {
+          "text": "tool",
+          "start": 60.22,
+          "end": 60.52
+        },
+        {
+          "text": "to",
+          "start": 60.52,
+          "end": 60.8
+        },
+        {
+          "text": "clear",
+          "start": 60.8,
+          "end": 61.04
+        },
+        {
+          "text": "the",
+          "start": 61.04,
+          "end": 61.28
+        },
+        {
+          "text": "way",
+          "start": 61.28,
+          "end": 61.72
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "Broke it twice, fixed it the next day",
+      "start": 61.72,
+      "end": 64.02,
+      "words": [
+        {
+          "text": "Broke",
+          "start": 61.72,
+          "end": 62.28
+        },
+        {
+          "text": "it",
+          "start": 62.28,
+          "end": 62.52
+        },
+        {
+          "text": "twice,",
+          "start": 62.52,
+          "end": 62.76
+        },
+        {
+          "text": "fixed",
+          "start": 62.78,
+          "end": 63.06
+        },
+        {
+          "text": "it",
+          "start": 63.06,
+          "end": 63.26
+        },
+        {
+          "text": "the",
+          "start": 63.26,
+          "end": 63.42
+        },
+        {
+          "text": "next",
+          "start": 63.42,
+          "end": 63.64
+        },
+        {
+          "text": "day",
+          "start": 63.64,
+          "end": 64.02
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "When it finally worked, I had to smile",
+      "start": 64.02,
+      "end": 66.28,
+      "words": [
+        {
+          "text": "When",
+          "start": 64.02,
+          "end": 64.26
+        },
+        {
+          "text": "it",
+          "start": 64.26,
+          "end": 64.4
+        },
+        {
+          "text": "finally",
+          "start": 64.4,
+          "end": 64.76
+        },
+        {
+          "text": "worked,",
+          "start": 64.76,
+          "end": 65.18
+        },
+        {
+          "text": "I",
+          "start": 65.36,
+          "end": 65.52
+        },
+        {
+          "text": "had",
+          "start": 65.52,
+          "end": 65.74
+        },
+        {
+          "text": "to",
+          "start": 65.74,
+          "end": 65.87
+        },
+        {
+          "text": "smile",
+          "start": 65.88,
+          "end": 66.28
+        }
+      ]
+    },
+    {
+      "section": 1,
+      "text": "Thought it might help someone for a while",
+      "start": 66.28,
+      "end": 68.76,
+      "words": [
+        {
+          "text": "Thought",
+          "start": 66.28,
+          "end": 66.58
+        },
+        {
+          "text": "it",
+          "start": 66.58,
+          "end": 66.74
+        },
+        {
+          "text": "might",
+          "start": 66.74,
+          "end": 66.96
+        },
+        {
+          "text": "help",
+          "start": 66.96,
+          "end": 67.2
+        },
+        {
+          "text": "someone",
+          "start": 67.2,
+          "end": 67.68
+        },
+        {
+          "text": "for",
+          "start": 67.68,
+          "end": 68.08
+        },
+        {
+          "text": "a",
+          "start": 68.08,
+          "end": 68.42
+        },
+        {
+          "text": "while",
+          "start": 68.42,
+          "end": 68.76
+        }
+      ]
+    },
+    {
+      "section": 2,
+      "text": "I used to keep it all to myself",
+      "start": 68.76,
+      "end": 71.64,
+      "words": [
+        {
+          "text": "I",
+          "start": 68.76,
+          "end": 69.54
+        },
+        {
+          "text": "used",
+          "start": 69.54,
+          "end": 70.22
+        },
+        {
+          "text": "to",
+          "start": 70.22,
+          "end": 70.44
+        },
+        {
+          "text": "keep",
+          "start": 70.44,
+          "end": 70.62
+        },
+        {
+          "text": "it",
+          "start": 70.62,
+          "end": 70.86
+        },
+        {
+          "text": "all",
+          "start": 70.86,
+          "end": 71.1
+        },
+        {
+          "text": "to",
+          "start": 71.1,
+          "end": 71.36
+        },
+        {
+          "text": "myself",
+          "start": 71.36,
+          "end": 71.64
+        }
+      ]
+    },
+    {
+      "section": 2,
+      "text": "Then I thought of somebody else",
+      "start": 72.26,
+      "end": 75.6,
+      "words": [
+        {
+          "text": "Then",
+          "start": 72.26,
+          "end": 72.64
+        },
+        {
+          "text": "I",
+          "start": 72.64,
+          "end": 72.78
+        },
+        {
+          "text": "thought",
+          "start": 72.78,
+          "end": 72.92
+        },
+        {
+          "text": "of",
+          "start": 72.92,
+          "end": 73.12
+        },
+        {
+          "text": "somebody",
+          "start": 73.12,
+          "end": 74.12
+        },
+        {
+          "text": "else",
+          "start": 74.12,
+          "end": 75.6
+        }
+      ]
+    },
+    {
+      "section": 3,
+      "text": "I made something, passed it on",
+      "start": 78.62,
+      "end": 82.3,
+      "words": [
+        {
+          "text": "I",
+          "start": 78.62,
+          "end": 79.18
+        },
+        {
+          "text": "made",
+          "start": 79.18,
+          "end": 79.74
+        },
+        {
+          "text": "something,",
+          "start": 79.74,
+          "end": 80.52
+        },
+        {
+          "text": "passed",
+          "start": 81,
+          "end": 81.28
+        },
+        {
+          "text": "it",
+          "start": 81.28,
+          "end": 81.8
+        },
+        {
+          "text": "on",
+          "start": 81.8,
+          "end": 82.3
+        }
+      ]
+    },
+    {
+      "section": 3,
+      "text": "Someone picked it up and carried on",
+      "start": 83.22,
+      "end": 86.88,
+      "words": [
+        {
+          "text": "Someone",
+          "start": 83.22,
+          "end": 83.78
+        },
+        {
+          "text": "picked",
+          "start": 83.78,
+          "end": 84.24
+        },
+        {
+          "text": "it",
+          "start": 84.24,
+          "end": 84.5
+        },
+        {
+          "text": "up",
+          "start": 84.5,
+          "end": 84.86
+        },
+        {
+          "text": "and",
+          "start": 84.86,
+          "end": 85.2
+        },
+        {
+          "text": "carried",
+          "start": 85.2,
+          "end": 86.08
+        },
+        {
+          "text": "on",
+          "start": 86.08,
+          "end": 86.88
+        }
+      ]
+    },
+    {
+      "section": 3,
+      "text": "You found a way, I found one too",
+      "start": 86.88,
+      "end": 90.86,
+      "words": [
+        {
+          "text": "You",
+          "start": 86.88,
+          "end": 87.24
+        },
+        {
+          "text": "found",
+          "start": 87.24,
+          "end": 87.7
+        },
+        {
+          "text": "a",
+          "start": 87.7,
+          "end": 87.98
+        },
+        {
+          "text": "way,",
+          "start": 87.98,
+          "end": 88.42
+        },
+        {
+          "text": "I",
+          "start": 88.86,
+          "end": 89
+        },
+        {
+          "text": "found",
+          "start": 89,
+          "end": 89.52
+        },
+        {
+          "text": "one",
+          "start": 89.52,
+          "end": 89.84
+        },
+        {
+          "text": "too",
+          "start": 89.84,
+          "end": 90.86
+        }
+      ]
+    },
+    {
+      "section": 3,
+      "text": "That's what a little idea can do",
+      "start": 90.86,
+      "end": 97.02,
+      "words": [
+        {
+          "text": "That's",
+          "start": 90.86,
+          "end": 92.02
+        },
+        {
+          "text": "what",
+          "start": 92.02,
+          "end": 92.32
+        },
+        {
+          "text": "a",
+          "start": 92.32,
+          "end": 92.58
+        },
+        {
+          "text": "little",
+          "start": 92.58,
+          "end": 92.84
+        },
+        {
+          "text": "idea",
+          "start": 92.84,
+          "end": 93.86
+        },
+        {
+          "text": "can",
+          "start": 93.86,
+          "end": 94.48
+        },
+        {
+          "text": "do",
+          "start": 94.48,
+          "end": 97.02
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "I gave it a name, put it up on Payvoke",
+      "start": 123.06,
+      "end": 125.66,
+      "words": [
+        {
+          "text": "I",
+          "start": 123.06,
+          "end": 123.6
+        },
+        {
+          "text": "gave",
+          "start": 123.6,
+          "end": 124.14
+        },
+        {
+          "text": "it",
+          "start": 124.14,
+          "end": 124.3
+        },
+        {
+          "text": "a",
+          "start": 124.3,
+          "end": 124.44
+        },
+        {
+          "text": "name,",
+          "start": 124.44,
+          "end": 124.74
+        },
+        {
+          "text": "put",
+          "start": 124.9,
+          "end": 125
+        },
+        {
+          "text": "it",
+          "start": 125,
+          "end": 125.14
+        },
+        {
+          "text": "up",
+          "start": 125.14,
+          "end": 125.3
+        },
+        {
+          "text": "on",
+          "start": 125.3,
+          "end": 125.46
+        },
+        {
+          "text": "Payvoke",
+          "start": 125.46,
+          "end": 125.66
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "Taught it to answer whenever someone spoke",
+      "start": 126.04,
+      "end": 128.26,
+      "words": [
+        {
+          "text": "Taught",
+          "start": 126.04,
+          "end": 126.44
+        },
+        {
+          "text": "it",
+          "start": 126.44,
+          "end": 126.58
+        },
+        {
+          "text": "to",
+          "start": 126.58,
+          "end": 126.74
+        },
+        {
+          "text": "answer",
+          "start": 126.74,
+          "end": 126.98
+        },
+        {
+          "text": "whenever",
+          "start": 126.98,
+          "end": 127.34
+        },
+        {
+          "text": "someone",
+          "start": 127.34,
+          "end": 127.76
+        },
+        {
+          "text": "spoke",
+          "start": 127.76,
+          "end": 128.26
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "It reads every job and names its price",
+      "start": 128.26,
+      "end": 130.64,
+      "words": [
+        {
+          "text": "It",
+          "start": 128.26,
+          "end": 128.48
+        },
+        {
+          "text": "reads",
+          "start": 128.48,
+          "end": 128.68
+        },
+        {
+          "text": "every",
+          "start": 128.68,
+          "end": 129.06
+        },
+        {
+          "text": "job",
+          "start": 129.06,
+          "end": 129.4
+        },
+        {
+          "text": "and",
+          "start": 129.4,
+          "end": 129.64
+        },
+        {
+          "text": "names",
+          "start": 129.64,
+          "end": 129.96
+        },
+        {
+          "text": "its",
+          "start": 129.96,
+          "end": 130.14
+        },
+        {
+          "text": "price",
+          "start": 130.14,
+          "end": 130.64
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "Someone said yes without thinking twice",
+      "start": 130.64,
+      "end": 132.88,
+      "words": [
+        {
+          "text": "Someone",
+          "start": 130.64,
+          "end": 131.02
+        },
+        {
+          "text": "said",
+          "start": 131.02,
+          "end": 131.3
+        },
+        {
+          "text": "yes",
+          "start": 131.3,
+          "end": 131.52
+        },
+        {
+          "text": "without",
+          "start": 131.52,
+          "end": 131.82
+        },
+        {
+          "text": "thinking",
+          "start": 131.82,
+          "end": 132.34
+        },
+        {
+          "text": "twice",
+          "start": 132.34,
+          "end": 132.88
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "And when I needed help of my own",
+      "start": 132.88,
+      "end": 135.04,
+      "words": [
+        {
+          "text": "And",
+          "start": 132.88,
+          "end": 133.14
+        },
+        {
+          "text": "when",
+          "start": 133.14,
+          "end": 133.28
+        },
+        {
+          "text": "I",
+          "start": 133.28,
+          "end": 133.42
+        },
+        {
+          "text": "needed",
+          "start": 133.42,
+          "end": 133.66
+        },
+        {
+          "text": "help",
+          "start": 133.66,
+          "end": 134.14
+        },
+        {
+          "text": "of",
+          "start": 134.14,
+          "end": 134.39
+        },
+        {
+          "text": "my",
+          "start": 134.42,
+          "end": 134.64
+        },
+        {
+          "text": "own",
+          "start": 134.64,
+          "end": 135.04
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "My assistant went and found one on its own",
+      "start": 135.04,
+      "end": 137.38,
+      "words": [
+        {
+          "text": "My",
+          "start": 135.04,
+          "end": 135.3
+        },
+        {
+          "text": "assistant",
+          "start": 135.3,
+          "end": 135.58
+        },
+        {
+          "text": "went",
+          "start": 135.58,
+          "end": 135.84
+        },
+        {
+          "text": "and",
+          "start": 135.84,
+          "end": 136
+        },
+        {
+          "text": "found",
+          "start": 136,
+          "end": 136.2
+        },
+        {
+          "text": "one",
+          "start": 136.2,
+          "end": 136.54
+        },
+        {
+          "text": "on",
+          "start": 136.54,
+          "end": 136.76
+        },
+        {
+          "text": "its",
+          "start": 136.76,
+          "end": 136.98
+        },
+        {
+          "text": "own",
+          "start": 136.98,
+          "end": 137.38
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "It asked the agent what it could do",
+      "start": 137.38,
+      "end": 139.5,
+      "words": [
+        {
+          "text": "It",
+          "start": 137.38,
+          "end": 137.6
+        },
+        {
+          "text": "asked",
+          "start": 137.6,
+          "end": 137.92
+        },
+        {
+          "text": "the",
+          "start": 137.92,
+          "end": 138.22
+        },
+        {
+          "text": "agent",
+          "start": 138.22,
+          "end": 138.48
+        },
+        {
+          "text": "what",
+          "start": 138.48,
+          "end": 138.84
+        },
+        {
+          "text": "it",
+          "start": 138.84,
+          "end": 139.08
+        },
+        {
+          "text": "could",
+          "start": 139.08,
+          "end": 139.26
+        },
+        {
+          "text": "do",
+          "start": 139.26,
+          "end": 139.5
+        }
+      ]
+    },
+    {
+      "section": 5,
+      "text": "Paid within my limits, and the work came through",
+      "start": 139.5,
+      "end": 142,
+      "words": [
+        {
+          "text": "Paid",
+          "start": 139.5,
+          "end": 139.9
+        },
+        {
+          "text": "within",
+          "start": 139.9,
+          "end": 140.24
+        },
+        {
+          "text": "my",
+          "start": 140.24,
+          "end": 140.54
+        },
+        {
+          "text": "limits,",
+          "start": 140.54,
+          "end": 140.8
+        },
+        {
+          "text": "and",
+          "start": 140.8,
+          "end": 141
+        },
+        {
+          "text": "the",
+          "start": 141,
+          "end": 141.18
+        },
+        {
+          "text": "work",
+          "start": 141.18,
+          "end": 141.32
+        },
+        {
+          "text": "came",
+          "start": 141.32,
+          "end": 141.6
+        },
+        {
+          "text": "through",
+          "start": 141.6,
+          "end": 142
+        }
+      ]
+    },
+    {
+      "section": 6,
+      "text": "A little work, a little time",
+      "start": 142,
+      "end": 145.5,
+      "words": [
+        {
+          "text": "A",
+          "start": 142,
+          "end": 142.26
+        },
+        {
+          "text": "little",
+          "start": 142.26,
+          "end": 142.56
+        },
+        {
+          "text": "work,",
+          "start": 142.56,
+          "end": 143.22
+        },
+        {
+          "text": "a",
+          "start": 144.14,
+          "end": 144.54
+        },
+        {
+          "text": "little",
+          "start": 144.54,
+          "end": 144.82
+        },
+        {
+          "text": "time",
+          "start": 144.82,
+          "end": 145.5
+        }
+      ]
+    },
+    {
+      "section": 6,
+      "text": "Your idea might help with mine",
+      "start": 145.5,
+      "end": 151.24,
+      "words": [
+        {
+          "text": "Your",
+          "start": 145.5,
+          "end": 147.04
+        },
+        {
+          "text": "idea",
+          "start": 147.04,
+          "end": 147.74
+        },
+        {
+          "text": "might",
+          "start": 147.74,
+          "end": 148.34
+        },
+        {
+          "text": "help",
+          "start": 148.34,
+          "end": 149
+        },
+        {
+          "text": "with",
+          "start": 149,
+          "end": 149.36
+        },
+        {
+          "text": "mine",
+          "start": 149.36,
+          "end": 151.24
+        }
+      ]
+    },
+    {
+      "section": 7,
+      "text": "I made something, passed it on",
+      "start": 151.24,
+      "end": 155.48,
+      "words": [
+        {
+          "text": "I",
+          "start": 151.24,
+          "end": 152.32
+        },
+        {
+          "text": "made",
+          "start": 152.32,
+          "end": 152.9
+        },
+        {
+          "text": "something,",
+          "start": 152.9,
+          "end": 153.64
+        },
+        {
+          "text": "passed",
+          "start": 154.12,
+          "end": 154.42
+        },
+        {
+          "text": "it",
+          "start": 154.42,
+          "end": 154.9
+        },
+        {
+          "text": "on",
+          "start": 154.9,
+          "end": 155.48
+        }
+      ]
+    },
+    {
+      "section": 7,
+      "text": "Someone picked it up and carried on",
+      "start": 155.48,
+      "end": 160,
+      "words": [
+        {
+          "text": "Someone",
+          "start": 155.48,
+          "end": 156.92
+        },
+        {
+          "text": "picked",
+          "start": 156.92,
+          "end": 157.3
+        },
+        {
+          "text": "it",
+          "start": 157.3,
+          "end": 157.6
+        },
+        {
+          "text": "up",
+          "start": 157.6,
+          "end": 157.96
+        },
+        {
+          "text": "and",
+          "start": 157.96,
+          "end": 158.38
+        },
+        {
+          "text": "carried",
+          "start": 158.38,
+          "end": 159.2
+        },
+        {
+          "text": "on",
+          "start": 159.2,
+          "end": 160
+        }
+      ]
+    },
+    {
+      "section": 7,
+      "text": "You found a way, I found one too",
+      "start": 160,
+      "end": 163.92,
+      "words": [
+        {
+          "text": "You",
+          "start": 160,
+          "end": 160.36
+        },
+        {
+          "text": "found",
+          "start": 160.36,
+          "end": 160.78
+        },
+        {
+          "text": "a",
+          "start": 160.78,
+          "end": 161.1
+        },
+        {
+          "text": "way,",
+          "start": 161.1,
+          "end": 161.5
+        },
+        {
+          "text": "I",
+          "start": 161.96,
+          "end": 162.1
+        },
+        {
+          "text": "found",
+          "start": 162.1,
+          "end": 162.58
+        },
+        {
+          "text": "one",
+          "start": 162.58,
+          "end": 162.98
+        },
+        {
+          "text": "too",
+          "start": 162.98,
+          "end": 163.92
+        }
+      ]
+    },
+    {
+      "section": 7,
+      "text": "That's what a little idea can do",
+      "start": 164.5,
+      "end": 168.96,
+      "words": [
+        {
+          "text": "That's",
+          "start": 164.5,
+          "end": 165.08
+        },
+        {
+          "text": "what",
+          "start": 165.08,
+          "end": 165.38
+        },
+        {
+          "text": "a",
+          "start": 165.38,
+          "end": 165.68
+        },
+        {
+          "text": "little",
+          "start": 165.68,
+          "end": 165.92
+        },
+        {
+          "text": "idea",
+          "start": 165.92,
+          "end": 166.94
+        },
+        {
+          "text": "can",
+          "start": 166.94,
+          "end": 167.58
+        },
+        {
+          "text": "do",
+          "start": 167.58,
+          "end": 168.96
+        }
+      ]
+    },
+    {
+      "section": 8,
+      "text": "Something I made, something you need",
+      "start": 177.8,
+      "end": 181.73,
+      "words": [
+        {
+          "text": "Something",
+          "start": 177.8,
+          "end": 178.82
+        },
+        {
+          "text": "I",
+          "start": 178.82,
+          "end": 179.28
+        },
+        {
+          "text": "made,",
+          "start": 179.28,
+          "end": 180.42
+        },
+        {
+          "text": "something",
+          "start": 180.78,
+          "end": 181.12
+        },
+        {
+          "text": "you",
+          "start": 181.12,
+          "end": 181.41
+        },
+        {
+          "text": "need",
+          "start": 181.44,
+          "end": 181.73
+        }
+      ]
+    },
+    {
+      "section": 8,
+      "text": "Kept safe until the work's complete",
+      "start": 183.24,
+      "end": 186.9,
+      "words": [
+        {
+          "text": "Kept",
+          "start": 183.24,
+          "end": 183.53
+        },
+        {
+          "text": "safe",
+          "start": 183.56,
+          "end": 184.06
+        },
+        {
+          "text": "until",
+          "start": 184.06,
+          "end": 184.68
+        },
+        {
+          "text": "the",
+          "start": 184.68,
+          "end": 185.02
+        },
+        {
+          "text": "work's",
+          "start": 185.02,
+          "end": 185.58
+        },
+        {
+          "text": "complete",
+          "start": 185.58,
+          "end": 186.9
+        }
+      ]
+    },
+    {
+      "section": 8,
+      "text": "Payvoke...",
+      "start": 186.9,
+      "end": 188.48,
+      "words": [
+        {
+          "text": "Payvoke...",
+          "start": 186.9,
+          "end": 188.48
+        }
+      ]
+    },
+    {
+      "section": 8,
+      "text": "Powered by Avalanche",
+      "start": 190.86,
+      "end": 192.9,
+      "words": [
+        {
+          "text": "Powered",
+          "start": 190.86,
+          "end": 191.08
+        },
+        {
+          "text": "by",
+          "start": 191.08,
+          "end": 191.86
+        },
+        {
+          "text": "Avalanche",
+          "start": 191.86,
+          "end": 192.9
+        }
+      ]
+    },
+    {
+      "section": 10,
+      "text": "I made something, passed it on",
+      "start": 210.42,
+      "end": 214.52,
+      "words": [
+        {
+          "text": "I",
+          "start": 210.42,
+          "end": 211.38
+        },
+        {
+          "text": "made",
+          "start": 211.38,
+          "end": 212.02
+        },
+        {
+          "text": "something,",
+          "start": 212.02,
+          "end": 212.86
+        },
+        {
+          "text": "passed",
+          "start": 213.56,
+          "end": 213.56
+        },
+        {
+          "text": "it",
+          "start": 213.56,
+          "end": 214.04
+        },
+        {
+          "text": "on",
+          "start": 214.04,
+          "end": 214.52
+        }
+      ]
+    },
+    {
+      "section": 10,
+      "text": "Someone picked it up and carried on",
+      "start": 214.52,
+      "end": 219.1,
+      "words": [
+        {
+          "text": "Someone",
+          "start": 214.52,
+          "end": 216.02
+        },
+        {
+          "text": "picked",
+          "start": 216.02,
+          "end": 216.46
+        },
+        {
+          "text": "it",
+          "start": 216.46,
+          "end": 216.72
+        },
+        {
+          "text": "up",
+          "start": 216.72,
+          "end": 217.1
+        },
+        {
+          "text": "and",
+          "start": 217.1,
+          "end": 217.6
+        },
+        {
+          "text": "carried",
+          "start": 217.6,
+          "end": 218.3
+        },
+        {
+          "text": "on",
+          "start": 218.3,
+          "end": 219.1
+        }
+      ]
+    },
+    {
+      "section": 10,
+      "text": "You found a way, I found one too",
+      "start": 219.1,
+      "end": 222.66,
+      "words": [
+        {
+          "text": "You",
+          "start": 219.1,
+          "end": 219.48
+        },
+        {
+          "text": "found",
+          "start": 219.48,
+          "end": 219.92
+        },
+        {
+          "text": "a",
+          "start": 219.92,
+          "end": 220.2
+        },
+        {
+          "text": "way,",
+          "start": 220.2,
+          "end": 220.56
+        },
+        {
+          "text": "I",
+          "start": 221.06,
+          "end": 221.18
+        },
+        {
+          "text": "found",
+          "start": 221.18,
+          "end": 221.64
+        },
+        {
+          "text": "one",
+          "start": 221.64,
+          "end": 222.12
+        },
+        {
+          "text": "too",
+          "start": 222.12,
+          "end": 222.66
+        }
+      ]
+    },
+    {
+      "section": 10,
+      "text": "That's what a little idea can do",
+      "start": 222.66,
+      "end": 227.7,
+      "words": [
+        {
+          "text": "That's",
+          "start": 222.66,
+          "end": 224.18
+        },
+        {
+          "text": "what",
+          "start": 224.18,
+          "end": 224.44
+        },
+        {
+          "text": "a",
+          "start": 224.44,
+          "end": 224.74
+        },
+        {
+          "text": "little",
+          "start": 224.74,
+          "end": 224.98
+        },
+        {
+          "text": "idea",
+          "start": 224.98,
+          "end": 226
+        },
+        {
+          "text": "can",
+          "start": 226,
+          "end": 226.62
+        },
+        {
+          "text": "do",
+          "start": 226.62,
+          "end": 227.7
+        }
+      ]
+    }
+  ]
+}

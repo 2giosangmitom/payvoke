@@ -46,7 +46,7 @@ export function CommandCard({
           {revision.options.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
               {revision.options.map((option) => (
-                <span
+                <code
                   key={option.name}
                   className="inline-flex items-baseline gap-2 border border-border px-2.5 py-1.5 font-mono text-xs"
                 >
@@ -55,7 +55,7 @@ export function CommandCard({
                     {option.type.toLowerCase()}
                     {option.required ? " · required" : ""}
                   </small>
-                </span>
+                </code>
               ))}
             </div>
           )}

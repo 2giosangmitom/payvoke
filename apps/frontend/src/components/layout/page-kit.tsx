@@ -292,7 +292,7 @@ export function CardGridSkeleton({
   return (
     <Loading label={label} className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}>
       {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="flex min-h-64 flex-col border border-border bg-card">
+        <div key={index} className="flex min-h-60 flex-col border border-border bg-card">
           <div className="flex items-center gap-3 px-5 pt-5">
             <Skeleton className="size-10" />
             <Skeleton className="h-5 w-20" />

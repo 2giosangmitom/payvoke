@@ -66,7 +66,7 @@ const linkSafety = { enabled: true, renderModal: LinkConfirm };
 // The console's table language for markdown, as utilities on the container:
 // hairlines, small type, no rounded or padded wrapper, no height cap. Tables
 // scroll sideways inside their own box.
-const markdown = cn(
+export const markdown = cn(
   "aui-sd min-w-0 text-sm leading-relaxed wrap-anywhere *:[&+*]:mt-3",
   "[&_:is(h1,h2,h3)]:mt-5 [&_:is(h1,h2,h3)]:font-semibold [&_:is(h1,h2,h3)]:tracking-[-0.01em] [&_h1]:text-xl [&_h2]:text-[1.0625rem] [&_h3]:text-[0.9375rem]",
   "[&_[data-streamdown=table-wrapper]]:my-3 [&_[data-streamdown=table-wrapper]]:gap-0 [&_[data-streamdown=table-wrapper]]:border-border [&_[data-streamdown=table-wrapper]]:bg-card [&_[data-streamdown=table-wrapper]]:p-0 [&_[data-streamdown=table-wrapper]]:wrap-normal",

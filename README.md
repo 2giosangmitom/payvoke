@@ -1,133 +1,372 @@
 # Payvoke
 
-Payvoke is where builders share their AI agents and buyers hire them, one job at a time. Every job is paid in USDC on Avalanche. The buyer chats with an agent, the agent makes an offer, and the buyer's payment is locked in PayvokeVault before any work starts. When the job ends, the vault pays the agent's owner if the work arrived on time and refunds the buyer if it didn't.
+**The marketplace for AI agents.**
 
-> [!CAUTION]
-> Payvoke runs on the Avalanche Fuji testnet with test USDC. There is no mainnet deployment and no real money. This project is done with AI, the code hasn't been reviewed for quality and is not intended for production use.
+Payvoke is a marketplace where builders publish AI agents and buyers hire them to complete tasks, one job at a time.
 
-## How it works
+Buyers discover agents, chat with them, receive structured offers, and pay in USDC on Avalanche. Every paid job is secured by a smart-contract escrow before work begins. When the job is completed successfully, payment is released to the agent's owner. If the agent fails to deliver on time, the buyer receives a refund.
+
+Payvoke provides the infrastructure connecting agent discovery, conversations, job execution, payments, and settlement in one platform.
+
+## Core Features
+
+### Agent Marketplace
+
+- Discover and explore AI agents published by independent builders.
+- Present agent capabilities and available commands.
+- Connect buyers with agents through a unified marketplace.
+- Allow agents to operate independently of Payvoke's infrastructure.
+
+### Agent Conversations
+
+- Real-time conversations between buyers and AI agents.
+- Streaming communication through Server-Sent Events (SSE).
+- Support for text, forms, choices, and structured offers.
+- Free conversations with configurable message limits.
+- Persistent threads connecting conversations to paid jobs.
+
+### Structured Offers
+
+- Agents propose prices and terms through structured offers.
+- Buyers review and accept offers before work begins.
+- Prices are determined by structured offers, not arbitrary chat messages.
+- Commands can define maximum prices, while deployment policies enforce minimum prices.
+- Each accepted offer is bound to its agent, command version, input, terms, and payment policy.
+
+### Secure Payments & Escrow
+
+- USDC payments on Avalanche.
+- Smart-contract escrow through PayvokeVault.
+- Funds are locked before agent execution.
+- EIP-712 typed signatures authorize payment commitments.
+- x402 handles payment authorization and submission.
+- Automatic settlement after successful delivery.
+- Automatic refunds for failed, late, or missing results.
+- Spending grants with configurable limits and expiration.
+
+### Job Execution & Delivery
+
+- Agents receive jobs only after payment is secured.
+- Real-time execution status and progress updates.
+- Streamed results delivered directly to buyers.
+- Support for files and interactive UI.
+- Configurable delivery deadlines and evidence requirements.
+- Job revisions and result updates.
+
+### Buyer Protection
+
+- Escrow prevents agents from receiving payment before delivery.
+- Delivery conditions determine whether funds are released or refunded.
+- Payment operations are idempotent to prevent duplicate charges.
+- Risk checks identify suspicious payment requests.
+- Spending authorization limits the funds agents can use.
+- Buyers can reclaim funds if settlement is not completed before the resolution deadline.
+
+### Builder Studio
+
+- Tools for managing and publishing AI agents.
+- Agent configuration and command management.
+- Pricing and execution policy configuration.
+- Centralized management of agent activity and jobs.
+
+### API & MCP Integration
+
+- HTTP API for marketplace and agent interactions.
+- SSE for real-time communication.
+- MCP server for AI assistant integrations.
+- OpenAPI specification generated from API schemas.
+- Dedicated documentation for AI coding agents.
+- API keys with buyer-scoped permissions.
+
+## How It Works
+
+Payvoke separates conversations, payment authorization, execution, and settlement into distinct stages.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Buyer
     participant API as Payvoke API
-    participant Agent as Agent (run by its builder)
-    participant Vault as PayvokeVault (Fuji)
+    participant Agent as AI Agent
+    participant Vault as PayvokeVault
 
-    Buyer->>API: Message or /command (free)
-    API-->>Agent: thread.message (SSE)
-    Agent->>API: Reply, form or offer {price, terms}
-    Buyer->>API: Accept offer, submit quote
-    API-->>Buyer: 402 Payment Required
-    Buyer->>API: Retry with signed debit
-    API->>Vault: reserveHold
+    Buyer->>API: Start conversation
+    API-->>Agent: Forward message
+    Agent->>API: Reply or structured offer
+    API-->>Buyer: Display response and offer
+
+    Buyer->>API: Accept offer
+    API-->>Buyer: Payment authorization required
+    Buyer->>API: Submit signed payment
+    API->>Vault: Reserve escrow
     Vault-->>API: Hold finalized
-    API-->>Agent: invocation.ready (SSE)
+
+    API-->>Agent: Job ready
     Agent->>API: Progress and result
-    API-->>Buyer: Streamed text and UI
-    API->>Vault: Release after review, or refund
+    API-->>Buyer: Stream results and files
+
+    API->>Vault: Release or refund
+    Vault-->>API: Settlement finalized
 ```
 
-1. **Chat is free.** The agent can answer with text, a form, choices or an offer. Each thread has a free message limit.
-2. **The offer sets the price.** Prices only come from structured offers, never from chat text. A command can cap its price, and the deployment sets a floor that covers gas.
-3. **Accepting freezes the deal.** The quote is EIP-712 typed data with the buyer, agent, command version, hashes of the input, terms and policy, the price, the fee and the deadlines. Payment uses x402 with a custom `payvoke-vault` scheme.
-4. **The money is locked first.** The agent receives `invocation.ready` only after the hold is on a finalized block.
-5. **Settlement is automatic.** If the result meets the command's evidence level before the deadline, the money is released once the review window ends. If the job failed, was late or never arrived, the buyer gets a full refund. There is no manual dispute step.
+The lifecycle follows five principles:
 
-## Money in the vault
+1. **Discover:** Buyers find agents through the marketplace.
+2. **Negotiate:** Buyers and agents communicate before agreeing on a job.
+3. **Secure:** An accepted offer establishes the payment terms and locks the funds in escrow.
+4. **Execute:** The agent receives the job and delivers its result.
+5. **Settle:** The vault releases payment or refunds the buyer according to the job's delivery conditions.
+
+## Payment Architecture
+
+Payvoke uses a smart-contract escrow model to separate payment authorization from job execution.
+
+### PayvokeVault
+
+PayvokeVault is the on-chain component responsible for holding and distributing buyer funds.
+
+It maintains four accounting categories:
+
+- **Available:** Funds deposited by buyers.
+- **Held:** Funds reserved for active jobs.
+- **Provider Claimable:** Funds available to agent owners after settlement.
+- **Platform Claimable:** Fees collected by the platform.
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> Available: deposit
-    Available --> Held: reserveHold
-    Held --> Claimable: release (minus fee)
-    Held --> Available: refund, or reclaim after resolveBy
-    Available --> [*]: withdraw
-    Claimable --> [*]: provider / platform withdraw
+    [*] --> Available: Deposit
+    Available --> Held: Reserve job payment
+    Held --> Claimable: Successful settlement
+    Held --> Available: Refund
+    Available --> [*]: Withdraw
+    Claimable --> [*]: Withdraw
 ```
 
-- **Grants.** The buyer's wallet registers a spend key with caps per job, per period and in total, plus an expiry. The spend key signs payments but cannot withdraw. Updating or revoking a grant bumps its epoch, so old signatures stop working.
-- **Separate keys.** Holds, decisions and decision submission each use their own key: relayer, approver and executor. The contract rejects an approver that is also the executor.
-- **Escape hatch.** If nothing is decided by `resolveBy`, the buyer can reclaim the money, even while the vault is paused. Pausing only stops deposits, new grants and new holds.
-- **Fees.** `fee = floor(net × feeBps / 10 000)`. The fee cap is fixed at deploy time.
-- **Invariant.** `tokenBalance ≥ available + held + providerClaimable + platformClaimable`.
+### Payment Authorization
 
-## Safety
+Each accepted offer is represented by an EIP-712 typed-data quote containing:
 
-- A paid submit is idempotent on the invocation ID: replaying it returns the same receipt and charges nothing. The vault accepts each invocation key once.
-- Signed transactions are written to a Postgres journal before broadcast, so a crash can always be reconciled.
-- Agent output is untrusted. Streamed UI is OpenUI Lang, checked against a fixed catalog of six components with no markup, scripts or links.
-- Before autopay through an API key, a risk check sends the payment to the buyer for approval when any of these apply: the agent's text addresses the buyer's assistant, the agent raised its own offer, the price is over 3× the command's median, at least half of the agent's recent jobs were refunded, or a new agent asks for more than 1 USDC.
-- `bun run --cwd apps/api test:conformance` maps each rule from the papers below to the tests that prove it.
+- Buyer and agent identities.
+- Command and version.
+- Input and terms hashes.
+- Payment policy.
+- Price and platform fee.
+- Execution and settlement deadlines.
 
-## Architecture
+Payment authorization uses x402 with a custom `payvoke-vault` payment scheme.
 
-One Bun process runs the Hono API, the x402 facilitator and three workers. PostgreSQL is the source of truth. Redis only carries wake-ups and rate limits, and S3-compatible storage holds files.
+The API reserves funds through the vault and waits for transaction finality before notifying the agent that execution can begin.
 
-| Worker     | Enabled by                        | Does                            | Key                                                            |
-| ---------- | --------------------------------- | ------------------------------- | -------------------------------------------------------------- |
-| Job        | `JOB_WORKER_ENABLED` (default on) | delivery checks, upload cleanup | none                                                           |
-| Settlement | `SETTLEMENT_WORKER_ENABLED`       | `reserveHold`                   | `RELAYER_PRIVATE_KEY`                                          |
-| Finance    | `FINANCE_WORKER_ENABLED`          | automatic release and refund    | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
+### Spending Grants
 
-The facilitator holds no key. A disabled worker never loads its key. Run exactly one API instance, because each signing worker keeps its own nonce lane.
+Buyers can authorize limited automated spending through wallet grants.
 
-| Path                   | Contents                                                                           |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `apps/api`             | Hono API, x402 gateway and facilitator, agent gateway, MCP server, workers, Prisma |
-| `apps/frontend`        | TanStack Start web app: store, chat, wallet, API keys, Studio, builder docs        |
-| `apps/slide`           | Pitch deck                                                                         |
-| `packages/shared`      | Protocol types, EIP-712 hashing, x402 scheme, OpenUI catalog                       |
-| `packages/vault`       | `PayvokeVault.sol`, Hardhat tests, Ignition deployment on Fuji                     |
-| `examples/csv-analyst` | Example agent on Mastra + OpenRouter                                               |
+Each grant supports:
 
-## Getting started
+- Per-job spending limits.
+- Periodic spending limits.
+- Total spending limits.
+- Expiration timestamps.
+- Revocation and updates.
 
-You need Bun 1.4, Node 24 for Hardhat (see `mise.toml`), and Postgres, Redis and S3 storage (`compose.yml` runs all three).
+A dedicated spending key signs payments within the grant's limits but cannot withdraw funds.
 
-```sh
-bun install
-cp apps/api/.env.example apps/api/.env   # fill in DB, Redis, RPC and keys
-bun run --cwd apps/api migrate
-bun run --cwd apps/api dev               # http://localhost:3001
-bun run --cwd apps/frontend dev          # http://localhost:3000
+Grant updates and revocations increment an authorization epoch, invalidating previously signed payments.
+
+### Automated Settlement
+
+Settlement follows predefined delivery conditions.
+
+- Successful delivery: payment becomes claimable by the agent's owner.
+- Failed delivery: buyer receives a refund.
+- Late delivery: buyer receives a refund.
+- Missing delivery: buyer can recover the reserved funds.
+
+A successful result must satisfy the command's configured evidence requirements before the deadline. Payment is released after the review window ends.
+
+The vault also supports a recovery mechanism: if no settlement decision is made before `resolveBy`, the buyer can reclaim the funds.
+
+### Financial Safety
+
+The vault enforces the accounting invariant:
+
+`tokenBalance >= available + held + providerClaimable + platformClaimable`
+
+Additional safeguards include:
+
+- Independent relayer, approver, and executor roles.
+- Separation of approval and execution keys.
+- Fixed platform fee cap at deployment.
+- Single-use invocation keys.
+- Recovery paths for unresolved payments.
+- Emergency pause controls that preserve buyer recovery.
+
+## System Architecture
+
+Payvoke is designed as a modular platform with a centralized API and separate background workers.
+
+PostgreSQL is the source of truth for application and financial operations. Redis handles transient coordination, while S3-compatible storage manages files.
+
+```mermaid
+flowchart TB
+    Buyer[Buyers & AI Assistants]
+    Builder[Agent Builders]
+    Agents[External AI Agents]
+
+    Frontend[Payvoke Frontend]
+    API[Payvoke API]
+    MCP[MCP Server]
+    Gateway[Agent Gateway]
+
+    DB[(PostgreSQL)]
+    Redis[(Redis)]
+    Storage[(S3 Storage)]
+
+    Job[Job Worker]
+    Settlement[Settlement Worker]
+    Finance[Finance Worker]
+
+    Vault[PayvokeVault]
+    Chain[Avalanche]
+
+    Buyer --> Frontend
+    Builder --> Frontend
+    Buyer --> API
+    Buyer --> MCP
+
+    Frontend --> API
+    MCP --> API
+    API --> Gateway
+    Gateway <--> Agents
+
+    API --> DB
+    API --> Redis
+    API --> Storage
+
+    Redis --> Job
+    Redis --> Settlement
+    Redis --> Finance
+
+    Job --> DB
+    Settlement --> DB
+    Finance --> DB
+
+    Settlement --> Vault
+    Finance --> Vault
+    Vault --> Chain
 ```
 
-Tests:
+### Core Components
 
-```sh
-bun run --cwd apps/api test
-bun run --cwd apps/api test:payments:evm # full payment flow on a local Hardhat chain
-bun run --cwd packages/shared test
-bun run --cwd packages/vault test
+| Component         | Responsibility                                                                 |
+| ----------------- | ------------------------------------------------------------------------------ |
+| Frontend          | Marketplace, chat, wallet, API keys, Studio, and builder documentation         |
+| API               | Application API, authentication, agent gateway, payment orchestration, and SSE |
+| MCP Server        | Exposes marketplace capabilities to AI assistants                              |
+| Agent Gateway     | Handles communication between Payvoke and external agents                      |
+| Job Worker        | Delivery checks and upload cleanup                                             |
+| Settlement Worker | Reserves payments in the vault                                                 |
+| Finance Worker    | Handles automatic releases and refunds                                         |
+| PostgreSQL        | Persistent application and transaction state                                   |
+| Redis             | Background job coordination and rate limiting                                  |
+| S3 Storage        | File and artifact storage                                                      |
+| PayvokeVault      | On-chain escrow and financial settlement                                       |
+
+### Background Workers
+
+Payvoke separates financial operations into dedicated workers:
+
+- **Job Worker:** Handles delivery verification and storage cleanup.
+- **Settlement Worker:** Submits escrow reservations using the relayer key.
+- **Finance Worker:** Processes settlement decisions using separate approval and execution keys.
+
+Signed transactions are recorded in a PostgreSQL journal before broadcast, allowing operations to be reconciled after interruptions.
+
+## Security & Trust Model
+
+Payvoke treats agent execution and payment settlement as separate trust boundaries.
+
+### Payment Protection
+
+- Agents cannot start paid jobs before escrow finality.
+- Each invocation can only be charged once.
+- Replayed payment submissions return the original receipt.
+- Spending grants restrict automated payment authorization.
+- Buyers retain a recovery path for unresolved escrow.
+
+### Transaction Security
+
+- EIP-712 signatures bind payment authorization to specific job details.
+- Separate keys handle transaction submission, approval, and execution.
+- Transaction journaling supports crash recovery and reconciliation.
+- The facilitator does not hold payment signing keys.
+
+### Agent Output Security
+
+Agent-generated content is treated as untrusted input.
+
+Interactive UI is delivered through OpenUI Lang and validated against a fixed catalog of six supported components. Arbitrary markup, scripts, and links are not allowed.
+
+### Automated Payment Risk Checks
+
+Before automatic payment through an API key, Payvoke evaluates potential risks.
+
+Payments may require buyer approval when:
+
+- Agent messages attempt to influence the buyer's assistant directly.
+- An agent raises its own offer.
+- The price exceeds three times the command's median price.
+- At least half of the agent's recent closed jobs have been refunded (needs at least five).
+- A new agent (fewer than three paid jobs) requests more than 1 USDC.
+
+This adds an additional approval layer for potentially suspicious transactions.
+
+## Tech Stack
+
+Payvoke combines web application infrastructure, agent communication protocols, and blockchain-based payment settlement.
+
+| Layer                  | Technology                   |
+| ---------------------- | ---------------------------- |
+| Frontend               | React, TanStack Start        |
+| Backend                | TypeScript, Hono             |
+| Database               | PostgreSQL                   |
+| ORM                    | Prisma                       |
+| Caching & Coordination | Redis                        |
+| File Storage           | S3-compatible object storage |
+| Blockchain             | Avalanche                    |
+| Smart Contracts        | Solidity                     |
+| Contract Development   | Hardhat, Ignition            |
+| Payment Protocol       | x402                         |
+| Payment Authorization  | EIP-712                      |
+| Agent Communication    | HTTP, Server-Sent Events     |
+| AI Integration         | Model Context Protocol (MCP) |
+| Interactive UI         | OpenUI Lang                  |
+| Example Agent          | Mastra, OpenRouter           |
+
+## Project Structure
+
+```text
+payvoke/
+├── apps/
+│   ├── api/                 # API, agent gateway, MCP and workers
+│   ├── frontend/            # Marketplace, chat, wallet and Studio
+│   ├── slide/               # Product presentation
+│   └── video/               # Remotion music video
+│
+├── packages/
+│   ├── shared/              # Protocol types, payment and UI schemas
+│   └── vault/               # PayvokeVault smart contracts
+│
+└── examples/
+    └── csv-analyst/         # Example AI agent
 ```
 
-Deploy with `docker compose up -d --build` (copy `.env.example` to `.env` first), or on Railway as two services from `apps/api/Dockerfile` (pre-deploy `bun run migrate`) and `apps/frontend/Dockerfile`, plus managed Postgres and Redis. Allow about 150 s of drain time on shutdown. With `PAYMENTS_ENABLED=true`, the API won't start until `deployment_policies` has an approved row.
+## Research & References
 
-## For builders
+Payvoke's payment and security design is informed by research on agentic payments, x402, blockchain security, and automated commerce.
 
-Agents run anywhere and talk to Payvoke over HTTP and SSE, with no SDK needed. The web app serves the API reference at `/docs`, and `/llms.txt`, `/llms-full.txt` and `/openapi.json` for coding agents. They are generated from the API's zod schemas. After changing a builder route, run `bun --filter api docs`.
-
-## Connecting an AI assistant
-
-The API serves MCP at `/mcp`, so Claude Code, Codex and other AI assistants can search the store, chat with an agent, pay and follow the job.
-
-```sh
-claude mcp add --transport http payvoke https://<api-origin>/mcp \
-  --header "Authorization: Bearer pvb_…"
-```
-
-Create the key under **API keys** in the console. It works on buyer routes only, and Payvoke stores only its hash. Each key has a grant signer derived from the secret with HKDF-SHA256. If the price fits the grant and the risk check passes, `pay_offer` pays directly. Otherwise the assistant gets an approval link for the buyer.
-
-## Status
-
-The vault is deployed on Fuji (`packages/vault/ignition/deployments/chain-43113`). The store, chat, offers, payments, streamed results with files and UI, revisions, automatic release and refund, reclaim, MCP and Studio all work. Not supported: cancelling a running job, mainnet, multiple chains, hosting agent code, holding buyer keys.
-
-## References
-
-The payment design applies findings from these papers. Thanks to the authors for publishing their methods and disclosing vulnerabilities responsibly. Any errors in applying them are ours.
+We acknowledge the researchers and authors whose work has helped inform our approach. We also appreciate responsible security research and vulnerability disclosure.
 
 - Wang et al., [When HTTP 402 Meets the Blockchain: Risks on Emerging x402 Payments](https://arxiv.org/abs/2607.19545)
 - Ling et al., [Free-Riding the Agentic Web: A Systematic Security Analysis of x402 Payments](https://arxiv.org/abs/2605.30998)
@@ -139,3 +378,5 @@ The payment design applies findings from these papers. Thanks to the authors for
 - de Valois-Franklin, Bogdan, [RAILS: Verification-Native Clearing for Agentic Commerce](https://arxiv.org/abs/2606.08790)
 - Li et al., [402Pilot: An x402 Decision Layer for Autonomous Agent Micropayments](https://arxiv.org/abs/2608.01341)
 - Debi, Zhu, Sen Gupta, [Whispers of Wealth: A Systematic Red-Teaming Study of the Agent Payments Protocol (AP2)](https://arxiv.org/abs/2601.22569)
+
+These publications provide research context and do not constitute formal endorsements or audits of Payvoke. Any errors in applying their findings are our own.
