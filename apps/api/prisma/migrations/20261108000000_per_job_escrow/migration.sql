@@ -27,6 +27,18 @@ WHERE "state" IN ('APPROVED', 'RESERVED', 'SIGNED', 'BROADCAST', 'UNKNOWN');
 -- Grants live in the vault; v1 grants do not exist on v2 and are registered again.
 DELETE FROM "vault_grants";
 
+-- The active policy moves to the v2 Fuji vault (packages/vault/ignition/deployments/chain-43113,
+-- PayvokeVaultV2#PayvokeVault). Policies are versioned: the old one is kept, retired.
+-- No-op on a database without an active policy (fresh and test databases).
+INSERT INTO "deployment_policies" ("version", "activeSlot", "vault", "feeBps", "feeRecipient", "quoteLifetimeSeconds", "maxHoldSeconds", "resolutionGraceSeconds", "minGrossAmount")
+SELECT "version" || '+vault-v2', NULL, '0xc8d77919e1D9A473eB8D45C729613943eaF6f034', "feeBps", "feeRecipient", "quoteLifetimeSeconds", "maxHoldSeconds", "resolutionGraceSeconds", "minGrossAmount"
+FROM "deployment_policies"
+WHERE "activeSlot" = 'active' AND lower("vault") <> lower('0xc8d77919e1D9A473eB8D45C729613943eaF6f034');
+UPDATE "deployment_policies" SET "activeSlot" = NULL
+WHERE "activeSlot" = 'active' AND EXISTS (SELECT 1 FROM "deployment_policies" WHERE "version" LIKE '%+vault-v2' AND "activeSlot" IS NULL);
+UPDATE "deployment_policies" SET "activeSlot" = 'active'
+WHERE "version" LIKE '%+vault-v2' AND NOT EXISTS (SELECT 1 FROM "deployment_policies" WHERE "activeSlot" = 'active');
+
 -- AlterTable: existing rows were all grant debits.
 ALTER TABLE "settlement_operations" ADD COLUMN "fundingMode" "FundingMode" NOT NULL DEFAULT 'GRANT',
 ADD COLUMN "grantId" TEXT;
