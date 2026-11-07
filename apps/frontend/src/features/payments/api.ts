@@ -1,12 +1,17 @@
 import {
+  authorizationPayment,
+  authorizationTypedData,
   debitTypedData,
+  grantPayment,
   paymentSignatureHeader,
   validateQuoteDocument,
+  type PaymentBody,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
-import { vaultAdmissionAbi } from "@payvoke/shared/protocol";
-import type { Address, Hex } from "viem";
+import { usdcAbi, vaultAdmissionAbi } from "@payvoke/shared/protocol";
+import type { Address, Hex, PublicClient } from "viem";
 import { ApiError, apiOrigin, call, callAs, client } from "@/src/lib/api/client";
+import { usdc } from "@/src/features/wallet/api";
 
 const invocations = client.v1.invocations;
 
@@ -32,62 +37,59 @@ export const getPendingQuote = (quoteId: string) =>
     client.v1.quotes[":quoteId"].$get({ param: { quoteId } }),
   );
 
-export type WalletGrant = {
-  signer: Address;
-  epoch: bigint;
-  expiresAt: number;
-  maxPerCall: bigint;
-  periodSeconds: number;
-  maxPerPeriod: bigint;
-  maxTotal: bigint;
-  spentTotal: bigint;
-  spentInPeriod: bigint;
-  currentPeriod: bigint;
-  revoked: boolean;
-};
+type Reader = Pick<PublicClient, "readContract">;
 
-// The UI must check the active on-chain grant before presenting the wallet signature request.
+function checkQuote(quote: QuoteDocument, buyer: Address) {
+  validateQuoteDocument(quote, quote.vault as Address, buyer);
+  if (quote.network !== "eip155:43113" || Date.now() >= quote.validUntil * 1000)
+    throw new Error("Quote expired or wrong network.");
+}
+
+// The job is funded from the buyer's wallet, so the wallet must hold it.
+export async function checkWallet(quote: QuoteDocument, buyer: Address, client: Reader) {
+  checkQuote(quote, buyer);
+  const amount = BigInt(quote.grossAmount);
+  const balance = await client.readContract({
+    address: quote.asset as Address,
+    abi: usdcAbi,
+    functionName: "balanceOf",
+    args: [buyer],
+  });
+  if (balance < amount)
+    throw new Error(
+      `Your wallet holds ${usdc(balance)} USDC; this job needs ${usdc(amount)} USDC.`,
+    );
+}
+
+// The UI checks the active on-chain grant before a one-click key signs: its
+// limits, and that the vault may still pull the price from the wallet.
 export async function checkGrant(
   quote: QuoteDocument,
   grantId: Hex,
   buyer: Address,
-  wallet: Address,
-  read: (args: {
-    address: Address;
-    abi: typeof vaultAdmissionAbi;
-    functionName: "getGrant" | "availableBalance";
-    args: readonly [Address, Hex] | readonly [Address];
-  }) => Promise<unknown>,
+  signer: Address,
+  client: Reader,
 ): Promise<{ epoch: bigint }> {
-  validateQuoteDocument(quote, quote.vault as Address, buyer);
-  if (quote.network !== "eip155:43113" || Date.now() >= quote.validUntil * 1000)
-    throw new Error("Quote expired or wrong network.");
-  const raw = await read({
-    address: quote.vault as Address,
-    abi: vaultAdmissionAbi,
-    functionName: "getGrant",
-    args: [buyer, grantId],
-  });
-  const grant = raw as {
-    config: {
-      signer: Address;
-      expiresAt: number;
-      maxPerCall: bigint;
-      periodSeconds: number;
-      maxPerPeriod: bigint;
-      maxTotal: bigint;
-    };
-    epoch: bigint;
-    spentTotal: bigint;
-    spentInPeriod: bigint;
-    currentPeriod: bigint;
-    revoked: boolean;
-  };
+  await checkWallet(quote, buyer, client);
+  const vault = quote.vault as Address;
+  const [grant, allowance] = await Promise.all([
+    client.readContract({
+      address: vault,
+      abi: vaultAdmissionAbi,
+      functionName: "getGrant",
+      args: [buyer, grantId],
+    }),
+    client.readContract({
+      address: quote.asset as Address,
+      abi: usdcAbi,
+      functionName: "allowance",
+      args: [buyer, vault],
+    }),
+  ]);
   if (
-    !grant ||
     grant.revoked ||
     grant.epoch === 0n ||
-    grant.config.signer.toLowerCase() !== wallet.toLowerCase() ||
+    grant.config.signer.toLowerCase() !== signer.toLowerCase() ||
     Number(grant.config.expiresAt) <= Math.floor(Date.now() / 1000)
   )
     throw new Error("Grant is missing, expired, revoked or delegated to another signer.");
@@ -101,17 +103,25 @@ export async function checkGrant(
     grant.spentTotal + amount > grant.config.maxTotal
   )
     throw new Error("Grant spending limits exceeded.");
-  const available = await read({
-    address: quote.vault as Address,
-    abi: vaultAdmissionAbi,
-    functionName: "availableBalance",
-    args: [buyer],
-  });
-  if (BigInt(available as bigint) < amount) throw new Error("Insufficient vault balance.");
+  if (allowance < amount)
+    throw new Error(
+      "The one-click allowance left is below this price. Raise the limit or sign in your wallet.",
+    );
   return { epoch: grant.epoch };
 }
 
-export async function submitSigned(
+// Pays with the buyer's own wallet: one USDC authorization for this quote,
+// no gas and no deposit. The relayer moves it into the escrow.
+export async function payFromWallet(
+  quote: QuoteDocument,
+  sign: (args: ReturnType<typeof authorizationTypedData>) => Promise<Hex>,
+) {
+  if (Date.now() >= quote.validUntil * 1000) throw new Error("Quote expired. Prepare a new quote.");
+  await submitPayment(quote, authorizationPayment(await sign(authorizationTypedData(quote))));
+}
+
+// Pays with a spending grant's key (one-click or a coding agent).
+export async function payWithGrant(
   quote: QuoteDocument,
   grantId: Hex,
   epoch: bigint,
@@ -119,13 +129,11 @@ export async function submitSigned(
 ) {
   if (Date.now() >= quote.validUntil * 1000) throw new Error("Quote expired. Prepare a new quote.");
   const signature = await sign(debitTypedData(quote, grantId, epoch));
-  const header = paymentSignatureHeader(
-    quote,
-    grantId,
-    epoch,
-    signature,
-    new URL("/v1/invocations", apiOrigin).href,
-  );
+  await submitPayment(quote, grantPayment(quote, grantId, epoch, signature));
+}
+
+async function submitPayment(quote: QuoteDocument, payload: PaymentBody) {
+  const header = paymentSignatureHeader(quote, payload, new URL("/v1/invocations", apiOrigin).href);
   try {
     await call(
       invocations.$post(

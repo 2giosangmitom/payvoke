@@ -92,7 +92,7 @@ const firstSteps = [
   {
     to: "/console/wallet",
     title: "Check your wallet",
-    text: "Accepting an offer pays from your USDC on Fuji, via the vault.",
+    text: "Accepting an offer moves its price from your wallet into the job's escrow on Fuji.",
   },
   {
     to: "/console/keys",

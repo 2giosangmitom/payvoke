@@ -2,9 +2,8 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { erc20Abi, type Address } from "viem";
-import { useConnection, useReadContract, useReadContracts } from "wagmi";
+import { useConnection, useReadContract } from "wagmi";
 import { avalancheFuji } from "wagmi/chains";
-import { vaultAdmissionAbi, vaultFinanceAbi } from "@payvoke/shared/protocol";
 import { Button } from "@/src/components/ui/button";
 import { Skeleton } from "@/src/components/ui/skeleton";
 import {
@@ -19,7 +18,7 @@ import { getStats } from "@/src/features/people/api";
 import { AmountChart } from "@/src/features/stats/day-chart";
 import { getWallet, usdc, type WalletSummary } from "@/src/features/wallet/api";
 import { OneClickSection } from "@/src/features/wallet/one-click-pay";
-import { EarningsWithdraw, FundsPanel } from "@/src/features/wallet/vault-actions";
+import { ClaimDeferred, useClaimable } from "@/src/features/wallet/vault-actions";
 import { cn } from "@/src/lib/utils";
 
 type Row = {
@@ -177,9 +176,9 @@ function LedgerTable({ title, id, rows }: { title: string; id: string; rows: Row
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-// Live balances: USDC in the wallet (only offered as the deposit max), the
-// vault's free balance, and what the vault owes the account's payout
-// addresses. Null when unreadable.
+// Live balances: USDC in the wallet (jobs are paid from it), the allowance
+// one-click and API keys draw on, and anything the vault could not deliver to
+// the account's payout addresses. Null when unreadable.
 function useChainBalances(summary: WalletSummary | undefined, address: Address | undefined) {
   const vault = (summary?.vault ?? undefined) as Address | undefined;
   const payouts = (summary?.provider.payoutAddresses ?? []) as Address[];
@@ -192,33 +191,19 @@ function useChainBalances(summary: WalletSummary | undefined, address: Address |
     args: address ? [address] : undefined,
     query: { ...live, enabled: Boolean(summary && address) },
   });
-  const available = useReadContract({
+  const allowance = useReadContract({
     chainId: avalancheFuji.id,
-    address: vault,
-    abi: vaultAdmissionAbi,
-    functionName: "availableBalance",
-    args: address ? [address] : undefined,
-    query: { ...live, enabled: Boolean(vault && address) },
+    address: summary?.usdc as Address | undefined,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: address && vault ? [address, vault] : undefined,
+    query: { ...live, enabled: Boolean(summary && address && vault) },
   });
-  const claimable = useReadContracts({
-    allowFailure: false,
-    contracts: payouts.map((payout) => ({
-      chainId: avalancheFuji.id,
-      address: vault,
-      abi: vaultFinanceAbi,
-      functionName: "providerClaimable" as const,
-      args: [payout] as const,
-    })),
-    query: { ...live, enabled: Boolean(vault && payouts.length) },
-  });
+  const claimable = useClaimable(vault ?? null, payouts);
   return {
     wallet: wallet.data ?? null,
-    available: available.data ?? null,
-    claimable: claimable.data
-      ? (claimable.data as bigint[]).reduce<bigint>((sum, value) => sum + value, 0n)
-      : payouts.length
-        ? null
-        : 0n,
+    allowance: allowance.data ?? null,
+    claimable: claimable.total,
     loading: wallet.isLoading,
   };
 }
@@ -245,9 +230,11 @@ export function WalletPage() {
   const buyerRows: Row[] = data
     ? [
         {
-          label: "Available in the vault",
-          detail: data.vault ? "Ready to pay for the next job" : "Vault not configured",
-          amount: chain.available,
+          label: "In your wallet",
+          detail: address
+            ? "Pays each job when you hire; refunds come back here"
+            : "Connect your wallet to read it",
+          amount: chain.wallet,
         },
         {
           label: "Held for jobs",
@@ -285,8 +272,8 @@ export function WalletPage() {
           accent: true,
         },
         {
-          label: "Claimable now",
-          detail: "Released to your payout addresses, ready to withdraw",
+          label: "Waiting to claim",
+          detail: "Payouts USDC could not deliver to your payout address; normally none",
           amount: chain.claimable,
         },
         {
@@ -311,7 +298,7 @@ export function WalletPage() {
       <PageHeader
         compact
         title="Wallet"
-        description="Your USDC on Avalanche Fuji: in the vault and held for jobs in progress."
+        description="Your USDC on Avalanche Fuji: in your wallet and held in escrow for jobs in progress."
         actions={
           <Button variant="outline" render={<Link to="/console/activity" />}>
             Payment activity
@@ -359,18 +346,44 @@ export function WalletPage() {
             >
               <div className="grid gap-1">
                 <h2 id="move" className="text-base font-medium">
-                  Move USDC
+                  Paying from your wallet
                 </h2>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Deposit into the vault to pay for jobs, or withdraw what isn&apos;t held.
+                  Each job moves its price from your wallet into its own escrow when you hire, and
+                  refunds come straight back. There is nothing to deposit or withdraw.
                 </p>
               </div>
-              <FundsPanel
-                token={data!.usdc as Address}
+              <dl className="grid gap-2 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">In your wallet</dt>
+                  <dd>
+                    <Figure amount={chain.wallet} />
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">One-click and API key allowance</dt>
+                  <dd>
+                    <Figure amount={chain.allowance} />
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs leading-5 text-muted-foreground">
+                The allowance is what your spending limits may still draw from this wallet; it
+                shrinks as they pay and when you revoke a limit. Need testnet USDC? Use the{" "}
+                <a
+                  href="https://faucet.circle.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-foreground underline underline-offset-4"
+                >
+                  Circle faucet
+                </a>
+                .
+              </p>
+              <ClaimDeferred
                 vault={(data!.vault ?? null) as Address | null}
                 address={connected}
-                wallet={chain.wallet}
-                available={chain.available}
+                addresses={address ? [address] : []}
               />
             </section>
           </div>
@@ -407,8 +420,9 @@ export function WalletPage() {
                   One-click pay
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Pay without a wallet prompt. Each browser has its own key and daily limit; revoke
-                  it here to stop it.
+                  Pay without a wallet prompt, straight from your wallet. Each browser has its own
+                  key and daily limit; revoke it here to stop it. Setting up and revoking cost no
+                  gas.
                 </p>
               </div>
               <OneClickSection vault={data.vault as Address} connected={connected} />
@@ -422,10 +436,13 @@ export function WalletPage() {
                   id="earnings"
                   rows={providerRows}
                 />
-                <EarningsWithdraw
+                <p className="text-xs text-muted-foreground">
+                  Released payments go straight to your agents&apos; payout addresses.
+                </p>
+                <ClaimDeferred
                   vault={(data.vault ?? null) as Address | null}
                   address={connected}
-                  payouts={data.provider.payoutAddresses as Address[]}
+                  addresses={data.provider.payoutAddresses as Address[]}
                 />
               </div>
             ) : (

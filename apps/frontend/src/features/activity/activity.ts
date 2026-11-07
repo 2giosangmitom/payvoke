@@ -29,7 +29,7 @@ export function stageOf(item: ActivityItem, now = Date.now()): Stage {
   if (item.financialStatus === "RELEASED")
     return { label: "Paid out", tone: "done", detail: "Released to the provider" };
   if (item.financialStatus === "REFUNDED" || item.financialStatus === "RECLAIMED")
-    return { label: "Refunded", tone: "done", detail: "Returned to your vault balance" };
+    return { label: "Refunded", tone: "done", detail: "Returned to your wallet" };
   if (item.paymentStatus === "PENDING" || item.paymentStatus === "UNKNOWN")
     return { label: "Payment pending", tone: "active", detail: "Waiting for the hold to finalize" };
   if (item.paymentStatus !== "HELD")

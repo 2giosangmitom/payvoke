@@ -17,7 +17,8 @@ import {
   saveBrowserKey,
   useBrowserKey,
 } from "@/src/features/wallet/browser-key";
-import { chainError, parseUsdc, useVaultWrite, vaultAccountAbi } from "@/src/features/wallet/vault";
+import { useGrantChanges } from "@/src/features/wallet/grant-changes";
+import { chainError, parseUsdc } from "@/src/features/wallet/vault";
 
 const DAY = 86_400;
 const LIFETIMES = [
@@ -52,8 +53,9 @@ function browserName() {
   return `${browser}${os ? ` on ${os}` : ""}`;
 }
 
-// Sets up one-click pay for this browser: one wallet transaction registers a
-// daily-limited grant whose signer key is made and kept here.
+// Sets up one-click pay for this browser: the wallet signs a daily-limited
+// grant (whose signer key is made and kept here) and a USDC allowance for it,
+// and Payvoke's relayer puts both on chain, so the buyer pays no gas.
 export function EnableOneClick({
   vault,
   buyer,
@@ -70,7 +72,7 @@ export function EnableOneClick({
 }) {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
-  const send = useVaultWrite();
+  const { setGrant } = useGrantChanges(vault);
   const start = needed && needed > 10_000_000n ? needed : 10_000_000n;
   const [perJob, setPerJob] = useState(formatUnits(start, 6));
   const [perDay, setPerDay] = useState(formatUnits(start > 25_000_000n ? start : 25_000_000n, 6));
@@ -96,25 +98,19 @@ export function EnableOneClick({
       const signer = privateKeyToAccount(key).address;
       const grantId = toHex(crypto.getRandomValues(new Uint8Array(32)));
       const expiresAt = Math.floor(Date.now() / 1000) + days * DAY;
-      await send((write) =>
-        write({
-          address: vault,
-          abi: vaultAccountAbi,
-          functionName: "registerGrant",
-          args: [
-            grantId,
-            {
-              signer,
-              expiresAt,
-              maxPerCall: limits[0]!,
-              periodSeconds: DAY,
-              maxPerPeriod: limits[1]!,
-              // The total spans the whole lifetime at the daily rate.
-              maxTotal: limits[1]! * BigInt(days),
-            },
-          ],
-        }),
-      );
+      await setGrant({
+        buyer,
+        grantId,
+        config: {
+          signer,
+          expiresAt,
+          maxPerCall: limits[0]!,
+          periodSeconds: DAY,
+          maxPerPeriod: limits[1]!,
+          // The total spans the whole lifetime at the daily rate.
+          maxTotal: limits[1]! * BigInt(days),
+        },
+      });
       await saveBrowserKey(vault, buyer, { grantId, key, expiresAt });
       // Listing it is a convenience; the grant works without it.
       await recordGrant({ grantId, buyer, signer, kind: "browser", name: browserName() }).catch(
@@ -173,11 +169,13 @@ export function EnableOneClick({
       </div>
       {limitError && <p className="text-xs text-destructive">{limitError}</p>}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Your wallet approves once. After that this browser pays within these limits without asking,
-        and only from your vault balance. The key never leaves this browser; signing out deletes it.
+        Your wallet signs twice: the limit, and a USDC allowance the escrow can draw on for it.
+        Payvoke submits both, so you pay no gas. After that this browser pays within these limits
+        without asking, straight from your wallet into each job&apos;s escrow. The key never leaves
+        this browser; signing out deletes it.
       </p>
       <Button type="submit" disabled={busy || Boolean(limitError)} className="justify-self-start">
-        {busy && <Spinner />} {busy ? "Confirm in your wallet…" : action}
+        {busy && <Spinner />} {busy ? "Sign in your wallet, then confirming…" : action}
       </Button>
       {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
     </form>
