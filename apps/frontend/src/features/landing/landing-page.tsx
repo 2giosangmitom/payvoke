@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ReactLenis } from "lenis/react";
 import "lenis/dist/lenis.css";
 import { useReducedMotion } from "motion/react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight, Check } from "lucide-react";
 import { NetworkAvalancheFuji } from "@web3icons/react";
 import {
@@ -119,10 +119,7 @@ function Jobs() {
       aria-labelledby="jobs-title"
       className="overflow-x-clip bg-primary py-24 text-primary-foreground lg:py-32"
     >
-      <Heading
-        id="jobs-title"
-        className="container-page"
-      >
+      <Heading id="jobs-title" className="container-page">
         An agent for every job
       </Heading>
       <div className="mt-14 grid gap-3">
@@ -152,76 +149,76 @@ const features: Array<{ id: FilmId; tab: string; title: string; text: string; po
       id: "store",
       tab: "Store and commands",
       title: "Find the right agent",
-      text: "Search by name or by the work you need. Every command shows its price, terms and delivery time up front.",
+      text: "Search by name or by the work you need. Every command shows its terms up front.",
       points: [
         "Files, text and choices as inputs",
-        "Delivery time, review window and revisions on every command",
-        "Live status straight from the builder's server",
+        "Delivery time and review window shown",
+        "Live status from the builder",
       ],
     },
     {
       id: "chat",
       tab: "Forms and offers",
       title: "Talk first, pay when you agree",
-      text: "Chatting is free. Once the agent knows what you need, it sends a priced offer you can take or leave.",
+      text: "Chat is free. When the agent is ready, it sends an offer you can take or leave.",
       points: [
         "Free messages before any payment",
-        "Prices come from offers, never from chat",
-        "Accepting seals price and deadlines in a signed quote",
+        "Prices come only from offers",
+        "Accepting seals a signed quote",
       ],
     },
     {
       id: "x402",
       tab: "x402 payments",
       title: "One request, one payment",
-      text: "Payvoke speaks HTTP 402. Ask for the work, get a price back, retry with a signed payment.",
+      text: "Ask for the work, get a price, retry with a signed payment.",
       points: [
         "x402 v2 with the payvoke-vault scheme",
-        "EIP-712 quotes: buyer, agent, price, deadlines",
-        "Replays return the first receipt and cost nothing",
+        "EIP-712 signed quotes",
+        "Replays are free",
       ],
     },
     {
       id: "vault",
       tab: "Vault and refunds",
       title: "Your money waits for the work",
-      text: "Payment sits in the vault until the job is delivered. Late or failed work comes back to you in full.",
+      text: "Payment waits in the vault. Late or failed work is refunded in full.",
       points: [
-        "Settlement is automatic, with no disputes to file",
-        "Reclaim your money once the deadline passes",
-        "Every transaction journaled before broadcast",
+        "Automatic settlement, no disputes",
+        "Reclaim your money after the deadline",
+        "Every transaction is journaled",
       ],
     },
     {
       id: "keys",
       tab: "One-click pay",
       title: "Pay without the popups",
-      text: "A spend key signs within the limits you set. It can pay, but it can never withdraw.",
+      text: "A spend key pays within your limits. It can never withdraw.",
       points: [
         "Caps per job, per day and in total",
-        "Autopay pauses when a price looks off",
-        "Revoke once to void every older signature",
+        "Autopay pauses on odd prices",
+        "Revoke once to void old signatures",
       ],
     },
     {
       id: "streaming",
       tab: "Streaming",
       title: "Watch the work happen",
-      text: "Replies stream in live as the agent works: text, progress steps and files.",
+      text: "Replies stream in as the agent works.",
       points: [
-        "Tables and code render as they arrive",
-        "Progress steps update in place",
-        "Reconnect and the whole thread is still there",
+        "Tables and code render live",
+        "Progress updates in place",
+        "Reconnect and nothing is lost",
       ],
     },
     {
       id: "openui",
       tab: "Generative UI",
       title: "Answers you can see",
-      text: "Agents can reply with metrics, tables and charts, drawn by OpenUI in Payvoke's own components.",
+      text: "Agents can reply with metrics, tables and charts.",
       points: [
-        "Stack, Text, Card, Metric, Table and Chart",
-        "No scripts, links or actions, so nothing can phish",
+        "Cards, metrics, tables and charts",
+        "No scripts or links, so no phishing",
         "The view grows as the answer streams",
       ],
     },
@@ -229,9 +226,9 @@ const features: Array<{ id: FilmId; tab: string; title: string; text: string; po
       id: "mcp",
       tab: "MCP",
       title: "Hireable from any MCP host",
-      text: "Claude Code, Codex and other MCP hosts find, hire and pay agents with the same offers and refunds you get.",
+      text: "Claude Code, Codex and other MCP hosts can find, hire and pay agents.",
       points: [
-        "Search, chat, offers, payment and status as tools",
+        "Search, chat, pay and track as tools",
         "One revocable API key per host",
         "Spending stays inside your limits",
       ],
@@ -242,9 +239,9 @@ const features: Array<{ id: FilmId; tab: string; title: string; text: string; po
       title: "Your agent, on payroll",
       text: "Share an agent and get paid for every job it finishes.",
       points: [
-        "Paid out once the review window closes",
-        "Earnings by day and by agent, with ratings",
-        "Withdraw to the wallet that owns it",
+        "Paid when the review window closes",
+        "Earnings by day and by agent",
+        "Withdraw to your own wallet",
       ],
     },
   ];
@@ -259,11 +256,7 @@ function Features() {
       className="bg-background py-24 lg:py-36"
     >
       <div className="container-page grid gap-24 lg:gap-36">
-        <Heading
-          id="features-title"
-        >
-          Everything a job needs
-        </Heading>
+        <Heading id="features-title">Everything a job needs</Heading>
         {features.map((feature, index) => {
           const flipped = index % 2 === 1;
           return (
@@ -343,11 +336,7 @@ function Stages() {
       className="bg-background py-28 text-foreground lg:py-40"
     >
       <div className="container-page">
-        <Heading
-          id="stages-title"
-        >
-          One job, start to finish
-        </Heading>
+        <Heading id="stages-title">One job, start to finish</Heading>
         <ol data-ui className="reveal mt-16 grid gap-1.5 lg:flex lg:min-h-48">
           {stages.map((stage) => (
             <li
@@ -371,12 +360,12 @@ function Stages() {
    chain's red kept to its mark. */
 
 const chainFacts = [
-  ["Final in seconds", "Work starts the moment your payment lands on a finalized block."],
-  ["Fees that fit small jobs", "Gas stays tiny, so a forty-cent summary is still worth buying."],
-  ["Limits live on-chain", "Spend keys can pay but never withdraw. The vault checks every cap."],
-  ["Paid once, never twice", "Each payment is accepted one time. Retries cost nothing."],
-  ["Always a way out", "Past the deadline, buyers reclaim their money, even if the vault is paused."],
-  ["No single key in charge", "Holding, deciding and executing each use their own key."],
+  ["Final in seconds", "Work starts once your payment is final."],
+  ["Fees that fit small jobs", "Gas is tiny, so a 40-cent job still works."],
+  ["Limits live on-chain", "Spend keys can pay, never withdraw."],
+  ["Paid once, never twice", "Each payment counts once. Retries are free."],
+  ["Always a way out", "Past the deadline, you can always reclaim your money."],
+  ["No single key in charge", "Holding, deciding and executing use separate keys."],
 ] as const;
 
 function Avalanche() {
@@ -397,8 +386,7 @@ function Avalanche() {
             Settled on <span className="text-primary">Avalanche</span>
           </h2>
           <p className={cn(lead, "reveal max-w-md text-muted-foreground")}>
-            Every payment is held by PayvokeVault on the C‑Chain. The rules live in code, so
-            nobody can bend them. Not even us.
+            PayvokeVault holds every payment on the C‑Chain. The rules live in code.
           </p>
         </div>
         <ol className="reveal grid gap-px bg-border sm:grid-cols-2 lg:col-span-7">
@@ -457,14 +445,13 @@ function CodingAgents() {
             Built for a world of AI agents
           </h2>
           <p className={cn(lead, "reveal max-w-md")}>
-            Your assistant can hire help too. Plug any MCP host into Payvoke and it pays agents
-            the way you would.
+            Your assistant can hire help too. Plug in any MCP host.
           </p>
           <Points
             items={[
-              "No MCP server to build for your agent",
-              "One API key per host, revoke it anytime",
-              "Every payment stays inside your caps",
+              "Nothing to build on your side",
+              "One API key per host",
+              "Every payment inside your caps",
             ]}
           />
         </div>
@@ -498,31 +485,25 @@ function CodingAgents() {
 const questions = [
   [
     "Where does my agent run?",
-    "On your own servers. Your agent reads thread events from an SSE feed and answers over HTTP, and Payvoke never holds its code.",
+    "On your own servers. It reads events over SSE and replies over HTTP. Payvoke never holds your code.",
   ],
-  [
-    "Who sets the price?",
-    "Your agent, per job, in an offer. A command can set a maximum, and the deployment sets a minimum that covers gas.",
-  ],
+  ["Who sets the price?", "Your agent, per job, in an offer. You can cap each command."],
   [
     "When do I get paid?",
-    "Once your result is verified and the review window closes, your share is claimable in the vault. Withdraw it to the wallet that owns the agent.",
+    "When the review window closes, your share is claimable. Withdraw it to your wallet.",
   ],
   [
     "What if my agent fails or runs late?",
-    "The buyer is refunded in full, automatically. Payvoke has no manual dispute step.",
+    "The buyer is refunded in full, automatically. No disputes.",
   ],
   [
     "Do buyers approve every payment in their wallet?",
-    "No. A spend key with caps and an expiry signs each payment. Revoking it voids every earlier signature.",
+    "No. A spend key with caps and an expiry signs each payment.",
   ],
-  [
-    "Can I keep an agent private?",
-    "Yes. In Studio you choose whether an agent is listed in the store or kept private.",
-  ],
+  ["Can I keep an agent private?", "Yes. In Studio, choose listed or private."],
   [
     "What does Payvoke charge?",
-    "A fee in basis points, set by the deployment and taken from what remains after refunds. The fee cap is fixed when the vault is deployed.",
+    "A small fee in basis points, taken after refunds. The cap is fixed on-chain.",
   ],
 ] as const;
 
@@ -579,7 +560,7 @@ function Start() {
             <span className="text-primary">Let it earn.</span>
           </h2>
           <p className={cn(lead, "reveal max-w-xl text-muted-foreground")}>
-            Give your agent a name and a wallet to get paid. It goes live when you say so.
+            Name your agent. It goes live when you say so.
           </p>
         </div>
         <form

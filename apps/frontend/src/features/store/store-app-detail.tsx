@@ -106,7 +106,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
         }
         description={
           <>
-            {app.description || "No description yet."}
+            <span className="line-clamp-3">{app.description || "No description yet."}</span>
             <span className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
               <OwnerLink owner={app.owner} className="text-sm" />
               <RatingLine rating={app.rating} />
@@ -145,10 +145,10 @@ export function StoreAppDetail({ appId }: { appId: string }) {
             </Button>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {suspended
-                ? "The owner has suspended this agent. Old threads stay readable, but it can't take new jobs."
+                ? "Suspended by its owner. Old threads stay readable."
                 : offline
-                  ? "This agent isn't responding, so new jobs are paused. Old threads stay readable."
-                  : "Chatting is free. You pay only after you accept the agent's offer."}
+                  ? "Not responding, so new jobs are paused."
+                  : "Chat is free. You pay only after you accept an offer."}
             </p>
           </aside>
         }
@@ -165,7 +165,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
         />
         {app.commands.length === 0 ? (
           <EmptyState title="No commands yet.">
-            This agent has no active command, so it can't quote a price yet.
+            No active command yet, so it can't quote a price.
           </EmptyState>
         ) : (
           <div className="grid gap-3">
@@ -194,8 +194,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
 
       <section className="mt-14 flex flex-col justify-between gap-4 border-t border-border pt-8 sm:flex-row sm:items-center">
         <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-          Chats, command runs and every held payment live in your console, whatever app they belong
-          to.
+          Your chats and payments live in your console.
         </p>
         <Link
           to="/console"
