@@ -1195,11 +1195,11 @@ const Vault: Page = () => (
           <path d="M780 210H1000C1040 210 1040 362 1086 362" />
         </g>
       </svg>
-      <Box x={0} y={152} w={360} title="Available" sub="nạp, rút tự do" />
-      <Box x={440} y={152} w={340} title="Held" sub="khóa theo quote" tone="brand" />
-      <Box x={1090} y={0} w={590} title="Claimable" sub="release sau review window" tone="good" />
-      <Box x={1090} y={152} w={590} title="Available" sub="refund 100% khi lỗi hoặc trễ" />
-      <Box x={1090} y={304} w={590} title="Available" sub="reclaim sau resolveBy" />
+      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký 1 lần cho mỗi job" />
+      <Box x={440} y={152} w={340} title="Held" sub="escrow theo quote" tone="brand" />
+      <Box x={1090} y={0} w={590} title="Ví builder" sub="release sau review window" tone="good" />
+      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
+      <Box x={1090} y={304} w={590} title="Ví buyer" sub="reclaim sau resolveBy" />
     </div>
   </Frame>
 );
@@ -1297,13 +1297,13 @@ const X402: Page = () => (
         402 Payment Required
       </SeqMsg>
       <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={300}>
-        Ký EIP-712, gửi lại
+        Ký USDC EIP-3009, gửi lại
       </SeqMsg>
       <Steps>
         <Step>
           <div>
             <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
-              reserveHold (relayer)
+              fundWithAuthorization (relayer)
             </SeqMsg>
             <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
               Hold finalized
@@ -1351,8 +1351,8 @@ const Grant: Page = () => (
       <div>
         <Label>Spend key</Label>
         <Row n="01">Ký từng quote</Row>
-        <Row n="02">Vault kiểm tra hạn mức</Row>
-        <Row n="03">Thu hồi bằng epoch</Row>
+        <Row n="02">Vault kéo tiền từ ví, trong hạn mức</Row>
+        <Row n="03">Thiết lập, thu hồi không tốn gas</Row>
       </div>
     </div>
   </Frame>
@@ -1367,7 +1367,7 @@ const Contract: Page = () => (
         Relayer, approver, executor dùng ba key riêng. Một key bị lộ không đủ để lấy tiền.
       </Block>
       <Block title="Tạm dừng vẫn an toàn">
-        Khi pause, hệ thống chặn nạp và hold mới. Người dùng vẫn rút và đòi lại tiền được.
+        Khi pause, hệ thống chặn fund job và grant mới. Người dùng vẫn revoke và đòi tiền về ví được.
       </Block>
       <Block title="Không thể sửa số dư">
         Contract không dùng proxy và không có hàm sửa balance. Số dư chỉ đổi qua các bước hợp lệ.
@@ -1532,31 +1532,31 @@ Người dùng cần có ví và số dư on-chain, tạo thêm một bước l�
   // Quote
   `(~30s)
 Khi buyer Accept, Payvoke đóng băng giao kèo thành Quote EIP-712: buyer, provider, command và version, hash của input, terms và policy, giá và fee, deliveryDeadline, resolveBy, và invocation key dùng một lần.
-Chữ ký debit gắn quote với grant và epoch. Ký xong thì không sửa được điều khoản nào.
+Chữ ký thanh toán gắn chặt với quote: ví ký USDC authorization có nonce chính là quote digest, còn spend key ký debit gắn quote với grant và epoch. Ký xong thì không sửa được điều khoản nào.
 
 Nếu bị hỏi "builder đổi giá sau khi ký thì sao?":
 Không ảnh hưởng. Giá đã được hash và chốt trong quote.`,
 
   // X402
   `(~40s)
-Luồng x402 dùng scheme payvoke-vault.
-Buyer gửi quote; Payvoke trả 402 Payment Required. Buyer ký EIP-712 bằng spend key và gửi lại.
-[→] Settlement worker gọi reserveHold lên Vault. Payvoke đợi transaction finalized rồi mới trả 202 kèm receipt.
+Luồng x402 dùng scheme payvoke-escrow.
+Buyer gửi quote; Payvoke trả 402 Payment Required. Ví buyer ký một USDC authorization (EIP-3009) cho đúng quote đó, không gas, không nạp trước, rồi gửi lại.
+[→] Settlement worker gọi fundWithAuthorization: Vault tự dựng lại authorization và chỉ Vault mới nộp được, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi transaction finalized rồi mới trả 202 kèm receipt.
 [→] Chỉ sau đó agent mới nhận invocation.ready. Khi nghiệm thu xong, Finance worker gọi applyDecision để release hoặc refund.
 Khác biệt cốt lõi: tiền không bao giờ đi thẳng cho người bán.`,
 
   // Vault
   `(~35s)
-Trong Vault có ba trạng thái: Available, Held, Claimable.
-Buyer nạp vào Available và rút lúc nào cũng được. reserveHold khóa tiền sang Held.
-Từ Held có đúng ba nhánh: release sang Claimable cho Builder sau review window; refund 100% về Available nếu lỗi hoặc trễ; reclaim về Available nếu quá resolveBy mà chưa có quyết định.
-Invariant: balance luôn lớn hơn hoặc bằng available + held + claimable.`,
+Vault là escrow theo từng job: buyer không có số dư nào trong Vault, tiền nằm trong ví đến lúc thuê.
+Mỗi job được fund thẳng từ ví vào Held.
+Từ Held có đúng ba nhánh, đều trả thẳng về ví: release cho Builder sau review window; refund 100% về ví buyer nếu lỗi hoặc trễ; reclaim về ví buyer nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist) thì khoản đó thành claimable để người nhận tự rút.
+Invariant: balance luôn lớn hơn hoặc bằng held + claimable.`,
 
   // Grant
   `(~30s)
-Để không phải mở ví ký từng job, buyer ký Grant một lần: trần mỗi job, trần mỗi kỳ, tổng hạn mức và ngày hết hạn.
-Sau đó spend key ký từng quote; Vault tự kiểm tra trần on-chain.
-Revoke chỉ cần tăng epoch, toàn bộ chữ ký cũ mất hiệu lực. Spend key không rút được vốn gốc.`,
+Để không phải mở ví ký từng job, buyer ký Grant một lần: trần mỗi job, trần mỗi kỳ, tổng hạn mức và ngày hết hạn, kèm một permit USDC đúng bằng hạn mức đó. Relayer nộp lên chain nên buyer không tốn gas.
+Sau đó spend key ký từng quote; Vault kéo tiền từ ví qua allowance và tự kiểm tra trần on-chain.
+Revoke cũng chỉ là một chữ ký, tăng epoch và hạ allowance; toàn bộ chữ ký cũ mất hiệu lực. Spend key không bao giờ lấy được quá hạn mức.`,
 
   // RiskCheck
   `(~35s)
@@ -1568,7 +1568,7 @@ Có tín hiệu là chuyển sang user duyệt, không tự trả.`,
   `(~35s)
 Kiến trúc tách quyền rõ ràng.
 API xử lý chat, AG-UI, agent gateway và x402 gateway. Gateway không giữ key.
-Ba worker: Settlement giữ relayer key để reserveHold; Finance giữ approver và executor key để applyDecision; Job worker không giữ key.
+Ba worker: Settlement giữ relayer key để fund job và nộp thay đổi grant; Finance giữ approver và executor key để applyDecision; Job worker không giữ key.
 Worker tắt thì key của nó không được nạp vào bộ nhớ.`,
 
   // Operations
@@ -1581,7 +1581,7 @@ Agent chỉ chạy sau finalized. Cùng invocation ID gửi lại luôn nhận c
   `(~30s)
 Vault có bốn nguyên tắc.
 Ba role relayer, approver, executor dùng ba key khác nhau; approver không được trùng executor.
-Pause chặn nạp, grant và hold mới; user vẫn withdraw, revoke và reclaim nên không ai giam được tiền.
+Pause chặn fund job và grant mới; user vẫn revoke và reclaim về ví nên không ai giam được tiền.
 Không proxy, không hàm sửa balance. Trần fee là immutable, đặt lúc deploy, và fee chốt trong quote.`,
 
   // Closing

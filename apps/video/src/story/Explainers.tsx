@@ -65,7 +65,7 @@ export const explainers = (m: {
     to: m.limit + 3.4,
     icon: <KeyRound {...ICON} />,
     title: "Within your limits",
-    body: "An API key pays with a spend key that has caps per job, per period and in total. The key cannot withdraw.",
+    body: "An API key pays with a spend key that has caps per job, per period and in total. It funds each job from the buyer's wallet and can never spend past them.",
   },
   {
     from: m.earn,
