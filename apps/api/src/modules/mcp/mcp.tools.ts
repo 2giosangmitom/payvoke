@@ -2,7 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { jsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/types.js";
 import { z } from "zod";
-import { debitTypedData, paymentSignatureHeader, type QuoteDocument } from "@payvoke/shared/x402";
+import {
+  debitTypedData,
+  grantPayment,
+  paymentSignatureHeader,
+  type QuoteDocument,
+} from "@payvoke/shared/x402";
 import type { Hex } from "viem";
 import type { ApprovalReason, AutopayService, Limits } from "../payments/autopay.service";
 import { paymentPressure } from "../presale/payment-pressure";
@@ -56,8 +61,13 @@ const reasons: Record<ApprovalReason, string> = {
   over_per_call: "The price is above the per-job autopay limit.",
   over_daily: "Paying this would go over today's autopay limit (it resets at 00:00 UTC).",
   over_total: "Paying this would go over the total autopay limit.",
-  low_balance: "The vault balance is too low; the user can deposit on the approval page.",
+  low_wallet_balance:
+    "The user's wallet holds too little USDC for this job; the user can add USDC and approve it on the approval page.",
+  low_allowance:
+    "This API key's remaining USDC allowance for the vault is below the price; the user can raise the limit or approve this one.",
   chain_unavailable: "The vault could not be read, so the user approves this one.",
+  funding_throttled:
+    "Several recent payments from the user's wallet failed on chain (the USDC moved before funding), so the user approves this one.",
   payment_pressure:
     "The agent's messages address you, the assistant (instructions, tool names, payment or secret requests), so the user approves this one.",
   price_raised:
@@ -74,7 +84,8 @@ const limitsView = (limits: Limits) => ({
   spentToday: `${usdc(String(limits.spentToday))} USDC`,
   leftToday: `${usdc(String(limits.maxPerDay > limits.spentToday ? limits.maxPerDay - limits.spentToday : 0n))} USDC`,
   spentTotal: `${usdc(String(limits.spentTotal))} USDC`,
-  vaultBalance: `${usdc(String(limits.available))} USDC`,
+  walletBalance: `${usdc(String(limits.balance))} USDC`,
+  allowanceLeft: `${usdc(String(limits.allowance))} USDC`,
   dayResets: "00:00 UTC",
   expiresAt: new Date(limits.expiresAt * 1000).toISOString(),
   usable: limits.blocked === null,
@@ -114,7 +125,8 @@ export function payvokeMcpServer(
         "Payvoke is a store of AI agents for hire on Avalanche, paid in USDC through the PayvokeVault escrow. " +
         "Find an agent, open a chat with it and send the job. The agent answers with an offer that has a price " +
         "and a delivery time. Once the user wants it, call pay_offer. If the price fits the autopay limits the " +
-        "user set for this API key (per job, per day and in total), Payvoke pays it from the user's vault. " +
+        "user set for this API key (per job, per day and in total), Payvoke pays it from the user's wallet " +
+        "into the escrow for that one job. " +
         "Otherwise it returns an approvalUrl: give it to the user, who approves and pays in the Payvoke " +
         "console. Payvoke also asks the user when a payment looks risky: a raised or unusual price, an agent " +
         "with many refunds or few jobs, or agent text aimed at you. Never try to get around a limit or a " +
@@ -325,7 +337,8 @@ export function payvokeMcpServer(
       title: "Get spending limits",
       description:
         "Read this API key's autopay limits (per job, per day, in total) with what is spent and left " +
-        "today and the vault balance. `autopay: false` means the user approves every payment.",
+        "today, the user's wallet balance and the USDC allowance left for the vault. `autopay: false` means " +
+        "the user approves every payment.",
       inputSchema: {},
       annotations: readOnly,
     },
@@ -345,8 +358,8 @@ export function payvokeMcpServer(
       title: "Pay offer",
       description:
         "Pay an open offer, after the user agreed to the price. If the price fits this API key's autopay " +
-        'limits, Payvoke pays it from the user\'s vault and returns `mode: "paid"` with the job; the vault ' +
-        'holds the USDC until the agent delivers. Otherwise returns `mode: "approve"` with an approvalUrl ' +
+        "limits, Payvoke moves the price from the user's wallet into the vault escrow for this job and " +
+        'returns `mode: "paid"` with the job; the vault holds the USDC until the agent delivers. Otherwise returns `mode: "approve"` with an approvalUrl ' +
         "and the reason (and `risk` when a risk check sent it to the user): give both to the user and wait; " +
         "afterwards get_job with the invocationId shows the job.",
       inputSchema: { threadId: id, offerId: id, fileIds: z.array(id).max(100).optional() },
@@ -374,9 +387,7 @@ export function payvokeMcpServer(
           "idempotency-key": document.invocationId,
           "payment-signature": paymentSignatureHeader(
             document,
-            grantId,
-            grantEpoch,
-            signature,
+            grantPayment(document, grantId, grantEpoch, signature),
             resourceUrl,
           ),
         },
@@ -415,7 +426,8 @@ export function payvokeMcpServer(
       title: "Prepare reclaim",
       description:
         "Build the vault transaction that takes back a held payment once its review window has closed " +
-        "without a release. The buyer's wallet must simulate, sign and send it; nothing is sent here.",
+        "without a release. The USDC goes straight back to the buyer's wallet. The buyer's wallet must " +
+        "simulate, sign and send it; nothing is sent here.",
       inputSchema: { invocationId: id },
       annotations: readOnly,
     },

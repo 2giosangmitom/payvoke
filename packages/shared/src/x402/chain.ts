@@ -1,5 +1,6 @@
 import {
   FUNDING_SOURCE,
+  fundHoldAbi,
   hashAuthorization,
   hashQuote,
   hashReceiveAuthorization,
@@ -13,6 +14,7 @@ import {
   type InvocationQuote,
 } from "@payvoke/shared/protocol";
 import { VaultValidationError, type AdmissionObservation } from "./facilitator.js";
+import type { PaymentIntent } from "./index.js";
 import {
   BaseError,
   ContractFunctionRevertedError,
@@ -21,6 +23,7 @@ import {
   recoverTypedDataAddress,
   createPublicClient,
   custom,
+  encodeFunctionData,
   stringToHex,
   zeroAddress,
   zeroHash,
@@ -48,6 +51,28 @@ export type VaultRpcClient = Pick<
 export type FundingIntent =
   | { mode: "authorization"; signature: Hex }
   | { mode: "grant"; authorization: DebitAuthorization; signature: Hex };
+// The chain-facing half of a parsed x402 payment.
+export function fundingOf(intent: PaymentIntent): FundingIntent {
+  if (intent.mode === "authorization") return { mode: "authorization", signature: intent.signature };
+  if (!intent.authorization) throw new VaultValidationError("invalid_payment", 400);
+  return { mode: "grant", authorization: intent.authorization, signature: intent.signature };
+}
+
+// The relayer's calldata for funding one quote.
+export function fundingCalldata(q: InvocationQuote, funding: FundingIntent): Hex {
+  return funding.mode === "authorization"
+    ? encodeFunctionData({
+        abi: fundHoldAbi,
+        functionName: "fundWithAuthorization",
+        args: [q, funding.signature],
+      })
+    : encodeFunctionData({
+        abi: fundHoldAbi,
+        functionName: "fundWithGrant",
+        args: [q, funding.authorization, funding.signature],
+      });
+}
+
 const RELAYER_ROLE = keccak256(stringToHex("RELAYER_ROLE"));
 const reverts: Record<string, string> = {
   Unauthorized: "unauthorized_relayer",

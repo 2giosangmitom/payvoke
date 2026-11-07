@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { reserveHoldAbi } from "@payvoke/shared/protocol";
 import {
   paymentRequirements,
   readPaymentIntent,
@@ -8,9 +7,9 @@ import {
   type QuoteDocument,
 } from "@payvoke/shared/x402";
 import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
-import type { VaultChain } from "@payvoke/shared/x402/chain";
+import { fundingCalldata, fundingOf, type VaultChain } from "@payvoke/shared/x402/chain";
 import type { SettlementChain } from "@payvoke/shared/x402/settlement";
-import { encodeFunctionData, getAddress, type Hex, type LocalAccount } from "viem";
+import { getAddress, type Hex, type LocalAccount } from "viem";
 import { Prisma, type PrismaClient } from "#core/db";
 import { createPaymentValidator } from "./validation";
 import { SettlementError, SettlementJournal, type GasPolicy } from "./journal";
@@ -177,11 +176,8 @@ export class SettlementWorker {
       throw new VaultValidationError("journal_inconsistent", 503);
     }
     const quote = readQuote(document.protocolQuote);
-    const data = encodeFunctionData({
-      abi: reserveHoldAbi,
-      functionName: "reserveHold",
-      args: [quote, intent.authorization, intent.signature],
-    });
+    const funding = fundingOf(intent);
+    const data = fundingCalldata(quote, funding);
     let attempt = operation.attempt;
     const client = this.chain.client;
     if (!attempt?.signedTransaction) {
@@ -287,7 +283,7 @@ export class SettlementWorker {
       data,
       nonce: attempt.nonce,
       quote,
-      authorization: intent.authorization,
+      intent: funding,
       authorizationDigest: intent.authorizationDigest,
     });
     if (observation.kind === "finalized") {

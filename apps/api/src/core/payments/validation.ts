@@ -12,7 +12,32 @@ import {
 } from "@payvoke/shared/x402";
 import { VaultValidationError, type AdmissionObservation } from "@payvoke/shared/x402/facilitator";
 import type { PrismaClient } from "#core/db";
-import type { VaultChain } from "@payvoke/shared/x402/chain";
+import { fundingOf, type VaultChain } from "@payvoke/shared/x402/chain";
+
+// Relayed funding transactions that reverted on chain cost the relayer gas. A
+// buyer whose wallet keeps failing them (e.g. spending the USDC between quote
+// and funding) is paused before more are attempted.
+export const FUNDING_REVERT_LIMIT = 3;
+export const FUNDING_REVERT_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const FUNDING_THROTTLE_MS = 60 * 60 * 1000;
+
+export async function fundingThrottled(db: PrismaClient, buyerId: string, now = new Date()) {
+  const reverted = await db.settlementOperation.findMany({
+    where: {
+      state: "REJECTED",
+      errorReason: "transaction_reverted",
+      updatedAt: { gte: new Date(now.getTime() - FUNDING_REVERT_WINDOW_MS) },
+      invocation: { buyerId },
+    },
+    select: { updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+    take: FUNDING_REVERT_LIMIT,
+  });
+  return (
+    reverted.length >= FUNDING_REVERT_LIMIT &&
+    now.getTime() - reverted[0].updatedAt.getTime() < FUNDING_THROTTLE_MS
+  );
+}
 
 export async function readPersistedPayment(
   db: PrismaClient,
@@ -102,8 +127,7 @@ export function createPaymentValidator(
     );
     const observation = await chain.validate(
       readQuote(document.protocolQuote),
-      intent.authorization,
-      intent.signature,
+      fundingOf(intent),
       async () => {
         const health = await db.vaultFinancialHealth.findUnique({
           where: {
@@ -139,6 +163,8 @@ export function createPaymentValidator(
         const user = await db.user.findUnique({ where: { id: row.buyerId } });
         if (!user || user.status !== "ACTIVE")
           throw new VaultValidationError("account_suspended", 403);
+        if (!current && (await fundingThrottled(db, row.buyerId)))
+          throw new VaultValidationError("payment_throttled", 429);
         const wallet = await db.walletAddress.findFirst({
           where: { userId: row.buyerId, chainId: 43113, isPrimary: true },
         });

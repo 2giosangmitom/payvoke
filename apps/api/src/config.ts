@@ -44,7 +44,7 @@ const schema = z.object({
   // --- Workers, run inside this process ---
   // Keyless: delivery verification and upload cleanup.
   JOB_WORKER_ENABLED: envBoolean().default(true),
-  // Signs and sends reserveHold with the relayer key.
+  // Signs and sends job funding and relayed grant changes with the relayer key.
   SETTLEMENT_WORKER_ENABLED: envBoolean().default(false),
   RELAYER_PRIVATE_KEY: optionalText(),
   // First block scanned for finalized holds (the vault deployment block).

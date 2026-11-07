@@ -49,7 +49,7 @@ function request(payload: PaymentPayload, requirements: PaymentRequirements) {
   return body;
 }
 
-// x402 facilitator for the payvoke-vault scheme, called in-process by the
+// x402 facilitator for the payvoke-escrow scheme, called in-process by the
 // payment gateway. It verifies payments and, with SETTLEMENT_ENABLED, journals
 // a settlement intent for the settlement worker. It holds no signing key.
 export function createFacilitator(

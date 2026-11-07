@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "bun:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { ContractFunctionRevertedError, encodeErrorResult, getAddress, zeroAddress } from "viem";
 import {
+  ContractFunctionRevertedError,
+  encodeErrorResult,
+  getAddress,
+  zeroAddress,
+  zeroHash,
+} from "viem";
+import {
+  FUNDING_SOURCE,
   hashAuthorization,
   hashQuote,
+  hashReceiveAuthorization,
   paymentTypes,
   vaultAdmissionAbi,
   vaultDomain,
@@ -14,7 +22,10 @@ import { readQuote } from "@payvoke/shared/x402";
 import { matchingHold, mockVault } from "#test/kit/vault-reader";
 
 const vector = JSON.parse(
-  readFileSync(new URL("../../../packages/shared/test/fixtures/x402-v1.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../../packages/shared/test/fixtures/x402-v2.json", import.meta.url),
+    "utf8",
+  ),
 );
 const vault = getAddress(vector.domain.verifyingContract);
 const relayer = privateKeyToAccount(generatePrivateKey());
@@ -39,6 +50,8 @@ async function fixture() {
     primaryType: "DebitAuthorization",
     message: authorization,
   });
+  // The buyer's own USDC authorization for this quote (wallet funding).
+  const walletSignature = `0x${"11".repeat(65)}` as `0x${string}`;
   const mock = mockVault(q, vault, signer.address, relayer.address);
   await mock.chain.initialize();
   mock.calls.length = 0;
@@ -47,8 +60,16 @@ async function fixture() {
     q,
     authorization,
     signature,
+    walletSignature,
     async validate() {
-      return mock.chain.validate(q, authorization, signature, async () => {});
+      return mock.chain.validate(q, { mode: "grant", authorization, signature }, async () => {});
+    },
+    async validateWallet() {
+      return mock.chain.validate(
+        q,
+        { mode: "authorization", signature: walletSignature },
+        async () => {},
+      );
     },
   };
 }
@@ -98,9 +119,15 @@ describe("vault onchain admission preview", () => {
       },
     ],
     [
-      "insufficient_available",
+      "insufficient_allowance",
       (f) => {
-        f.state.available = f.q.grossAmount - 1n;
+        f.state.allowance = f.q.grossAmount - 1n;
+      },
+    ],
+    [
+      "insufficient_balance",
+      (f) => {
+        f.state.balance = f.q.grossAmount - 1n;
       },
     ],
     [
@@ -191,13 +218,19 @@ describe("vault onchain admission preview", () => {
     f.state.paused = true;
     f.state.role = false;
     f.state.grant.revoked = true;
-    const observation = await f.chain.validate(f.q, f.authorization, f.signature, async () => {
-      throw new Error("Must not admit again");
-    });
+    const observation = await f.chain.validate(
+      f.q,
+      { mode: "grant", authorization: f.authorization, signature: f.signature },
+      async () => {
+        throw new Error("Must not admit again");
+      },
+    );
     assert.equal(observation.kind, "existing-hold");
     assert.ok(
-      !f.calls.some((c) => ["simulate", "getGrant", "availableBalance"].includes(c.method)),
+      !f.calls.some((c) => ["simulate", "getGrant", "balanceOf", "allowance"].includes(c.method)),
     );
+    // The same job paid from the wallet is another authorization: a conflict.
+    await assert.rejects(f.validateWallet(), /invocation_conflict/);
     f.state.hold.authorizationDigest = `0x${"0".repeat(64)}`;
     await assert.rejects(f.validate(), /invocation_conflict/);
   });
@@ -267,13 +300,13 @@ describe("vault onchain admission preview", () => {
     const f = await fixture();
     f.state.simulationError = new ContractFunctionRevertedError({
       abi: vaultAdmissionAbi,
-      functionName: "reserveHold",
+      functionName: "fundWithGrant",
       data: encodeErrorResult({ abi: vaultAdmissionAbi, errorName: "GrantRevoked" }),
     });
     await assert.rejects(f.validate(), /grant_revoked/);
     f.state.simulationError = new ContractFunctionRevertedError({
       abi: vaultAdmissionAbi,
-      functionName: "reserveHold",
+      functionName: "fundWithGrant",
       data: "0x12345678",
     });
     await assert.rejects(f.validate(), /simulation_reverted/);
@@ -283,7 +316,8 @@ describe("vault onchain admission preview", () => {
 
   it("accepts exact spending boundaries and rejects one atomic unit over the remaining cap", async () => {
     const f = await fixture();
-    f.state.available = f.q.grossAmount;
+    f.state.balance = f.q.grossAmount;
+    f.state.allowance = f.q.grossAmount;
     f.state.grant.config.maxPerCall = f.q.grossAmount;
     f.state.grant.spentInPeriod = f.state.grant.config.maxPerPeriod - f.q.grossAmount;
     f.state.grant.spentTotal = f.state.grant.config.maxTotal - f.q.grossAmount;
@@ -293,5 +327,46 @@ describe("vault onchain admission preview", () => {
     f.state.grant.spentInPeriod--;
     f.state.grant.spentTotal++;
     await assert.rejects(f.validate(), /total_limit_exceeded/);
+  });
+
+  it("admits a wallet-funded quote: unused authorization, verified signature, enough USDC", async () => {
+    const f = await fixture();
+    const result = await f.validateWallet();
+    assert.equal(result.kind, "new-admission");
+    assert.equal(result.mode, "authorization");
+    assert.equal(result.payer, f.q.buyer);
+    const simulation = f.calls.find((c) => c.method === "simulate")!;
+    assert.deepEqual(simulation.args, [f.q, f.walletSignature]);
+    // A wallet payment reads neither the grant nor the allowance.
+    assert.ok(!f.calls.some((c) => ["getGrant", "allowance"].includes(c.method)));
+    assert.ok(f.calls.some((c) => c.method === "verifyTypedData"));
+  });
+  const walletCases: [string, (f: Awaited<ReturnType<typeof fixture>>) => void][] = [
+    ["authorization_used", (f) => void (f.state.authorizationUsed = true)],
+    ["invalid_signature", (f) => void (f.state.signatureValid = false)],
+    ["insufficient_balance", (f) => void (f.state.balance = f.q.grossAmount - 1n)],
+    ["quote_expired", (f) => void (f.state.now = BigInt(f.q.validUntil))],
+    ["vault_paused", (f) => void (f.state.paused = true)],
+  ];
+  for (const [code, mutate] of walletCases)
+    it(`rejects a wallet payment with ${code} without simulation`, async () => {
+      const f = await fixture();
+      mutate(f);
+      await assert.rejects(f.validateWallet(), new RegExp(code));
+      assert.ok(!f.calls.some((c) => c.method === "simulate"));
+    });
+  it("classifies an existing wallet-funded hold by its receive authorization digest", async () => {
+    const f = await fixture();
+    f.state.hold = matchingHold(
+      f.q,
+      hashReceiveAuthorization(vault, f.q, f.authorization.quoteDigest),
+      f.authorization.quoteDigest,
+      zeroHash,
+      FUNDING_SOURCE.authorization,
+    );
+    f.state.authorizationUsed = true;
+    assert.equal((await f.validateWallet()).kind, "existing-hold");
+    f.state.hold.source = FUNDING_SOURCE.grant;
+    await assert.rejects(f.validateWallet(), /hold_inconsistent/);
   });
 });

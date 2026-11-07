@@ -320,6 +320,7 @@ it("answers each builder route with the documented shape", async () => {
       invocationKey: document.protocolQuote.invocationKey,
       quoteDigest: document.quoteDigest,
       authorizationDigest: `0x${randomBytes(32).toString("hex")}`,
+      fundingMode: "GRANT",
       recoveredSigner: wallet.address,
       paymentPayload: {},
       state: "HELD",

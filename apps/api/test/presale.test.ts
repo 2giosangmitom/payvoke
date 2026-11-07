@@ -214,6 +214,7 @@ async function marketplace() {
         invocationKey: quoted.protocolQuote.invocationKey,
         quoteDigest: quoted.quoteDigest,
         authorizationDigest: `0x${randomBytes(32).toString("hex")}`,
+        fundingMode: "GRANT",
         recoveredSigner: wallet.address,
         paymentPayload: {},
         state: "HELD",
