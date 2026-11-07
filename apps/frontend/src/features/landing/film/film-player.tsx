@@ -21,7 +21,7 @@ export type FilmPlayerProps = {
 };
 
 /**
- * A landing film in a Remotion Player: muted, looping, with a play button and
+ * The landing film in a Remotion Player: muted, looping, with a play button and
  * optional chapter buttons. With reduced motion it waits on `poster`.
  */
 export default function FilmPlayer({
@@ -37,7 +37,7 @@ export default function FilmPlayer({
   const still = useReducedMotion();
   // Plays while on screen and pauses off it, so several films never run at once
   // out of sight.
-  const visible = useInView(frame, { amount: 0.4 });
+  const visible = useInView(frame, { amount: 0.25 });
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(chapters?.[0]?.id);
 
@@ -88,9 +88,9 @@ export default function FilmPlayer({
           style={{ width: "100%", aspectRatio: `${film.width} / ${film.height}` }}
         />
       </div>
-      <figcaption className="flex flex-wrap items-center gap-1.5">
+      <figcaption className="flex items-center gap-1.5">
         <Button
-          size="icon"
+          size="icon-sm"
           onClick={() => player.current?.toggle()}
           aria-label={playing ? `Pause ${label}` : `Play ${label}`}
         >
@@ -99,6 +99,8 @@ export default function FilmPlayer({
         {chapters?.map((entry) => (
           <Button
             key={entry.id}
+            size="sm"
+            className="min-w-0 flex-1 sm:flex-none"
             variant={entry.id === current ? "default" : "secondary"}
             aria-current={entry.id === current ? "step" : undefined}
             onClick={() => {

@@ -188,7 +188,33 @@ export function JobCard({ run, children }: { run: TimelineRun; children?: ReactN
     (tool) => tool.toolName === "offer" && (tool.args as OfferArgs | null)?.offerId === run.offerId,
   );
   const command = (offer?.args as OfferArgs | undefined)?.command.name;
-  const phase = phases[run.phase];
+  return (
+    <JobCardView
+      phase={run.phase}
+      command={command}
+      amount={formatUsdc(run.grossAmount)}
+      steps={steps}
+    >
+      {children}
+    </JobCardView>
+  );
+}
+
+/** The job card's markup alone, for anything that already knows the run's state. */
+export function JobCardView({
+  phase: phaseName,
+  command,
+  amount,
+  steps,
+  children,
+}: {
+  phase: RunPhase;
+  command?: string | undefined;
+  amount: string;
+  steps: ProgressArgs[];
+  children?: ReactNode;
+}) {
+  const phase = phases[phaseName];
   const step = Math.min(phase.index + 1, STAGES.length);
 
   return (
@@ -203,9 +229,7 @@ export function JobCard({ run, children }: { run: TimelineRun; children?: ReactN
             <span className={cn(phase.tone === "failed" && "text-destructive")}>{phase.label}</span>
           </span>
           {command && <code className="font-mono text-xs text-primary">/{command}</code>}
-          <span className="ml-auto font-mono text-sm tabular-nums">
-            {formatUsdc(run.grossAmount)}
-          </span>
+          <span className="ml-auto font-mono text-sm tabular-nums">{amount}</span>
         </div>
         <StageBar index={phase.index} tone={phase.tone} />
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">

@@ -248,13 +248,6 @@
   }
 }
 
-/* The hero preview's timer line, filling under the current page. */
-@keyframes preview-progress {
-  from {
-    scale: 0 1;
-  }
-}
-
 /* Rises once as it scrolls into view; stagger with --reveal-start / --reveal-end. */
 @utility reveal {
   @media (prefers-reduced-motion: no-preference) {

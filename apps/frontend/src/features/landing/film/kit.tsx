@@ -1,62 +1,18 @@
-import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
-import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import type { CSSProperties, ReactNode } from "react";
+import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { cn } from "@/src/lib/utils";
 
-// Shared pieces of the landing films. Every move is driven by the frame, so
+// Shared pieces of the landing film. Every move is driven by the frame, so
 // the Player, the Studio and a render show the same thing.
-
-// The app's badge is tiny tracked mono capitals; the film sets it in the text face.
-export const quietBadge = "h-6 font-sans text-[13px] tracking-normal normal-case";
 
 export const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 export const out = Easing.bezier(0.16, 1, 0.3, 1);
+// Camera and cursor moves start and land softly, like a hand on a trackpad.
+const glide = Easing.bezier(0.65, 0, 0.35, 1);
 
 /** Characters of `text` typed by `frame`, starting at `from`, `perFrame` at a time. */
 export const typed = (text: string, frame: number, from: number, perFrame = 0.6) =>
   text.slice(0, Math.max(0, Math.floor((frame - from) * perFrame)));
-
-export function Wordmark({ className }: { className?: string }) {
-  return (
-    <span className={cn("flex items-center gap-2", className)}>
-      <svg viewBox="0 0 28 28" fill="none" aria-hidden="true" className="size-[1.1em]">
-        <g transform="rotate(-8 14 14)" fill="#509475">
-          <path d="M3 3h6v6H3zM19 3h6v6h-6zM3 19h6v6H3zM19 19h6v6h-6z" />
-          <path d="M11 3h6v6h-6zM3 11h6v6H3zM19 11h6v6h-6zM11 19h6v6h-6z" opacity=".18" />
-          <path d="M11 11h6v6h-6z" fill="#bcd6cb" />
-        </g>
-      </svg>
-      <span className="font-bold tracking-[-0.05em]">payvoke.</span>
-    </span>
-  );
-}
-
-/** A line that rises from behind its own baseline, `delay` frames into its scene. */
-export function Rise({
-  delay = 0,
-  className,
-  children,
-}: {
-  delay?: number;
-  className?: string;
-  children: ReactNode;
-}) {
-  const frame = useCurrentFrame();
-  return (
-    <span className={cn("block overflow-hidden pb-[0.08em]", className)}>
-      <span
-        className="block"
-        style={{
-          translate: interpolate(frame, [delay, delay + 22], ["0% 105%", "0% 0%"], {
-            ...clamp,
-            easing: out,
-          }),
-        }}
-      >
-        {children}
-      </span>
-    </span>
-  );
-}
 
 /** Fades and lifts its children in at `delay`. */
 export function Enter({
@@ -89,74 +45,124 @@ export function Enter({
 }
 
 /**
- * Inside a feature row the page already carries the caption, so scenes reused
- * there drop theirs and show the product alone.
+ * Opens from no height to its own at `at`, so whatever sits above it slides
+ * up smoothly, the way a chat anchored to its latest message scrolls. The
+ * grid-row trick animates to the natural height without measuring it.
  */
-export const BareScenes = createContext(false);
-
-/** One chapter: a caption on the left, the product on the right, faded at both ends. */
-export function Scene({
-  title,
-  line,
-  scale = 1.12,
+export function Grow({
+  at,
+  className,
   children,
 }: {
-  title: string;
-  line: string;
-  scale?: number;
+  at: number;
+  className?: string;
   children: ReactNode;
 }) {
   const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  const bare = useContext(BareScenes);
-  if (bare) {
-    return (
-      <Showcase width={500} scale={1.2}>
-        {children}
-      </Showcase>
-    );
-  }
+  if (frame < at) return null;
+  const t = interpolate(frame, [at, at + 14], [0, 1], { ...clamp, easing: out });
   return (
-    <AbsoluteFill
-      className="grid grid-cols-[300px_1fr] items-center gap-10 px-14"
-      style={{
-        opacity: interpolate(frame, [durationInFrames - 10, durationInFrames], [1, 0], clamp),
-      }}
-    >
-      <div className="grid gap-4">
-        <h3 className="text-[40px] leading-[1.02] font-semibold tracking-[-0.045em]">
-          <Rise>{title}</Rise>
-        </h3>
-        <Enter delay={8}>
-          <p className="text-[17px] leading-[1.45] text-muted-foreground">{line}</p>
-        </Enter>
+    <div className="grid shrink-0" style={{ gridTemplateRows: `${t}fr` }}>
+      <div className={cn("min-h-0 overflow-hidden", className)} style={{ opacity: t }}>
+        {children}
       </div>
-      <Enter delay={4} className="origin-left" style={{ scale }}>
-        <div inert className="w-[456px] text-[14px]">
-          {children}
-        </div>
-      </Enter>
-    </AbsoluteFill>
+    </div>
   );
 }
 
-/** The product alone, centred and enlarged, for films that sit beside their own copy. */
-export function Showcase({
-  width = 520,
-  scale = 1.3,
-  children,
-}: {
-  width?: number;
-  scale?: number;
-  children: ReactNode;
-}) {
+/** Where the camera looks at a frame: a point on the screen and how close. */
+export type Shot = { at: number; x: number; y: number; scale: number };
+
+const track = (frame: number, shots: Shot[], key: "x" | "y" | "scale") =>
+  interpolate(
+    frame,
+    shots.map((shot) => shot.at),
+    shots.map((shot) => shot[key]),
+    { ...clamp, easing: glide },
+  );
+
+/**
+ * Pans and zooms over a screen as big as the composition. Between shots the
+ * camera glides; it never shows past the screen's edges. Transform only, so a
+ * move costs one composite, not a repaint.
+ */
+export function Camera({ shots, children }: { shots: Shot[]; children: ReactNode }) {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const scale = track(frame, shots, "scale");
+  const pan = (focus: number, size: number) =>
+    Math.min(0, Math.max(size - size * scale, size / 2 - focus * scale));
+  const x = pan(track(frame, shots, "x"), width);
+  const y = pan(track(frame, shots, "y"), height);
   return (
-    <AbsoluteFill className="grid place-items-center">
-      <Enter delay={2} style={{ scale }}>
-        <div inert className="text-[14px]" style={{ width }}>
-          {children}
-        </div>
-      </Enter>
-    </AbsoluteFill>
+    <div
+      className="absolute top-0 left-0 origin-top-left"
+      style={{ width, height, transform: `translate(${x}px, ${y}px) scale(${scale})` }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A point the pointer moves to, reached at `at`. */
+export type Stop = { at: number; x: number; y: number };
+
+/**
+ * A pointer that glides between stops and presses at each frame in
+ * `clicks`: it dips, and a ring spreads from its tip.
+ */
+export function Cursor({ stops, clicks }: { stops: Stop[]; clicks: number[] }) {
+  const frame = useCurrentFrame();
+  const at = stops.map((stop) => stop.at);
+  const x = interpolate(
+    frame,
+    at,
+    stops.map((stop) => stop.x),
+    { ...clamp, easing: glide },
+  );
+  const y = interpolate(
+    frame,
+    at,
+    stops.map((stop) => stop.y),
+    { ...clamp, easing: glide },
+  );
+  const opacity = interpolate(
+    frame,
+    [at[0] - 8, at[0], at.at(-1)!, at.at(-1)! + 8],
+    [0, 1, 1, 0],
+    clamp,
+  );
+  const click = clicks.findLast((start) => frame >= start && frame < start + 18);
+  const since = click === undefined ? 99 : frame - click;
+  const press = interpolate(since, [0, 3, 8], [1, 0.82, 1], clamp);
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute top-0 left-0 z-50"
+      style={{ translate: `${x}px ${y}px`, opacity }}
+    >
+      {since < 18 && (
+        <span
+          className="absolute -top-5 -left-5 size-10 rounded-full border-2 border-primary"
+          style={{
+            scale: interpolate(since, [0, 18], [0.3, 1.4], clamp),
+            opacity: interpolate(since, [0, 18], [0.9, 0], clamp),
+          }}
+        />
+      )}
+      <svg
+        viewBox="0 0 24 24"
+        className="size-7 origin-top-left drop-shadow-[0_2px_4px_rgb(0_0_0/0.35)]"
+        style={{ scale: press }}
+      >
+        <path
+          d="M4 2.5 19.5 13l-6.6 1.4 3.7 6.9-2.9 1.5-3.7-6.9L5 20.6Z"
+          fill="var(--color-foreground)"
+          stroke="var(--color-background)"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
   );
 }

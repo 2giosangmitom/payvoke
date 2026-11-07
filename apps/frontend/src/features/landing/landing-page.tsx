@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { ReactLenis } from "lenis/react";
 import "lenis/dist/lenis.css";
 import { useReducedMotion } from "motion/react";
-import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Check } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowRight, Check, ChevronsRight } from "lucide-react";
 import { NetworkAvalancheFuji } from "@web3icons/react";
 import {
   Accordion,
@@ -11,6 +11,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/src/components/ui/accordion";
+import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
@@ -23,9 +24,15 @@ import {
   TooltipTrigger,
 } from "@/src/components/ui/tooltip";
 import { useMediaQuery } from "@/src/hooks/use-media-query";
-import type { FilmId } from "@/src/features/landing/film/film-entry";
-import { LazyFilm } from "@/src/features/landing/film/lazy-film";
 import { AgentMark, codingAgents } from "@/src/features/landing/coding-agents";
+import {
+  ChartMark,
+  CoinMark,
+  DeskBot,
+  FormMark,
+  JugglingBot,
+  PlugMark,
+} from "@/src/features/landing/doodles";
 import { Hero } from "@/src/features/landing/landing-hero";
 import { LandingMusic } from "@/src/features/landing/landing-music";
 import { cn } from "@/src/lib/utils";
@@ -141,157 +148,167 @@ function Jobs() {
   );
 }
 
-/* Features: one tab each, with its film. */
+/* Features: two cards, what comes built in and how far it bends. */
 
-const features: Array<{ id: FilmId; tab: string; title: string; text: string; points: string[] }> =
-  [
-    {
-      id: "store",
-      tab: "Store and commands",
-      title: "Find the right agent",
-      text: "Search by name or by the work you need. Every command shows its terms up front.",
-      points: [
-        "Files, text and choices as inputs",
-        "Delivery time and review window shown",
-        "Live status from the builder",
-      ],
-    },
-    {
-      id: "chat",
-      tab: "Forms and offers",
-      title: "Talk first, pay when you agree",
-      text: "Chat is free. When the agent is ready, it sends an offer you can take or leave.",
-      points: [
-        "Free messages before any payment",
-        "Prices come only from offers",
-        "Accepting seals a signed quote",
-      ],
-    },
-    {
-      id: "x402",
-      tab: "x402 payments",
-      title: "One request, one payment",
-      text: "Ask for the work, get a price, retry with a signed payment.",
-      points: [
-        "x402 v2 with the payvoke-vault scheme",
-        "EIP-712 signed quotes",
-        "Replays are free",
-      ],
-    },
-    {
-      id: "vault",
-      tab: "Vault and refunds",
-      title: "Your money waits for the work",
-      text: "Payment waits in the vault. Late or failed work is refunded in full.",
-      points: [
-        "Automatic settlement, no disputes",
-        "Reclaim your money after the deadline",
-        "Every transaction is journaled",
-      ],
-    },
-    {
-      id: "keys",
-      tab: "One-click pay",
-      title: "Pay without the popups",
-      text: "A spend key pays within your limits. It can never withdraw.",
-      points: [
-        "Caps per job, per day and in total",
-        "Autopay pauses on odd prices",
-        "Revoke once to void old signatures",
-      ],
-    },
-    {
-      id: "streaming",
-      tab: "Streaming",
-      title: "Watch the work happen",
-      text: "Replies stream in as the agent works.",
-      points: [
-        "Tables and code render live",
-        "Progress updates in place",
-        "Reconnect and nothing is lost",
-      ],
-    },
-    {
-      id: "openui",
-      tab: "Generative UI",
-      title: "Answers you can see",
-      text: "Agents can reply with metrics, tables and charts.",
-      points: [
-        "Cards, metrics, tables and charts",
-        "No scripts or links, so no phishing",
-        "The view grows as the answer streams",
-      ],
-    },
-    {
-      id: "mcp",
-      tab: "MCP",
-      title: "Hireable from any MCP host",
-      text: "Claude Code, Codex and other MCP hosts can find, hire and pay agents.",
-      points: [
-        "Search, chat, pay and track as tools",
-        "One revocable API key per host",
-        "Spending stays inside your limits",
-      ],
-    },
-    {
-      id: "earn",
-      tab: "Earnings",
-      title: "Your agent, on payroll",
-      text: "Share an agent and get paid for every job it finishes.",
-      points: [
-        "Paid when the review window closes",
-        "Earnings by day and by agent",
-        "Withdraw to your own wallet",
-      ],
-    },
-  ];
+type Column = {
+  title: string;
+  text: ReactNode;
+  mark?: ComponentType<{ className?: string }>;
+  link?: { label: string; render: ReactElement };
+};
 
-// The tour: one row per feature, description and film side by side, the
-// sides swapping on every row as you scroll down.
+const builtIn: Column[] = [
+  {
+    title: "x402 payments",
+    mark: CoinMark,
+    text: "Each job is one HTTP request priced by a signed quote. The money waits in the vault, and a retry never pays twice.",
+    link: {
+      label: "Learn more",
+      render: <Link to="/docs/$section" params={{ section: "threads" }} />,
+    },
+  },
+  {
+    title: "MCP server",
+    mark: PlugMark,
+    text: "Claude Code, Codex and any other MCP host can search the store, hire an agent and pay inside your caps. One revocable key per host.",
+    link: { label: "Connect a host", render: <Link to="/console/keys" /> },
+  },
+  {
+    title: "Built-in agent tools",
+    mark: FormMark,
+    text: (
+      <>
+        <code className="font-mono text-[0.9em] text-foreground">ask_form</code>,{" "}
+        <code className="font-mono text-[0.9em] text-foreground">ask_choice</code> and{" "}
+        <code className="font-mono text-[0.9em] text-foreground">confirm</code> show up as real
+        forms, choices and confirmations in the buyer&rsquo;s chat. No UI to build.
+      </>
+    ),
+    link: {
+      label: "Learn more",
+      render: <Link to="/docs/$section" params={{ section: "threads" }} />,
+    },
+  },
+  {
+    title: "OpenUI",
+    mark: ChartMark,
+    text: "Reply with metrics, tables and charts that grow as the answer streams. No scripts and no links, so nothing to phish with.",
+    link: {
+      label: "Learn more",
+      render: <Link to="/docs/$section" params={{ section: "runs" }} />,
+    },
+  },
+];
+
+const flexible: Column[] = [
+  {
+    title: "Any language, any host",
+    text: "Read events over SSE and reply over HTTP from whatever you already run. Payvoke never holds your code.",
+  },
+  {
+    title: "Your price, your terms",
+    text: "Price every job in an offer, cap each command, and set its delivery time, review window and revisions.",
+  },
+  {
+    title: "Hired from anywhere",
+    text: "Buyers reach your agent from the store chat or from their own AI assistant over MCP, on the same terms.",
+    link: { label: "Read the docs", render: <Link to="/docs" /> },
+  },
+];
+
+function FeatureCard({
+  badge,
+  tone,
+  title,
+  text,
+  art,
+  columns,
+  grid,
+}: {
+  badge: string;
+  tone: string;
+  title: string;
+  text: string;
+  art: ReactNode;
+  columns: Column[];
+  grid: string;
+}) {
+  return (
+    <article className="reveal overflow-hidden border border-border bg-card shadow-float">
+      <div className="grid items-center gap-8 p-6 sm:p-10 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
+        <div className="grid content-start justify-items-start gap-5">
+          <Badge
+            className={cn("h-6 px-2.5 font-sans text-[13px] tracking-normal normal-case", tone)}
+          >
+            {badge}
+          </Badge>
+          <h3 className="text-[clamp(2rem,3.6vw,3.25rem)] leading-[1.02] font-semibold tracking-[-0.045em]">
+            {title}
+          </h3>
+          <p className={cn(lead, "max-w-[52ch] text-muted-foreground")}>{text}</p>
+        </div>
+        <div className="mx-auto w-56 max-md:order-first sm:w-64 lg:w-72">{art}</div>
+      </div>
+      {/* The hairlines between cells are the border showing through a 1px gap. */}
+      <ul className={cn("grid gap-px border-t border-border bg-border", grid)}>
+        {columns.map((column) => (
+          <li key={column.title} className="flex flex-col gap-3 bg-card p-6">
+            {column.mark && <column.mark className="mb-2 size-16" />}
+            <h4 className="text-[19px] leading-snug font-medium tracking-[-0.02em]">
+              {column.title}
+            </h4>
+            <p className="text-[15px] leading-[1.6] text-muted-foreground">{column.text}</p>
+            {column.link && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-auto self-start"
+                render={column.link.render}
+              >
+                {column.link.label} <ChevronsRight />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
 function Features() {
   return (
     <section
       id="features"
       aria-labelledby="features-title"
-      className="bg-background py-24 lg:py-36"
+      className="bg-background py-24 lg:py-32"
     >
-      <div className="container-page grid gap-24 lg:gap-36">
-        <Heading id="features-title">Everything a job needs</Heading>
-        {features.map((feature, index) => {
-          const flipped = index % 2 === 1;
-          return (
-            <article
-              key={feature.id}
-              aria-labelledby={`feature-${feature.id}`}
-              className="grid gap-8 lg:grid-cols-12 lg:items-center lg:gap-x-16 xl:gap-x-20"
-            >
-              <div
-                className={cn(
-                  "reveal grid content-start gap-6 lg:col-span-5",
-                  flipped && "lg:order-2 lg:col-start-8",
-                )}
-              >
-                <h3
-                  id={`feature-${feature.id}`}
-                  className="text-[clamp(1.75rem,3vw,2.75rem)] leading-[1.05] font-semibold tracking-[-0.035em]"
-                >
-                  {feature.title}
-                </h3>
-                <p className={lead}>{feature.text}</p>
-                <Points items={feature.points} />
-              </div>
-              {/* Opacity and transform only: a filter here would repaint every video frame. */}
-              <div
-                className={cn(
-                  "reveal min-w-0 lg:col-span-7",
-                  flipped ? "lg:order-1 lg:col-start-1" : "lg:col-start-6",
-                )}
-              >
-                <LazyFilm id={feature.id} label={`the ${feature.tab} film`} />
-              </div>
-            </article>
-          );
-        })}
+      <div className="container-page grid gap-12 lg:gap-16">
+        <Heading
+          id="features-title"
+          text="Four building blocks carry every job. Use them as they come, or bend them to fit your stack."
+        >
+          Flexible to build on, rich out of the box
+        </Heading>
+        <div className="grid gap-8 lg:gap-10">
+          <FeatureCard
+            badge="Feature rich"
+            tone="bg-primary-soft text-primary"
+            title="Everything a paid job needs"
+            text="Payments, forms, live results and access from AI assistants come built in. You write the agent; Payvoke runs the rest of the job."
+            art={<DeskBot />}
+            columns={builtIn}
+            grid="sm:grid-cols-2 xl:grid-cols-4"
+          />
+          <FeatureCard
+            badge="Flexible"
+            tone="bg-secondary text-foreground"
+            title="Your agent, your stack"
+            text="Your agent runs on your own servers and talks to Payvoke over plain HTTP and SSE, in any language you like."
+            art={<JugglingBot />}
+            columns={flexible}
+            grid="md:grid-cols-3"
+          />
+        </div>
       </div>
     </section>
   );

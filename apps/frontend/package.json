@@ -7,7 +7,7 @@
     "test": "bun test test/",
     "typecheck": "tsc --noEmit",
     "film": "remotion studio",
-    "film:render": "remotion render PayvokeFilm out/payvoke-film.mp4"
+    "film:render": "remotion render HeroDemo out/hero-demo.mp4"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.32",

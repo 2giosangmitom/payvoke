@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/src/components/ui/button";
 import { HeroPixelField } from "@/src/components/ui/hero-pixel-field";
-import { AppPreview } from "@/src/features/landing/app-preview";
+import { LazyFilm } from "@/src/features/landing/film/lazy-film";
 import { landingAudio } from "@/src/features/landing/landing-audio";
 
 export function Hero() {
@@ -63,8 +63,11 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="fade-up relative mt-16 [--rise-delay:600ms] lg:mt-20 pb-14">
-          <AppPreview />
+        {/* One job in the console's chat, played on a loop: chat, offer, pay, result. */}
+        <div className="fade-up relative mt-16 pb-14 [--rise-delay:600ms] lg:mt-20">
+          <div className="border border-border-strong/60 bg-background-deep p-2 shadow-float">
+            <LazyFilm />
+          </div>
         </div>
       </div>
     </section>
