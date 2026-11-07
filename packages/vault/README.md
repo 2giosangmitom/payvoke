@@ -67,6 +67,9 @@ bunx hardhat ignition deploy ignition/modules/PayvokeVaultRoles.ts --network fuj
 The current Fuji deployment (`ignition/deployments/chain-43113`) is PayvokeVault v2,
 `0xc8d77919e1D9A473eB8D45C729613943eaF6f034` (`PayvokeVaultV2#PayvokeVault`), deployed at
 block 60684420 from this source with `ignition/parameters/fuji.json`. Its runtime code hash is
-`0xaf6df92b68a2a7ccb878b01bf22d5219172e8df8804d8521707367ed1df0ebed`. The v1 vault
+`0xaf6df92b68a2a7ccb878b01bf22d5219172e8df8804d8521707367ed1df0ebed`. `scripts/fuji-smoke.ts`
+exercised it against Circle's Fuji USDC right after deployment (wallet-funded job and refund,
+gasless grant with permit, grant-funded release, gasless revoke); the backend's
+`DEPLOYMENT_START_BLOCK` is 60684973, after those holds settled. The v1 vault
 `0xd3B75D6B8BFb1372E8312EC14BDFD27f01769512` is retired: buyers withdraw any remaining
 available balance from it with `withdrawAvailable`, which works even when paused.
