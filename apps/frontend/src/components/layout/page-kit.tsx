@@ -354,7 +354,7 @@ export function PageSkeleton({ label }: { label: string }) {
 
 /**
  * The one line that explains why money figures can trail the chain: the
- * payment workers confirm deposits, holds and releases a little after the
+ * payment workers confirm holds, refunds and releases a little after the
  * transaction lands.
  */
 export function SettlementNote({ className }: { className?: string }) {

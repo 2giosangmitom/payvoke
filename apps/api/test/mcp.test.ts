@@ -48,7 +48,10 @@ const grantReader: GrantReader = {
     currentPeriod: BigInt(Math.floor(Date.now() / 1000 / 86400)),
     revoked: false,
   }),
-  available: async () => 1000n * USDC,
+  wallet: async () => ({ balance: 1000n * USDC, allowance: 500n * USDC }),
+  nonce: async () => 0n,
+  verify: async () => true,
+  simulate: async () => null,
 };
 
 beforeAll(async () => {

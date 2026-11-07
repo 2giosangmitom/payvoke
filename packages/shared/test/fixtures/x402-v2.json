@@ -1,0 +1,248 @@
+{
+  "fixtureOnly": true,
+  "warning": "Public Hardhat key; hashing fixture only, never fund on a real network. Quote snapshots are markers, not valid business input.",
+  "fixturePrivateKey": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "domain": {
+    "name": "PayvokeVault",
+    "version": "2",
+    "chainId": 43113,
+    "verifyingContract": "0x1000000000000000000000000000000000000001"
+  },
+  "types": {
+    "InvocationQuote": [
+      {
+        "name": "invocationKey",
+        "type": "bytes32"
+      },
+      {
+        "name": "quoteKey",
+        "type": "bytes32"
+      },
+      {
+        "name": "buyer",
+        "type": "address"
+      },
+      {
+        "name": "usageSessionKey",
+        "type": "bytes32"
+      },
+      {
+        "name": "productKey",
+        "type": "bytes32"
+      },
+      {
+        "name": "productVersion",
+        "type": "uint64"
+      },
+      {
+        "name": "commandKey",
+        "type": "bytes32"
+      },
+      {
+        "name": "inputHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "termsHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "policyHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "provider",
+        "type": "address"
+      },
+      {
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "name": "grossAmount",
+        "type": "uint256"
+      },
+      {
+        "name": "feeBps",
+        "type": "uint16"
+      },
+      {
+        "name": "feeRecipient",
+        "type": "address"
+      },
+      {
+        "name": "validUntil",
+        "type": "uint48"
+      },
+      {
+        "name": "deliveryDeadline",
+        "type": "uint48"
+      },
+      {
+        "name": "releaseNotBefore",
+        "type": "uint48"
+      },
+      {
+        "name": "resolveBy",
+        "type": "uint48"
+      }
+    ],
+    "DebitAuthorization": [
+      {
+        "name": "quoteDigest",
+        "type": "bytes32"
+      },
+      {
+        "name": "grantId",
+        "type": "bytes32"
+      },
+      {
+        "name": "grantEpoch",
+        "type": "uint64"
+      }
+    ],
+    "ResolutionDecision": [
+      {
+        "name": "holdId",
+        "type": "bytes32"
+      },
+      {
+        "name": "decisionId",
+        "type": "bytes32"
+      },
+      {
+        "name": "expectedVersion",
+        "type": "uint64"
+      },
+      {
+        "name": "refundAmount",
+        "type": "uint256"
+      },
+      {
+        "name": "releaseRemainder",
+        "type": "bool"
+      },
+      {
+        "name": "validUntil",
+        "type": "uint48"
+      }
+    ],
+    "GrantSetup": [
+      {
+        "name": "buyer",
+        "type": "address"
+      },
+      {
+        "name": "grantId",
+        "type": "bytes32"
+      },
+      {
+        "name": "signer",
+        "type": "address"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint48"
+      },
+      {
+        "name": "maxPerCall",
+        "type": "uint256"
+      },
+      {
+        "name": "periodSeconds",
+        "type": "uint32"
+      },
+      {
+        "name": "maxPerPeriod",
+        "type": "uint256"
+      },
+      {
+        "name": "maxTotal",
+        "type": "uint256"
+      },
+      {
+        "name": "nonce",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint48"
+      }
+    ],
+    "GrantRevoke": [
+      {
+        "name": "buyer",
+        "type": "address"
+      },
+      {
+        "name": "grantId",
+        "type": "bytes32"
+      },
+      {
+        "name": "nonce",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint48"
+      }
+    ]
+  },
+  "preimages": {
+    "invocationKey": "payvoke:invocation:invocation_vector_1",
+    "quoteKey": "payvoke:quote:quote_vector_1",
+    "usageSessionKey": "payvoke:session:session_vector_1",
+    "productKey": "payvoke:product:product_vector_1",
+    "commandKey": "payvoke:command:command_vector_1",
+    "inputHash": "{}",
+    "termsHash": "{\"fixture\":\"terms-v1\"}",
+    "policyHash": "{\"fixture\":\"policy-v1\"}"
+  },
+  "quote": {
+    "invocationKey": "0x9f74096fcec700872c2b3257da58ee0283d9827c8376b25981e342e6c1e5a6d7",
+    "quoteKey": "0xfea6b5ee2669dafaa7be62a056d8e27e2028708dbb04b42ca41e604ef32634b1",
+    "buyer": "0x4000000000000000000000000000000000000004",
+    "usageSessionKey": "0xf6a6e91496148987681d006d59994cd32f3e41b5f630f8d67e3bb873a1beab1c",
+    "productKey": "0x4bea63b547b904cd14e4fc813deeed12643684581214c92d66b4500a8eca8cd9",
+    "productVersion": "1",
+    "commandKey": "0x0a51e3820935f4bd78f2427bc0d22f2c02eaee69bb3e4776e73c1ddc5a4f171e",
+    "inputHash": "0xb48d38f93eaa084033fc5970bf96e559c33c4cdc07d889ab00b4d63f9590739d",
+    "termsHash": "0x1168fbc3b000b47a8039a7745f461fe6ccb869ee2f30b65a0816a19c0926fd01",
+    "policyHash": "0x6f52f37b3f1f0df31424522ec7a4d4e06f0786675d43a05b24bbc2916476e281",
+    "provider": "0x2000000000000000000000000000000000000002",
+    "asset": "0x5425890298aed601595a70AB815c96711a31Bc65",
+    "grossAmount": "10000",
+    "feeBps": "200",
+    "feeRecipient": "0x3000000000000000000000000000000000000003",
+    "validUntil": "1800000120",
+    "deliveryDeadline": "1800000720",
+    "releaseNotBefore": "1800087120",
+    "resolveBy": "1800259920"
+  },
+  "quoteDigest": "0x3cef5f9c1007ac875ea75798ec2337c613bc8d765e101662d9079895a3b2a37a",
+  "authorization": {
+    "quoteDigest": "0x3cef5f9c1007ac875ea75798ec2337c613bc8d765e101662d9079895a3b2a37a",
+    "grantId": "0x4444444444444444444444444444444444444444444444444444444444444444",
+    "grantEpoch": "1"
+  },
+  "authorizationDigest": "0xa5fbdbe66356e4f5f0065721998c6e58b38af51ea19c31bf9c51782e6ea113db",
+  "sessionSigner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "signature": "0x841498710b4e7b0ab6b73ff9a0a6f91142ad83fc5b6e7a3534e8cbdeeac30d8d45f186200a436037453f2d8c93fa3eded63110202d0ffe8d27f8165c2294faca1c",
+  "usdcDomain": {
+    "name": "USD Coin",
+    "version": "2",
+    "chainId": 43113,
+    "verifyingContract": "0x5425890298aed601595a70AB815c96711a31Bc65"
+  },
+  "receiveAuthorization": {
+    "from": "0x4000000000000000000000000000000000000004",
+    "to": "0x1000000000000000000000000000000000000001",
+    "value": "10000",
+    "validAfter": "0",
+    "validBefore": "1800000120",
+    "nonce": "0x3cef5f9c1007ac875ea75798ec2337c613bc8d765e101662d9079895a3b2a37a"
+  },
+  "receiveAuthorizationStructHash": "0xa78b9fb2f5ddf558a8c42908e6a1d767dad8b8fae0350073f16c9380e1dadf82",
+  "receiveAuthorizationDigest": "0x3fede4cdca070af65a57b2516b84c1d4b786d605926fec5a66a1bdae88640cd3",
+  "receiveSignature": "0xbdd136f58b3455850b181693bbe7faea737e05d298ac112900d6e895094b39e718ce42c0ceb417a1967ae2ed6a28cd9c96ac90ea77833c047e379c027fb5e3a01b"
+}

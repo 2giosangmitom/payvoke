@@ -4,7 +4,7 @@ import PayvokeVaultModule from "./PayvokeVault.js";
 
 // Grants the operational roles the backend needs. Run with the admin key:
 // AccessControl only lets the default admin grant roles.
-export default buildModule("PayvokeVaultRoles", (m) => {
+export default buildModule("PayvokeVaultV2Roles", (m) => {
   const { vault } = m.useModule(PayvokeVaultModule);
   const relayer = m.getParameter("relayer");
   const financeApprover = m.getParameter("financeApprover");

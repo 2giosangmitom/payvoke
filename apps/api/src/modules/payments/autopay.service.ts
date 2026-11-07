@@ -1,10 +1,21 @@
-import { createPublicClient, getAddress, http, type Address, type Hex } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createPublicClient,
+  getAddress,
+  http,
+  type Address,
+  type Hex,
+  type TypedDataDefinition,
+} from "viem";
 import { avalancheFuji } from "viem/chains";
-import { vaultAdmissionAbi } from "@payvoke/shared/protocol";
+import { ASSET } from "@payvoke/shared/x402";
+import { usdcAbi, vaultAdmissionAbi } from "@payvoke/shared/protocol";
 import type { QuoteDocument } from "@payvoke/shared/x402";
 import type { Cradle } from "../../container";
 import type { Config } from "../../config";
 import type { RiskSignal } from "./payment-risk.service";
+import { fundingThrottled } from "#core/payments/validation";
 
 export type OnChainGrant = {
   config: {
@@ -22,15 +33,47 @@ export type OnChainGrant = {
   revoked: boolean;
 };
 
-// Reads a grant and a buyer's free vault balance. Null without a vault.
+// A relayed grant change, as the vault takes it.
+export type GrantCall =
+  | {
+      functionName: "setGrantWithSig";
+      args: readonly [
+        Address,
+        Hex,
+        OnChainGrant["config"],
+        number,
+        Hex,
+        { value: bigint; deadline: bigint; signature: Hex },
+      ];
+    }
+  | {
+      functionName: "revokeGrantWithSig";
+      args: readonly [
+        Address,
+        Hex,
+        number,
+        Hex,
+        { value: bigint; deadline: bigint; signature: Hex },
+      ];
+    };
+
+// Chain reads for grants and wallet funding. Null without a vault.
 export type GrantReader = {
   grant(buyer: Address, grantId: Hex): Promise<OnChainGrant>;
-  available(buyer: Address): Promise<bigint>;
+  // What the buyer's wallet can put into a job: its USDC and the vault allowance.
+  wallet(buyer: Address): Promise<{ balance: bigint; allowance: bigint }>;
+  // The nonce the buyer's next grant signature must carry.
+  nonce(buyer: Address): Promise<bigint>;
+  // Checks a buyer signature the way the vault does: ECDSA or ERC-1271/6492.
+  verify(typed: TypedDataDefinition & { address: Address; signature: Hex }): Promise<boolean>;
+  // Simulates a relayed grant change from the relayer; the vault's revert, or null.
+  simulate(call: GrantCall): Promise<string | null>;
 };
 
 export function createGrantReader(config: Config): GrantReader | null {
   if (!config.VAULT_ADDRESS) return null;
   const vault = getAddress(config.VAULT_ADDRESS);
+  const relayer = config.RELAYER_ADDRESS ? getAddress(config.RELAYER_ADDRESS) : undefined;
   const client = createPublicClient({
     chain: avalancheFuji,
     transport: http(config.RPC_URL, { retryCount: 1, timeout: 10000 }),
@@ -43,13 +86,57 @@ export function createGrantReader(config: Config): GrantReader | null {
         functionName: "getGrant",
         args: [buyer, grantId],
       })) as OnChainGrant,
-    available: (buyer) =>
+    wallet: async (buyer) => {
+      const [balance, allowance] = await Promise.all([
+        client.readContract({
+          address: ASSET,
+          abi: usdcAbi,
+          functionName: "balanceOf",
+          args: [buyer],
+        }),
+        client.readContract({
+          address: ASSET,
+          abi: usdcAbi,
+          functionName: "allowance",
+          args: [buyer, vault],
+        }),
+      ]);
+      return { balance, allowance };
+    },
+    nonce: (buyer) =>
       client.readContract({
         address: vault,
         abi: vaultAdmissionAbi,
-        functionName: "availableBalance",
+        functionName: "grantNonces",
         args: [buyer],
       }),
+    verify: async (typed) => {
+      try {
+        return await client.verifyTypedData(typed);
+      } catch {
+        return false;
+      }
+    },
+    simulate: async (call) => {
+      if (!relayer) return "relayer_unavailable";
+      try {
+        await client.simulateContract({
+          address: vault,
+          abi: vaultAdmissionAbi,
+          account: relayer,
+          ...call,
+        } as never);
+        return null;
+      } catch (error) {
+        const revert =
+          error instanceof BaseError
+            ? error.walk((e) => e instanceof ContractFunctionRevertedError)
+            : undefined;
+        if (revert instanceof ContractFunctionRevertedError)
+          return revert.data?.errorName ?? "simulation_reverted";
+        throw error;
+      }
+    },
   };
 }
 
@@ -63,7 +150,9 @@ export type Limits = {
   maxTotal: bigint;
   spentToday: bigint;
   spentTotal: bigint;
-  available: bigint;
+  // What the buyer's wallet holds, and what the vault may still pull from it.
+  balance: bigint;
+  allowance: bigint;
   // Why the grant cannot pay at all right now, if it cannot.
   // `recreate_key`: the key predates signing with the key alone, so its
   // grant's signer is not one Payvoke can derive.
@@ -80,14 +169,17 @@ export type ApprovalReason =
   | "over_per_call"
   | "over_daily"
   | "over_total"
-  | "low_balance"
+  | "low_wallet_balance"
+  | "low_allowance"
+  | "funding_throttled"
   | "chain_unavailable"
   | RiskSignal;
 
 // An API key's spending policy is its linked vault grant, whose signer is
-// derived from the key. The vault enforces the limits; reading them here
-// first lets the agent pay what fits and send the buyer an approval link for
-// the rest, instead of signing a debit the vault would refuse.
+// derived from the key. The vault pulls each job from the buyer's wallet
+// through the allowance, within the grant's limits; reading them here first
+// lets the agent pay what fits and send the buyer an approval link for the
+// rest, instead of signing a debit the vault would refuse.
 export class AutopayService {
   private readonly db: Cradle["db"];
   private readonly reader: Cradle["grantReader"];
@@ -107,9 +199,9 @@ export class AutopayService {
     if (!row) return null;
     if (!this.reader) throw new Error("chain_unavailable");
     const buyer = getAddress(row.buyer);
-    const [grant, available] = await Promise.all([
+    const [grant, wallet] = await Promise.all([
       this.reader.grant(buyer, row.grantId as Hex),
-      this.reader.available(buyer),
+      this.reader.wallet(buyer),
     ]);
     const now = Math.floor(Date.now() / 1000);
     const period = grant.config.periodSeconds || 1;
@@ -126,7 +218,8 @@ export class AutopayService {
       maxTotal: grant.config.maxTotal,
       spentToday,
       spentTotal: grant.spentTotal,
-      available,
+      balance: wallet.balance,
+      allowance: wallet.allowance,
       blocked:
         !signer || signer.toLowerCase() !== row.signer.toLowerCase()
           ? "recreate_key"
@@ -142,12 +235,12 @@ export class AutopayService {
     };
   }
 
-  private async buyer(tokenId: string) {
+  private async owner(tokenId: string) {
     const row = await this.db.vaultGrant.findUnique({
       where: { tokenId },
-      select: { buyer: true },
+      select: { buyer: true, userId: true },
     });
-    return row?.buyer.toLowerCase();
+    return row ? { buyer: row.buyer.toLowerCase(), userId: row.userId } : null;
   }
 
   // Whether the token's grant can pay this quote by itself. A quote within
@@ -167,13 +260,17 @@ export class AutopayService {
     }
     if (!limits) return { approve: "no_autopay", limits };
     if (limits.blocked) return { approve: limits.blocked, limits };
-    if (quote.protocolQuote.buyer.toLowerCase() !== (await this.buyer(tokenId)))
+    const owner = await this.owner(tokenId);
+    if (!owner || quote.protocolQuote.buyer.toLowerCase() !== owner.buyer)
       return { approve: "no_autopay", limits };
+    if (await fundingThrottled(this.db, owner.userId))
+      return { approve: "funding_throttled", limits };
     const amount = BigInt(quote.grossAmount);
     if (amount > limits.maxPerCall) return { approve: "over_per_call", limits };
     if (limits.spentToday + amount > limits.maxPerDay) return { approve: "over_daily", limits };
     if (limits.spentTotal + amount > limits.maxTotal) return { approve: "over_total", limits };
-    if (limits.available < amount) return { approve: "low_balance", limits };
+    if (limits.allowance < amount) return { approve: "low_allowance", limits };
+    if (limits.balance < amount) return { approve: "low_wallet_balance", limits };
     const risk = await this.risk.assess(quote.quoteId);
     if (risk.length) return { approve: risk[0], limits, risk };
     return { autopay: limits };

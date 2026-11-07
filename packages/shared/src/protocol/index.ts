@@ -1,6 +1,7 @@
 import canonicalize from "canonicalize";
 import type { TypedDataToPrimitiveTypes } from "abitype";
 import {
+  hashStruct,
   hashTypedData,
   keccak256,
   toBytes,
@@ -10,6 +11,7 @@ import {
   type TypedDataDomain,
 } from "viem";
 
+// EIP-712 types signed against the vault's own domain.
 export const paymentTypes = {
   InvocationQuote: [
     { name: "invocationKey", type: "bytes32" },
@@ -45,22 +47,109 @@ export const paymentTypes = {
     { name: "releaseRemainder", type: "bool" },
     { name: "validUntil", type: "uint48" },
   ],
+  GrantSetup: [
+    { name: "buyer", type: "address" },
+    { name: "grantId", type: "bytes32" },
+    { name: "signer", type: "address" },
+    { name: "expiresAt", type: "uint48" },
+    { name: "maxPerCall", type: "uint256" },
+    { name: "periodSeconds", type: "uint32" },
+    { name: "maxPerPeriod", type: "uint256" },
+    { name: "maxTotal", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint48" },
+  ],
+  GrantRevoke: [
+    { name: "buyer", type: "address" },
+    { name: "grantId", type: "bytes32" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint48" },
+  ],
+} as const;
+
+// EIP-712 types signed against USDC's domain (FiatToken v2.2).
+export const usdcTypes = {
+  ReceiveWithAuthorization: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+    { name: "nonce", type: "bytes32" },
+  ],
+  Permit: [
+    { name: "owner", type: "address" },
+    { name: "spender", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
 } as const;
 
 type Messages = TypedDataToPrimitiveTypes<typeof paymentTypes>;
+type UsdcMessages = TypedDataToPrimitiveTypes<typeof usdcTypes>;
 export type InvocationQuote = Messages["InvocationQuote"];
 export type DebitAuthorization = Messages["DebitAuthorization"];
 export type ResolutionDecision = Messages["ResolutionDecision"];
+export type GrantSetup = Messages["GrantSetup"];
+export type GrantRevoke = Messages["GrantRevoke"];
+export type ReceiveAuthorization = UsdcMessages["ReceiveWithAuthorization"];
+export type UsdcPermit = UsdcMessages["Permit"];
+export type GrantConfig = {
+  signer: Address;
+  expiresAt: number;
+  maxPerCall: bigint;
+  periodSeconds: number;
+  maxPerPeriod: bigint;
+  maxTotal: bigint;
+};
+// The vault's Permit argument: an empty signature leaves the allowance alone.
+export type VaultPermit = { value: bigint; deadline: bigint; signature: Hex };
+export const NO_PERMIT: VaultPermit = { value: 0n, deadline: 0n, signature: "0x" };
 
-// Minimal write ABI derived from the same canonical structs as EIP-712. Keep
+export const FUNDING_SOURCE = { authorization: 1, grant: 2 } as const;
+export type FundingMode = keyof typeof FUNDING_SOURCE;
+
+const quoteTuple = { type: "tuple", components: paymentTypes.InvocationQuote } as const;
+const grantConfigTuple = {
+  type: "tuple",
+  components: [
+    { name: "signer", type: "address" },
+    { name: "expiresAt", type: "uint48" },
+    { name: "maxPerCall", type: "uint256" },
+    { name: "periodSeconds", type: "uint32" },
+    { name: "maxPerPeriod", type: "uint256" },
+    { name: "maxTotal", type: "uint256" },
+  ],
+} as const;
+const permitTuple = {
+  type: "tuple",
+  components: [
+    { name: "value", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "signature", type: "bytes" },
+  ],
+} as const;
+
+// Minimal write ABIs derived from the same canonical structs as EIP-712. Keep
 // transaction-journal calldata checks independent of generated build artifacts.
-export const reserveHoldAbi = [
+export const fundHoldAbi = [
   {
     type: "function",
-    name: "reserveHold",
+    name: "fundWithAuthorization",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "quote", type: "tuple", components: paymentTypes.InvocationQuote },
+      { name: "quote", ...quoteTuple },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "holdId", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "fundWithGrant",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "quote", ...quoteTuple },
       { name: "authorization", type: "tuple", components: paymentTypes.DebitAuthorization },
       { name: "signature", type: "bytes" },
     ],
@@ -68,45 +157,99 @@ export const reserveHoldAbi = [
   },
 ] as const;
 
-// Read/simulation ABI for the non-upgradeable v1 vault. The write structs still
+export const grantAdminAbi = [
+  {
+    type: "function",
+    name: "setGrantWithSig",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "buyer", type: "address" },
+      { name: "grantId", type: "bytes32" },
+      { name: "config", ...grantConfigTuple },
+      { name: "deadline", type: "uint48" },
+      { name: "signature", type: "bytes" },
+      { name: "permit", ...permitTuple },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "revokeGrantWithSig",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "buyer", type: "address" },
+      { name: "grantId", type: "bytes32" },
+      { name: "deadline", type: "uint48" },
+      { name: "signature", type: "bytes" },
+      { name: "permit", ...permitTuple },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const vaultErrors = [
+  "error Unauthorized()",
+  "error EnforcedPause()",
+  "error InvalidAsset()",
+  "error InvalidConfiguration()",
+  "error InvalidAmount()",
+  "error InvalidSignature()",
+  "error SignatureExpired()",
+  "error GrantNotFound()",
+  "error GrantRevoked()",
+  "error GrantExpired()",
+  "error GrantEpochMismatch()",
+  "error InsufficientAllowance()",
+  "error InsufficientBalance()",
+  "error AuthorizationUsed()",
+  "error AuthorizationRejected()",
+  "error PermitFailed()",
+  "error PerCallLimitExceeded()",
+  "error PeriodLimitExceeded()",
+  "error TotalLimitExceeded()",
+  "error FeeCapExceeded()",
+  "error QuoteExpired()",
+  "error DeadlineInvalid()",
+  "error InvocationConflict()",
+] as const;
+
+// The USDC reads admission needs (FiatToken v2.2).
+export const usdcAbi = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function authorizationState(address authorizer,bytes32 nonce) view returns (bool)",
+  "function nonces(address owner) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+]);
+
+// Read/simulation ABI for the non-upgradeable v2 vault. The write structs still
 // come from paymentTypes above, not a second copy of the quote field order.
 export const vaultAdmissionAbi = [
-  ...reserveHoldAbi,
+  ...fundHoldAbi,
+  ...grantAdminAbi,
   ...parseAbi([
     "function getGrant(address buyer, bytes32 grantId) view returns (((address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config,uint64 epoch,uint256 spentTotal,uint256 spentInPeriod,uint64 currentPeriod,bool revoked) grant)",
-    "function getHold(bytes32 holdId) view returns ((bytes32 quoteDigest,bytes32 authorizationDigest,address buyer,address provider,address feeRecipient,uint256 gross,uint256 refunded,uint256 remaining,uint256 providerReleased,uint256 feeReleased,uint16 feeBps,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy,bool closed,uint64 version,bytes32 grantId) hold)",
+    "function getHold(bytes32 holdId) view returns ((bytes32 quoteDigest,bytes32 authorizationDigest,address buyer,address provider,address feeRecipient,uint256 gross,uint256 refunded,uint256 remaining,uint256 providerReleased,uint256 feeReleased,uint16 feeBps,uint48 deliveryDeadline,uint48 releaseNotBefore,uint48 resolveBy,bool closed,uint64 version,bytes32 grantId,uint8 source) hold)",
+    "function grantNonces(address buyer) view returns (uint256)",
     "function asset() view returns (address)",
     "function decimals() view returns (uint8)",
     "function feeCapBps() view returns (uint16)",
     "function maxQuoteLifetimeSeconds() view returns (uint48)",
     "function maxHoldSeconds() view returns (uint48)",
-    "function availableBalance(address buyer) view returns (uint256)",
     "function paused() view returns (bool)",
     "function hasRole(bytes32 role,address account) view returns (bool)",
-    "error Unauthorized()",
-    "error EnforcedPause()",
-    "error InvalidAsset()",
-    "error InvalidConfiguration()",
-    "error InvalidAmount()",
-    "error InvalidSignature()",
-    "error GrantNotFound()",
-    "error GrantRevoked()",
-    "error GrantExpired()",
-    "error GrantEpochMismatch()",
-    "error InsufficientAvailable()",
-    "error PerCallLimitExceeded()",
-    "error PeriodLimitExceeded()",
-    "error TotalLimitExceeded()",
-    "error FeeCapExceeded()",
-    "error QuoteExpired()",
-    "error DeadlineInvalid()",
-    "error InvocationConflict()",
+    ...vaultErrors,
   ]),
 ] as const;
 
-export const holdReservedEvent = parseAbi([
-  "event HoldReserved(bytes32 indexed holdId, address indexed buyer, bytes32 quoteDigest, bytes32 authorizationDigest, uint256 gross)",
+export const holdFundedEvent = parseAbi([
+  "event HoldFunded(bytes32 indexed holdId, address indexed buyer, bytes32 quoteDigest, bytes32 authorizationDigest, uint256 gross, uint8 source)",
 ])[0];
+
+export const grantEvents = parseAbi([
+  "event GrantSet(address indexed buyer, bytes32 indexed grantId, uint64 epoch)",
+  "event GrantRevoked(address indexed buyer, bytes32 indexed grantId, uint64 epoch)",
+]);
 
 export const applyDecisionAbi = [
   {
@@ -121,14 +264,13 @@ export const applyDecisionAbi = [
     outputs: [],
   },
 ] as const;
+// Every event that moves money into, inside or out of the vault.
 export const vaultFinancialEvents = parseAbi([
-  "event Deposited(address indexed buyer,uint256 amount)",
-  "event AvailableWithdrawn(address indexed buyer,uint256 amount)",
-  "event HoldReserved(bytes32 indexed holdId,address indexed buyer,bytes32 quoteDigest,bytes32 authorizationDigest,uint256 gross)",
+  "event HoldFunded(bytes32 indexed holdId,address indexed buyer,bytes32 quoteDigest,bytes32 authorizationDigest,uint256 gross,uint8 source)",
   "event DecisionApplied(bytes32 indexed holdId,bytes32 indexed decisionId,uint64 version,uint256 refundAmount,uint256 providerAmount,uint256 feeAmount)",
   "event HoldReclaimed(bytes32 indexed holdId,address indexed buyer,uint256 amount)",
-  "event ProviderWithdrawn(address indexed provider,uint256 amount)",
-  "event PlatformWithdrawn(address indexed recipient,uint256 amount)",
+  "event PaymentDeferred(bytes32 indexed holdId,address indexed account,uint256 amount)",
+  "event Claimed(address indexed account,address indexed to,uint256 amount)",
 ]);
 export const vaultFinanceAbi = [
   ...vaultAdmissionAbi,
@@ -137,40 +279,40 @@ export const vaultFinanceAbi = [
   ...parseAbi([
     "function reclaim(bytes32 holdId)",
     "function usedDecisionIds(bytes32 id) view returns(bool)",
-    "function totalAvailable() view returns(uint256)",
     "function totalHeld() view returns(uint256)",
-    "function totalProviderClaimable() view returns(uint256)",
-    "function totalPlatformClaimable() view returns(uint256)",
-    "function providerClaimable(address account) view returns(uint256)",
-    "function platformClaimable(address account) view returns(uint256)",
+    "function totalClaimable() view returns(uint256)",
+    "function claimable(address account) view returns(uint256)",
     "error DecisionReplay()",
     "error HoldVersionMismatch()",
     "error HoldClosed()",
     "error ReleaseTooEarly()",
     "error ResolutionExpired()",
     "error NoEffect()",
+    "error HoldNotFound()",
+    "error ReclaimTooEarly()",
   ]),
 ] as const;
 
-// What a buyer or provider sends from their own wallet: funding and
-// cashing out of the vault, and the grants that let a signer spend from it.
+// What a buyer or provider sends from their own wallet: the grant escape hatch
+// and withdrawing a payout the vault could not deliver.
 export const vaultAccountAbi = [
   ...vaultFinanceAbi,
+  ...grantEvents,
   ...parseAbi([
-    "function deposit(uint256 amount)",
-    "function withdrawAvailable(uint256 amount)",
-    "function withdrawProvider(uint256 amount)",
-    "function registerGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
-    "function updateGrant(bytes32 grantId,(address signer,uint48 expiresAt,uint256 maxPerCall,uint32 periodSeconds,uint256 maxPerPeriod,uint256 maxTotal) config)",
     "function revokeGrant(bytes32 grantId)",
-    "error GrantAlreadyExists()",
+    "function claim(address to)",
     "error InsufficientClaimable()",
   ]),
 ] as const;
 
-// Local tests may supply their isolated chain ID; deployed Payvoke v1 uses Fuji.
+// Local tests may supply their isolated chain ID; deployed Payvoke v2 uses Fuji.
 export function vaultDomain(vault: Address, chainId = 43113) {
-  return { name: "PayvokeVault", version: "1", chainId, verifyingContract: vault } as const;
+  return { name: "PayvokeVault", version: "2", chainId, verifyingContract: vault } as const;
+}
+
+// Circle's FiatToken v2.2 domain. Fuji USDC answers name "USD Coin", version "2".
+export function usdcDomain(asset: Address, chainId = 43113) {
+  return { name: "USD Coin", version: "2", chainId, verifyingContract: asset } as const;
 }
 
 export function hashQuote(domain: TypedDataDomain, quote: InvocationQuote): Hex {
@@ -198,6 +340,100 @@ export function hashDecision(domain: TypedDataDomain, decision: ResolutionDecisi
     primaryType: "ResolutionDecision",
     message: decision,
   });
+}
+
+// The one USDC authorization that funds `quote`: to the vault, for the gross
+// amount, valid until the quote expires, with the quote digest as its nonce.
+export function receiveAuthorization(
+  vault: Address,
+  quote: InvocationQuote,
+  quoteDigest: Hex,
+): ReceiveAuthorization {
+  return {
+    from: quote.buyer,
+    to: vault,
+    value: quote.grossAmount,
+    validAfter: 0n,
+    validBefore: BigInt(quote.validUntil),
+    nonce: quoteDigest,
+  };
+}
+
+// EIP-712 typed data the buyer's wallet signs to pay one quote.
+export function receiveAuthorizationTypedData(
+  asset: Address,
+  vault: Address,
+  quote: InvocationQuote,
+  quoteDigest: Hex,
+  chainId = 43113,
+) {
+  return {
+    domain: usdcDomain(asset, chainId),
+    types: usdcTypes,
+    primaryType: "ReceiveWithAuthorization",
+    message: receiveAuthorization(vault, quote, quoteDigest),
+  } as const;
+}
+
+// The struct hash the vault records as an authorization-funded hold's
+// authorization digest (PayvokeVault.hashReceiveAuthorization).
+export function hashReceiveAuthorization(
+  vault: Address,
+  quote: InvocationQuote,
+  quoteDigest: Hex,
+): Hex {
+  return hashStruct({
+    data: receiveAuthorization(vault, quote, quoteDigest),
+    primaryType: "ReceiveWithAuthorization",
+    types: usdcTypes,
+  });
+}
+
+export function grantSetupTypedData(vault: Address, message: GrantSetup, chainId = 43113) {
+  return {
+    domain: vaultDomain(vault, chainId),
+    types: paymentTypes,
+    primaryType: "GrantSetup",
+    message,
+  } as const;
+}
+
+export function grantRevokeTypedData(vault: Address, message: GrantRevoke, chainId = 43113) {
+  return {
+    domain: vaultDomain(vault, chainId),
+    types: paymentTypes,
+    primaryType: "GrantRevoke",
+    message,
+  } as const;
+}
+
+export function permitTypedData(asset: Address, message: UsdcPermit, chainId = 43113) {
+  return {
+    domain: usdcDomain(asset, chainId),
+    types: usdcTypes,
+    primaryType: "Permit",
+    message,
+  } as const;
+}
+
+// The allowance a buyer's active grants need: what each can still spend in total.
+export function targetAllowance(
+  grants: {
+    config: { expiresAt: number | bigint; maxTotal: bigint };
+    spentTotal: bigint;
+    revoked: boolean;
+  }[],
+  now = Math.floor(Date.now() / 1000),
+) {
+  return grants.reduce(
+    (sum, grant) =>
+      grant.revoked ||
+      Number(grant.config.expiresAt) <= now ||
+      grant.spentTotal >= grant.config.maxTotal
+        ? sum
+        : sum + grant.config.maxTotal - grant.spentTotal,
+    0n,
+  );
 }
 
 export function businessKey(

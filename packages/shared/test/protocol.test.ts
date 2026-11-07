@@ -19,16 +19,21 @@ import {
   hashDecision,
   hashQuote,
   hashSnapshot,
+  hashReceiveAuthorization,
   paymentTypes,
-  reserveHoldAbi,
+  fundHoldAbi,
+  grantAdminAbi,
   applyDecisionAbi,
   vaultFinancialEvents,
   vaultDomain,
+  receiveAuthorizationTypedData,
+  targetAllowance,
+  usdcDomain,
   type InvocationQuote,
 } from "../src/protocol";
 
 const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/x402-v1.json", import.meta.url), "utf8"),
+  readFileSync(new URL("./fixtures/x402-v2.json", import.meta.url), "utf8"),
 );
 const quote: InvocationQuote = {
   ...fixture.quote,
@@ -56,11 +61,15 @@ test("finance write ABI and events match the compiled vault", () => {
       "utf8",
     ),
   );
-  const write = compiled.abi.find(
-    (item: { type: string; name: string }) =>
-      item.type === "function" && item.name === "applyDecision",
-  );
-  assert.equal(toFunctionSelector(applyDecisionAbi[0]), toFunctionSelector(write));
+  const compiledFunction = (name: string) =>
+    compiled.abi.find(
+      (item: { type: string; name: string }) => item.type === "function" && item.name === name,
+    );
+  for (const item of [...applyDecisionAbi, ...fundHoldAbi, ...grantAdminAbi]) {
+    const write = compiledFunction(item.name);
+    assert.ok(write, item.name);
+    assert.equal(toFunctionSelector(item), toFunctionSelector(write), item.name);
+  }
   for (const expected of vaultFinancialEvents) {
     const event = compiled.abi.find(
       (item: { type: string; name: string }) =>
@@ -75,22 +84,90 @@ test("finance write ABI and events match the compiled vault", () => {
   }
 });
 
-test("reserveHold write ABI matches the compiled vault selector and round-trips its structs", () => {
-  // Checked against PayvokeVault's compiled Solidity ABI, not derived from a
-  // second hand-written tuple encoder in this test.
-  assert.equal(toFunctionSelector(reserveHoldAbi[0]), "0x73e30cc1");
+test("funding write ABIs round-trip their structs", () => {
   const data = encodeFunctionData({
-    abi: reserveHoldAbi,
-    functionName: "reserveHold",
+    abi: fundHoldAbi,
+    functionName: "fundWithGrant",
     args: [quote, authorization, fixture.signature],
   });
-  const decoded = decodeFunctionData({ abi: reserveHoldAbi, data });
-  assert.equal(decoded.functionName, "reserveHold");
+  const decoded = decodeFunctionData({ abi: fundHoldAbi, data });
+  assert.equal(decoded.functionName, "fundWithGrant");
   assert.equal(decoded.args[0].grossAmount, quote.grossAmount);
   assert.equal(decoded.args[0].quoteKey, quote.quoteKey);
-  assert.equal(decoded.args[1].quoteDigest, authorization.quoteDigest);
-  assert.equal(decoded.args[1].grantEpoch, authorization.grantEpoch);
+  assert.equal(decoded.args[1]!.quoteDigest, authorization.quoteDigest);
+  assert.equal(decoded.args[1]!.grantEpoch, authorization.grantEpoch);
   assert.equal(decoded.args[2], fixture.signature);
+  const direct = decodeFunctionData({
+    abi: fundHoldAbi,
+    data: encodeFunctionData({
+      abi: fundHoldAbi,
+      functionName: "fundWithAuthorization",
+      args: [quote, fixture.receiveSignature],
+    }),
+  });
+  assert.equal(direct.functionName, "fundWithAuthorization");
+  assert.equal(direct.args[1], fixture.receiveSignature);
+});
+
+test("the buyer's USDC authorization is bound to the quote digest and the vault", async () => {
+  const vault = fixture.domain.verifyingContract as Address;
+  const typed = receiveAuthorizationTypedData(quote.asset, vault, quote, fixture.quoteDigest);
+  assert.deepEqual(typed.domain, usdcDomain(quote.asset));
+  assert.deepEqual(typed.domain, {
+    ...fixture.usdcDomain,
+    verifyingContract: getAddress(fixture.usdcDomain.verifyingContract),
+  });
+  assert.equal(typed.message.nonce, fixture.quoteDigest);
+  assert.equal(typed.message.to, vault);
+  assert.equal(typed.message.value, quote.grossAmount);
+  assert.equal(typed.message.validBefore, BigInt(quote.validUntil));
+  assert.equal(
+    hashReceiveAuthorization(vault, quote, fixture.quoteDigest),
+    fixture.receiveAuthorizationStructHash,
+  );
+  const signature = await privateKeyToAccount(fixture.fixturePrivateKey).signTypedData(typed);
+  assert.equal(signature, fixture.receiveSignature);
+  assert.equal(
+    await recoverTypedDataAddress({ ...typed, signature }),
+    getAddress(fixture.sessionSigner),
+  );
+  // Another quote, vault or amount is another authorization.
+  const other = { ...quote, grossAmount: quote.grossAmount + 1n };
+  assert.notEqual(
+    hashReceiveAuthorization(vault, other, hashQuote(domain, other)),
+    fixture.receiveAuthorizationStructHash,
+  );
+  assert.notEqual(
+    hashReceiveAuthorization(
+      "0x9000000000000000000000000000000000000009",
+      quote,
+      fixture.quoteDigest,
+    ),
+    fixture.receiveAuthorizationStructHash,
+  );
+});
+
+test("target allowance sums what active grants can still spend", () => {
+  const now = 1_000;
+  const grant = (maxTotal: bigint, spentTotal: bigint, expiresAt = 2_000, revoked = false) => ({
+    config: { expiresAt, maxTotal },
+    spentTotal,
+    revoked,
+  });
+  assert.equal(
+    targetAllowance(
+      [
+        grant(100n, 30n),
+        grant(50n, 0n),
+        grant(10n, 10n),
+        grant(99n, 0n, 999),
+        grant(99n, 0n, 2_000, true),
+      ],
+      now,
+    ),
+    120n,
+  );
+  assert.equal(targetAllowance([], now), 0n);
 });
 
 test("matches published EIP-712 hashes, signature and recovered session signer", async () => {
@@ -131,7 +208,7 @@ test("every quote field and domain binds consent", () => {
   }
   for (const changed of [
     { ...domain, chainId: 1 },
-    { ...domain, version: "2" },
+    { ...domain, version: "1" },
     { ...domain, name: "Other" },
     { ...domain, verifyingContract: "0x9000000000000000000000000000000000000009" as Address },
   ])

@@ -9,9 +9,9 @@ Builders share their AI agents. Buyers hire them one job at a time. Every paid j
 - **Marketplace:** discover agents published by independent builders. Agents run on their own infrastructure.
 - **Conversations:** real-time chat over SSE with text, forms, choices, and structured offers. Free messages are limited per thread.
 - **Structured offers:** agents propose price and terms. Buyers accept before work starts. Each offer is bound to the agent, command version, input, terms, and payment policy.
-- **Escrow payments:** funds are locked in PayvokeVault before execution. Payments are authorized with EIP-712 signatures and submitted through x402.
+- **Per-job escrow:** each job is funded straight from the buyer's wallet into PayvokeVault before execution. There is no deposit: the buyer's wallet signs one USDC authorization (EIP-3009) for that quote, submitted through x402, and pays no gas.
 - **Automatic settlement:** payment is released after successful delivery, and refunded when the result is failed, late, or missing.
-- **Spending grants:** buyers let assistants pay within per-job, periodic, and total limits, with an expiry.
+- **Spending grants:** buyers let assistants and one-click browser keys pay from their wallet within per-job, periodic, and total limits, with an expiry. Setting up and revoking a grant is a signature the relayer submits, so it costs no gas.
 - **Builder Studio:** manage agents, commands, pricing, and execution policy.
 - **API and MCP:** HTTP API, MCP server for AI assistants, generated OpenAPI spec, and buyer-scoped API keys.
 
@@ -31,9 +31,9 @@ sequenceDiagram
     API-->>Buyer: Display response and offer
 
     Buyer->>API: Accept offer
-    API-->>Buyer: Payment authorization required
-    Buyer->>API: Submit signed payment
-    API->>Vault: Reserve escrow
+    API-->>Buyer: 402 Payment required (payvoke-escrow)
+    Buyer->>API: Signed USDC authorization (or grant debit)
+    API->>Vault: Fund job from buyer wallet (relayer)
     Vault-->>API: Hold finalized
 
     API-->>Agent: Job ready
@@ -41,56 +41,58 @@ sequenceDiagram
     API-->>Buyer: Stream results and files
 
     API->>Vault: Release or refund
-    Vault-->>API: Settlement finalized
+    Vault-->>API: USDC paid to wallets
 ```
 
 1. **Discover:** find an agent in the marketplace.
 2. **Negotiate:** chat and receive an offer.
-3. **Secure:** accept the offer and lock funds in escrow.
+3. **Secure:** accept the offer; the price moves from your wallet into that job's escrow.
 4. **Execute:** the agent receives the job and delivers.
-5. **Settle:** the vault releases payment or refunds the buyer.
+5. **Settle:** the vault pays the agent's owner or refunds the buyer's wallet.
 
 ## Payments
 
 ### PayvokeVault
 
-The on-chain escrow holds buyer funds in four accounts:
+PayvokeVault is a per-job escrow. Buyers keep no balance in it: it only holds the money of jobs in progress, and pays out to wallets when they settle.
 
-- **Available:** deposited by buyers.
-- **Held:** reserved for active jobs.
-- **Provider claimable:** owed to agent owners after settlement.
-- **Platform claimable:** platform fees.
+- **Held:** the gross price of each open job, funded from the buyer's wallet.
+- **Claimable:** a refund or payout USDC refused to deliver (for example to a blacklisted address). Its owner withdraws it with `claim`. Normally empty.
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> Available: Deposit
-    Available --> Held: Reserve job payment
-    Held --> Claimable: Successful settlement
-    Held --> Available: Refund
-    Available --> [*]: Withdraw
-    Claimable --> [*]: Withdraw
+    [*] --> Held: Fund job from buyer wallet
+    Held --> Provider: Release (push to payout wallet + fee)
+    Held --> Buyer: Refund or reclaim (push to buyer wallet)
+    Held --> Claimable: Transfer refused
+    Claimable --> [*]: Claim
 ```
 
-The vault enforces `tokenBalance >= available + held + providerClaimable + platformClaimable`.
+The vault enforces `tokenBalance >= held + claimable`.
 
-### Authorization
+### Funding a job
 
-Each accepted offer becomes an EIP-712 quote containing the buyer and agent, command version, input and terms hashes, payment policy, price and fee, and deadlines. Payment goes through x402 with a custom `payvoke-vault` scheme. The agent starts only after the hold is final.
+Each accepted offer becomes an EIP-712 quote containing the buyer and agent, command version, input and terms hashes, payment policy, price and fee, and deadlines. Payment goes through x402 with the `payvoke-escrow` scheme (version 2), in one of two ways:
+
+- **From the wallet:** the buyer's wallet signs a USDC `ReceiveWithAuthorization` to the vault for the gross amount, valid until the quote expires, whose nonce is the quote digest. The vault rebuilds every field and is the only caller USDC accepts it from, so the signature funds that one quote and cannot be front-run. No gas, no deposit.
+- **With a spending grant:** a one-click browser key or an API key signs a debit, and the vault pulls the amount from the buyer's allowance within the grant's limits.
+
+The relayer submits the funding transaction; the agent starts only after the hold is final. Buyer signatures are checked through `SignatureChecker` and USDC v2.2's `bytes` overloads, so EOAs, ERC-1271 smart wallets and EIP-7702 accounts can pay.
 
 ### Spending grants
 
-A grant sets per-job, periodic, and total limits plus an expiry. A dedicated spend key signs payments within those limits and cannot withdraw funds. Updating or revoking a grant increments an epoch, which invalidates earlier signatures.
+A grant sets per-job, periodic, and total limits plus an expiry for a dedicated spend key. The buyer signs the grant (`GrantSetup`) and a USDC permit that sets the vault's allowance to what the active grants may still spend; Payvoke's relayer submits both in one call, so the buyer pays no gas. Revoking works the same way and lowers the allowance, and `revokeGrant` stays callable from the wallet directly. Updating or revoking a grant increments an epoch, which invalidates earlier debits.
 
 ### Settlement and recovery
 
-- Successful delivery makes payment claimable by the agent's owner, after the review window.
-- Failed, late, or missing delivery refunds the buyer.
-- If no decision is made before `resolveBy`, the buyer can reclaim the funds.
+- Successful delivery pays the agent's owner and the platform fee straight to their wallets, after the review window.
+- Failed, late, or missing delivery refunds the buyer's wallet.
+- If no decision is made before `resolveBy`, the buyer can reclaim the funds to their wallet.
 
 ## Security
 
-- No paid job starts before the escrow is final.
+- No paid job starts before the escrow is final. Funds stay in the buyer's wallet until a job is funded.
 - Each invocation is charged once. A replayed submission returns the original receipt.
 - Relayer, approver, and executor roles use separate keys. The platform fee has a fixed cap.
 - Signed transactions are journaled in PostgreSQL before broadcast, so they can be reconciled after a crash.
@@ -105,6 +107,8 @@ Automatic payments through an API key fall back to buyer approval when:
 - The price is above three times the command's median.
 - At least half of the agent's recent closed jobs (minimum five) were refunded.
 - A new agent, with fewer than three paid jobs, asks for a high price.
+- The buyer's wallet lacks the USDC or the remaining allowance for the price.
+- Three of the buyer's relayed fundings reverted on chain in the last day (for example, the USDC left the wallet before funding). New payments from that buyer pause for an hour.
 
 ## Architecture
 
@@ -163,7 +167,7 @@ flowchart TB
 | API               | Auth, agent gateway, payment orchestration, SSE                 |
 | MCP Server        | Exposes marketplace capabilities to AI assistants               |
 | Job Worker        | Delivery checks and upload cleanup                              |
-| Settlement Worker | Reserves payments in the vault (relayer key)                    |
+| Settlement Worker | Funds jobs and relays grant changes (relayer key)               |
 | Finance Worker    | Automatic releases and refunds (approval and execution keys)    |
 | PostgreSQL        | Application and financial state, transaction journal            |
 | Redis             | Job coordination and rate limiting                              |

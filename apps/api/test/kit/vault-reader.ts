@@ -6,7 +6,7 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
-import { vaultAdmissionAbi, type InvocationQuote } from "@payvoke/shared/protocol";
+import { FUNDING_SOURCE, vaultAdmissionAbi, type InvocationQuote } from "@payvoke/shared/protocol";
 import { ASSET } from "@payvoke/shared/x402";
 import { VaultChain } from "@payvoke/shared/x402/chain";
 
@@ -34,6 +34,7 @@ export function emptyHold(): Hold {
     closed: false,
     version: 0n,
     grantId: zero,
+    source: 0,
   };
 }
 export function matchingHold(
@@ -41,6 +42,7 @@ export function matchingHold(
   digest: Hex,
   quoteDigest: Hex,
   grantId: Hex,
+  source: number = FUNDING_SOURCE.grant,
 ): Hold {
   return {
     ...emptyHold(),
@@ -56,6 +58,7 @@ export function matchingHold(
     releaseNotBefore: q.releaseNotBefore,
     resolveBy: q.resolveBy,
     grantId,
+    source,
     version: 1n,
   };
 }
@@ -81,7 +84,12 @@ export function mockVault(q: InvocationQuote, vault: Address, signer: Address, r
     now,
     hold: emptyHold(),
     grant,
-    available: 10000000n,
+    // The buyer's wallet: USDC, allowance for the vault, and whether its
+    // authorization for this quote is already used.
+    balance: 10000000n,
+    allowance: 10000000n,
+    authorizationUsed: false,
+    signatureValid: true,
     paused: false,
     role: true,
     feeCap: 500,
@@ -144,11 +152,20 @@ export function mockVault(q: InvocationQuote, vault: Address, signer: Address, r
           return state.quoteCap;
         case "maxHoldSeconds":
           return state.holdCap;
-        case "availableBalance":
-          return state.available;
+        case "balanceOf":
+          return state.balance;
+        case "allowance":
+          return state.allowance;
+        case "authorizationState":
+          return state.authorizationUsed;
         default:
           throw new Error("Unexpected mock read");
       }
+    },
+    async verifyTypedData() {
+      broken();
+      calls.push({ method: "verifyTypedData" });
+      return state.signatureValid;
     },
     async simulateContract(options: { blockNumber?: bigint; account?: Address; args: unknown }) {
       broken();

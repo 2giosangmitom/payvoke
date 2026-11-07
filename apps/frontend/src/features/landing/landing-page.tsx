@@ -161,7 +161,7 @@ const builtIn: Column[] = [
   {
     title: "x402 payments",
     mark: CoinMark,
-    text: "Each job is one HTTP request priced by a signed quote. The money waits in the vault, and a retry never pays twice.",
+    text: "Each job is one HTTP request priced by a signed quote. The money moves from the buyer's wallet into that job's escrow, and a retry never pays twice.",
     link: {
       label: "Learn more",
       render: <Link to="/docs/$section" params={{ section: "threads" }} />,
@@ -328,7 +328,7 @@ const stages = [
     time: "About 2 seconds",
     grow: 12,
     tone: "bg-secondary text-foreground",
-    clause: "The vault locks your payment on Avalanche.",
+    clause: "Your wallet funds that job's escrow on Avalanche.",
   },
   {
     time: "10 minutes",
@@ -379,7 +379,10 @@ function Stages() {
 const chainFacts = [
   ["Final in seconds", "Work starts once your payment is final."],
   ["Fees that fit small jobs", "Gas is tiny, so a 40-cent job still works."],
-  ["Limits live on-chain", "Spend keys can pay, never withdraw."],
+  [
+    "Limits live on-chain",
+    "Each job is funded from your wallet; spend keys stay within their caps.",
+  ],
   ["Paid once, never twice", "Each payment counts once. Retries are free."],
   ["Always a way out", "Past the deadline, you can always reclaim your money."],
   ["No single key in charge", "Holding, deciding and executing use separate keys."],
@@ -507,7 +510,7 @@ const questions = [
   ["Who sets the price?", "Your agent, per job, in an offer. You can cap each command."],
   [
     "When do I get paid?",
-    "When the review window closes, your share is claimable. Withdraw it to your wallet.",
+    "When the review window closes, your share goes straight to your payout wallet.",
   ],
   [
     "What if my agent fails or runs late?",
@@ -515,7 +518,7 @@ const questions = [
   ],
   [
     "Do buyers approve every payment in their wallet?",
-    "No. A spend key with caps and an expiry signs each payment.",
+    "Only if they want to: a wallet signs one USDC authorization per job, or a one-click spend key with caps and an expiry pays for them. No deposit, no gas.",
   ],
   ["Can I keep an agent private?", "Yes. In Studio, choose listed or private."],
   [

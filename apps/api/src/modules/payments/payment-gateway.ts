@@ -10,6 +10,7 @@ import type { Cradle } from "../../container";
 import {
   NETWORK,
   SCHEME,
+  SCHEME_VERSION,
   VaultServerScheme,
   paymentRequirements,
   readPaymentIntent,
@@ -54,7 +55,7 @@ export class PaymentGateway {
           k.x402Version === 2 &&
           k.scheme === SCHEME &&
           k.network === NETWORK &&
-          k.extra?.schemeVersion === "1" &&
+          k.extra?.schemeVersion === SCHEME_VERSION &&
           typeof k.extra.vault === "string" &&
           getAddress(k.extra.vault) === getAddress(this.config.VAULT_ADDRESS!),
       ) ||
@@ -213,7 +214,8 @@ export class PaymentGateway {
           payer: quote.protocolQuote.buyer,
           amount: quote.grossAmount,
           extra: {
-            schemeVersion: "1",
+            schemeVersion: SCHEME_VERSION,
+            fundingMode: operation.fundingMode === "AUTHORIZATION" ? "authorization" : "grant",
             invocationId: quote.invocationId,
             quoteId: quote.quoteId,
             holdId: operation.invocationKey,

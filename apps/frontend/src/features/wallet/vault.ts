@@ -14,12 +14,12 @@ export { vaultAccountAbi } from "@payvoke/shared/protocol";
 // Vault reverts a person can act on, in their words.
 const reverts: Record<string, string> = {
   EnforcedPause: "The vault is paused. Try again later.",
-  InsufficientAvailable: "That is more than your available vault balance.",
-  InsufficientClaimable: "That is more than this address can withdraw.",
+  InsufficientBalance: "Your wallet does not hold enough USDC for this.",
+  InsufficientAllowance: "The USDC allowance for the vault is below this amount.",
+  InsufficientClaimable: "There is nothing for this address to claim.",
   InvalidAmount: "Enter an amount above zero.",
   InvalidConfiguration:
     "Those limits are not valid: per job ≤ per period ≤ total, and a future expiry.",
-  GrantAlreadyExists: "A grant with this ID already exists. Try again.",
   GrantNotFound: "This grant does not exist in the vault.",
   GrantRevoked: "This grant is already revoked.",
 };

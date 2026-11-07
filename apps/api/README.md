@@ -125,7 +125,7 @@ every record written during the request the same `requestId`, also returned as
 | Worker     | Enabled by                          | Holds                                                          |
 | ---------- | ----------------------------------- | -------------------------------------------------------------- |
 | Job        | `JOB_WORKER_ENABLED` (default true) | No key: delivery verification and upload cleanup               |
-| Settlement | `SETTLEMENT_WORKER_ENABLED`         | `RELAYER_PRIVATE_KEY`; sends `reserveHold`                     |
+| Settlement | `SETTLEMENT_WORKER_ENABLED`         | `RELAYER_PRIVATE_KEY`; funds jobs, relays grant changes        |
 | Finance    | `FINANCE_WORKER_ENABLED`            | `FINANCE_APPROVER_PRIVATE_KEY`, `FINANCE_EXECUTOR_PRIVATE_KEY` |
 
 A disabled worker is never constructed and its keys are never read; an enabled
@@ -264,7 +264,7 @@ The API rate-limits auth endpoints; proxy headers are not trusted.
 custom hash) in `session`. Its native SIWE response includes that token;
 authentication requires its signed cookie, not a Payvoke bearer-token plugin.
 Treat auth tables as sensitive. The current-user route never exposes session tokens. Login never
-grants permission to debit the vault; no email/password/social login is enabled.
+grants permission to move the buyer's USDC; no email/password/social login is enabled.
 
 ## Identity and initial migration
 
@@ -309,7 +309,19 @@ Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
 - Invocation submission takes only `{quoteId}` and requires the invocation ID as
   idempotency key.
   After ownership/availability/schema gates it returns an SDK-encoded v2
-  `PAYMENT-REQUIRED` header for `payvoke-vault` on Fuji, with `payTo` set to vault.
+  `PAYMENT-REQUIRED` header for `payvoke-escrow` (scheme version 2) on Fuji, with
+  `payTo` set to the vault. The payment is either the buyer wallet's USDC
+  `ReceiveWithAuthorization` for this quote (nonce = quote digest, valid until the
+  quote expires) or a spending grant's debit; the settlement worker funds the hold
+  with `fundWithAuthorization` or `fundWithGrant`. Three funding transactions that
+  reverted on chain within a day pause that buyer's new payments for an hour
+  (`payment_throttled`).
+- Grant changes are gasless for the buyer: `POST /v1/grant-operations` takes a
+  signed `GrantSetup` or `GrantRevoke` plus an optional USDC permit, checks the
+  signature (ECDSA or ERC-1271) and simulates the vault call before queueing it;
+  the settlement worker's grant relay submits it on the same relayer nonce lane.
+  `GET /v1/grant-operations/:id` reports `PENDING` → `BROADCAST` → `FINALIZED` (or
+  `REJECTED`/`REVERTED`).
 - Core/client/server adapters live in `@payvoke/shared/x402`, pinned to core 2.28.0.
   No stock x402 framework middleware is mounted: the studied Fastify one settles at
   `onRequest`, before body validation. Final orchestration must run only after

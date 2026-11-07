@@ -47,7 +47,10 @@ const grantReader: GrantReader = {
     currentPeriod: BigInt(Math.floor(Date.now() / 1000 / 86400)),
     revoked: false,
   }),
-  available: async () => 1000n * USDC,
+  wallet: async () => ({ balance: 1000n * USDC, allowance: 500n * USDC }),
+  nonce: async () => 0n,
+  verify: async () => true,
+  simulate: async () => null,
 };
 
 let cookie: string;
@@ -255,6 +258,7 @@ async function history(
         invocationKey,
         quoteDigest: `0x${"1".repeat(64)}`,
         authorizationDigest: `0x${"2".repeat(64)}`,
+        fundingMode: "GRANT",
         recoveredSigner: wallet.address,
         paymentPayload: {},
         state: "HELD",

@@ -38,7 +38,8 @@ import {
 import { grantState, short, spentInPeriod, type OnChain } from "@/src/features/keys/autopay-keys";
 import { CodeBlock } from "@/src/features/keys/settings-row";
 import { getWallet, usdc } from "@/src/features/wallet/api";
-import { chainError, parseUsdc, useVaultWrite, vaultAccountAbi } from "@/src/features/wallet/vault";
+import { useGrantChanges } from "@/src/features/wallet/grant-changes";
+import { chainError, parseUsdc, vaultAccountAbi } from "@/src/features/wallet/vault";
 
 const DAY = 86_400;
 const LIFETIMES = [
@@ -253,7 +254,7 @@ function IssuedKey({ issued, onDone }: { issued: Issued; onDone: () => void }) {
 
 function CreateKeyDialog({ vault, onChanged }: { vault: Address | null; onChanged: () => void }) {
   const { address: connected } = useConnection();
-  const send = useVaultWrite();
+  const { setGrant } = useGrantChanges(vault);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [days, setDays] = useState(30);
@@ -271,17 +272,11 @@ function CreateKeyDialog({ vault, onChanged }: { vault: Address | null; onChange
       // The key exists first, so its derived signer can go into the grant.
       try {
         const grantId = newGrantId();
-        await send((write) =>
-          write({
-            address: vault!,
-            abi: vaultAccountAbi,
-            functionName: "registerGrant",
-            args: [
-              grantId,
-              grantConfig(token.signer as Address, seconds(new Date(token.expiresAt)), form),
-            ],
-          }),
-        );
+        await setGrant({
+          buyer: connected!,
+          grantId,
+          config: grantConfig(token.signer as Address, seconds(new Date(token.expiresAt)), form),
+        });
         await linkAccessTokenGrant(token.id, { grantId, buyer: connected! });
         return { secret: token.secret, autopay, autopayError: null };
       } catch (cause) {
@@ -362,7 +357,7 @@ function CreateKeyDialog({ vault, onChanged }: { vault: Address | null; onChange
               until={until}
               wallet={
                 connected
-                  ? `Your wallet ${short(connected)} confirms the limit once.`
+                  ? `Your wallet ${short(connected)} signs the limit and its USDC allowance; no gas.`
                   : "Connect your wallet to set a limit."
               }
             />
@@ -389,7 +384,7 @@ function CreateKeyDialog({ vault, onChanged }: { vault: Address | null; onChange
               >
                 {create.isPending && <Spinner />}{" "}
                 {create.isPending && form.mode === "autopay"
-                  ? "Confirm in your wallet…"
+                  ? "Sign in your wallet, then confirming…"
                   : "Create key"}
               </Button>
             </DialogFooter>
@@ -415,7 +410,7 @@ function EditKeyForm({
   onDone: () => void;
 }) {
   const { address: connected } = useConnection();
-  const send = useVaultWrite();
+  const { setGrant, revokeGrant } = useGrantChanges(vault);
   const now = Math.floor(Date.now() / 1000);
   const legacy = isLegacy(token);
   const live = !legacy && grant && !grantState(grant, now) ? grant : null;
@@ -464,42 +459,35 @@ function EditKeyForm({
   const save = useMutation({
     mutationFn: async () => {
       const expiresAt = seconds(until);
+      const left = (grant: OnChain) =>
+        grant.config.maxTotal > grant.spentTotal ? grant.config.maxTotal - grant.spentTotal : 0n;
+      // The grant changes in place; its allowance moves by the change in total.
       if (chainStep === "update")
-        await send((write) =>
-          write({
-            address: vault!,
-            abi: vaultAccountAbi,
-            functionName: "updateGrant",
-            args: [
-              token.autopay!.grantId as Hex,
-              {
-                ...grantConfig(live!.config.signer, expiresAt, form),
-                periodSeconds: live!.config.periodSeconds,
-              },
-            ],
-          }),
-        );
+        await setGrant({
+          buyer: payer!,
+          grantId: token.autopay!.grantId as Hex,
+          config: {
+            ...grantConfig(live!.config.signer, expiresAt, form),
+            periodSeconds: live!.config.periodSeconds,
+          },
+          previousRemaining: left(live!),
+          spent: live!.spentTotal,
+        });
       if (chainStep === "register") {
         const grantId = newGrantId();
-        await send((write) =>
-          write({
-            address: vault!,
-            abi: vaultAccountAbi,
-            functionName: "registerGrant",
-            args: [grantId, grantConfig(token.signer as Address, expiresAt, form)],
-          }),
-        );
+        await setGrant({
+          buyer: connected!,
+          grantId,
+          config: grantConfig(token.signer as Address, expiresAt, form),
+        });
         await linkAccessTokenGrant(token.id, { grantId, buyer: connected! });
       }
       if (chainStep === "revoke")
-        await send((write) =>
-          write({
-            address: vault!,
-            abi: vaultAccountAbi,
-            functionName: "revokeGrant",
-            args: [token.autopay!.grantId as Hex],
-          }),
-        );
+        await revokeGrant({
+          buyer: payer!,
+          grantId: token.autopay!.grantId as Hex,
+          remaining: left(live!),
+        });
       if (extend) await extendAccessToken(token.id, extend);
     },
     onSuccess: onDone,
@@ -560,7 +548,9 @@ function EditKeyForm({
           }
           wallet={
             walletProblem ||
-            (chainStep && connected ? `Your wallet ${short(connected)} confirms the change.` : "")
+            (chainStep && connected
+              ? `Your wallet ${short(connected)} signs the change; Payvoke submits it, no gas.`
+              : "")
           }
         />
       )}
@@ -583,7 +573,7 @@ function EditKeyForm({
           }
         >
           {save.isPending && <Spinner />}{" "}
-          {save.isPending && chainStep ? "Confirm in your wallet…" : "Save"}
+          {save.isPending && chainStep ? "Sign in your wallet, then confirming…" : "Save"}
         </Button>
       </DialogFooter>
     </form>
@@ -629,7 +619,6 @@ export function ApiKeys() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
   const { address: connected } = useConnection();
-  const send = useVaultWrite();
   const queryKey = ["account", session?.user.id, "access-tokens"];
   const tokens = useQuery({ queryKey, queryFn: listAccessTokens });
   const wallet = useQuery({
@@ -637,6 +626,7 @@ export function ApiKeys() {
     queryFn: getWallet,
   });
   const vault = (wallet.data?.vault ?? null) as Address | null;
+  const { revokeGrant } = useGrantChanges(vault);
 
   const autopayTokens = (tokens.data ?? []).filter((token) => token.autopay);
   const chain = useReadContracts({
@@ -676,14 +666,12 @@ export function ApiKeys() {
         );
         return;
       }
-      await send((write) =>
-        write({
-          address: vault,
-          abi: vaultAccountAbi,
-          functionName: "revokeGrant",
-          args: [token.autopay!.grantId as Hex],
-        }),
-      ).catch((cause) =>
+      await revokeGrant({
+        buyer: token.autopay.buyer as Address,
+        grantId: token.autopay.grantId as Hex,
+        remaining:
+          grant.config.maxTotal > grant.spentTotal ? grant.config.maxTotal - grant.spentTotal : 0n,
+      }).catch((cause) =>
         setRevokeNote(
           `${token.name} is revoked; cancelling its vault limit failed: ${chainError(cause)}`,
         ),
