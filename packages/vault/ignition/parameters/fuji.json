@@ -1,12 +1,12 @@
 {
-  "PayvokeVault": {
+  "PayvokeVaultV2": {
     "admin": "0x1DB8731E4F56f213FA7e284515313ff6b0DC1c54",
     "adminDelay": 3600,
     "feeCapBps": 1000,
     "maxQuoteLifetimeSeconds": 600,
     "maxHoldSeconds": 604800
   },
-  "PayvokeVaultRoles": {
+  "PayvokeVaultV2Roles": {
     "relayer": "0x82bf48Aa2f643556f10ebB1Ed5605264BD8F84a7",
     "financeApprover": "0xEF54938C629FB0265d155F4957A0A841289b1C47",
     "financeExecutor": "0x65f0D233B88550A6FE9d63738e1c60B230fB7fc6"
