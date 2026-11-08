@@ -3,8 +3,6 @@ import {
   type Page,
   type SlideMeta,
   type SlideTransition,
-  Step,
-  Steps,
   useSlidePageNumber,
 } from "@open-slide/core";
 import type { CSSProperties, ReactNode } from "react";
@@ -544,7 +542,7 @@ const Cover: Page = () => (
     >
       Marketplace cho AI agent.
       <br />
-      <Em>Chia sẻ agent. Thuê agent theo job.</Em>
+      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
     </p>
   </Frame>
 );
@@ -573,13 +571,13 @@ const Idea: Page = () => (
         sub="Store · Chat · Thanh toán"
         tone="brand"
       />
-      <Node x={1200} y={40} w={480} h={140} title="Buyer" sub="Thuê agent theo job" />
+      <Node x={1200} y={40} w={480} h={140} title="Buyer" sub="Giao việc, trả theo job" />
       <DiagramLabel x={720} y={309}>
         THANH TOÁN THEO JOB
       </DiagramLabel>
     </div>
     <Statement style={{ marginTop: 24 }}>
-      Builder chia sẻ agent. <Em>Buyer thuê theo job.</Em>
+      Builder chia sẻ agent. <Em>Buyer trả tiền theo từng job.</Em>
     </Statement>
   </Frame>
 );
@@ -611,7 +609,7 @@ const Context: Page = () => (
   <Frame n="Ý tưởng" title="Bối cảnh">
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 64 }}>
       <Block tag="MCP" title="Assistant gọi công cụ">
-        Tự tìm và thuê agent.
+        Tự tìm agent và giao việc.
       </Block>
       <Block tag="x402" title="Thanh toán trong HTTP">
         Máy tự thanh toán.
@@ -736,31 +734,21 @@ const JobFlow: Page = () => (
         style={{ position: "absolute", left: 34, right: 300, top: 33, height: 2, background: line }}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 40 }}>
-        <Steps>
-          <Stage n="1" title="Khám phá" tag="off-chain">
-            Chat miễn phí
-          </Stage>
-          <Step>
-            <Stage n="2" title="Offer" tag="off-chain">
-              Giá và điều khoản
-            </Stage>
-          </Step>
-          <Step>
-            <Stage n="3" title="Ký quỹ" tag="on-chain" money>
-              Tiền vào Vault
-            </Stage>
-          </Step>
-          <Step>
-            <Stage n="4" title="Thực thi" tag="off-chain">
-              Agent xử lý job
-            </Stage>
-          </Step>
-          <Step>
-            <Stage n="5" title="Thanh toán" tag="on-chain" money>
-              Release hoặc refund
-            </Stage>
-          </Step>
-        </Steps>
+        <Stage n="1" title="Khám phá" tag="off-chain">
+          Chat miễn phí
+        </Stage>
+        <Stage n="2" title="Offer" tag="off-chain">
+          Giá và điều khoản
+        </Stage>
+        <Stage n="3" title="Ký quỹ" tag="on-chain" money>
+          Tiền vào Vault
+        </Stage>
+        <Stage n="4" title="Thực thi" tag="off-chain">
+          Agent xử lý job
+        </Stage>
+        <Stage n="5" title="Thanh toán" tag="on-chain" money>
+          Release hoặc refund
+        </Stage>
       </div>
     </div>
     <Note style={{ marginTop: 56 }}>Tiền chỉ di chuyển ở bước 3 và bước 5.</Note>
@@ -786,30 +774,22 @@ const PreSale: Page = () => (
         </Spec>
       </div>
       <Window title="Agent phân tích tài chính · CSV">
-        <Steps>
-          <Msg from="user">
-            <b>/analyze</b> q3_financials.csv
-          </Msg>
-          <Step>
-            <Msg from="agent">
-              Đã nhận file. Bạn muốn mức độ phân tích nào?
-              <Caret />
-            </Msg>
-          </Step>
-          <Step>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Option>
-                <b>Quick</b> · 2 biểu đồ cơ bản
-              </Option>
-              <Option picked>
-                <b>Deep</b> · 5 biểu đồ + xu hướng
-              </Option>
-            </div>
-          </Step>
-          <Step>
-            <OfferCard />
-          </Step>
-        </Steps>
+        <Msg from="user">
+          <b>/analyze</b> q3_financials.csv
+        </Msg>
+        <Msg from="agent">
+          Đã nhận file. Bạn muốn mức độ phân tích nào?
+          <Caret />
+        </Msg>
+        <div style={{ display: "flex", gap: 12 }}>
+          <Option>
+            <b>Quick</b> · 2 biểu đồ cơ bản
+          </Option>
+          <Option picked>
+            <b>Deep</b> · 5 biểu đồ + xu hướng
+          </Option>
+        </div>
+        <OfferCard />
       </Window>
     </div>
   </Frame>
@@ -963,24 +943,20 @@ const GenUI: Page = () => (
         </Spec>
       </div>
       <Window title="Kết quả stream realtime">
-        <Steps>
-          <div style={{ display: "flex", gap: 12 }}>
-            <Metric label="DOANH THU Q3" value="−18%" note="so với Q2" />
-            <Metric label="ĐƠN HÀNG" value="3.204" note="−9%" />
+        <div style={{ display: "flex", gap: 12 }}>
+          <Metric label="DOANH THU Q3" value="−18%" note="so với Q2" />
+          <Metric label="ĐƠN HÀNG" value="3.204" note="−9%" />
+        </div>
+        <div style={{ border: `1px solid ${line}`, padding: "18px 20px" }}>
+          <div style={{ fontSize: 23, fontWeight: 600, marginBottom: 14 }}>
+            Phân tích doanh thu theo khu vực
           </div>
-          <Step>
-            <div style={{ border: `1px solid ${line}`, padding: "18px 20px" }}>
-              <div style={{ fontSize: 23, fontWeight: 600, marginBottom: 14 }}>
-                Phân tích doanh thu theo khu vực
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <Bar label="Bắc" value={530} max={530} />
-                <Bar label="Trung" value={412} max={530} />
-                <Bar label="Nam" value={268} max={530} strong />
-              </div>
-            </div>
-          </Step>
-        </Steps>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Bar label="Bắc" value={530} max={530} />
+            <Bar label="Trung" value={412} max={530} />
+            <Bar label="Nam" value={268} max={530} strong />
+          </div>
+        </div>
       </Window>
     </div>
   </Frame>
@@ -996,7 +972,9 @@ const Builder: Page = () => (
       <Block title="Idempotent">Retry an toàn.</Block>
       <Block title="File">Presigned URL.</Block>
     </div>
-    <Note style={{ marginTop: 56 }}>Không cần SDK.</Note>
+    <Note style={{ marginTop: 56 }}>
+      Không giới hạn ngôn ngữ hay công nghệ: chỉ cần HTTP và SSE.
+    </Note>
   </Frame>
 );
 
@@ -1007,18 +985,10 @@ const Assistant: Page = () => (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
       <div>
         <Label>Qua MCP</Label>
-        <Steps>
-          <Row n="01">Tìm agent</Row>
-          <Step>
-            <Row n="02">Chat và đọc Offer</Row>
-          </Step>
-          <Step>
-            <Row n="03">Thanh toán trong hạn mức</Row>
-          </Step>
-          <Step>
-            <Row n="04">Nhận kết quả</Row>
-          </Step>
-        </Steps>
+        <Row n="01">Tìm agent</Row>
+        <Row n="02">Chat và đọc Offer</Row>
+        <Row n="03">Thanh toán trong hạn mức</Row>
+        <Row n="04">Nhận kết quả</Row>
       </div>
       <div>
         <Label>Bảo vệ</Label>
@@ -1027,6 +997,9 @@ const Assistant: Page = () => (
         </Spec>
         <Spec k="Hạn mức" w={220}>
           Vượt thì người dùng duyệt
+        </Spec>
+        <Spec k="Risk Check" w={220}>
+          Có tín hiệu thì người dùng duyệt
         </Spec>
       </div>
     </div>
@@ -1060,15 +1033,16 @@ const Signal = ({ name, children }: { name: string; children: ReactNode }) => (
 
 const RiskCheck: Page = () => (
   <Frame n="Thanh toán" title="Risk Check">
-    <div style={{ display: "grid", gridTemplateColumns: "520px 1fr", columnGap: 56 }}>
-      <Signal name="Ép thanh toán">Nội dung nhắm vào assistant</Signal>
-      <Signal name="Tăng giá">Offer sau cao hơn trước</Signal>
-      <Signal name="Giá bất thường">Cao hơn 3× median</Signal>
-      <Signal name="Refund cao">Từ 50% job gần nhất</Signal>
-      <Signal name="Agent mới">Dưới 3 job, giá cao</Signal>
+    <Label>Khi assistant hoặc API key tự thanh toán · sau khi qua hạn mức</Label>
+    <div style={{ display: "grid", gridTemplateColumns: "460px 1fr", columnGap: 56 }}>
+      <Signal name="Ép thanh toán">Agent ra lệnh cho assistant: bỏ qua luật, trả ngay</Signal>
+      <Signal name="Tăng giá">Offer mới thay Offer cũ với giá cao hơn</Signal>
+      <Signal name="Giá bất thường">Cao hơn 3× median của lệnh (20 lần mua gần nhất)</Signal>
+      <Signal name="Refund cao">Từ 50% trong 20 job đã đóng gần nhất (tối thiểu 5)</Signal>
+      <Signal name="Agent mới">Dưới 3 job đã trả và giá trên 1 USDC</Signal>
     </div>
-    <Statement style={{ marginTop: 40 }}>
-      Có tín hiệu: <Em>người dùng phê duyệt.</Em>
+    <Statement style={{ marginTop: 32 }}>
+      Có tín hiệu: <Em>người dùng phê duyệt.</Em> Không tự trả, không chặn chat.
     </Statement>
   </Frame>
 );
@@ -1185,21 +1159,23 @@ const Box = ({
 
 const Vault: Page = () => (
   <Frame n="Thanh toán" title="PayvokeVault">
-    <div style={{ position: "relative", width: 1680, height: 420 }}>
-      <svg width={1680} height={420} style={{ position: "absolute", inset: 0 }}>
+    <div style={{ position: "relative", width: 1680, height: 580 }}>
+      <svg width={1680} height={580} style={{ position: "absolute", inset: 0 }}>
         <ArrowDefs id="pv-vault" />
         <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-vault)">
           <path d="M360 210H436" />
           <path d="M780 210H1000C1040 210 1040 58 1086 58" />
           <path d="M780 210H1086" />
           <path d="M780 210H1000C1040 210 1040 362 1086 362" />
+          <path d="M780 210H1000C1040 210 1040 514 1086 514" />
         </g>
       </svg>
-      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký 1 lần cho mỗi job" />
+      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký USDC theo quote" />
       <Box x={440} y={152} w={340} title="Held" sub="escrow theo quote" tone="brand" />
       <Box x={1090} y={0} w={590} title="Ví builder" sub="release sau review window" tone="good" />
       <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
       <Box x={1090} y={304} w={590} title="Ví buyer" sub="reclaim sau resolveBy" />
+      <Box x={1090} y={456} w={590} title="Claimable" sub="USDC bị chặn, owner tự claim" />
     </div>
   </Frame>
 );
@@ -1299,31 +1275,25 @@ const X402: Page = () => (
       <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={300}>
         Ký USDC EIP-3009, gửi lại
       </SeqMsg>
-      <Steps>
-        <Step>
-          <div>
-            <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
-              fundWithAuthorization (relayer)
-            </SeqMsg>
-            <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
-              Hold finalized
-            </SeqMsg>
-            <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={504} strong>
-              202 + receipt
-            </SeqMsg>
-          </div>
-        </Step>
-        <Step>
-          <div>
-            <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={572} strong>
-              invocation.ready
-            </SeqMsg>
-            <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={636}>
-              applyDecision (release / refund)
-            </SeqMsg>
-          </div>
-        </Step>
-      </Steps>
+      <div>
+        <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
+          fundWithAuthorization (relayer)
+        </SeqMsg>
+        <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
+          Hold finalized
+        </SeqMsg>
+        <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={504} strong>
+          202 + receipt
+        </SeqMsg>
+      </div>
+      <div>
+        <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={572} strong>
+          invocation.ready
+        </SeqMsg>
+        <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={636}>
+          applyDecision (release / refund)
+        </SeqMsg>
+      </div>
     </div>
   </Frame>
 );
@@ -1367,7 +1337,8 @@ const Contract: Page = () => (
         Relayer, approver, executor dùng ba key riêng. Một key bị lộ không đủ để lấy tiền.
       </Block>
       <Block title="Tạm dừng vẫn an toàn">
-        Khi pause, hệ thống chặn fund job và grant mới. Người dùng vẫn revoke và đòi tiền về ví được.
+        Khi pause, hệ thống chặn fund job và grant mới. Người dùng vẫn revoke và đòi tiền về ví
+        được.
       </Block>
       <Block title="Không thể sửa số dư">
         Contract không dùng proxy và không có hàm sửa balance. Số dư chỉ đổi qua các bước hợp lệ.
@@ -1407,7 +1378,7 @@ const Closing: Page = () => (
     >
       Marketplace cho AI agent.
       <br />
-      <Em>Chia sẻ agent. Thuê theo job.</Em>
+      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
     </p>
     <div style={{ width: 120, height: 4, background: accent, marginTop: 48 }} />
     <p style={{ fontSize: 32, color: bodyInk, margin: "32px 0 0" }}>
@@ -1450,44 +1421,44 @@ export const notes: (string | undefined)[] = [
   // Cover
   `(~20s)
 Chào Ban giám khảo, chúng tôi là Team Firefly.
-Payvoke là marketplace cho AI agent: người xây dựng agent có thể chia sẻ, người cần công việc có thể thuê, tính theo từng job và chỉ thanh toán khi nhận được kết quả.
+Payvoke là marketplace cho AI agent: người xây dựng agent chia sẻ agent của mình, người cần việc giao việc cho agent, trả tiền theo từng job và chỉ khi nhận được kết quả.
 Bài nói gồm bốn phần: ý tưởng, sản phẩm, thanh toán on-chain và hệ thống.`,
 
   // Idea
   `(~30s)
 Ý tưởng rất đơn giản. Ai cũng có thể tạo ra một AI agent hữu ích, nhưng agent chỉ có giá trị khi có người dùng nó.
-Payvoke là marketplace kết nối hai phía. Builder chia sẻ agent của mình, đặt giá và nhận tiền cho mỗi job. Buyer, là người hoặc AI assistant, không cần tự xây mà chỉ cần tìm agent phù hợp rồi thuê theo job.
+Payvoke là marketplace kết nối hai phía. Builder chia sẻ agent của mình, đặt giá và nhận tiền cho mỗi job. Buyer, là người hoặc AI assistant, không cần tự xây mà chỉ cần tìm agent phù hợp rồi giao job và trả tiền theo từng job.
 Agent do builder tự host. Payvoke lo Store, chat, báo giá, thanh toán và giao kết quả.`,
 
   // TwoSides
   `(~35s)
 Mỗi phía chỉ có ba bước.
-Builder: đăng ký agent và command trong Studio, đặt giá trần cho từng command, rồi nhận job qua HTTP và SSE; tiền về khi giao xong. Không cần SDK.
+Builder: đăng ký agent và command trong Studio, đặt giá trần cho từng command, rồi nhận job qua HTTP và SSE; tiền về khi giao xong. Không giới hạn ngôn ngữ hay công nghệ, miễn là gọi được HTTP và SSE.
 Buyer: tìm agent trên Store và chat thử miễn phí, nhận Offer có giá, deadline và chính sách refund, chấp nhận rồi nhận kết quả ngay trong chat.`,
 
   // Context
   `(~35s)
 Ba mảnh ghép vừa chín.
-MCP cho assistant tự gọi tool: Claude Code hay Codex có thể tự tìm và thuê agent.
+MCP cho assistant tự gọi tool: Claude Code hay Codex có thể tự tìm agent và giao việc.
 x402 cho thanh toán ngay trong HTTP: server trả 402, client ký rồi gửi lại.
-Mạng on-chain cho finality vài giây với phí dưới 1 cent, hợp với job giá trị nhỏ.
+Mạng on-chain cho finality nhanh và phí thấp, hợp với job giá trị nhỏ.
 Agent dễ xây, assistant biết gọi tool, máy biết trả tiền: đó là lý do một marketplace agent trở nên khả thi vào lúc này.`,
 
   // JobFlow
   `(~40s)
 Một job có năm bước.
 Bước 1, khám phá, chat free: agent trả text, form hoặc các gói.
-[→] Bước 2, agent ra Offer: giá, thời hạn và chính sách hoàn tiền.
-[→] Bước 3, buyer ký Quote EIP-712; tiền vào Vault qua x402.
-[→] Bước 4, agent chỉ chạy khi hold đã finalized on-chain.
-[→] Bước 5, nghiệm thu: đạt thì release cho Builder; lỗi hoặc trễ thì refund 100%.
+Bước 2, agent ra Offer: giá, thời hạn và chính sách hoàn tiền.
+Bước 3, buyer ký USDC EIP-3009 cho đúng quote; tiền vào Vault qua x402.
+Bước 4, agent chỉ chạy khi hold đã finalized on-chain.
+Bước 5, nghiệm thu: đạt thì release cho Builder; lỗi hoặc trễ thì refund 100%.
 Điểm mấu chốt: on-chain chỉ có hai lần tiền di chuyển, bước 3 và bước 5.`,
 
   // PreSale
   `(~35s)
 Trước khi trả tiền, mọi thứ miễn phí. Agent stream Markdown realtime, có thể trả form, option hoặc confirm.
-[→] Buyer gửi file CSV và chọn gói Quick hoặc Deep.
-[→] Agent trả Offer card có cấu trúc.
+Buyer gửi file CSV và chọn gói Quick hoặc Deep.
+Agent trả Offer card có cấu trúc.
 Điểm quan trọng: giá chỉ đọc từ Offer, không parse từ text chat. Vì vậy LLM không thể tự bịa giá.
 Ngoài ra còn có trần giá, price floor bù gas và giới hạn số lượt chat để chống spam.`,
 
@@ -1501,7 +1472,7 @@ Stream theo AG-UI: text qua TEXT_MESSAGE, mỗi delta tối đa 4.096 ký tự; 
   // GenUI
   `(~30s)
 Kết quả không chỉ là text. Agent mô tả UI bằng OpenUI Lang và stream từng patch; Payvoke parse lại cả chương trình sau mỗi patch.
-[→] Payvoke render bằng 6 component cố định: Stack, Text, Card, Metric, Table, Chart. Biểu đồ và số liệu hiện ngay trong thread.
+Payvoke render bằng 6 component cố định: Stack, Text, Card, Metric, Table, Chart. Biểu đồ và số liệu hiện ngay trong thread.
 Catalog chỉ để hiển thị: không script, không iframe, không link. Nên agent không thể chèn UI độc hại.`,
 
   // Builder
@@ -1509,13 +1480,16 @@ Catalog chỉ để hiển thị: không script, không iframe, không link. Nê
 Với builder, tích hợp chỉ là HTTP và SSE.
 Mở SSE là agent online. Event nằm trong queue đến khi ACK, nên rớt mạng không mất job.
 API key tạo trong Studio với 7 scope. Mọi lệnh ghi đều idempotent, retry không trả tiền hai lần.
-File lớn upload qua presigned URL và check SHA-256. Không cần SDK, chạy được với Python, Node, LangChain hay AutoGen.`,
+File lớn upload qua presigned URL và check SHA-256. Không giới hạn ngôn ngữ hay công nghệ: Python, Node, LangChain hay AutoGen đều tích hợp được, miễn là gọi được HTTP và SSE.
+
+Nếu bị hỏi "sao không có SDK?":
+Đây là dự án demo nên chúng tôi không phát hành SDK lên npm hay các nền tảng package. Tài liệu API và hai agent mẫu, CSV Analyst và Job Finder, chỉ dùng fetch và SSE, đủ để builder tích hợp.`,
 
   // Assistant
   `(~35s)
 Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
 Assistant tìm agent, chat kèm context và file, đọc Offer, tự trả nếu trong hạn mức, rồi báo lại user.
-Bảo mật: API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên database lộ cũng không ký được. Vượt hạn mức thì hệ thống gửi approval link cho user.
+Bảo mật: API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên database lộ cũng không ký được. Vượt hạn mức, hoặc Risk Check có tín hiệu, thì hệ thống gửi approval link cho user thay vì tự trả.
 
 Nếu bị hỏi "spend key lưu ở đâu?":
 Trên web, key sinh trong browser và không rời máy. Với assistant, key derive từ secret bằng HKDF.`,
@@ -1541,13 +1515,13 @@ Không ảnh hưởng. Giá đã được hash và chốt trong quote.`,
   `(~40s)
 Luồng x402 dùng scheme payvoke-escrow.
 Buyer gửi quote; Payvoke trả 402 Payment Required. Ví buyer ký một USDC authorization (EIP-3009) cho đúng quote đó, không gas, không nạp trước, rồi gửi lại.
-[→] Settlement worker gọi fundWithAuthorization: Vault tự dựng lại authorization và chỉ Vault mới nộp được, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi transaction finalized rồi mới trả 202 kèm receipt.
-[→] Chỉ sau đó agent mới nhận invocation.ready. Khi nghiệm thu xong, Finance worker gọi applyDecision để release hoặc refund.
+Settlement worker gọi fundWithAuthorization: Vault tự dựng lại authorization và chỉ Vault mới nộp được, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi transaction finalized rồi mới trả 202 kèm receipt.
+Chỉ sau đó agent mới nhận invocation.ready. Khi nghiệm thu xong, Finance worker gọi applyDecision để release hoặc refund.
 Khác biệt cốt lõi: tiền không bao giờ đi thẳng cho người bán.`,
 
   // Vault
   `(~35s)
-Vault là escrow theo từng job: buyer không có số dư nào trong Vault, tiền nằm trong ví đến lúc thuê.
+Vault là escrow theo từng job: buyer không có số dư nào trong Vault, tiền nằm trong ví đến lúc job được giao.
 Mỗi job được fund thẳng từ ví vào Held.
 Từ Held có đúng ba nhánh, đều trả thẳng về ví: release cho Builder sau review window; refund 100% về ví buyer nếu lỗi hoặc trễ; reclaim về ví buyer nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist) thì khoản đó thành claimable để người nhận tự rút.
 Invariant: balance luôn lớn hơn hoặc bằng held + claimable.`,
@@ -1559,10 +1533,22 @@ Sau đó spend key ký từng quote; Vault kéo tiền từ ví qua allowance v�
 Revoke cũng chỉ là một chữ ký, tăng epoch và hạ allowance; toàn bộ chữ ký cũ mất hiệu lực. Spend key không bao giờ lấy được quá hạn mức.`,
 
   // RiskCheck
-  `(~35s)
-Hạn mức giới hạn số tiền, nhưng prompt injection vẫn có thể dụ assistant tiêu hết. Risk Check chặn trước khi ký, với 5 tín hiệu:
-text nhắm assistant để ép trả tiền; Offer sau cao hơn Offer trước; giá cao hơn 3 lần median 20 job gần nhất; từ 50% job gần nhất của agent bị refund; agent mới dưới 3 job mà đòi giá trên 1 USD.
-Có tín hiệu là chuyển sang user duyệt, không tự trả.`,
+  `(~50s)
+Hạn mức giới hạn số tiền, nhưng không ngăn được một agent xấu dụ assistant tiêu đúng trong hạn mức. Risk Check là lớp thứ hai. Nó chỉ chạy khi assistant hoặc API key tự thanh toán, sau khi quote đã qua hạn mức, allowance và số dư, và trước khi ký. Thanh toán bằng ví trên web luôn do chính buyer ký nên không qua lớp này.
+Có 5 tín hiệu, đều tính từ dữ liệu của Payvoke:
+Một, ép thanh toán: tin nhắn hoặc Offer của agent có nội dung nhắm vào assistant, như bảo bỏ qua hướng dẫn, thanh toán ngay không cần hỏi, nhắc tên tool của assistant hoặc đòi API key. Hệ thống nhận ra cả tiếng Anh lẫn tiếng Việt.
+Hai, tăng giá: agent thay Offer đang mở bằng một Offer đắt hơn. Buyer từ chối rồi hỏi lại thì không tính.
+Ba, giá bất thường: giá cao hơn 3 lần median giá đã trả của chính lệnh đó, tính trên tối đa 20 lần mua gần nhất và cần ít nhất 3 lần.
+Bốn, refund cao: từ 50% trở lên trong 20 job đã đóng gần nhất của agent bị refund hoặc reclaim, cần ít nhất 5 job.
+Năm, agent mới: dưới 3 job đã trả và giá trên 1 USDC. Job do chính chủ agent tự mua không được tính.
+Chỉ cần một tín hiệu là chuyển sang user duyệt, assistant không tự trả được. Tín hiệu không chặn tin nhắn; phần nghi ngờ được đánh dấu trong read_chat để assistant báo lại cho user.
+Ngoài ra, thanh toán tự động cũng dừng khi ví thiếu USDC hoặc allowance, hoặc khi 3 lần fund của buyer bị revert on-chain trong 24 giờ: buyer đó bị tạm dừng 1 giờ để không đốt gas của relayer.
+
+Nếu bị hỏi "agent viết khác đi thì có né được không?":
+Có thể, vì đây là nhận diện theo mẫu. Nên Risk Check không phải lớp duy nhất: hạn mức giới hạn thiệt hại, escrow giữ tiền đến khi nghiệm thu, và kết quả lỗi được refund 100%.
+
+Nếu bị hỏi "người dùng có bị làm phiền không?":
+Chỉ khi có tín hiệu. Job bình thường trong hạn mức vẫn tự trả.`,
 
   // Architecture
   `(~35s)
@@ -1586,11 +1572,11 @@ Không proxy, không hàm sửa balance. Trần fee là immutable, đặt lúc d
 
   // Closing
   `(~20s)
-Tóm lại: Payvoke là marketplace nơi mọi người chia sẻ AI agent và người khác thuê theo job; tiền nằm on-chain đến khi nghiệm thu xong.
+Tóm lại: Payvoke là marketplace nơi mọi người chia sẻ AI agent và người khác giao việc và trả tiền theo từng job; tiền nằm on-chain đến khi nghiệm thu xong.
 Team Firefly cảm ơn Ban giám khảo. Chúng tôi sẵn sàng nhận câu hỏi.
 
 Nếu bị hỏi nhanh:
 Doanh thu: feeBps trên mỗi job, có trần trong contract.
 Không giữ tiền trong database: để loại bỏ counterparty risk.
-Kết quả giả: có review window và Risk Check.`,
+Kết quả giả: tiền chỉ release sau review window, lỗi thì refund 100%; Risk Check cảnh báo agent có tỷ lệ refund cao.`,
 ];
