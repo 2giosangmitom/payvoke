@@ -7,7 +7,14 @@ import { useConnect, useConnection, useDisconnect, useSignMessage, useSwitchChai
 import { avalancheFuji } from "wagmi/chains";
 import { createSiweMessage } from "viem/siwe";
 import { isAddress } from "viem";
-import { NetworkAvalancheFuji, WalletMetamask, WalletRabby } from "@web3icons/react";
+import {
+  NetworkAvalancheFuji,
+  WalletCoinbase,
+  WalletMetamask,
+  WalletPhantom,
+  WalletRabby,
+  WalletTrust,
+} from "@web3icons/react";
 import {
   ArrowRight,
   Check,
@@ -51,7 +58,13 @@ export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAc
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { address, chainId, isConnected } = useConnection();
-  const { connectors, connectAsync, isPending: isConnecting } = useConnect();
+  const { connectors: allConnectors, connectAsync, isPending: isConnecting } = useConnect();
+  // Explicit targets and EIP-6963 discovery can list the same wallet twice.
+  const connectors = allConnectors.filter(
+    (c, i, list) =>
+      list.findIndex((o) => o.name.toLowerCase() === c.name.toLowerCase()) === i &&
+      !(c.id === "injected" && list.length > 1 && c.name === "Injected"),
+  );
   const { disconnectAsync } = useDisconnect();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
@@ -219,6 +232,12 @@ export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAc
                       <WalletMetamask size={26} />
                     ) : /rabby/i.test(connector.name) ? (
                       <WalletRabby size={26} />
+                    ) : /phantom/i.test(connector.name) ? (
+                      <WalletPhantom size={26} />
+                    ) : /trust/i.test(connector.name) ? (
+                      <WalletTrust size={26} />
+                    ) : /coinbase/i.test(connector.name) ? (
+                      <WalletCoinbase size={26} />
                     ) : (
                       <Wallet size={23} strokeWidth={1.5} />
                     )}
@@ -233,7 +252,7 @@ export function WalletAccess({ label = "Sign in", variant = "header" }: WalletAc
               ))}
               {connectors.length === 0 && (
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  No browser wallet found. Install a wallet such as MetaMask or Rabby to continue.
+                  No browser wallet found. Install a wallet such as MetaMask, Phantom or Trust Wallet to continue.
                 </p>
               )}
             </div>
