@@ -1,7 +1,7 @@
 import { concierge } from "./agents";
 import { config } from "./config";
 import type { CommandName } from "./commands";
-import { Reply, type FileEntry, type Payvoke, type ThreadMessageEvent } from "./payvoke";
+import { Reply, type FileEntry, type Payvoke, PayvokeError, type ThreadMessageEvent } from "./payvoke";
 import { tools } from "./state";
 
 export type Commands = { byId: Map<string, CommandName>; id: Record<CommandName, string> };
@@ -145,6 +145,10 @@ async function offerCommand(
       summary: fullSummary.slice(0, 500),
     });
   } catch (error) {
+    if (error instanceof PayvokeError && (error.status === 409 || error.code.includes("CONFLICT"))) {
+      console.warn(`offer already created or exists: ${error.message}`);
+      return;
+    }
     console.error(`offer failed: ${error instanceof Error ? error.message : error}`);
     await api.sendMessage(threadId, {
       clientRequestId: `${requestId}-error`,

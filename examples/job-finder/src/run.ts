@@ -1,7 +1,7 @@
 import { jobMatcher } from "./agents";
 import type { Commands } from "./chat";
 import type { InvocationReadyEvent, Payvoke, RevisionEvent, ToolResultEvent } from "./payvoke";
-import { Run } from "./payvoke";
+import { PayvokeError, Run } from "./payvoke";
 import type { CommandName } from "./commands";
 import { jobs, type Job } from "./state";
 import { extractText } from "unpdf";
@@ -30,6 +30,10 @@ async function guard(run: Run, work: () => Promise<void>) {
   try {
     await work();
   } catch (error) {
+    if (error instanceof PayvokeError && (error.status === 409 || error.code.includes("CONFLICT"))) {
+      console.warn(`run ${run.runId}: conflict or already finalized, skipping error reporting: ${error.message}`);
+      return;
+    }
     console.error(`run ${run.runId} failed: ${error instanceof Error ? error.message : error}`);
     try {
       await run.startText(`failed-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
