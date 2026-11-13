@@ -36,6 +36,8 @@ export interface ObjectStorage {
   // Lowercase hex SHA-256 of the stored bytes, or null when missing.
   sha256(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
+  // Every object with its last-modified time, for orphan cleanup.
+  list(): AsyncIterable<{ key: string; lastModified: Date }>;
 }
 
 // Shared env fields. Required ones are optional here and enforced by
@@ -179,6 +181,16 @@ export class S3Storage implements ObjectStorage {
   async delete(key: string) {
     await this.server.client.delete(key);
   }
+
+  async *list() {
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.server.client.list({ continuationToken, maxKeys: 1000 });
+      for (const object of page.contents ?? [])
+        yield { key: object.key, lastModified: new Date(object.lastModified ?? 0) };
+      continuationToken = page.isTruncated ? page.nextContinuationToken : undefined;
+    } while (continuationToken);
+  }
 }
 
 // In-process store for tests. `put` stands in for the client's presigned PUT.
@@ -220,5 +232,11 @@ export class MemoryStorage implements ObjectStorage {
 
   async delete(key: string) {
     this.objects.delete(key);
+  }
+
+  readonly modified = new Map<string, Date>();
+  async *list() {
+    for (const key of this.objects.keys())
+      yield { key, lastModified: this.modified.get(key) ?? new Date(0) };
   }
 }

@@ -9,6 +9,7 @@ import {
   UnsupportedMediaTypeError,
 } from "../../errors";
 import type { AccountIdentity } from "../auth/auth.service";
+import { safeName } from "../apps/schema";
 import { IMAGE_MAX_BYTES, IMAGE_TYPES } from "../provider/provider.validation";
 
 export const NAME_MAX = 60;
@@ -98,6 +99,7 @@ export class ProfileService {
 
   async update(account: AccountIdentity, patch: ProfilePatch) {
     const displayName = optionalText(patch.displayName, NAME_MAX, "INVALID_DISPLAY_NAME");
+    if (displayName && !safeName(displayName)) throw new BadRequestError("INVALID_DISPLAY_NAME");
     const bio = optionalText(patch.bio, BIO_MAX, "INVALID_BIO");
     const data = {
       ...(displayName !== undefined ? { displayName } : {}),

@@ -347,6 +347,29 @@ export function normalizeTerms(value: Record<string, unknown>): Record<string, u
 
 export const HEARTBEAT_TTL_MS = 45_000;
 
+// Public names (agent names, display names) are plain text shown across the
+// store. Markup, links and control characters are rejected outright so
+// probes like `<img onerror>` or phishing URLs never reach a card.
+const UNSAFE_NAME = /[<>{}`\\\p{Cc}\p{Cf}]|https?:|www\.|:\/\/|javascript:/iu;
+export const safeName = (value: string) => !UNSAFE_NAME.test(value);
+
+// A store listing needs a real description.
+export const PUBLISH_MIN_DESCRIPTION = 20;
+
+// An agent may be listed once it has connected at least once, has a default
+// command, and says what it does.
+export function publishBlocker(app: {
+  lastHeartbeatAt: Date | null;
+  defaultCommandId: string | null;
+  description: string | null;
+}): string | null {
+  if (!app.lastHeartbeatAt) return "APP_NEVER_CONNECTED";
+  if (!app.defaultCommandId) return "APP_NO_DEFAULT_COMMAND";
+  if ((app.description?.trim().length ?? 0) < PUBLISH_MIN_DESCRIPTION)
+    return "APP_DESCRIPTION_TOO_SHORT";
+  return null;
+}
+
 export function isAvailable(app: {
   status: string;
   lastHeartbeatAt: Date | null;

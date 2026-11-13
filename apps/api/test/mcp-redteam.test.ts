@@ -70,6 +70,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   const config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     REDIS_URL: "redis://127.0.0.1:1",
     WEB_ORIGIN: origin,

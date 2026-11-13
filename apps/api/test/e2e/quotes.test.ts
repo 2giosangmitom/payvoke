@@ -137,6 +137,8 @@ describe("quotes, x402 and isolated settlement", () => {
     await pool.query(`CREATE SCHEMA "${schema}"`);
     for (const entry of await readMigrations()) await pool.query(entry.sql);
     config = loadConfig({
+      MAX_APPS_PER_OWNER: "1000",
+      APP_CREATES_PER_DAY: "1000",
       DATABASE_URL: connectionString,
       // Unused: createApp defaults to in-process signals in tests.
       REDIS_URL: "redis://127.0.0.1:1",

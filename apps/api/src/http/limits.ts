@@ -1,5 +1,6 @@
 import { bodyLimit } from "hono/body-limit";
 import { getConnInfo } from "hono/bun";
+import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { Redis } from "#core/queue";
 import { PayloadTooLargeError } from "../errors";
@@ -60,7 +61,20 @@ export function redisRateStore(redis: Redis): RateStore {
   };
 }
 
-const address = (c: Parameters<typeof getConnInfo>[0]) => {
+// The client address. Behind N trusted reverse proxies (TRUSTED_PROXY_HOPS),
+// the Nth address from the right of X-Forwarded-For is the client: proxies
+// append, so entries left of it are client-controlled and never trusted.
+// Without this every request behind a proxy shares one address and one limit.
+export const clientAddress = (c: Context<AppEnv>) => {
+  const hops = c.var.cradle?.config?.TRUSTED_PROXY_HOPS ?? 0;
+  if (hops > 0) {
+    const chain = (c.req.header("x-forwarded-for") ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const client = chain[chain.length - hops];
+    if (client) return client;
+  }
   try {
     return getConnInfo(c).remote.address ?? "local";
   } catch {
@@ -68,6 +82,49 @@ const address = (c: Parameters<typeof getConnInfo>[0]) => {
     return "local";
   }
 };
+const address = clientAddress;
+
+// `max` requests per `windowMs` for one signed-in account. Place it after
+// requireAccount. Unlike the per-address limit, a new IP does not reset it.
+export const accountLimit = (
+  name: string,
+  limit: number | ((config: AppEnv["Variables"]["cradle"]["config"]) => number),
+  windowMs: number,
+) =>
+  createMiddleware<AppEnv>(async (c, next) => {
+    const account = c.var.account;
+    const max = typeof limit === "number" ? limit : limit(c.var.cradle.config);
+    if (account) {
+      let count = 0;
+      try {
+        count = await c.var.cradle.rateStore.hit(`${name}:acct:${account.id}`, windowMs);
+      } catch {
+        count = 0;
+      }
+      if (count > max) {
+        c.header("Retry-After", String(Math.ceil(windowMs / 1000)));
+        return c.json({ error: "RATE_LIMITED" }, 429);
+      }
+    }
+    await next();
+  });
+
+// `max` requests per `windowMs` per client address, for slow-moving abuse
+// such as mass sign-ups that a per-minute window cannot see.
+export const addressLimit = (name: string, max: number, windowMs: number) =>
+  createMiddleware<AppEnv>(async (c, next) => {
+    let count = 0;
+    try {
+      count = await c.var.cradle.rateStore.hit(`${name}:${address(c)}`, windowMs);
+    } catch {
+      count = 0;
+    }
+    if (count > max) {
+      c.header("Retry-After", String(Math.ceil(windowMs / 1000)));
+      return c.json({ error: "RATE_LIMITED" }, 429);
+    }
+    await next();
+  });
 
 // `max` requests per minute for one route and client. A store error lets the request
 // through rather than failing it; the limit is abuse control, not accounting.

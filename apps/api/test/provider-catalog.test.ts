@@ -15,6 +15,8 @@ import { PrismaClient } from "#core/db";
 import { readMigrations, startTestPostgres, type TestPostgres } from "#test/kit/database";
 import { pendingVerifications, verifyStructuredDeliveries } from "#core/payments/delivery";
 import { MemoryDoorbell, MemoryJobs } from "#core/queue";
+import { MemoryStorage } from "#core/storage";
+import { deleteOrphanObjects, deleteUnusedAccounts, retireStaleApps } from "../src/workers/cleanup";
 
 const origin = "https://app.payvoke.test";
 const schema = `catalog_test_${randomUUID().replaceAll("-", "")}`;
@@ -42,6 +44,8 @@ beforeAll(async () => {
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   app = createApp(
     loadConfig({
+      MAX_APPS_PER_OWNER: "1000",
+      APP_CREATES_PER_DAY: "1000",
       DATABASE_URL: connectionString,
       // Unused: the test passes in-process signals.
       REDIS_URL: "redis://127.0.0.1:1",
@@ -216,10 +220,27 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     {},
   );
   assert.equal(defaulted.statusCode, 200, defaulted.body);
+  // Publishing waits for a first connection and a real description.
+  const publish = (payload: Record<string, unknown>) =>
+    web("PATCH", `/v1/provider/apps/${id}`, { visibility: "PUBLIC", ...payload });
+  assert.equal((await publish({})).json().error, "APP_NEVER_CONNECTED");
   await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
+  assert.equal((await publish({ description: "short" })).json().error, "APP_DESCRIPTION_TOO_SHORT");
+  const published = await publish({ description: "Summarizes text into short notes." });
+  assert.equal(published.statusCode, 200, published.body);
   const catalog = await web("GET", "/v1/apps");
   assert.equal(catalog.statusCode, 200, catalog.body);
   assert.equal(catalog.json().items[0].id, id);
+  // An agent that goes offline without ever delivering leaves the store.
+  await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date(Date.now() - 60_000) } });
+  assert.equal((await web("GET", "/v1/apps")).json().items.length, 0);
+  await db.app.update({ where: { id }, data: { lastHeartbeatAt: new Date() } });
+  // Markup and links are rejected in names.
+  for (const name of ["<img src=x onerror=alert(1)>", "Visit https://evil.example"])
+    assert.equal(
+      (await web("PATCH", `/v1/provider/apps/${id}`, { name })).json().error,
+      "INVALID_APP_NAME",
+    );
   assert.equal(catalog.json().items[0].availability, "AVAILABLE");
   // No command declares a cap, so offers are bounded only by the policy floor.
   assert.equal(catalog.json().items[0].priceCap, null);
@@ -1340,4 +1361,56 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
       ).statusCode,
       400,
     );
+});
+
+it("retires stale agents, deletes unused accounts and orphaned objects", async () => {
+  const owner = await db.user.create({
+    data: { id: randomUUID(), name: "owner", email: `${randomUUID()}@t.test`, emailVerified: false },
+  });
+  const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const ghost = await db.app.create({
+    data: {
+      ownerId: owner.id,
+      clientRequestId: randomUUID(),
+      name: "Ghost",
+      visibility: "PUBLIC",
+      payoutAddress: wallet.address,
+      createdAt: old,
+    },
+  });
+  const fresh = await db.app.create({
+    data: {
+      ownerId: owner.id,
+      clientRequestId: randomUUID(),
+      name: "Fresh",
+      visibility: "PUBLIC",
+      payoutAddress: wallet.address,
+      lastHeartbeatAt: new Date(),
+    },
+  });
+  const result = await retireStaleApps(db, 7);
+  assert.ok(result.archived >= 1);
+  assert.equal((await db.app.findUniqueOrThrow({ where: { id: ghost.id } })).status, "ARCHIVED");
+  assert.equal((await db.app.findUniqueOrThrow({ where: { id: fresh.id } })).status, "ACTIVE");
+
+  const idle = await db.user.create({
+    data: { id: randomUUID(), name: "idle", email: `${randomUUID()}@t.test`, emailVerified: false, createdAt: old },
+  });
+  const recent = await db.user.create({
+    data: { id: randomUUID(), name: "recent", email: `${randomUUID()}@t.test`, emailVerified: false },
+  });
+  await deleteUnusedAccounts(db, 14);
+  assert.equal(await db.user.findUnique({ where: { id: idle.id } }), null);
+  assert.ok(await db.user.findUnique({ where: { id: recent.id } }));
+  // Owners of agents are never removed, even archived ones.
+  assert.ok(await db.user.findUnique({ where: { id: owner.id } }));
+
+  const storage = new MemoryStorage();
+  await storage.put("files/orphan", "x");
+  await storage.put("files/young", "x");
+  storage.modified.set("files/young", new Date());
+  await storage.put("app-images/kept", "x");
+  await db.app.update({ where: { id: fresh.id }, data: { imageKey: "app-images/kept", imageType: "image/png" } });
+  assert.equal(await deleteOrphanObjects(db, storage), 1);
+  assert.deepEqual([...storage.objects.keys()].sort(), ["app-images/kept", "files/young"]);
 });

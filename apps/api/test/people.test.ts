@@ -38,6 +38,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   const config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     // Unused: the test passes in-process signals.
     REDIS_URL: "redis://127.0.0.1:1",
@@ -136,6 +138,7 @@ async function marketplace() {
     });
     assert.equal(created.statusCode, 201, created.body);
     const appId = created.json().id as string;
+    await db.app.update({ where: { id: appId }, data: { visibility: "PUBLIC" } });
     const command = await web("POST", `/v1/provider/apps/${appId}/commands`, {
       name: "write",
       description: "Writes a document",

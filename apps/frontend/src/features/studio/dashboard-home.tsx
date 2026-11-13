@@ -36,7 +36,6 @@ import {
   errorMessage,
   plural,
 } from "@/src/components/layout/page-kit";
-import { VisibilityField } from "@/src/features/studio/visibility-field";
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
@@ -71,25 +70,22 @@ function CreateAgentDialog({
   open,
   onOpenChange,
   initialName,
-  initialVisibility,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialName: string;
-  initialVisibility: "PUBLIC" | "PRIVATE";
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState(initialVisibility);
   const [error, setError] = useState("");
   const create = useMutation({
     mutationFn: () =>
       createProviderApp({
         name: name.trim(),
         description: description.trim() || undefined,
-        visibility,
+        visibility: "PRIVATE",
       }),
     onSuccess: (app) => {
       setName("");
@@ -142,14 +138,10 @@ function CreateAgentDialog({
               placeholder="What the agent does and when someone would hire it."
             />
           </FormField>
-          <VisibilityField
-            value={visibility}
-            onChange={setVisibility}
-            descriptions={{
-              PUBLIC: "Listed in the store. Anyone can open a thread.",
-              PRIVATE: "Only you can open it. Never listed.",
-            }}
-          />
+          <p className="text-sm text-muted-foreground">
+            New agents start private. Connect your agent, set a default command and a
+            description of at least 20 characters, then publish it from its settings.
+          </p>
           {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
@@ -213,7 +205,6 @@ export function DashboardHome() {
         open={open}
         onOpenChange={setOpen}
         initialName={handoff.name ?? ""}
-        initialVisibility={handoff.visibility ?? "PRIVATE"}
       />
 
       {stats.isPending && <FiguresSkeleton className="mt-8" />}

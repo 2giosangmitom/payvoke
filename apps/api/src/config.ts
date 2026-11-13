@@ -9,6 +9,18 @@ const schema = z.object({
   HOST: envString().default("127.0.0.1"),
   PORT: envInteger().default(3001),
   LOG_LEVEL: envString().default("info"),
+  // Reverse proxies in front of the API that append X-Forwarded-For. 0 trusts
+  // no header and limits by socket address. Set 1 behind one TLS proxy.
+  TRUSTED_PROXY_HOPS: envInteger({ min: 0, max: 5 }).default(0),
+  // Housekeeping: auto-archive agents offline this many days, delete unused
+  // accounts this many days old, and remove unreferenced storage objects.
+  // Abuse limits on agent creation: live agents per owner, and create
+  // attempts per owner per day.
+  MAX_APPS_PER_OWNER: envInteger({ min: 1, max: 1000 }).default(3),
+  APP_CREATES_PER_DAY: envInteger({ min: 1, max: 1000 }).default(5),
+  CLEANUP_ENABLED: envBoolean().default(true),
+  STALE_APP_DAYS: envInteger({ min: 1, max: 365 }).default(7),
+  UNUSED_ACCOUNT_DAYS: envInteger({ min: 1, max: 365 }).default(14),
   DATABASE_URL: envString(),
   // Postgres connections per process; the API and its workers share them.
   DATABASE_POOL_MAX: envInteger({ min: 1, max: 50 }).default(5),

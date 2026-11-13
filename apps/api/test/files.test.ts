@@ -42,6 +42,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     // Unused: the test passes in-process signals.
     REDIS_URL: "redis://127.0.0.1:1",
@@ -678,13 +680,14 @@ it("pays the owner's wallet and serves the agent image the owner uploads", async
   const created = await send("POST", "/v1/provider/apps", {
     name: "Pictured",
     payoutAddress: other.address,
-    visibility: "PUBLIC",
     clientRequestId: randomUUID(),
   });
   assert.equal(created.statusCode, 201, created.body);
   assert.equal(created.json().payoutAddress, wallet.address);
   assert.equal(created.json().imageUrl, null);
   const appId = created.json().id as string;
+  // Listed without going through the publish gate; this test is about images.
+  await db.app.update({ where: { id: appId }, data: { visibility: "PUBLIC" } });
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
 
   const wrongType = await send("PUT", `/v1/provider/apps/${appId}/image`, png, {
@@ -707,9 +710,8 @@ it("pays the owner's wallet and serves the agent image the owner uploads", async
   const url = uploaded.json().imageUrl as string;
   assert.match(url, new RegExp(`^/v1/apps/${appId}/image\\?v=`));
   assert.equal(uploaded.json().imageKey, undefined);
-  const listed = (await send("GET", "/v1/apps"))
-    .json()
-    .items.find((item: { id: string }) => item.id === appId);
+  // The store lists only connected agents; the public detail shows the same URL.
+  const listed = (await send("GET", `/v1/apps/${appId}`)).json();
   assert.equal(listed.imageUrl, url);
   const served = await send("GET", url);
   assert.equal(served.statusCode, 302);

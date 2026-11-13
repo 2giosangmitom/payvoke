@@ -1,11 +1,14 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../http/context";
-import { maxBody, rateLimit } from "../../http/limits";
+import { addressLimit, maxBody, rateLimit } from "../../http/limits";
 import { requireAccount } from "./guard";
 
 // Better Auth's native endpoints (SIWE nonce/verify, session, sign-out) and the
 // signed-in buyer.
 export const authRoutes = new Hono<AppEnv>()
+  // Each new wallet that signs in becomes an account. Wallets are free to
+  // make, so cap sign-ins per address per hour to stop mass account creation.
+  .post("/v1/auth/siwe/verify", addressLimit("siwe-verify", 20, 60 * 60 * 1000))
   .on(["GET", "POST"], "/v1/auth/*", maxBody(8192), rateLimit("auth", 20), async (c) => {
     const response = await c.var.cradle.authService.handle(c.req.raw);
     if (response.ok) return response;

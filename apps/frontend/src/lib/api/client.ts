@@ -11,13 +11,25 @@ export const client = hc<AppType>(apiOrigin, {
     fetch(input, { ...init, credentials: "include" }),
 });
 
+// Readable text for codes a person is likely to hit in the console.
+const messages: Record<string, string> = {
+  APP_LIMIT_REACHED: "You can have at most 3 agents. Archive one to create another.",
+  APP_NEVER_CONNECTED: "Connect your agent to its event feed once before publishing it.",
+  APP_NO_DEFAULT_COMMAND: "Register at least one command before publishing.",
+  APP_DESCRIPTION_TOO_SHORT: "Write a description of at least 20 characters before publishing.",
+  INVALID_APP: "Names can't contain links, HTML or special characters.",
+  INVALID_APP_NAME: "Names can't contain links, HTML or special characters.",
+  INVALID_DISPLAY_NAME: "Display names can't contain links, HTML or special characters.",
+  RATE_LIMITED: "Too many requests. Try again later.",
+};
+
 // A failed request: the API's stable public code, or the HTTP status.
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
   ) {
-    super(code);
+    super(messages[code] ?? code);
     this.name = "ApiError";
   }
 }
