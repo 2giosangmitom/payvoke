@@ -1,4 +1,4 @@
-import { cvAnalyst, jobMatcher } from "./agents";
+import { jobMatcher } from "./agents";
 import type { Commands } from "./chat";
 import type { InvocationReadyEvent, Payvoke, RevisionEvent, ToolResultEvent } from "./payvoke";
 import { Run } from "./payvoke";
@@ -134,12 +134,9 @@ export async function handleReady(
       ? `Mục tiêu nghề nghiệp / Trọng tâm bổ sung: ${job.goal}`
       : `Mục tiêu: Đánh giá toàn diện hồ sơ và tìm kiếm các cơ hội việc làm đang tuyển dụng phù hợp nhất.`;
 
-    const prompt =
-      commandName === "analyze_cv"
-        ? `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc kỹ thông tin CV, đánh giá chuyên sâu điểm mạnh/yếu, chấm điểm CV và cung cấp cơ hội việc làm đang tuyển dụng tại nơi ứng viên ở cùng các tỉnh thành lân cận theo đúng cấu trúc báo cáo.`
-        : `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
+    const prompt = `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
 
-    const agent = commandName === "analyze_cv" ? cvAnalyst : jobMatcher;
+    const agent = jobMatcher;
 
     try {
       const out = await agent.stream([{ role: "user", content: prompt }], {
@@ -210,7 +207,7 @@ export async function handleRevision(api: Payvoke, ev: RevisionEvent & { id: str
 
     const bytes = await api.download(ev.invocationId, job.fileId);
     const cvText = await extractCvText(bytes, job.fileName);
-    const agent = job.command === "analyze_cv" ? cvAnalyst : jobMatcher;
+    const agent = jobMatcher;
 
     const userLocation = job.location
       ? `Địa điểm mong muốn / Nơi ở: ${job.location}`

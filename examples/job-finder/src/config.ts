@@ -18,7 +18,6 @@ export const config = z
           .filter(Boolean),
       ),
     MODEL_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
-    PRICE_ANALYZE_CV: z.string().default("200000"), // atomic USDC
     PRICE_FIND_JOB: z.string().default("150000"),
     STATE_DIR: z.string().default(".data"),
   })

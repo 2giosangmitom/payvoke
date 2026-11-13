@@ -34,29 +34,6 @@ const locationOption = {
 
 export const commandDefinitions = [
   {
-    name: "analyze_cv",
-    description: "Đọc & phân tích chi tiết thông tin CV, chấm điểm đánh giá điểm mạnh/yếu, và gợi ý việc làm theo khu vực nơi ở & tỉnh lân cận.",
-    options: [
-      file,
-      locationOption,
-      {
-        name: "goal",
-        type: "STRING",
-        maxLength: 500,
-        description: "Mục tiêu nghề nghiệp hoặc trọng tâm phân tích (tùy chọn).",
-      },
-    ],
-    positionalParameter: "goal",
-    maxAmount: config.PRICE_ANALYZE_CV,
-    terms: {
-      ...shared,
-      deliverySeconds: 300,
-      reviewSeconds: 1800,
-      revisionPolicy: { maxIncluded: 1, description: "One revision on the same file: adjust focus, location or wording." },
-      verification: { minEvidence: "REC" },
-    },
-  },
-  {
     name: "find_job",
     description: "Đọc CV, đánh giá hồ sơ và tìm việc làm đang tuyển dụng phù hợp theo vị trí nơi ở của bạn & các tỉnh lân cận (kèm mức lương thị trường).",
     options: [
@@ -81,4 +58,4 @@ export const commandDefinitions = [
   },
 ];
 
-export type CommandName = "analyze_cv" | "find_job";
+export type CommandName = "find_job";

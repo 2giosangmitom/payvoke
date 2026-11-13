@@ -1,8 +1,8 @@
 # Job Finder
 
-An example Payvoke agent. Buyers upload a CV (PDF, DOCX, or TXT) and get a detailed CV evaluation (ATS readiness score, key strengths, weaknesses, and improvement advice), localized job matching tailored to their location and neighboring provinces, market salary benchmarks, and direct application links to top hiring platforms (TopCV, ITviec, VietnamWorks, LinkedIn, Google Jobs). It runs on [Mastra](https://mastra.ai) with a small free model from OpenRouter (`nvidia/nemotron-3.5-lightning:free` by default).
+An example Payvoke agent. Buyers upload a CV (PDF, DOCX, or TXT) and get localized job matching tailored to their location and neighboring provinces, market salary benchmarks, and direct application links to top hiring platforms (TopCV, ITviec, VietnamWorks, LinkedIn, Google Jobs). It runs on [Mastra](https://mastra.ai) with a small free model from OpenRouter (`nvidia/nemotron-3.5-lightning:free` by default).
 
-It is meant to be read: it demonstrates the builder API in about 1,000 lines with no Payvoke SDK, only `fetch` and SSE.
+It is meant to be read: it demonstrates the builder API in about 900 lines with no Payvoke SDK, only `fetch` and SSE.
 
 ## Design: code extracts and links, the model assesses and advises
 
@@ -13,9 +13,8 @@ Document parsing and link generation require deterministic accuracy, while caree
 | Extract text from PDF, DOCX, or TXT files | Code (`unpdf` & UTF-8 decoder in `src/run.ts`) |
 | Infer candidate target role and career domain | Code heuristic (`extractTargetRole` in `src/run.ts`) |
 | Build verified application & search URLs (TopCV, ITviec, VietnamWorks, LinkedIn, Google Jobs, company portals) | Code (`src/links.ts`), with Vietnamese slugification and city normalization |
-| Answer free pre-sale chat and explain services | Model (`concierge` in `src/agents.ts`), with fallback reply |
-| Pre-sale intake form and service selection | Code & Payvoke tools (`ask_form`, `ask_choice` in `src/chat.ts`) |
-| Comprehensive CV analysis, scoring, strengths & weaknesses | Model (`cvAnalyst` in `src/agents.ts`), streamed into the thread |
+| Answer free pre-sale chat and explain the service | Model (`concierge` in `src/agents.ts`), with fallback reply |
+| Pre-sale intake form submission | Code & Payvoke tools (`ask_form` in `src/chat.ts`) |
 | Localized job matching, salary benchmarks, and career advice | Model (`jobMatcher` in `src/agents.ts`), streamed into the thread |
 | Handle revisions based on buyer feedback | Model, updating the report with requested adjustments (`src/run.ts`) |
 
@@ -25,13 +24,12 @@ If OpenRouter is down or rate limited, the job still delivers: chat replies with
 
 | Payvoke feature | Where |
 | --------------- | ----- |
-| Commands with FILE and STRING options (`file`, `location`, `goal`), positional parameter (`goal`), `maxAmount` and full terms | `src/commands.ts`, synced with `overwriteCommands` on start |
-| Two distinct service commands: `/find_job` and `/analyze_cv` with `REC` evidence | `src/commands.ts` |
+| Command with FILE and STRING options (`file`, `location`, `goal`), positional parameter (`goal`), `maxAmount` and full terms | `src/commands.ts`, synced with `overwriteCommands` on start |
+| Single service command `/find_job` with `REC` evidence | `src/commands.ts` |
 | SSE event feed as the heartbeat, with dedupe, reconnect, and sequential per-thread/invocation queues | `src/payvoke.ts`, `src/index.ts` |
 | Free chat replies in markdown, streamed token by token with message deltas | `src/chat.ts`, `Reply` in `src/payvoke.ts` |
 | `ask_form` with file upload (`accept: ["application/pdf", ...]`, `maxBytes: 5MB`), `location`, and `goal` before payment | `src/chat.ts` (shown when the buyer asks about CVs, jobs, or careers) |
-| `ask_choice` before payment to choose between `/find_job` and `/analyze_cv` | `src/chat.ts` |
-| Offers priced by the chosen service, with dynamic contextual summaries | `src/chat.ts` |
+| Offer created immediately after intake form, with dynamic contextual summary | `src/chat.ts` |
 | `invocation.ready`: ACK (`ackRun`), `started`, and file download | `src/run.ts` |
 | Binary PDF stream extraction with `unpdf` and text sanitization | `src/run.ts` |
 | Progress steps that update in place (same `stepId`) | `src/run.ts` |
@@ -42,12 +40,12 @@ If OpenRouter is down or rate limited, the job still delivers: chat replies with
 
 ## Flow
 
-1. The buyer runs `/find_job cv.pdf location: "Hà Nội" Frontend Developer`, `/analyze_cv cv.pdf`, attaches a CV directly to a chat message, or chats with the Concierge and fills in the upload form.
-2. If a file is uploaded without specifying a command, the agent asks via `ask_choice` whether the buyer wants job matching (`/find_job`) or comprehensive CV analysis (`/analyze_cv`), then creates an offer at that price.
+1. The buyer runs `/find_job cv.pdf location: "Hà Nội" Frontend Developer`, attaches a CV directly to a chat message, or chats with the Concierge and fills in the upload form.
+2. The agent creates an offer for `/find_job` at the configured price.
 3. The buyer accepts and pays. The USDC is held in PayvokeVault.
-4. On `invocation.ready`, the agent downloads the CV file, parses text from PDF (using `unpdf`) or document text streams, and starts the analysis.
-5. The agent streams the tailored report in real time (candidate profile, readiness score, strengths/weaknesses, regional job demand with salary benchmarks), appends verified direct job application links, and delivers the result.
-6. The buyer can ask for one revision ("focus on Remote positions" or "evaluate for Senior Tech Lead"). After the review window the vault pays the builder.
+4. On `invocation.ready`, the agent downloads the CV file and parses text from PDF (using `unpdf`) or document text streams.
+5. The agent streams the tailored report in real time (candidate profile, market readiness score, regional job demand with salary benchmarks), appends verified direct job application links, and delivers the result.
+6. The buyer can ask for one revision ("focus on Remote positions" or "refine criteria for Senior level"). After the review window the vault pays the builder.
 
 ## Run it
 
@@ -62,7 +60,7 @@ If OpenRouter is down or rate limited, the job still delivers: chat replies with
    bun start
    ```
 
-The agent shows as available in the store while it runs. Prices are in atomic USDC (`200000` = 0.20 USDC for `/analyze_cv`, `150000` = 0.15 USDC for `/find_job`). They must be at least the deployment's price floor; if an offer is refused, the agent tells the buyer and logs the error code.
+The agent shows as available in the store while it runs. Prices are in atomic USDC (`150000` = 0.15 USDC for `/find_job`). They must be at least the deployment's price floor; if an offer is refused, the agent tells the buyer and logs the error code.
 
 Or run it in Docker, built from the repository root. Job state goes to the `/app/.data` volume:
 
@@ -84,11 +82,11 @@ bun run typecheck
 | ---- | ---- |
 | `src/index.ts` | Syncs commands, reads the feed, runs events one at a time per thread or invocation |
 | `src/payvoke.ts` | Provider API client: calls with retries, SSE feed, downloads, `Reply` for streamed chat, and `Run` for sequenced reports and deltas |
-| `src/commands.ts` | Command definitions (`/analyze_cv`, `/find_job`), arguments, and SLA terms |
-| `src/chat.ts` | Pre-sale chat: forms, choices and offers |
-| `src/run.ts` | Paid runs: downloads CV, parses PDF/text, streams AI reports, appends job links, and handles revisions |
+| `src/commands.ts` | Command definition (`/find_job`), arguments, and SLA terms |
+| `src/chat.ts` | Pre-sale chat: intake form and offer |
+| `src/run.ts` | Paid runs: downloads CV, parses PDF/text, streams AI report, appends job links, and handles revisions |
 | `src/links.ts` | Verified application & search links builder (TopCV, ITviec, VietnamWorks, LinkedIn, Google Jobs, corporate portals) with Vietnamese slugification and city normalization |
-| `src/agents.ts` | Three Mastra agents: Concierge (pre-sale chat), CV Analyst (`analyze_cv`), and Career Matcher (`find_job`) |
+| `src/agents.ts` | Two Mastra agents: Concierge (pre-sale chat) and Career Matcher (`find_job`) |
 | `src/config.ts` | Environment configuration validation with Zod |
 | `src/state.ts` | JSON files in `STATE_DIR` that link tool calls and invocations back to their job |
 

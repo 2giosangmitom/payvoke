@@ -1,5 +1,5 @@
 import { concierge } from "./agents";
-import { config, usdc } from "./config";
+import { config } from "./config";
 import type { CommandName } from "./commands";
 import { Reply, type FileEntry, type Payvoke, type ThreadMessageEvent } from "./payvoke";
 import { tools } from "./state";
@@ -63,33 +63,21 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
     const pending = await tools.get(ev.toolResult.toolCallId);
     const result = (ev.toolResult.result ?? {}) as Record<string, unknown>;
 
-    // Intake form submitted: ask which service they want
+    // Intake form submitted: offer find_job directly
     if (pending?.kind === "intake" && text(result.file)) {
-      return askServiceChoice(
-        api,
-        ev.threadId,
-        replyId("choice"),
-        text(result.file)!,
-        text(result.goal),
-        text(result.location),
-      );
-    }
-
-    // Service choice submitted
-    if (pending?.kind === "service_choice") {
-      const selected = (result.selected as string[] | undefined)?.[0];
-      const command: CommandName = selected === "find_job" ? "find_job" : "analyze_cv";
       return offerCommand(
         api,
         commands,
         ev.threadId,
         replyId("offer"),
-        pending.fileId,
-        command,
-        pending.goal,
-        pending.location,
+        text(result.file)!,
+        "find_job",
+        text(result.goal),
+        text(result.location),
       );
     }
+
+    // (service_choice no longer used — only find_job exists)
   }
 
   // 2. Slash commands
@@ -99,9 +87,6 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
   const location = text(args.location);
   const goal = text(args.goal);
 
-  if (command === "analyze_cv" && fileId) {
-    return offerCommand(api, commands, ev.threadId, replyId("offer"), fileId, "analyze_cv", goal, location);
-  }
   if (command === "find_job" && fileId) {
     return offerCommand(api, commands, ev.threadId, replyId("offer"), fileId, "find_job", goal, location);
   }
@@ -114,10 +99,10 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
     return;
   }
 
-  // 3. User sent a message with a CV attached directly
+  // 3. User sent a message with a CV attached directly — offer find_job immediately
   const doc = ev.files.find(isDocument);
   if (doc) {
-    return askServiceChoice(api, ev.threadId, replyId("choice"), doc.fileId, text(ev.content));
+    return offerCommand(api, commands, ev.threadId, replyId("offer"), doc.fileId, "find_job", text(ev.content));
   }
 
   // 4. Regular chat conversation with AI Concierge streaming
@@ -128,38 +113,6 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
   });
   if (withForm) await tools.put(answer.messageId, { kind: "intake", threadId: ev.threadId });
   await chatReply(ev, answer);
-}
-
-async function askServiceChoice(
-  api: Payvoke,
-  threadId: string,
-  requestId: string,
-  fileId: string,
-  goal?: string,
-  location?: string,
-) {
-  const message = await api.sendMessage(threadId, {
-    clientRequestId: requestId,
-    tool: {
-      name: "ask_choice",
-      args: {
-        prompt: "Bạn muốn Job Finder hỗ trợ những dịch vụ nào cho CV này?",
-        options: [
-          {
-            id: "find_job",
-            label: `Tìm việc theo khu vực & Đánh giá (${usdc(config.PRICE_FIND_JOB)} USDC)`,
-            description: "Tìm việc làm phù hợp theo nơi ở & các tỉnh lân cận, mức lương thị trường và đánh giá CV.",
-          },
-          {
-            id: "analyze_cv",
-            label: `Phân tích & Đánh giá CV toàn diện (${usdc(config.PRICE_ANALYZE_CV)} USDC)`,
-            description: "Đọc chi tiết CV, chấm điểm đánh giá điểm mạnh/yếu và gợi ý việc làm khu vực.",
-          },
-        ],
-      },
-    },
-  });
-  await tools.put(message.id, { kind: "service_choice", threadId, fileId, goal, location });
 }
 
 async function offerCommand(
@@ -173,11 +126,8 @@ async function offerCommand(
   location?: string,
 ) {
   const commandId = commands.id[command];
-  const price = command === "analyze_cv" ? config.PRICE_ANALYZE_CV : config.PRICE_FIND_JOB;
-  const summary =
-    command === "analyze_cv"
-      ? "Đọc & phân tích chi tiết thông tin CV, chấm điểm đánh giá điểm mạnh/yếu, và gợi ý việc làm theo khu vực."
-      : "Đọc CV, đánh giá hồ sơ và tìm việc làm đang tuyển dụng phù hợp theo vị trí nơi ở của bạn & các tỉnh lân cận (kèm mức lương thị trường).";
+  const price = config.PRICE_FIND_JOB;
+  const summary = "Đọc CV, đánh giá hồ sơ và tìm việc làm đang tuyển dụng phù hợp theo vị trí nơi ở của bạn & các tỉnh lân cận (kèm mức lương thị trường).";
 
   const details: string[] = [];
   if (location) details.push(`Khu vực: ${location}`);
@@ -218,6 +168,6 @@ async function chatReply(ev: ThreadMessageEvent, answer: Reply) {
     console.error(`chat model failed: ${error instanceof Error ? error.message : error}`);
   }
   await answer.close(
-    "Xin chào! Tôi là Job Finder. Bạn có thể dùng **/find_job** để tìm việc làm theo nơi ở & các tỉnh lân cận kèm mức lương thị trường, hoặc **/analyze_cv** để được đánh giá hồ sơ toàn diện.",
+    "Xin chào! Tôi là Job Finder. Bạn có thể dùng **/find_job** để tìm việc làm theo nơi ở & các tỉnh lân cận kèm mức lương thị trường.",
   );
 }
