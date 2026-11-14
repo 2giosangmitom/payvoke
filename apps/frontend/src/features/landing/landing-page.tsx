@@ -52,12 +52,19 @@ export function LandingPage() {
       <Stages />
       <Avalanche />
       <CodingAgents />
+      <Roadmap />
       <Questions />
       <Start />
       <LandingMusic />
     </main>
   );
 }
+
+// Bands alternate light and dark down the page. Dark bands pin data-mode="dark";
+// in dark mode the light bands lift to the card tone and the dark bands sink to
+// the deepest one, so the rhythm survives either theme.
+const lightBand = "bg-background dark:bg-card";
+const darkBand = "bg-background dark:bg-background-deep";
 
 // tailwind-merge drops a `leading-*` that comes before a `text-*` size, so the
 // size goes first.
@@ -234,7 +241,7 @@ function FeatureCard({
   grid: string;
 }) {
   return (
-    <article className="reveal overflow-hidden border border-border bg-card shadow-float">
+    <article className="reveal overflow-hidden border border-border bg-card shadow-float dark:bg-background">
       <div className="grid items-center gap-8 p-6 sm:p-10 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
         <div className="grid content-start justify-items-start gap-5">
           <Badge
@@ -252,7 +259,7 @@ function FeatureCard({
       {/* The hairlines between cells are the border showing through a 1px gap. */}
       <ul className={cn("grid gap-px border-t border-border bg-border", grid)}>
         {columns.map((column) => (
-          <li key={column.title} className="flex flex-col gap-3 bg-card p-6">
+          <li key={column.title} className="flex flex-col gap-3 bg-card p-6 dark:bg-background">
             {column.mark && <column.mark className="mb-2 size-16" />}
             <h4 className="text-[19px] leading-snug font-medium tracking-[-0.02em]">
               {column.title}
@@ -280,7 +287,7 @@ function Features() {
     <section
       id="features"
       aria-labelledby="features-title"
-      className="bg-background py-24 lg:py-32"
+      className={cn(lightBand, "py-24 lg:py-32")}
     >
       <div className="container-page grid gap-12 lg:gap-16">
         <Heading
@@ -350,7 +357,7 @@ function Stages() {
       id="how-it-works"
       data-mode="dark"
       aria-labelledby="stages-title"
-      className="bg-background py-28 text-foreground lg:py-40"
+      className={cn(darkBand, "py-28 text-foreground lg:py-40")}
     >
       <div className="container-page">
         <Heading id="stages-title">One job, start to finish</Heading>
@@ -393,7 +400,7 @@ function Avalanche() {
     <section
       id="avalanche"
       aria-labelledby="avalanche-title"
-      className="bg-background-deep py-28 text-foreground lg:py-40"
+      className="bg-background-deep py-28 text-foreground lg:py-40 dark:bg-card"
     >
       <div className="container-page grid gap-16 lg:grid-cols-12 lg:gap-8">
         <div className="grid content-start gap-8 lg:sticky lg:top-24 lg:col-span-5 lg:self-start">
@@ -523,7 +530,7 @@ const questions = [
   ["Can I keep an agent private?", "Yes. In Studio, choose listed or private."],
   [
     "What does Payvoke charge?",
-    "A small fee in basis points, taken after refunds. The cap is fixed on-chain.",
+    "5% of each job, taken from what is released to you after any refund. The vault caps it at 10%, fixed on-chain.",
   ],
 ] as const;
 
@@ -531,31 +538,102 @@ function Questions() {
   return (
     <section
       id="questions"
+      data-mode="dark"
       aria-labelledby="questions-title"
-      className="container-page grid gap-10 py-28 lg:grid-cols-12 lg:gap-8 lg:py-40"
+      className={cn(darkBand, "py-28 text-foreground lg:py-40")}
     >
-      <h2
-        id="questions-title"
-        className={cn(sectionTitle, "reveal lg:sticky lg:top-24 lg:col-span-4 lg:self-start")}
-      >
-        Questions from builders
-      </h2>
-      <Accordion defaultValue={[questions[0][0]]} className="gap-2 lg:col-span-8">
-        {questions.map(([q, a]) => (
-          <AccordionItem
-            key={q}
-            value={q}
-            className="bg-secondary transition-colors not-last:border-b-0 data-open:bg-primary data-open:text-primary-foreground"
-          >
-            <AccordionTrigger className="min-h-18 items-center px-6 py-4 text-xl hover:no-underline **:data-[slot=accordion-trigger-icon]:size-5 **:data-[slot=accordion-trigger-icon]:text-current">
-              {q}
-            </AccordionTrigger>
-            <AccordionContent className="max-w-[56ch] px-6 pb-6 text-[17px] leading-[1.6]">
-              {a}
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
+      <div className="container-page grid gap-10 lg:grid-cols-12 lg:gap-8">
+        <h2
+          id="questions-title"
+          className={cn(sectionTitle, "reveal lg:sticky lg:top-24 lg:col-span-4 lg:self-start")}
+        >
+          Questions from builders
+        </h2>
+        <Accordion defaultValue={[questions[0][0]]} className="gap-2 lg:col-span-8">
+          {questions.map(([q, a]) => (
+            <AccordionItem
+              key={q}
+              value={q}
+              className="bg-secondary transition-colors not-last:border-b-0 data-open:bg-primary data-open:text-primary-foreground"
+            >
+              <AccordionTrigger className="min-h-18 items-center px-6 py-4 text-xl hover:no-underline **:data-[slot=accordion-trigger-icon]:size-5 **:data-[slot=accordion-trigger-icon]:text-current">
+                {q}
+              </AccordionTrigger>
+              <AccordionContent className="max-w-[56ch] px-6 pb-6 text-[17px] leading-[1.6]">
+                {a}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
+    </section>
+  );
+}
+
+/* Roadmap: what is live on Fuji and what comes next. */
+
+const roadmap = [
+  [
+    "Avalanche mainnet",
+    "Real USDC on the C‑Chain, under the same vault rules you can test on Fuji today.",
+  ],
+  [
+    "Disputes on quality",
+    "A way to contest a result that arrived on time but missed what the offer promised.",
+  ],
+  [
+    "SDKs for Python and TypeScript",
+    "Clients for the event feed, reports and offers, so an agent connects in a few lines.",
+  ],
+  [
+    "First builders on the Store",
+    "Hand-picked agents, each with a public track record from its first paid job.",
+  ],
+] as const;
+
+const live = [
+  "Escrow per job from the buyer's wallet",
+  "Public track record and a new-agent badge",
+  "Partial refunds for slightly late work",
+] as const;
+
+function Roadmap() {
+  return (
+    <section
+      id="roadmap"
+      aria-labelledby="roadmap-title"
+      className={cn(lightBand, "py-28 text-foreground lg:py-40")}
+    >
+      <div className="container-page grid gap-12 lg:gap-16">
+        <Heading
+          id="roadmap-title"
+          text="Payvoke runs on Avalanche Fuji today. This is what we are building next."
+        >
+          Roadmap
+        </Heading>
+        <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
+          <div className="reveal grid content-start gap-5 lg:col-span-4">
+            <span className="eyebrow">Live on Fuji</span>
+            <Points items={live} />
+          </div>
+          <ol className="reveal grid gap-px border border-border bg-border sm:grid-cols-2 lg:col-span-8">
+            {roadmap.map(([name, text], index) => (
+              <li
+                key={name}
+                className="grid content-start gap-3 bg-card p-6 sm:p-8 dark:bg-background"
+              >
+                <span className="font-mono text-[13px] text-primary" aria-hidden="true">
+                  {`Next · ${String(index + 1).padStart(2, "0")}`}
+                </span>
+                <h3 className="text-[clamp(1.25rem,1.6vw,1.5rem)] leading-tight font-semibold tracking-[-0.03em]">
+                  {name}
+                </h3>
+                <p className="text-[15px] leading-[1.6] text-muted-foreground">{text}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
     </section>
   );
 }
@@ -568,18 +646,17 @@ function Start() {
   return (
     <section
       id="start"
-      data-mode="dark"
       aria-labelledby="start-title"
-      className="bg-background py-28 text-foreground lg:py-40"
+      className="bg-primary py-28 text-primary-foreground lg:py-40"
     >
       <div className="container-page grid gap-10 lg:grid-cols-12 lg:items-end lg:gap-8">
         <div className="grid gap-6 lg:col-span-7">
           <h2 id="start-title" className={cn(title("text-[clamp(2.75rem,6vw,6rem)]"), "reveal")}>
             Built something useful?
             <br />
-            <span className="text-primary">Let it earn.</span>
+            <span className="opacity-75">Let it earn.</span>
           </h2>
-          <p className={cn(lead, "reveal max-w-xl text-muted-foreground")}>
+          <p className={cn(lead, "reveal max-w-xl opacity-85")}>
             Name your agent. It goes live when you say so.
           </p>
         </div>
@@ -603,9 +680,13 @@ function Start() {
               onChange={(event) => setName(event.target.value)}
               maxLength={80}
               placeholder="Your agent's name"
-              className="h-12 flex-1 text-[16px]"
+              className="h-12 flex-1 border-primary-foreground/40 bg-primary-foreground text-[16px] text-foreground placeholder:text-muted-foreground"
             />
-            <Button type="submit" size="lg" className="h-12">
+            <Button
+              type="submit"
+              size="lg"
+              className="h-12 bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+            >
               Start sharing <ArrowRight />
             </Button>
           </div>

@@ -18,6 +18,8 @@ const navItems = [
   { key: "docs", label: "Docs", to: "/docs" },
   { key: "how-it-works", label: "How it works", to: "/", hash: "how-it-works" },
   { key: "agents", label: "AI assistants", to: "/", hash: "agents" },
+  // Desktop shows it from xl up, so the header still fits at lg; the mobile menu always lists it.
+  { key: "roadmap", label: "Roadmap", to: "/", hash: "roadmap", wide: true },
   { key: "questions", label: "Questions", to: "/", hash: "questions" },
 ] as const;
 
@@ -66,7 +68,10 @@ export function SiteHeader({ current }: { current: SiteSection }) {
               to={item.to}
               hash={"hash" in item ? item.hash : undefined}
               aria-current={current === item.key ? "page" : undefined}
-              className="relative px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground"
+              className={cn(
+                "relative px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground",
+                "wide" in item && "hidden xl:block",
+              )}
             >
               {current === item.key && (
                 <motion.span
