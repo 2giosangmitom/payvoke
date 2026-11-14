@@ -30,8 +30,28 @@ it("is off unless enabled and rejects incomplete or unsafe configuration", () =>
     { S3_ENDPOINT: "http://s3.example.com" },
     { S3_ENDPOINT: "https://user:pass@s3.example.com" },
     { S3_PUBLIC_ENDPOINT: "http://files.example.com" },
+    { S3_ENDPOINT: "https://s3.example.com/?x=1" },
   ])
     assert.throws(() => createStorage({ ...complete, ...change }));
+});
+
+it("keeps an endpoint path prefix such as Supabase's /storage/v1/s3", async () => {
+  const supabase = "https://ref.storage.supabase.co/storage/v1/s3";
+  for (const S3_ENDPOINT of [supabase, `${supabase}/`]) {
+    const storage = createStorage({ ...complete, S3_ENDPOINT, S3_FORCE_PATH_STYLE: true });
+    assert.ok(storage);
+    const object = { size: 3, contentType: "text/plain", filename: "b.txt" };
+    const put = await storage.presignPut("a/b.txt", object, 60);
+    const get = await storage.presignGet("a/b.txt", object, 60);
+    for (const { url } of [put, get]) assert.ok(url.startsWith(`${supabase}/files/a/b.txt?`), url);
+  }
+  const options = { region: "us-east-1", bucket: "files", accessKeyId: "k", secretAccessKey: "s" };
+  const path = new S3Signer({ ...options, endpoint: `${supabase}/`, forcePathStyle: true });
+  assert.equal(path.url("a b").href, `${supabase}/files/a%20b`);
+  const hosted = new S3Signer({ ...options, endpoint: supabase, forcePathStyle: false });
+  assert.equal(hosted.url("k").href, "https://files.ref.storage.supabase.co/storage/v1/s3/k");
+  const plain = new S3Signer({ ...options, endpoint: "https://s3.example.com", forcePathStyle: true });
+  assert.equal(plain.url("k").href, "https://s3.example.com/files/k");
 });
 
 it("forces attachment downloads with a safe filename", () => {

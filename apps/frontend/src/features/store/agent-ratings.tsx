@@ -18,6 +18,7 @@ const reasons: Record<string, string> = {
   SIGN_IN: "Sign in to rate this agent.",
   OWN_APP: "You can't rate your own agent.",
   HIRE_FIRST: "You can rate this agent after you hire it for a job.",
+  JOB_NOT_FINISHED: "You can rate this agent once your job's payment is released or refunded.",
 };
 
 const when = (value: string) =>
@@ -145,7 +146,7 @@ export function AgentRatings({ appId }: { appId: string }) {
   const reduce = useReducedMotion();
 
   return (
-    <section aria-labelledby="ratings-title" className="mt-14">
+    <section id="ratings" aria-labelledby="ratings-title" className="mt-14 scroll-mt-24">
       <SectionHeader
         id="ratings-title"
         eyebrow="Ratings"
@@ -230,6 +231,11 @@ export function AgentRatings({ appId }: { appId: string }) {
                         <span className="truncate">{item.author.name}</span>
                       </Link>
                       {item.mine && <span className="text-xs text-primary">You</span>}
+                      {item.finishedJobs > 1 && (
+                        <span className="text-xs text-muted-foreground">
+                          Hired {item.finishedJobs}×
+                        </span>
+                      )}
                       <Stars value={item.score} size={13} />
                       <time
                         dateTime={item.updatedAt}

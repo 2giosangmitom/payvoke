@@ -214,6 +214,7 @@ it("lets an MCP host find an agent, chat and pay with its API key alone", async 
     description: "Reviews a pull request",
     options: [{ name: "brief", type: "STRING", required: true }],
     positionalParameter: "brief",
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,

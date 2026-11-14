@@ -2,6 +2,7 @@ import type { Cradle } from "../../container";
 import { NotFoundError } from "../../errors";
 import { availabilityLabel, HEARTBEAT_TTL_MS, isAvailable } from "../apps/schema";
 import { imageUrl, priceCap, serializeCommand } from "../apps/serializers";
+import { reputation } from "../stats/reputation";
 
 export type CatalogQuery = {
   q?: string;
@@ -30,15 +31,19 @@ export class CatalogService {
     this.profileService = profileService;
   }
 
-  // Who shares each agent and how much it is used, for store cards.
+  // Who shares each agent, how much it is used and its public track record,
+  // for store cards, agent pages and the MCP agent tools.
   private async extras(rows: { id: string; ownerId: string }[]) {
-    const [usage, people] = await Promise.all([
-      this.statsService.usage(rows.map((row) => row.id)),
+    const ids = rows.map((row) => row.id);
+    const [usage, people, track] = await Promise.all([
+      this.statsService.usage(ids),
       this.profileService.people(rows.map((row) => row.ownerId)),
+      reputation(this.db, ids),
     ]);
     return (row: { id: string; ownerId: string }) => ({
       owner: people.get(row.ownerId)!,
       ...usage.get(row.id)!,
+      reputation: track.get(row.id)!,
     });
   }
 
@@ -71,7 +76,11 @@ export class CatalogService {
                   defaultCommandId: { not: null },
                   lastHeartbeatAt: { gt: new Date(Date.now() - HEARTBEAT_TTL_MS) },
                 },
-                { quotes: { some: { invocation: { is: { executionStatus: "DELIVERED" as const } } } } },
+                {
+                  quotes: {
+                    some: { invocation: { is: { executionStatus: "DELIVERED" as const } } },
+                  },
+                },
               ],
             },
           ],

@@ -57,13 +57,15 @@ export type StorageEnv = z.output<z.ZodObject<typeof storageEnv>>;
 
 // The server-side endpoint may be a private service name (`http://rustfs:9000`);
 // the public endpoint is fetched by browsers and stays https or loopback.
+// A path prefix is kept (Supabase serves S3 under `/storage/v1/s3`), without
+// a trailing slash; queries are rejected.
 const endpoint = (value: string | undefined, { allowPrivate = false } = {}) => {
   if (!value) return undefined;
   const url = new URL(value);
   const safe = allowPrivate ? isPrivateServiceUrl(url) : isSafeServiceUrl(url);
-  if (!safe || url.search || url.pathname !== "/")
-    throw new Error("S3 endpoint must be an https origin (http only on loopback)");
-  return url.origin;
+  if (!safe || url.search)
+    throw new Error("S3 endpoint must be an https URL without a query (http only on loopback)");
+  return url.origin + url.pathname.replace(/\/+$/, "");
 };
 
 // Null when files are disabled; throws on incomplete configuration so startup fails.

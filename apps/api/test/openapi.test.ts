@@ -231,7 +231,7 @@ it("answers each builder route with the documented shape", async () => {
   conform("listCommands", await agent("GET", "/commands"));
   const extra = conform(
     "createCommand",
-    await agent("POST", "/commands", { ...command, name: "draft", maxAmount: undefined }),
+    await agent("POST", "/commands", { ...command, name: "draft" }),
   );
   conform(
     "updateCommand",

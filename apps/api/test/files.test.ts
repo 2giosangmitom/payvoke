@@ -136,6 +136,7 @@ async function marketplace() {
     description: "Converts a file",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: "text",
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,
@@ -487,6 +488,7 @@ it("takes files from bot form tools and FILE options into the frozen quote", asy
     name: "ocr",
     description: "Reads an image",
     options: [{ name: "image", type: "FILE", required: true, accept: ["image/*"] }],
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,

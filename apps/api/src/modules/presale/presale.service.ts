@@ -494,7 +494,9 @@ export class PresaleService {
     const amount = BigInt(input.grossAmount);
     const policy = await this.db.deploymentPolicy.findUnique({ where: { activeSlot: "active" } });
     if (!policy) throw new UnprocessableEntityError("POLICY_NOT_CONFIGURED");
-    if (revision.maxGrossAmount && amount > BigInt(revision.maxGrossAmount.toFixed(0)))
+    // Revisions registered before the cap was required must be re-registered.
+    if (!revision.maxGrossAmount) throw new UnprocessableEntityError("PRICE_CAP_REQUIRED");
+    if (amount > BigInt(revision.maxGrossAmount.toFixed(0)))
       throw new UnprocessableEntityError("PRICE_ABOVE_MAX");
     if (amount < BigInt(policy.minGrossAmount.toFixed(0)))
       throw new UnprocessableEntityError("PRICE_BELOW_FLOOR");

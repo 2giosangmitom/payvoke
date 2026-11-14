@@ -43,6 +43,11 @@ export class ProviderCommandService {
         policy.maxHoldSeconds
     )
       throw new BadRequestError("TERMS_EXCEED_POLICY");
+    // A slightly late delivery still needs its whole review before resolveBy,
+    // which leaves only the resolution grace for lateness.
+    const late = (revision.terms as { latePolicy?: { graceSeconds: number } }).latePolicy;
+    if (late && late.graceSeconds >= policy.resolutionGraceSeconds)
+      throw new BadRequestError("TERMS_EXCEED_POLICY");
     // Payvoke sponsors hold and release gas, so offers never go below the
     // approved floor; a cap under it would leave no valid price at all.
     if (

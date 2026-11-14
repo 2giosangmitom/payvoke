@@ -2,6 +2,7 @@ import type { QuoteDocument } from "@payvoke/shared/x402";
 import type { Cradle } from "../../container";
 import { paymentPressure } from "../presale/payment-pressure";
 import { holdOutcomes } from "../stats/hold-outcomes";
+import { NEW_AGENT_JOBS } from "../stats/reputation";
 
 // Why a quote that fits the grant's caps still goes to the buyer: the
 // pre-payment decision layer of 402Pilot (Li et al.) plus the AP2 finding
@@ -20,8 +21,9 @@ export const SPIKE_FACTOR = 3n;
 // Paid prices of the command the median is taken over, and the fewest needed.
 export const PRICE_HISTORY = 20;
 export const PRICE_HISTORY_MIN = 3;
-// An agent with fewer paid jobs is new; it autopays only up to NEW_AGENT_MAX.
-export const NEW_AGENT_JOBS = 3;
+// An agent with fewer than NEW_AGENT_JOBS paid jobs (the store shows it as
+// new) autopays only up to NEW_AGENT_MAX.
+export { NEW_AGENT_JOBS };
 export const NEW_AGENT_MAX = 1n * USDC;
 // Closed jobs the refund rate is taken over, the fewest needed, and the
 // share (in percent) refunded or reclaimed that counts as high.

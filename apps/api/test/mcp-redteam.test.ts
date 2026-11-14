@@ -182,6 +182,7 @@ async function agent() {
     description: "Analyzes a file",
     options: [{ name: "brief", type: "STRING", required: true }],
     positionalParameter: "brief",
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,

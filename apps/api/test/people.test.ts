@@ -104,7 +104,7 @@ const options = [
 ];
 
 // Two apps with worker keys and an active policy: "agent" caps its command at
-// 50000, "tool" has no cap. Holds are fixtures, as in the catalog test.
+// 50000, "tool" at 100 USDC. Holds are fixtures, as in the catalog test.
 async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
@@ -145,6 +145,7 @@ async function marketplace() {
       options,
       positionalParameter: "brief",
       terms,
+      maxAmount: "100000000",
       ...extra,
     });
     assert.equal(command.statusCode, 201, command.body);
@@ -271,7 +272,7 @@ it("streams a provider reply in sequence and closes it once", async () => {
   assert.equal(again.json().id, id);
 });
 
-it("rates agents only after a paid job, and shows owners, usage and profiles", async () => {
+it("rates agents only after a settled job, and shows owners, usage and profiles", async () => {
   const { web, cookie, otherCookie, agent, quote, offer } = await marketplace();
   const otherUser = await db.walletAddress.findFirstOrThrow({
     where: { address: { equals: other.address, mode: "insensitive" } },
@@ -329,6 +330,25 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
     },
   });
 
+  // Paid but not settled yet: the buyer has not seen how the job ends.
+  assert.equal((await rate(4, otherCookie)).json().error, "RATING_REQUIRES_JOB");
+  assert.equal(
+    (await web("GET", `/v1/apps/${agent.appId}/ratings`, undefined, otherCookie)).json().reason,
+    "JOB_NOT_FINISHED",
+  );
+  // The escrow released the payment; now the buyer may rate.
+  await db.vaultHoldProjection.create({
+    data: {
+      holdId: quoted.protocolQuote.invocationKey,
+      vault: wallet.address,
+      invocationId: quoted.invocationId,
+      status: "RELEASED",
+      snapshot: {},
+      version: 1n,
+      blockNumber: 1n,
+      blockHash: `0x${"3".repeat(64)}`,
+    },
+  });
   assert.equal((await rate(0, otherCookie)).json().error, "INVALID_RATING");
   const rated = await rate(4, otherCookie, "Fast and clear");
   assert.equal(rated.statusCode, 200, rated.body);
@@ -336,6 +356,7 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
   assert.deepEqual(rated.json().distribution, [0, 0, 0, 1, 0]);
   assert.equal(rated.json().items[0].comment, "Fast and clear");
   assert.equal(rated.json().items[0].mine, true);
+  assert.equal(rated.json().items[0].finishedJobs, 1);
   // Rating again replaces the first one.
   assert.equal((await rate(2, otherCookie)).json().count, 1);
 
@@ -355,11 +376,12 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
   // Earnings go to the owner, spending to the buyer, on today's date.
   const earned = (await web("GET", "/v1/stats")).json();
   const own = earned.provider.apps.find((item: { id: string }) => item.id === agent.appId);
-  assert.equal(own.held, "20000");
+  // The job settled, so the money shows as released rather than held.
+  assert.equal(own.released, "20000");
   assert.equal(own.series.at(-1).jobs, 1);
   const spent = (await web("GET", "/v1/stats", undefined, otherCookie)).json();
   assert.equal(spent.provider, null);
-  assert.equal(spent.buyer.held, "20000");
+  assert.equal(spent.buyer.released, "20000");
   assert.equal(spent.buyer.topApps[0].id, agent.appId);
 
   // The owner's per-agent overview; nobody else can read it.
@@ -367,7 +389,7 @@ it("rates agents only after a paid job, and shows owners, usage and profiles", a
   assert.equal(overview.statusCode, 200, overview.body);
   const stats = overview.json();
   assert.equal(stats.jobs, 1);
-  assert.equal(stats.held, "20000");
+  assert.equal(stats.released, "20000");
   assert.equal(stats.averageJob, "20000");
   assert.equal(stats.byCommand.length, 1);
   assert.equal(stats.byCommand[0].jobs, 1);

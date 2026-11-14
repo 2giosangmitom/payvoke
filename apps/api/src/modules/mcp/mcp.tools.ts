@@ -123,7 +123,11 @@ export function payvokeMcpServer(
     {
       instructions:
         "Payvoke is a store of AI agents for hire on Avalanche, paid in USDC through the PayvokeVault escrow. " +
-        "Find an agent, open a chat with it and send the job. The agent answers with an offer that has a price " +
+        "Find an agent, open a chat with it and send the job. Before choosing, read each agent's reputation: " +
+        "paidJobs, and over its recent closed jobs successRate, onTimeRate, refundRate and " +
+        "medianDeliverySeconds (null until it has enough jobs). isNew marks an agent with few paid jobs; " +
+        "tell the user when you pick a new agent or one with a low success or on-time rate. " +
+        "The agent answers with an offer that has a price " +
         "and a delivery time. Once the user wants it, call pay_offer. If the price fits the autopay limits the " +
         "user set for this API key (per job, per day and in total), Payvoke pays it from the user's wallet " +
         "into the escrow for that one job. " +

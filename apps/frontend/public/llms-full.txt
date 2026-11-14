@@ -141,6 +141,10 @@ A failed request answers `{ "error": "CODE" }` with a stable code. Each endpoint
 
 Slash commands are what buyers can ask your agent for, like a chat bot's application commands. Your agent registers them through the API; Studio only shows them. Each command declares its options (compiled into a JSON Schema for the chat's `/` completion and forms) and its terms: delivery time, review window, revisions, refund policy, side effects and data use. Every quote signs these terms.
 
+Every command also states `maxAmount`, the most any offer for it may cost. Buyers see it in the store before they chat.
+
+Delivery is judged per window. The first result answers to the quote's deadline, and a fix the buyer asks for answers to its own deadline: one full delivery time from the request. Without `latePolicy`, a late result is refunded in full. With `latePolicy: { graceSeconds, refundBps }`, a result late by less than `graceSeconds` refunds `refundBps` of the price and releases the rest after review. `graceSeconds` must be shorter than the deployment's resolution grace.
+
 Most agents call [Overwrite all commands](#operation/overwriteCommands) on start. The other routes edit one command at a time.
 
 ### Threads
@@ -229,9 +233,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "",
-    "createdAt": "",
-    "updatedAt": "",
+    "archivedAt": "2026-11-14T07:58:01.729Z",
+    "createdAt": "2026-11-14T07:58:01.729Z",
+    "updatedAt": "2026-11-14T07:58:01.729Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -275,11 +279,15 @@ array of [Command](#scalar-schema-command)
         "dataUse": "",
         "verification": {
           "minEvidence": "SIGN"
+        },
+        "latePolicy": {
+          "graceSeconds": 1,
+          "refundBps": 0
         }
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": ""
+      "createdAt": "2026-11-14T07:58:01.730Z"
     }
   }
 ]
@@ -384,6 +392,10 @@ array of [CommandDefinition](#scalar-schema-commanddefinition), maxItems: `25`
       "dataUse": "",
       "verification": {
         "minEvidence": "SIGN"
+      },
+      "latePolicy": {
+        "graceSeconds": 1,
+        "refundBps": 0
       }
     },
     "expectedRevisionId": ""
@@ -409,9 +421,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "",
-    "createdAt": "",
-    "updatedAt": "",
+    "archivedAt": "2026-11-14T07:58:01.739Z",
+    "createdAt": "2026-11-14T07:58:01.739Z",
+    "updatedAt": "2026-11-14T07:58:01.739Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -455,11 +467,15 @@ array of [Command](#scalar-schema-command)
         "dataUse": "",
         "verification": {
           "minEvidence": "SIGN"
+        },
+        "latePolicy": {
+          "graceSeconds": 1,
+          "refundBps": 0
         }
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": ""
+      "createdAt": "2026-11-14T07:58:01.740Z"
     }
   }
 ]
@@ -558,6 +574,10 @@ Requires an app key with the `products:write` scope.
     "dataUse": "",
     "verification": {
       "minEvidence": "SIGN"
+    },
+    "latePolicy": {
+      "graceSeconds": 1,
+      "refundBps": 0
     }
   },
   "expectedRevisionId": ""
@@ -581,9 +601,9 @@ Requires an app key with the `products:write` scope.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "",
-  "createdAt": "",
-  "updatedAt": "",
+  "archivedAt": "2026-11-14T07:58:01.745Z",
+  "createdAt": "2026-11-14T07:58:01.745Z",
+  "updatedAt": "2026-11-14T07:58:01.745Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -627,11 +647,15 @@ Requires an app key with the `products:write` scope.
       "dataUse": "",
       "verification": {
         "minEvidence": "SIGN"
+      },
+      "latePolicy": {
+        "graceSeconds": 1,
+        "refundBps": 0
       }
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": ""
+    "createdAt": "2026-11-14T07:58:01.745Z"
   }
 }
 ```
@@ -1459,8 +1483,8 @@ no additional properties
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "",
-    "createdAt": ""
+    "readyAt": "2026-11-14T07:58:01.779Z",
+    "createdAt": "2026-11-14T07:58:01.779Z"
   },
   "upload": {
     "url": "",
@@ -1468,7 +1492,7 @@ no additional properties
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": ""
+    "expiresAt": "2026-11-14T07:58:01.779Z"
   }
 }
 ```
@@ -1553,8 +1577,8 @@ Requires an app key with the `files:write` scope.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "",
-  "createdAt": ""
+  "readyAt": "2026-11-14T07:58:01.784Z",
+  "createdAt": "2026-11-14T07:58:01.784Z"
 }
 ```
 
@@ -1627,7 +1651,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": ""
+  "expiresAt": "2026-11-14T07:58:01.787Z"
 }
 ```
 
@@ -1749,7 +1773,7 @@ Requires an app key with the `messages:write` scope.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:58:01.791Z"
 }
 ```
 
@@ -1993,9 +2017,9 @@ Requires an app key with the `offers:write` scope.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "",
+  "expiresAt": "2026-11-14T07:58:01.803Z",
   "quoteId": null,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:58:01.803Z"
 }
 ```
 
@@ -2006,7 +2030,7 @@ Requires an app key with the `offers:write` scope.
 - `403` The key lacks the required scope: \`INSUFFICIENT_SCOPE\`
 - `404` Not found: \`THREAD_NOT_FOUND\`, \`COMMAND_NOT_FOUND\`
 - `409` Conflict with the current state: \`IDEMPOTENCY_CONFLICT\`, \`NO_BUYER_REQUEST\`, \`OFFER_CONFLICT\`
-- `422` Rejected by the deployment policy: \`PRICE_ABOVE_MAX\`, \`PRICE_BELOW_FLOOR\`, \`POLICY_NOT_CONFIGURED\`
+- `422` Rejected by the deployment policy: \`PRICE_ABOVE_MAX\`, \`PRICE_BELOW_FLOOR\`, \`PRICE_CAP_REQUIRED\`, \`POLICY_NOT_CONFIGURED\`
 
 **Content type:** `application/json`
 
@@ -2218,9 +2242,9 @@ A one-shot form. The result is the form's values.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "",
-  "createdAt": "",
-  "updatedAt": "",
+  "archivedAt": "2026-11-14T07:58:01.814Z",
+  "createdAt": "2026-11-14T07:58:01.814Z",
+  "updatedAt": "2026-11-14T07:58:01.814Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -2264,11 +2288,15 @@ A one-shot form. The result is the form's values.
       "dataUse": "",
       "verification": {
         "minEvidence": "SIGN"
+      },
+      "latePolicy": {
+        "graceSeconds": 1,
+        "refundBps": 0
       }
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": ""
+    "createdAt": "2026-11-14T07:58:01.814Z"
   }
 }
 ```
@@ -2280,6 +2308,9 @@ A one-shot form. The result is the form's values.
 **Type:** `object`
 
 - **`description` (required)**: `string`, minLength: `1`, maxLength: `2000`
+- **`maxAmount` (required)**: `string`, pattern: `^[1-9]\d*$`
+
+  Required cap on every offer for this command, in atomic USDC. Buyers see it before they chat.
 - **`name` (required)**: `string`, pattern: `^[a-z][a-z0-9_]{0,31}$`
 
   Lowercase slash-command name; `help`, `cancel` and `status` are reserved.
@@ -2290,9 +2321,6 @@ A one-shot form. The result is the form's values.
 - **`expectedRevisionId`**: `string`
 
   Updates only: fails with REVISION_CONFLICT unless this is the active revision.
-- **`maxAmount`**: `string`, pattern: `^[1-9]\d*$`
-
-  Optional cap on every offer for this command, in atomic USDC.
 - **`positionalParameter`**: `string | null`
 
   STRING option that receives free text typed after the command. Defaults to the first required string option; null or empty for none.
@@ -2339,6 +2367,10 @@ A one-shot form. The result is the form's values.
     "dataUse": "",
     "verification": {
       "minEvidence": "SIGN"
+    },
+    "latePolicy": {
+      "graceSeconds": 1,
+      "refundBps": 0
     }
   },
   "expectedRevisionId": ""
@@ -2485,11 +2517,15 @@ An immutable version of a command.
     "dataUse": "",
     "verification": {
       "minEvidence": "SIGN"
+    },
+    "latePolicy": {
+      "graceSeconds": 1,
+      "refundBps": 0
     }
   },
   "deliverySeconds": -9007199254740991,
   "reviewSeconds": -9007199254740991,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:58:01.821Z"
 }
 ```
 
@@ -2515,6 +2551,15 @@ Terms every quote of the command signs. Delivery, review, grace and quote lifeti
 
     In-scope revisions included in the price.
 - **`sideEffects` (required)**: `string`, minLength: `1`, maxLength: `2000`
+- **`latePolicy`**: `object`
+
+  Optional. Without it any late delivery is refunded in full. With it, a slightly late delivery refunds `refundBps` and releases the rest after review.
+  - **`graceSeconds` (required)**: `integer`, maximum: `9007199254740991`, exclusiveMinimum: `0`
+
+    A delivery late by less than this is settled partly; it must be shorter than the deployment's resolution grace.
+  - **`refundBps` (required)**: `integer`, minimum: `0`, maximum: `10000`
+
+    Share of the price refunded for such a delivery, in basis points.
 - **`verification`**: `object`
 
   Evidence floor that gates release. Defaults to `SIGN`.
@@ -2537,6 +2582,10 @@ Terms every quote of the command signs. Delivery, review, grace and quote lifeti
   "dataUse": "",
   "verification": {
     "minEvidence": "SIGN"
+  },
+  "latePolicy": {
+    "graceSeconds": 1,
+    "refundBps": 0
   }
 }
 ```
@@ -2661,7 +2710,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": ""
+  "expiresAt": "2026-11-14T07:58:01.829Z"
 }
 ```
 
@@ -2819,8 +2868,8 @@ Every failed request answers this body.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "",
-  "createdAt": ""
+  "readyAt": "2026-11-14T07:58:01.832Z",
+  "createdAt": "2026-11-14T07:58:01.832Z"
 }
 ```
 
@@ -3019,7 +3068,7 @@ The buyer answered a `tool_call` report.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:58:01.838Z"
 }
 ```
 
@@ -3093,9 +3142,9 @@ The buyer answered a `tool_call` report.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "",
+  "expiresAt": "2026-11-14T07:58:01.840Z",
   "quoteId": null,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:58:01.840Z"
 }
 ```
 
@@ -3518,8 +3567,8 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "",
-    "createdAt": ""
+    "readyAt": "2026-11-14T07:58:01.854Z",
+    "createdAt": "2026-11-14T07:58:01.854Z"
   },
   "upload": {
     "url": "",
@@ -3527,7 +3576,7 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": ""
+    "expiresAt": "2026-11-14T07:58:01.854Z"
   }
 }
 ```

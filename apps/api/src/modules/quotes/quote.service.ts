@@ -228,7 +228,8 @@ export class QuoteService {
     if (revision.command.archivedAt) throw new NotFoundError("COMMAND_NOT_FOUND");
     const grossAmount = BigInt(offer.grossAmount.toFixed(0));
     if (
-      (revision.maxGrossAmount && grossAmount > BigInt(revision.maxGrossAmount.toFixed(0))) ||
+      !revision.maxGrossAmount ||
+      grossAmount > BigInt(revision.maxGrossAmount.toFixed(0)) ||
       offer.deliverySeconds > revision.deliverySeconds
     )
       throw new ConflictError("OFFER_INVALID");

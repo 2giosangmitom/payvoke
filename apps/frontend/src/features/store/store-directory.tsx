@@ -29,7 +29,7 @@ import {
   type StoreApp,
 } from "@/src/features/apps/api";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
-import { OwnerLink, RatingLine, UsageLine } from "@/src/features/apps/agent-facts";
+import { OwnerLink, RatingLine, ReputationLine, UsageLine } from "@/src/features/apps/agent-facts";
 import { formatUsdc } from "@/src/features/apps/format";
 
 export function AppCard({
@@ -92,6 +92,7 @@ export function AppCard({
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <RatingLine rating={app.rating} />
           <UsageLine jobs={app.jobs} users={app.users} />
+          <ReputationLine reputation={app.reputation} />
         </div>
         <span className="ml-auto shrink-0 font-mono text-xs text-primary">
           {app.priceCap ? `up to ${formatUsdc(app.priceCap)}` : "by offer"}

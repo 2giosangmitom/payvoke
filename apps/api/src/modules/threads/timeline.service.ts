@@ -5,6 +5,7 @@ import { PayloadTooLargeError } from "../../errors";
 import { offerStatus } from "../presale/presale.service";
 import { object } from "../runs/protocol";
 import { revisionPolicy } from "../runs/run-rules";
+import { holdOutcomes, type HoldOutcome } from "../stats/hold-outcomes";
 import { storedToolCall } from "../tools/builtin";
 
 type Json = Prisma.JsonValue;
@@ -52,6 +53,9 @@ export type TimelineRun = {
   grossAmount: string;
   phase: RunPhase;
   revisions: { used: number; included: number };
+  // Where the escrowed payment stands, from the finalized vault: still held,
+  // released to the builder or refunded. Null before the payment is held.
+  outcome: HoldOutcome | null;
 };
 export type TimelineMessage = {
   id: string;
@@ -136,7 +140,10 @@ export class TimelineService {
           quote: {
             include: {
               invocation: {
-                include: { settlement: { select: { state: true } }, run: true },
+                include: {
+                  settlement: { select: { state: true, invocationKey: true } },
+                  run: true,
+                },
               },
             },
           },
@@ -147,7 +154,7 @@ export class TimelineService {
     const invocationIds = offers.flatMap((offer) =>
       offer.quote?.invocation ? [offer.quote.invocation.id] : [],
     );
-    const [events, calls, revisions] = await Promise.all([
+    const [events, calls, revisions, outcome] = await Promise.all([
       this.events(threadId, upTo),
       this.db.invocationToolCall.findMany({
         where: { invocationId: { in: invocationIds } },
@@ -157,6 +164,10 @@ export class TimelineService {
         where: { invocationId: { in: invocationIds } },
         orderBy: { createdAt: "asc" },
       }),
+      holdOutcomes(
+        this.db,
+        offers.flatMap((offer) => offer.quote?.invocation?.settlement?.invocationKey ?? []),
+      ),
     ]);
     const audio = await this.audio([
       ...conversation.flatMap((row) => parseManifest(row.fileManifest) ?? []),
@@ -197,6 +208,7 @@ export class TimelineService {
             calls.filter((call) => call.invocationId === invocationId),
             revisions.filter((revision) => revision.invocationId === invocationId),
             file,
+            outcome,
           ),
         );
       }
@@ -331,6 +343,7 @@ export class TimelineService {
     calls: Prisma.InvocationToolCallGetPayload<{ include: { result: true } }>[],
     revisions: { id: string; reason: string; status: string; createdAt: Date }[],
     file: (entry: FileManifestEntry) => TimelinePart,
+    outcome: (invocationKey: string) => HoldOutcome,
   ): TimelineMessage {
     const quote = offer.quote!;
     const invocation = quote.invocation;
@@ -487,6 +500,10 @@ export class TimelineService {
           used: revisions.length,
           included: revisionPolicy(terms)?.maxIncluded ?? 0,
         },
+        outcome:
+          invocation?.settlement?.state === "HELD"
+            ? outcome(invocation.settlement.invocationKey)
+            : null,
       },
     };
   }
@@ -497,7 +514,9 @@ type OfferRow = Prisma.OfferGetPayload<{
     commandRevision: { select: { command: { select: { id: true; name: true } } } };
     quote: {
       include: {
-        invocation: { include: { settlement: { select: { state: true } }; run: true } };
+        invocation: {
+          include: { settlement: { select: { state: true; invocationKey: true } }; run: true };
+        };
       };
     };
   };

@@ -32,6 +32,7 @@ import {
   type EvidenceLevel,
 } from "./evidence";
 import { databaseTime, type GasPolicy } from "./journal";
+import { deliveryRecord, deliveryTimeliness, lateRefundBps } from "./timeliness";
 import { validateGasPolicy } from "./worker";
 import { financialDeployment, financialJson, readFinalizedHold } from "./finance-ledger";
 
@@ -367,15 +368,32 @@ export class FinanceService {
       check(latest && latest.id === a.evidenceId, "verified_delivery_required");
       const q = op.invocation.quote.document as unknown as QuoteDocument;
       // Never release on weaker evidence than the signed terms promised the buyer.
-      const minimum = termsMinEvidence(
-        (q.termsSnapshot as { definition?: unknown } | null)?.definition,
-      );
+      const terms = (q.termsSnapshot as { definition?: unknown } | null)?.definition;
+      const minimum = termsMinEvidence(terms);
       check(
         minimum !== null && evidenceSatisfies(latest.evidenceLevel, minimum),
         "evidence_below_minimum",
       );
-      const { observed, earliest } = releaseSchedule(latest, hold);
-      check(observed < BigInt(hold.deliveryDeadline), "delivery_late_requires_refund");
+      // The same per-window rule as the automatic policy: the first delivery
+      // answers to the quote's deadline, each revision to its own.
+      const record = await deliveryRecord(this.db, op.invocationId);
+      const timeliness = deliveryTimeliness({
+        deliveryDeadline: Number(hold.deliveryDeadline),
+        evidence: record.evidence.filter((item) => evidenceSatisfies(item.evidenceLevel, minimum)),
+        revisions: record.revisions,
+        now: block.timestamp,
+      });
+      check(timeliness.state !== "pending", "delivery_window_open");
+      // A late delivery is released only within the signed grace, and only
+      // after the agreed share of the hold is refunded to the buyer.
+      if (timeliness.state === "late") {
+        const refundBps = lateRefundBps(terms, timeliness.lateBy);
+        check(
+          refundBps < 10_000 && d.refundAmount * 10_000n >= hold.remaining * BigInt(refundBps),
+          "delivery_late_requires_refund",
+        );
+      } else check(timeliness.state === "on_time", "delivery_late_requires_refund");
+      const { earliest } = releaseSchedule(latest, hold);
       check(earliest < BigInt(hold.resolveBy), "review_window_exhausted");
       check(block.timestamp >= earliest, "business_review_not_complete");
     }

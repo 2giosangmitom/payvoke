@@ -169,7 +169,12 @@ export const presaleRoutes = new Hono<AppEnv>()
         ],
         404: ["THREAD_NOT_FOUND", "COMMAND_NOT_FOUND"],
         409: ["IDEMPOTENCY_CONFLICT", "NO_BUYER_REQUEST", "OFFER_CONFLICT"],
-        422: ["PRICE_ABOVE_MAX", "PRICE_BELOW_FLOOR", "POLICY_NOT_CONFIGURED"],
+        422: [
+          "PRICE_ABOVE_MAX",
+          "PRICE_BELOW_FLOOR",
+          "PRICE_CAP_REQUIRED",
+          "POLICY_NOT_CONFIGURED",
+        ],
       },
     }),
     async (c) =>

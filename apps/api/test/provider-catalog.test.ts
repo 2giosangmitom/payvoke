@@ -177,6 +177,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       },
     ],
     positionalParameter: "text",
+    maxAmount: "10000",
     terms,
   });
   assert.equal(first.statusCode, 201, first.body);
@@ -185,6 +186,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     name: "Not Valid",
     description: "Invalid command name",
     options: [{ name: "text", type: "STRING", required: true }],
+    maxAmount: "100000000",
     terms,
   });
   assert.equal(invalidName.statusCode, 400, invalidName.body);
@@ -193,6 +195,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     description: "Explicitly has no positional argument",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: null,
+    maxAmount: "10000",
     terms,
   });
   assert.equal(formOnly.statusCode, 201, formOnly.body);
@@ -209,6 +212,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "escape",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
+        maxAmount: "100000000",
         terms,
       })
     ).statusCode,
@@ -242,8 +246,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       "INVALID_APP_NAME",
     );
   assert.equal(catalog.json().items[0].availability, "AVAILABLE");
-  // No command declares a cap, so offers are bounded only by the policy floor.
-  assert.equal(catalog.json().items[0].priceCap, null);
+  // Every command declares a cap; the card shows the highest one.
+  assert.equal(catalog.json().items[0].priceCap, "10000");
   // Private apps stay out of the public catalog but remain visible to the owner.
   assert.equal(
     catalog.json().items.some((item: { id: string }) => item.id === otherAppId),
@@ -304,7 +308,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   assert.equal(changed.statusCode, 200, changed.body);
   assert.notEqual(changed.json().revision.id, original.id);
-  assert.equal(original.maxGrossAmount, null);
+  assert.equal(original.maxGrossAmount?.toString(), "10000");
   assert.equal(
     (
       await db.appCommandRevision.findUniqueOrThrow({
@@ -645,7 +649,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       .messages.find((m: { id: string }) => m.id === `run-${quoted.invocationId}`) as {
       status: string;
       parts: Part[];
-      run: { phase: string };
+      run: { phase: string; outcome: string | null };
     };
   };
   const streamedRun = await runMessage();
@@ -886,6 +890,21 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const threadDetails = await web("GET", `/v1/threads/${thread.id}`);
   assert.equal(threadDetails.json().activeQuoteId, null);
   assert.equal(threadDetails.json().revisionPolicy.maxIncluded, 1);
+  // A revision whose delivery and review could not finish before resolveBy is
+  // refused: the vault could never release the fixed work.
+  const signed = await db.quote.findFirstOrThrow({ where: { invocationId: quoted.invocationId } });
+  const document = signed.document as Record<string, number>;
+  await db.quote.update({
+    where: { id: signed.id },
+    data: { document: { ...document, resolveBy: Math.floor(Date.now() / 1000) + 600 } },
+  });
+  const tooLate = await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, {
+    reason: "Too late",
+    clientRequestId: "revision-late",
+  });
+  assert.equal(tooLate.statusCode, 409, tooLate.body);
+  assert.equal(tooLate.json().error, "REVISION_TOO_LATE");
+  await db.quote.update({ where: { id: signed.id }, data: { document } });
   // An in-scope revision reuses the invocation/hold and starts one more run.
   const revisionBody = { reason: "Shorten the summary", clientRequestId: "revision-1" };
   const revision = await web(
@@ -896,6 +915,13 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(revision.statusCode, 202, revision.body);
   const revisionRun = revision.json().runId;
   assert.notEqual(revisionRun, continuationRun);
+  // It is due one full delivery time (600s) after it was asked for.
+  const due = (
+    await db.invocationRevision.findUniqueOrThrow({
+      where: { id: revision.json().revisionId },
+    })
+  ).dueAt!;
+  assert.ok(Math.abs(due.getTime() - Date.now() - 600_000) < 10_000);
   assert.equal(
     (await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, revisionBody))
       .statusCode,
@@ -941,6 +967,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(await verifyStructuredDeliveries(db), 1);
   const revised = await runMessage();
   assert.equal(revised.run.phase, "delivered");
+  // The escrow has not settled yet, so the run still shows the payment held.
+  assert.equal(revised.run.outcome, "held");
   // Plain markdown text is a delivery too; the revision request shows in the run.
   assert.equal(revised.parts.at(-1)!.text, "## Short\n\nMarkdown text.");
   assert.ok(revised.parts.some((part) => part.toolName === "revision"));
@@ -1006,6 +1034,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "old",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
+        maxAmount: "100000000",
         terms,
       })
     ).statusCode,
@@ -1024,6 +1053,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "denied",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
+          maxAmount: "100000000",
           terms,
         },
         restricted.json().secret,
@@ -1045,6 +1075,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "revoked",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
+          maxAmount: "100000000",
           terms,
         },
         restricted.json().secret,
@@ -1075,6 +1106,7 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
     description: "Summarizes text",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: "text",
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,
@@ -1228,6 +1260,18 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
   const defaulted = await command("1000");
   assert.equal(defaulted.statusCode, 201, defaulted.body);
   assert.deepEqual(defaulted.json().revision.terms.verification, { minEvidence: "SIGN" });
+  // A late-delivery grace must leave the whole review before resolveBy, so it
+  // has to be shorter than the deployment's 60s resolution grace.
+  const lateTerms = (graceSeconds: number, refundBps = 2000) =>
+    command("1000", { latePolicy: { graceSeconds, refundBps } });
+  const tooLong = await lateTerms(60);
+  assert.equal(tooLong.statusCode, 400, tooLong.body);
+  assert.equal(tooLong.json().error, "TERMS_EXCEED_POLICY");
+  assert.equal((await lateTerms(30, 20_000)).json().error, "INVALID_TERMS");
+  assert.equal((await lateTerms(0)).json().error, "INVALID_TERMS");
+  const graced = await lateTerms(30);
+  assert.equal(graced.statusCode, 201, graced.body);
+  assert.deepEqual(graced.json().revision.terms.latePolicy, { graceSeconds: 30, refundBps: 2000 });
   const receipt = await command("1000", { verification: { minEvidence: "REC" } });
   assert.deepEqual(receipt.json().revision.terms.verification, { minEvidence: "REC" });
 
@@ -1278,6 +1322,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
     name,
     description: `Runs ${name}`,
     options: [{ name: "text", type: "STRING", required: true }],
+    maxAmount: "1000",
     terms,
     ...extra,
   });
@@ -1334,6 +1379,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
       { name: "audio", type: "FILE", required: true, accept: ["audio/*"], maxBytes: 1000 },
       { name: "extra", type: "FILE", multiple: true },
     ],
+    maxAmount: "100000000",
     terms,
   });
   assert.equal(upload.statusCode, 201, upload.body);
@@ -1356,6 +1402,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
           name: `f${randomBytes(3).toString("hex")}`,
           description: "x",
           options: [option],
+          maxAmount: "100000000",
           terms,
         })
       ).statusCode,
@@ -1365,7 +1412,12 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
 
 it("retires stale agents, deletes unused accounts and orphaned objects", async () => {
   const owner = await db.user.create({
-    data: { id: randomUUID(), name: "owner", email: `${randomUUID()}@t.test`, emailVerified: false },
+    data: {
+      id: randomUUID(),
+      name: "owner",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+    },
   });
   const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const ghost = await db.app.create({
@@ -1394,10 +1446,21 @@ it("retires stale agents, deletes unused accounts and orphaned objects", async (
   assert.equal((await db.app.findUniqueOrThrow({ where: { id: fresh.id } })).status, "ACTIVE");
 
   const idle = await db.user.create({
-    data: { id: randomUUID(), name: "idle", email: `${randomUUID()}@t.test`, emailVerified: false, createdAt: old },
+    data: {
+      id: randomUUID(),
+      name: "idle",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+      createdAt: old,
+    },
   });
   const recent = await db.user.create({
-    data: { id: randomUUID(), name: "recent", email: `${randomUUID()}@t.test`, emailVerified: false },
+    data: {
+      id: randomUUID(),
+      name: "recent",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+    },
   });
   await deleteUnusedAccounts(db, 14);
   assert.equal(await db.user.findUnique({ where: { id: idle.id } }), null);
@@ -1410,7 +1473,10 @@ it("retires stale agents, deletes unused accounts and orphaned objects", async (
   await storage.put("files/young", "x");
   storage.modified.set("files/young", new Date());
   await storage.put("app-images/kept", "x");
-  await db.app.update({ where: { id: fresh.id }, data: { imageKey: "app-images/kept", imageType: "image/png" } });
+  await db.app.update({
+    where: { id: fresh.id },
+    data: { imageKey: "app-images/kept", imageType: "image/png" },
+  });
   assert.equal(await deleteOrphanObjects(db, storage), 1);
   assert.deepEqual([...storage.objects.keys()].sort(), ["app-images/kept", "files/young"]);
 });

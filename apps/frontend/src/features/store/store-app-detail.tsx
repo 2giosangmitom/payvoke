@@ -8,7 +8,13 @@ import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { CommandCard } from "@/src/features/apps/command-card";
-import { OwnerLink, RatingLine, UsageLine } from "@/src/features/apps/agent-facts";
+import {
+  OwnerLink,
+  RatingLine,
+  ReputationLine,
+  TrackRecord,
+  UsageLine,
+} from "@/src/features/apps/agent-facts";
 import { AgentRatings } from "@/src/features/store/agent-ratings";
 import {
   AppStatus,
@@ -26,7 +32,7 @@ import {
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { getStoreApp, getStars, starApp, unstarApp } from "@/src/features/apps/api";
-import { formatCommandPrice, formatUsdc } from "@/src/features/apps/format";
+import { formatCommandPrice, formatLatePolicy, formatUsdc } from "@/src/features/apps/format";
 import { formatDuration } from "@/src/features/payments/payment-confirm";
 
 export function StoreAppDetail({ appId }: { appId: string }) {
@@ -111,6 +117,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
               <OwnerLink owner={app.owner} className="text-sm" />
               <RatingLine rating={app.rating} />
               <UsageLine jobs={app.jobs} users={app.users} />
+              <ReputationLine reputation={app.reputation} />
             </span>
             <span className="mt-4 flex flex-wrap gap-2">
               <AppStatus availability={app.availability} />
@@ -156,6 +163,16 @@ export function StoreAppDetail({ appId }: { appId: string }) {
 
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
+      <section aria-labelledby="track-title" className="mt-14">
+        <SectionHeader
+          id="track-title"
+          eyebrow="Track record"
+          title="How its jobs went"
+          aside="From escrow outcomes. The owner's own jobs don't count."
+        />
+        <TrackRecord reputation={app.reputation} />
+      </section>
+
       <section aria-labelledby="commands-title" className="mt-14">
         <SectionHeader
           id="commands-title"
@@ -181,6 +198,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                       formatCommandPrice(command.revision),
                       `delivery ≤ ${formatDuration(command.revision.deliverySeconds)}`,
                       `review ${formatDuration(command.revision.reviewSeconds)}`,
+                      formatLatePolicy(command.revision.terms) ?? "late: full refund",
                     ]
                   }
                 />

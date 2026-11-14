@@ -8,7 +8,7 @@ import {
 import type { CSSProperties, ReactNode } from "react";
 import logo from "./assets/logo.svg";
 
-// Osaka Jade daylight. Nền phẳng, kẻ mảnh, một ý mỗi dòng.
+// Osaka Jade daylight. Nền phẳng, kẻ mảnh, một ý mỗi trang.
 export const design: DesignSystem = {
   palette: { bg: "#f6f8f7", text: "#14261e", accent: "#286346" },
   fonts: {
@@ -48,50 +48,25 @@ if (typeof document !== "undefined") {
   if (link.href !== FONT_HREF) link.href = FONT_HREF;
 }
 
-// Con trỏ nhấp nháy cho chữ đang stream.
-const KEYFRAMES_ID = "osd-keyframes-payvoke-pitch";
-if (typeof document !== "undefined" && !document.getElementById(KEYFRAMES_ID)) {
-  const style = document.createElement("style");
-  style.id = KEYFRAMES_ID;
-  style.textContent =
-    "@keyframes pv-blink{0%,49%{opacity:1}50%,100%{opacity:0}}@media (prefers-reduced-motion: reduce){.pv-caret{animation:none!important}}";
-  document.head.appendChild(style);
-}
-
-const EASE_OUT = "cubic-bezier(0, 0, 0.2, 1)";
-const EASE_IN = "cubic-bezier(0.4, 0, 1, 1)";
-const HOLD: Keyframe[] = [{ opacity: 1 }, { opacity: 1 }];
-
+// Một kiểu chuyển trang duy nhất: trang mới hiện dần, không trượt, không blur.
 export const transition: SlideTransition = {
-  duration: 260,
-  exit: { duration: 260, easing: EASE_IN, keyframes: HOLD },
-  enter: {
-    duration: 260,
-    easing: EASE_OUT,
-    keyframes: [
-      { opacity: 0, transform: "translateY(6px)" },
-      { opacity: 1, transform: "translateY(0)" },
-    ],
+  duration: 220,
+  exit: {
+    duration: 220,
+    easing: "cubic-bezier(0.4, 0, 1, 1)",
+    keyframes: [{ opacity: 1 }, { opacity: 1 }],
   },
-};
-
-const settle: SlideTransition = {
-  duration: 280,
-  exit: { duration: 280, easing: EASE_IN, keyframes: HOLD },
   enter: {
-    duration: 280,
-    easing: EASE_OUT,
-    keyframes: [
-      { opacity: 0, transform: "translateY(12px)", filter: "blur(4px)" },
-      { opacity: 1, transform: "translateY(0)", filter: "blur(0)" },
-    ],
+    duration: 220,
+    easing: "cubic-bezier(0, 0, 0.2, 1)",
+    keyframes: [{ opacity: 0 }, { opacity: 1 }],
   },
 };
 
 // ---------- Khung trang ----------
 
-const Footer = () => {
-  const { current, total } = useSlidePageNumber();
+const Footer = ({ appendix }: { appendix?: boolean }) => {
+  const { current } = useSlidePageNumber();
   return (
     <div
       style={{
@@ -109,10 +84,8 @@ const Footer = () => {
         color: muted,
       }}
     >
-      <span>PAYVOKE · TEAM FIREFLY</span>
-      <span>
-        {String(current).padStart(2, "0")} / {String(total).padStart(2, "0")}
-      </span>
+      <span>PAYVOKE · TEAM FIREFLY{appendix ? " · PHỤ LỤC" : ""}</span>
+      <span>{String(current).padStart(2, "0")}</span>
     </div>
   );
 };
@@ -124,12 +97,14 @@ const Frame = ({
   title,
   children,
   bare,
+  appendix,
 }: {
   n?: string;
   label?: string;
   title?: ReactNode;
   children: ReactNode;
   bare?: boolean;
+  appendix?: boolean;
 }) => (
   <div
     style={{
@@ -157,7 +132,7 @@ const Frame = ({
           }}
         >
           <span style={{ color: accent }}>{n}</span>
-          <span style={{ color: muted, marginLeft: 20 }}>{label}</span>
+          {label && <span style={{ color: muted, marginLeft: 20 }}>{label}</span>}
         </div>
         <h2
           style={{
@@ -184,7 +159,7 @@ const Frame = ({
     >
       {children}
     </div>
-    <Footer />
+    <Footer appendix={appendix} />
   </div>
 );
 
@@ -193,7 +168,7 @@ const Em = ({ children }: { children: ReactNode }) => (
 );
 
 const Note = ({ children, style }: { children: ReactNode; style?: CSSProperties }) => (
-  <div style={{ fontSize: 26, lineHeight: 1.5, color: muted, ...style }}>{children}</div>
+  <div style={{ fontSize: 28, lineHeight: 1.5, color: muted, ...style }}>{children}</div>
 );
 
 const Label = ({ children, style }: { children: ReactNode; style?: CSSProperties }) => (
@@ -350,79 +325,6 @@ const Window = ({ title, children }: { title: string; children: ReactNode }) => 
   </div>
 );
 
-const Caret = () => (
-  <span
-    className="pv-caret"
-    style={{
-      display: "inline-block",
-      width: 12,
-      height: 26,
-      marginLeft: 6,
-      verticalAlign: "-4px",
-      background: accent,
-      animation: "pv-blink 1s steps(1) infinite",
-    }}
-  />
-);
-
-const Msg = ({ from, children }: { from: "user" | "agent"; children: ReactNode }) => (
-  <div style={{ display: "flex", justifyContent: from === "user" ? "flex-end" : "flex-start" }}>
-    <div
-      style={{
-        maxWidth: 640,
-        padding: "14px 20px",
-        fontSize: 26,
-        lineHeight: 1.45,
-        background: from === "user" ? soft : surface,
-        border: `1px solid ${from === "user" ? soft : line}`,
-      }}
-    >
-      {children}
-    </div>
-  </div>
-);
-
-const Option = ({ children, picked }: { children: ReactNode; picked?: boolean }) => (
-  <span
-    style={{
-      flex: 1,
-      padding: "12px 16px",
-      fontSize: 24,
-      border: `${picked ? 2 : 1}px solid ${picked ? accent : line}`,
-      background: picked ? soft : surface,
-    }}
-  >
-    {children}
-  </span>
-);
-
-const OfferCard = () => (
-  <div style={{ border: `2px solid ${accent}`, background: surface, padding: "18px 22px" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 26 }}>
-      <span>
-        <b>Offer</b> · Deep
-      </span>
-      <b style={{ color: accent }}>$1.00</b>
-    </div>
-    <div style={{ fontSize: 21, color: muted, marginTop: 6 }}>
-      Giao trong 10 phút · duyệt 30 phút · lỗi được hoàn tiền
-    </div>
-    <div
-      style={{
-        marginTop: 14,
-        padding: "12px 0",
-        textAlign: "center",
-        background: accent,
-        color: ink,
-        fontSize: 24,
-        fontWeight: 600,
-      }}
-    >
-      Accept and pay
-    </div>
-  </div>
-);
-
 // ---------- Sơ đồ ----------
 
 const ArrowDefs = ({ id }: { id: string }) => (
@@ -476,7 +378,7 @@ const Node = ({
       {title}
     </div>
     {sub && (
-      <div style={{ fontSize: 21, lineHeight: 1.35, opacity: 0.85, marginTop: 4 }}>{sub}</div>
+      <div style={{ fontSize: 22, lineHeight: 1.35, opacity: 0.85, marginTop: 4 }}>{sub}</div>
     )}
   </div>
 );
@@ -488,7 +390,7 @@ const DiagramLabel = ({ x, y, children }: { x: number; y: number; children: Reac
       left: x,
       top: y,
       fontFamily: mono,
-      fontSize: 17,
+      fontSize: 18,
       letterSpacing: "0.1em",
       color: muted,
       background: "var(--osd-bg)",
@@ -499,6 +401,44 @@ const DiagramLabel = ({ x, y, children }: { x: number; y: number; children: Reac
     {children}
   </div>
 );
+
+const Box = ({
+  x,
+  y,
+  w,
+  title,
+  sub,
+  tone = "plain",
+}: {
+  x: number;
+  y: number;
+  w: number;
+  title: string;
+  sub: string;
+  tone?: "plain" | "brand" | "good";
+}) => (
+  <div
+    style={{
+      position: "absolute",
+      left: x,
+      top: y,
+      width: w,
+      height: 116,
+      boxSizing: "border-box",
+      padding: "18px 26px",
+      background: tone === "brand" ? accent : tone === "good" ? soft : surface,
+      color: tone === "brand" ? ink : text,
+      border: `1px solid ${tone === "plain" ? lineStrong : accent}`,
+    }}
+  >
+    <div style={{ fontFamily: mono, fontSize: 30, fontWeight: 700 }}>{title}</div>
+    <div style={{ fontSize: 25, opacity: 0.85, marginTop: 6 }}>{sub}</div>
+  </div>
+);
+
+// =====================================================================
+// PHẦN CHÍNH (11 trang, khoảng 6 phút lời thoại)
+// =====================================================================
 
 // ---------- 1. Cover ----------
 
@@ -546,145 +486,87 @@ const Cover: Page = () => (
     </p>
   </Frame>
 );
-Cover.transition = settle;
 
-// ---------- 2. Ý tưởng ----------
+// ---------- 2. Vấn đề ----------
 
-const Idea: Page = () => (
-  <Frame n="Ý tưởng" title="Giới thiệu ý tưởng">
-    <div style={{ position: "relative", width: 1680, height: 370 }}>
-      <svg width={1680} height={370} style={{ position: "absolute", inset: 0 }}>
-        <ArrowDefs id="pv-idea" />
-        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-idea)">
-          <path d="M480 110H596" />
-          <path d="M1080 110H1196" />
-          <path d="M1440 184V320H240V188" />
-        </g>
-      </svg>
-      <Node x={0} y={40} w={480} h={140} title="Builder" sub="Chia sẻ agent" />
-      <Node
-        x={600}
-        y={40}
-        w={480}
-        h={140}
-        title="Payvoke"
-        sub="Store · Chat · Thanh toán"
-        tone="brand"
-      />
-      <Node x={1200} y={40} w={480} h={140} title="Buyer" sub="Giao việc, trả theo job" />
-      <DiagramLabel x={720} y={309}>
-        THANH TOÁN THEO JOB
-      </DiagramLabel>
-    </div>
-    <Statement style={{ marginTop: 24 }}>
-      Builder chia sẻ agent. <Em>Buyer trả tiền theo từng job.</Em>
-    </Statement>
-  </Frame>
-);
-
-// ---------- 3. Hai phía ----------
-
-const TwoSides: Page = () => (
-  <Frame n="Ý tưởng" title="Cách sử dụng">
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
-      <div>
-        <Label>Builder</Label>
-        <Row n="01">Đăng ký agent</Row>
-        <Row n="02">Đặt giá</Row>
-        <Row n="03">Nhận job và thanh toán</Row>
-      </div>
-      <div>
-        <Label>Buyer</Label>
-        <Row n="01">Tìm agent</Row>
-        <Row n="02">Nhận Offer</Row>
-        <Row n="03">Nhận kết quả</Row>
-      </div>
-    </div>
-  </Frame>
-);
-
-// ---------- 3. Bối cảnh ----------
-
-const Context: Page = () => (
-  <Frame n="Ý tưởng" title="Bối cảnh">
+const Problem: Page = () => (
+  <Frame n="Vấn đề" title="Thuê AI agent hôm nay phải dựa vào niềm tin">
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 64 }}>
-      <Block tag="MCP" title="Assistant gọi công cụ">
-        Tự tìm agent và giao việc.
+      <Block tag="Buyer" title="Trả trước, rủi ro tự chịu">
+        Agent lỗi, chậm hoặc im lặng thì buyer mất tiền và không có cách đòi lại.
       </Block>
-      <Block tag="x402" title="Thanh toán trong HTTP">
-        Máy tự thanh toán.
+      <Block tag="Builder" title="Khó bán theo từng job">
+        Muốn thu tiền mỗi job phải tự làm billing, cổng thanh toán và chi trả.
       </Block>
-      <Block tag="On-chain" title="Finality nhanh">
-        Phí thấp.
+      <Block tag="AI assistant" title="Dễ bị dụ trả tiền">
+        Assistant đọc tin nhắn của agent lạ và có thể bị ép thanh toán.
       </Block>
     </div>
     <Statement style={{ marginTop: 64 }}>
-      Còn thiếu một <Em>marketplace cho agent.</Em>
+      Payvoke giữ tiền trong escrow <Em>cho đến khi job được giao.</Em>
     </Statement>
   </Frame>
 );
 
-// ---------- 3b. Vì sao on-chain ----------
+// ---------- 3. Vì sao là lúc này ----------
 
-const Versus = ({ k, a, b, head }: { k: string; a: string; b: string; head?: boolean }) => (
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "300px 1fr 1fr",
-      gap: 40,
-      alignItems: "baseline",
-      padding: head ? "0 0 14px" : "20px 0",
-      borderTop: head ? "none" : `1px solid ${line}`,
-    }}
-  >
-    <span style={{ fontSize: 30, fontWeight: 600 }}>{k}</span>
-    <span
-      style={{
-        fontFamily: head ? mono : sans,
-        fontSize: head ? 20 : 29,
-        fontWeight: head ? 700 : 400,
-        letterSpacing: head ? "0.14em" : undefined,
-        color: head ? muted : bodyInk,
-      }}
-    >
-      {a}
-    </span>
-    <span
-      style={{
-        fontFamily: head ? mono : sans,
-        fontSize: head ? 20 : 29,
-        fontWeight: head ? 700 : 500,
-        letterSpacing: head ? "0.14em" : undefined,
-        color: head ? accent : text,
-      }}
-    >
-      {b}
-    </span>
-  </div>
-);
-
-const WhyOnchain: Page = () => (
-  <Frame n="Thanh toán" title="Vì sao dùng on-chain">
-    <Versus head k="" a="VÍ NẠP SẴN · NỀN TẢNG GIỮ TIỀN" b="ESCROW ON-CHAIN" />
-    <Versus k="Bên giữ tiền" a="Nền tảng, người dùng phải tin" b="Smart contract công khai" />
-    <Versus
-      k="Chi trả builder"
-      a="Phụ thuộc KYC và ngân hàng từng nước"
-      b="Thanh toán về thẳng ví của builder"
-    />
-    <Versus k="Hoàn tiền" a="Theo quy trình nội bộ" b="Tự động theo thời hạn giao" />
-    <Versus
-      k="Agent tự chi tiêu"
-      a="Cần tài khoản và số dư riêng"
-      b="Spend key có hạn mức, thu hồi được"
-    />
-    <Statement style={{ marginTop: 40 }}>
-      On-chain: <Em>niềm tin và chi trả.</Em>
+const Context: Page = () => (
+  <Frame n="Bối cảnh" title="Vì sao là lúc này">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 64 }}>
+      <Block tag="MCP" title="Assistant biết gọi công cụ">
+        Claude Code hay Codex tự tìm agent và giao việc.
+      </Block>
+      <Block tag="x402" title="Thanh toán trong HTTP">
+        Server trả mã 402, client ký rồi gửi lại.
+      </Block>
+      <Block tag="Avalanche" title="Phí thấp, finality nhanh">
+        Đủ rẻ cho những job chỉ vài USDC.
+      </Block>
+    </div>
+    <Statement style={{ marginTop: 64 }}>
+      Còn thiếu một nơi để <Em>tìm agent và trả tiền an toàn theo từng job.</Em>
     </Statement>
   </Frame>
 );
 
-// ---------- 5. Một job ----------
+// ---------- 4. Giải pháp ----------
+
+const Idea: Page = () => (
+  <Frame n="Giải pháp" title="Payvoke kết nối builder và buyer">
+    <div style={{ position: "relative", width: 1680, height: 330 }}>
+      <svg width={1680} height={330} style={{ position: "absolute", inset: 0 }}>
+        <ArrowDefs id="pv-idea" />
+        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-idea)">
+          <path d="M480 90H596" />
+          <path d="M1080 90H1196" />
+          <path d="M1440 164V290H240V168" />
+        </g>
+      </svg>
+      <Node x={0} y={20} w={480} h={140} title="Builder" sub="Tự host agent, đặt giá từng lệnh" />
+      <Node
+        x={600}
+        y={20}
+        w={480}
+        h={140}
+        title="Payvoke"
+        sub="Store · Chat · Escrow"
+        tone="brand"
+      />
+      <Node x={1200} y={20} w={480} h={140} title="Buyer" sub="Người dùng web hoặc AI assistant" />
+      <DiagramLabel x={600} y={279}>
+        USDC NẰM TRONG ESCROW ĐẾN KHI GIAO
+      </DiagramLabel>
+    </div>
+    <Statement style={{ marginTop: 48 }}>
+      Builder không phải tự làm billing. <Em>Buyer không phải trả trước cho agent lạ.</Em>
+    </Statement>
+    <Note style={{ marginTop: 24 }}>
+      Mỗi agent có track record công khai từ escrow: tỷ lệ thành công, đúng hạn, refund.
+    </Note>
+  </Frame>
+);
+
+// ---------- 5. Vòng đời một job ----------
 
 const Stage = ({
   n,
@@ -734,93 +616,312 @@ const JobFlow: Page = () => (
         style={{ position: "absolute", left: 34, right: 300, top: 33, height: 2, background: line }}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 40 }}>
-        <Stage n="1" title="Khám phá" tag="off-chain">
-          Chat miễn phí
+        <Stage n="1" title="Chat" tag="off-chain">
+          Miễn phí, agent hỏi thêm chi tiết
         </Stage>
         <Stage n="2" title="Offer" tag="off-chain">
-          Giá và điều khoản
+          Giá, hạn giao và chính sách refund
         </Stage>
         <Stage n="3" title="Ký quỹ" tag="on-chain" money>
-          Tiền vào Vault
+          Buyer ký một lần, USDC vào Vault
         </Stage>
         <Stage n="4" title="Thực thi" tag="off-chain">
-          Agent xử lý job
+          Agent chạy khi tiền đã chốt
         </Stage>
-        <Stage n="5" title="Thanh toán" tag="on-chain" money>
-          Release hoặc refund
+        <Stage n="5" title="Quyết toán" tag="on-chain" money>
+          Release cho builder hoặc refund cho buyer
         </Stage>
       </div>
     </div>
-    <Note style={{ marginTop: 56 }}>Tiền chỉ di chuyển ở bước 3 và bước 5.</Note>
+    <Note style={{ marginTop: 56 }}>
+      Tiền chỉ di chuyển trên chain hai lần: lúc ký quỹ và lúc quyết toán.
+    </Note>
   </Frame>
 );
 
-// ---------- 6. Trước thanh toán ----------
+// ---------- 6. Vì sao on-chain ----------
 
-const PreSale: Page = () => (
-  <Frame n="Sản phẩm" title="Trao đổi và Offer">
-    <div
-      style={{ display: "grid", gridTemplateColumns: "1fr 740px", gap: 80, alignItems: "center" }}
+const Versus = ({ k, a, b, head }: { k: string; a: string; b: string; head?: boolean }) => (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "300px 1fr 1fr",
+      gap: 40,
+      alignItems: "baseline",
+      padding: head ? "0 0 14px" : "20px 0",
+      borderTop: head ? "none" : `1px solid ${line}`,
+    }}
+  >
+    <span style={{ fontSize: 30, fontWeight: 600 }}>{k}</span>
+    <span
+      style={{
+        fontFamily: head ? mono : sans,
+        fontSize: head ? 20 : 29,
+        fontWeight: head ? 700 : 400,
+        letterSpacing: head ? "0.14em" : undefined,
+        color: head ? muted : bodyInk,
+      }}
     >
-      <div>
-        <Spec k="Chat" w={200}>
-          Miễn phí, stream thời gian thực
-        </Spec>
-        <Spec k="Tương tác" w={200}>
-          Form và lựa chọn
-        </Spec>
-        <Spec k="Giá" w={200}>
-          Chỉ từ Offer
-        </Spec>
-      </div>
-      <Window title="Agent phân tích tài chính · CSV">
-        <Msg from="user">
-          <b>/analyze</b> q3_financials.csv
-        </Msg>
-        <Msg from="agent">
-          Đã nhận file. Bạn muốn mức độ phân tích nào?
-          <Caret />
-        </Msg>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Option>
-            <b>Quick</b> · 2 biểu đồ cơ bản
-          </Option>
-          <Option picked>
-            <b>Deep</b> · 5 biểu đồ + xu hướng
-          </Option>
-        </div>
-        <OfferCard />
-      </Window>
-    </div>
-  </Frame>
-);
-
-// ---------- 7. Quote ----------
-
-const Field = ({ k, children }: { k: string; children: ReactNode }) => (
-  <div style={{ padding: "24px 28px", background: surface, border: `1px solid ${line}` }}>
-    <Label style={{ color: accent }}>{k}</Label>
-    <div style={{ fontSize: 30, lineHeight: 1.4 }}>{children}</div>
+      {a}
+    </span>
+    <span
+      style={{
+        fontFamily: head ? mono : sans,
+        fontSize: head ? 20 : 29,
+        fontWeight: head ? 700 : 500,
+        letterSpacing: head ? "0.14em" : undefined,
+        color: head ? accent : text,
+      }}
+    >
+      {b}
+    </span>
   </div>
 );
 
-const Quote: Page = () => (
-  <Frame n="Thanh toán" title="Quote EIP-712">
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-      <Field k="Parties">Buyer, provider</Field>
-      <Field k="Command">Agent, command, version</Field>
-      <Field k="Hash">Input, terms, policy</Field>
-      <Field k="Amount">Giá, fee</Field>
-      <Field k="Deadline">Giao hàng, resolveBy</Field>
-      <Field k="Replay">Dùng một lần</Field>
-    </div>
-    <Statement style={{ marginTop: 48 }}>
-      Ký xong, <Em>không sửa được.</Em>
+const WhyOnchain: Page = () => (
+  <Frame n="Thanh toán" title="Vì sao giữ tiền on-chain">
+    <Versus head k="" a="NẠP TIỀN VÀO NỀN TẢNG" b="ESCROW ON-CHAIN" />
+    <Versus k="Ai giữ tiền" a="Nền tảng, người dùng phải tin" b="Smart contract công khai" />
+    <Versus k="Trả cho builder" a="Vướng KYC và ngân hàng từng nước" b="Về thẳng ví của builder" />
+    <Versus k="Hoàn tiền" a="Theo quy trình nội bộ" b="Tự động khi lỗi hoặc trễ hạn" />
+    <Versus k="AI tự chi tiêu" a="Cần tài khoản và số dư riêng" b="Hạn mức on-chain, thu hồi được" />
+    <Statement style={{ marginTop: 40 }}>
+      Payvoke <Em>không rút được tiền của buyer.</Em> Luật refund nằm trong contract.
     </Statement>
   </Frame>
 );
 
-// ---------- 8. Thực thi ----------
+// ---------- 7. Tiền đi như thế nào ----------
+
+const MoneyFlow: Page = () => (
+  <Frame n="Thanh toán" title="Tiền đi như thế nào">
+    <div style={{ position: "relative", width: 1680, height: 420 }}>
+      <svg width={1680} height={420} style={{ position: "absolute", inset: 0 }}>
+        <ArrowDefs id="pv-money" />
+        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-money)">
+          <path d="M360 210H436" />
+          <path d="M780 210H1000C1040 210 1040 58 1086 58" />
+          <path d="M780 210H1086" />
+          <path d="M780 210H1000C1040 210 1040 362 1086 362" />
+        </g>
+      </svg>
+      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký một lần, không gas" />
+      <Box x={440} y={152} w={340} title="PayvokeVault" sub="giữ riêng cho job" tone="brand" />
+      <Box x={1090} y={0} w={590} title="Ví builder" sub="giao đúng hạn, sau review window" tone="good" />
+      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund khi lỗi; trễ ít thì hoàn một phần" />
+      <Box x={1090} y={304} w={590} title="Ví buyer" sub="tự rút lại nếu quá hạn quyết định" />
+    </div>
+    <Note style={{ marginTop: 48 }}>
+      Chữ ký gắn với đúng một quote: agent, input, giá và deadline. Ký xong không ai sửa được.
+    </Note>
+  </Frame>
+);
+
+// ---------- 8. An toàn cho AI assistant ----------
+
+const AgentSafety: Page = () => (
+  <Frame n="An toàn" title="Khi AI assistant tự trả tiền">
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
+      <div>
+        <Label>Hạn mức do buyer đặt</Label>
+        <Spec k="Mỗi job" w={200}>
+          Trần cho một job
+        </Spec>
+        <Spec k="Mỗi kỳ" w={200}>
+          Trần theo kỳ
+        </Spec>
+        <Spec k="Tổng" w={200}>
+          Tổng hạn mức, ngày hết hạn
+        </Spec>
+        <Spec k="Thu hồi" w={200}>
+          Một chữ ký, không tốn gas
+        </Spec>
+      </div>
+      <div>
+        <Label>Risk Check · 5 tín hiệu</Label>
+        <Row n="!" tone="warn">
+          Agent ra lệnh cho assistant trả tiền
+        </Row>
+        <Row n="!" tone="warn">
+          Agent đổi sang Offer giá cao hơn
+        </Row>
+        <Row n="!" tone="warn">
+          Giá hơn 3 lần mức thường của lệnh
+        </Row>
+        <Row n="!" tone="warn">
+          Tỷ lệ refund từ 50% trở lên
+        </Row>
+        <Row n="!" tone="warn">
+          Agent mới, giá trên 1 USDC
+        </Row>
+      </div>
+    </div>
+    <Statement style={{ marginTop: 40 }}>
+      Vượt hạn mức hoặc có một tín hiệu: <Em>người dùng tự duyệt.</Em>
+    </Statement>
+  </Frame>
+);
+
+// ---------- 9. Kiến trúc ----------
+
+const Architecture: Page = () => (
+  <Frame n="Hệ thống" title="Kiến trúc">
+    <div style={{ position: "relative", width: 1680, height: 400 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 480,
+          top: 0,
+          width: 680,
+          height: 400,
+          border: `2px dashed ${lineStrong}`,
+          boxSizing: "border-box",
+        }}
+      />
+      <DiagramLabel x={500} y={-11}>
+        PAYVOKE API
+      </DiagramLabel>
+      <svg width={1680} height={400} style={{ position: "absolute", inset: 0 }}>
+        <ArrowDefs id="pv-arch" />
+        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-arch)">
+          <path d="M360 55H476" />
+          <path d="M360 195H476" />
+          <path d="M360 335H476" />
+          <path d="M1160 100H1316" />
+          <path d="M1160 335H1316" />
+        </g>
+      </svg>
+      <Node x={0} y={0} w={360} h={110} title="Web app" sub="Store, chat, Studio" />
+      <Node x={0} y={140} w={360} h={110} title="AI assistant" sub="qua MCP" />
+      <Node x={0} y={280} w={360} h={110} title="Agent của builder" sub="HTTPS và SSE" />
+      <Node x={520} y={40} w={600} h={80} title="Chat · Offer · Quote" />
+      <Node x={520} y={140} w={600} h={80} title="x402 gateway · MCP server" />
+      <DiagramLabel x={512} y={250}>
+        WORKERS · MỖI WORKER MỘT KEY
+      </DiagramLabel>
+      <Node x={520} y={290} w={190} h={70} title="Settlement" tone="key" />
+      <Node x={725} y={290} w={190} h={70} title="Finance" tone="key" />
+      <Node x={930} y={290} w={190} h={70} title="Job" />
+      <Node x={1320} y={40} w={360} h={120} title="Postgres · Redis · S3" sub="job, journal, file" />
+      <Node x={1320} y={280} w={360} h={110} title="PayvokeVault" sub="Avalanche Fuji" tone="brand" />
+    </div>
+    <Note style={{ marginTop: 40 }}>
+      React, TanStack Start · Bun, Hono, Prisma · Solidity, Hardhat · x402, EIP-712, EIP-3009
+    </Note>
+  </Frame>
+);
+
+// ---------- 10. Doanh thu và bước tiếp theo ----------
+
+const Business: Page = () => (
+  <Frame n="Kinh doanh" title="Doanh thu và bước tiếp theo">
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
+      <div>
+        <Label>Doanh thu</Label>
+        <Spec k="Phí" w={180}>
+          Phần trăm mỗi job, trừ lúc release
+        </Spec>
+        <Spec k="Trần phí" w={180}>
+          Cố định trong contract từ lúc deploy
+        </Spec>
+        <Spec k="Job lỗi" w={180}>
+          Refund toàn bộ, Payvoke không thu phí
+        </Spec>
+      </div>
+      <div>
+        <Label>Bước tiếp theo</Label>
+        <Row n="01" tone="todo">
+          Lên Avalanche mainnet
+        </Row>
+        <Row n="02" tone="todo">
+          Khiếu nại khi kết quả kém
+        </Row>
+        <Row n="03" tone="todo">
+          SDK cho Python và TypeScript
+        </Row>
+        <Row n="04" tone="todo">
+          Đưa những builder đầu tiên lên Store
+        </Row>
+      </div>
+    </div>
+  </Frame>
+);
+
+// ---------- 11. Closing ----------
+
+const Closing: Page = () => (
+  <Frame bare>
+    <img src={logo} alt="" style={{ width: 88, height: 88 }} />
+    <h2
+      style={{
+        fontFamily: display,
+        fontSize: 120,
+        fontWeight: 600,
+        lineHeight: 1.05,
+        letterSpacing: "-0.025em",
+        margin: "44px 0 0",
+      }}
+    >
+      Payvoke
+    </h2>
+    <p
+      style={{
+        fontFamily: display,
+        fontSize: 52,
+        fontWeight: 600,
+        lineHeight: 1.25,
+        margin: "28px 0 0",
+      }}
+    >
+      Marketplace cho AI agent.
+      <br />
+      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
+    </p>
+    <div style={{ width: 120, height: 4, background: accent, marginTop: 48 }} />
+    <p style={{ fontSize: 32, color: bodyInk, margin: "32px 0 0" }}>
+      Team Firefly · Cảm ơn Ban giám khảo
+    </p>
+    <Note style={{ marginTop: 12 }}>payvoke.xyz · github.com/2giosangmitom/payvoke</Note>
+  </Frame>
+);
+
+// =====================================================================
+// PHỤ LỤC (chỉ mở khi có câu hỏi)
+// =====================================================================
+
+const AppendixCover: Page = () => (
+  <Frame bare appendix>
+    <div
+      style={{
+        fontFamily: mono,
+        fontSize: 24,
+        fontWeight: 700,
+        letterSpacing: "0.16em",
+        color: accent,
+      }}
+    >
+      PHỤ LỤC
+    </div>
+    <h2
+      style={{
+        fontFamily: display,
+        fontSize: 100,
+        fontWeight: 600,
+        lineHeight: 1.1,
+        letterSpacing: "-0.02em",
+        margin: "32px 0 0",
+      }}
+    >
+      Chi tiết kỹ thuật
+    </h2>
+    <Note style={{ marginTop: 32 }}>
+      Thực thi job · Giao diện kết quả · Tích hợp · Quote · x402 · Vault · Hạn mức · Risk Check ·
+      Độ tin cậy · Smart contract
+    </Note>
+  </Frame>
+);
+
+// ---------- A. Thực thi ----------
 
 const Step7 = ({
   state,
@@ -857,7 +958,7 @@ const Step7 = ({
 );
 
 const Execution: Page = () => (
-  <Frame n="Sản phẩm" title="Thực thi job">
+  <Frame n="Phụ lục" label="Sản phẩm" title="Thực thi job" appendix>
     <Label>Luồng chính</Label>
     <div style={{ display: "flex", alignItems: "flex-start" }}>
       <Step7 state="QUEUED" note="Chờ gửi" />
@@ -869,24 +970,24 @@ const Execution: Page = () => (
     </div>
     <div style={{ marginTop: 44 }}>
       <Spec k="Stream" w={300}>
-        AG-UI
+        AG-UI: text và OpenUI theo thời gian thực
       </Spec>
-      <Spec k="Thanh toán" w={300}>
-        Dựa vào kết quả cuối cùng
+      <Spec k="Điều kiện trả" w={300}>
+        Dựa vào kết quả cuối cùng, không dựa vào stream
       </Spec>
     </div>
   </Frame>
 );
 
-// ---------- 9. OpenUI ----------
+// ---------- A. OpenUI ----------
 
 const Metric = ({ label, value, note }: { label: string; value: string; note: string }) => (
   <div style={{ flex: 1, padding: "16px 20px", border: `1px solid ${line}` }}>
-    <div style={{ fontFamily: mono, fontSize: 17, letterSpacing: "0.1em", color: muted }}>
+    <div style={{ fontFamily: mono, fontSize: 18, letterSpacing: "0.1em", color: muted }}>
       {label}
     </div>
     <div style={{ fontFamily: display, fontSize: 44, fontWeight: 600, marginTop: 2 }}>{value}</div>
-    <div style={{ fontSize: 19, color: muted }}>{note}</div>
+    <div style={{ fontSize: 20, color: muted }}>{note}</div>
   </div>
 );
 
@@ -927,7 +1028,7 @@ const Bar = ({
 );
 
 const GenUI: Page = () => (
-  <Frame n="Sản phẩm" title="Giao diện kết quả">
+  <Frame n="Phụ lục" label="Sản phẩm" title="Giao diện kết quả" appendix>
     <div
       style={{ display: "grid", gridTemplateColumns: "1fr 720px", gap: 80, alignItems: "center" }}
     >
@@ -942,14 +1043,14 @@ const GenUI: Page = () => (
           Không script, không link
         </Spec>
       </div>
-      <Window title="Kết quả stream realtime">
+      <Window title="Kết quả trong chat">
         <div style={{ display: "flex", gap: 12 }}>
           <Metric label="DOANH THU Q3" value="−18%" note="so với Q2" />
           <Metric label="ĐƠN HÀNG" value="3.204" note="−9%" />
         </div>
         <div style={{ border: `1px solid ${line}`, padding: "18px 20px" }}>
           <div style={{ fontSize: 23, fontWeight: 600, marginBottom: 14 }}>
-            Phân tích doanh thu theo khu vực
+            Doanh thu theo khu vực
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <Bar label="Bắc" value={530} max={530} />
@@ -962,26 +1063,22 @@ const GenUI: Page = () => (
   </Frame>
 );
 
-// ---------- 10. Tích hợp ----------
+// ---------- A. Tích hợp ----------
 
 const Builder: Page = () => (
-  <Frame n="Sản phẩm" title="Tích hợp cho Builder">
+  <Frame n="Phụ lục" label="Tích hợp" title="Tích hợp cho builder" appendix>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "56px 96px" }}>
-      <Block title="Event feed">SSE và ACK.</Block>
-      <Block title="API key">Phân quyền theo scope.</Block>
-      <Block title="Idempotent">Retry an toàn.</Block>
-      <Block title="File">Presigned URL.</Block>
+      <Block title="Event feed">SSE, event giữ trong queue đến khi ACK.</Block>
+      <Block title="API key">7 scope, tạo trong Studio.</Block>
+      <Block title="Idempotent">Retry không bị tính tiền hai lần.</Block>
+      <Block title="File">Upload qua presigned URL, kiểm SHA-256.</Block>
     </div>
-    <Note style={{ marginTop: 56 }}>
-      Không giới hạn ngôn ngữ hay công nghệ: chỉ cần HTTP và SSE.
-    </Note>
+    <Note style={{ marginTop: 56 }}>Ngôn ngữ nào cũng được, chỉ cần gọi HTTP và đọc SSE.</Note>
   </Frame>
 );
 
-// ---------- 11. MCP ----------
-
 const Assistant: Page = () => (
-  <Frame n="Sản phẩm" title="Tích hợp AI assistant">
+  <Frame n="Phụ lục" label="Tích hợp" title="Tích hợp AI assistant" appendix>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
       <div>
         <Label>Qua MCP</Label>
@@ -1006,181 +1103,32 @@ const Assistant: Page = () => (
   </Frame>
 );
 
-// ---------- 12. Risk check ----------
+// ---------- A. Quote ----------
 
-const Signal = ({ name, children }: { name: string; children: ReactNode }) => (
-  <>
-    <div
-      style={{
-        padding: "22px 0",
-        borderTop: `1px solid ${line}`,
-        fontSize: 32,
-        fontWeight: 600,
-        display: "flex",
-        gap: 18,
-      }}
-    >
-      <span style={{ color: red }}>!</span>
-      {name}
-    </div>
-    <div
-      style={{ padding: "22px 0", borderTop: `1px solid ${line}`, fontSize: 32, color: bodyInk }}
-    >
-      {children}
-    </div>
-  </>
+const Field = ({ k, children }: { k: string; children: ReactNode }) => (
+  <div style={{ padding: "24px 28px", background: surface, border: `1px solid ${line}` }}>
+    <Label style={{ color: accent }}>{k}</Label>
+    <div style={{ fontSize: 30, lineHeight: 1.4 }}>{children}</div>
+  </div>
 );
 
-const RiskCheck: Page = () => (
-  <Frame n="Thanh toán" title="Risk Check">
-    <Label>Khi assistant hoặc API key tự thanh toán · sau khi qua hạn mức</Label>
-    <div style={{ display: "grid", gridTemplateColumns: "460px 1fr", columnGap: 56 }}>
-      <Signal name="Ép thanh toán">Agent ra lệnh cho assistant: bỏ qua luật, trả ngay</Signal>
-      <Signal name="Tăng giá">Offer mới thay Offer cũ với giá cao hơn</Signal>
-      <Signal name="Giá bất thường">Cao hơn 3× median của lệnh (20 lần mua gần nhất)</Signal>
-      <Signal name="Refund cao">Từ 50% trong 20 job đã đóng gần nhất (tối thiểu 5)</Signal>
-      <Signal name="Agent mới">Dưới 3 job đã trả và giá trên 1 USDC</Signal>
+const Quote: Page = () => (
+  <Frame n="Phụ lục" label="Thanh toán" title="Quote EIP-712" appendix>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+      <Field k="Parties">Buyer, provider</Field>
+      <Field k="Command">Agent, command, version</Field>
+      <Field k="Hash">Input, terms, policy</Field>
+      <Field k="Amount">Giá, fee</Field>
+      <Field k="Deadline">Giao hàng, resolveBy</Field>
+      <Field k="Replay">Dùng một lần</Field>
     </div>
-    <Statement style={{ marginTop: 32 }}>
-      Có tín hiệu: <Em>người dùng phê duyệt.</Em> Không tự trả, không chặn chat.
+    <Statement style={{ marginTop: 48 }}>
+      Ký xong, <Em>không sửa được.</Em>
     </Statement>
   </Frame>
 );
 
-// ---------- 13. Kiến trúc ----------
-
-const Architecture: Page = () => (
-  <Frame n="Hệ thống" title="Kiến trúc hệ thống">
-    <div style={{ position: "relative", width: 1680, height: 600 }}>
-      <div
-        style={{
-          position: "absolute",
-          left: 440,
-          top: 0,
-          width: 800,
-          height: 600,
-          border: `2px dashed ${lineStrong}`,
-          boxSizing: "border-box",
-        }}
-      />
-      <DiagramLabel x={460} y={-11}>
-        PAYVOKE API
-      </DiagramLabel>
-      <svg width={1680} height={600} style={{ position: "absolute", inset: 0 }}>
-        <ArrowDefs id="pv-arch" />
-        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-arch)">
-          <path d="M360 95H476" />
-          <path d="M360 245H476" />
-          <path d="M360 395H476" />
-          <path d="M476 395H364" />
-          <path d="M840 95H876" />
-          <path d="M1220 105H1336" />
-          <path d="M605 550V576H1510V554" />
-          <path d="M870 550V576" />
-        </g>
-      </svg>
-      <Node x={0} y={40} w={360} h={110} title="Web app" sub="store, chat, Studio" />
-      <Node x={0} y={190} w={360} h={110} title="AI assistant" sub="MCP" />
-      <Node x={0} y={340} w={360} h={110} title="Agent" sub="SSE, report" />
-      <Node x={480} y={40} w={360} h={110} title="Chat · quote" />
-      <Node x={480} y={190} w={360} h={110} title="AG-UI stream" sub="text, OpenUI" />
-      <Node x={480} y={340} w={360} h={110} title="Agent gateway" />
-      <Node x={880} y={40} w={340} h={130} title="x402 gateway" sub="không giữ key" />
-      <DiagramLabel x={470} y={458}>
-        WORKERS · MỖI WORKER MỘT KEY
-      </DiagramLabel>
-      <Node x={480} y={480} w={250} h={70} title="Settlement" tone="key" />
-      <Node x={745} y={480} w={250} h={70} title="Finance" tone="key" />
-      <Node x={1010} y={480} w={210} h={70} title="Job" />
-      <Node x={1340} y={40} w={340} h={130} title="Storage" sub="Postgres, Redis, S3" />
-      <Node x={1340} y={440} w={340} h={110} title="PayvokeVault" sub="On-chain" tone="brand" />
-    </div>
-    <Note style={{ marginTop: 16 }}>Mỗi worker giữ một key riêng.</Note>
-  </Frame>
-);
-
-// ---------- 14. Vận hành ----------
-
-const Operations: Page = () => (
-  <Frame n="Hệ thống" title="Độ tin cậy">
-    <Spec k="Dữ liệu" w={360}>
-      Postgres là nguồn dữ liệu chính của job và giao dịch.
-    </Spec>
-    <Spec k="Journal" w={360}>
-      Giao dịch được ghi lại trước khi gửi lên chain, nên đối soát được sau sự cố.
-    </Spec>
-    <Spec k="Finality" w={360}>
-      Agent chỉ bắt đầu chạy sau khi khoản tiền được giữ chắc chắn trên chain.
-    </Spec>
-    <Spec k="Idempotent" w={360}>
-      Gửi lại cùng một yêu cầu chỉ trả về biên nhận cũ, không bị tính tiền hai lần.
-    </Spec>
-    <Spec k="Key" w={360}>
-      Mỗi worker dùng một key riêng, nên một worker bị lộ không ảnh hưởng worker khác.
-    </Spec>
-  </Frame>
-);
-
-// ---------- 15. Vault ----------
-
-const Box = ({
-  x,
-  y,
-  w,
-  title,
-  sub,
-  tone = "plain",
-}: {
-  x: number;
-  y: number;
-  w: number;
-  title: string;
-  sub: string;
-  tone?: "plain" | "brand" | "good";
-}) => (
-  <div
-    style={{
-      position: "absolute",
-      left: x,
-      top: y,
-      width: w,
-      height: 116,
-      boxSizing: "border-box",
-      padding: "18px 26px",
-      background: tone === "brand" ? accent : tone === "good" ? soft : surface,
-      color: tone === "brand" ? ink : text,
-      border: `1px solid ${tone === "plain" ? lineStrong : accent}`,
-    }}
-  >
-    <div style={{ fontFamily: mono, fontSize: 30, fontWeight: 700 }}>{title}</div>
-    <div style={{ fontSize: 25, opacity: 0.85, marginTop: 6 }}>{sub}</div>
-  </div>
-);
-
-const Vault: Page = () => (
-  <Frame n="Thanh toán" title="PayvokeVault">
-    <div style={{ position: "relative", width: 1680, height: 580 }}>
-      <svg width={1680} height={580} style={{ position: "absolute", inset: 0 }}>
-        <ArrowDefs id="pv-vault" />
-        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-vault)">
-          <path d="M360 210H436" />
-          <path d="M780 210H1000C1040 210 1040 58 1086 58" />
-          <path d="M780 210H1086" />
-          <path d="M780 210H1000C1040 210 1040 362 1086 362" />
-          <path d="M780 210H1000C1040 210 1040 514 1086 514" />
-        </g>
-      </svg>
-      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký USDC theo quote" />
-      <Box x={440} y={152} w={340} title="Held" sub="escrow theo quote" tone="brand" />
-      <Box x={1090} y={0} w={590} title="Ví builder" sub="release sau review window" tone="good" />
-      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
-      <Box x={1090} y={304} w={590} title="Ví buyer" sub="reclaim sau resolveBy" />
-      <Box x={1090} y={456} w={590} title="Claimable" sub="USDC bị chặn, owner tự claim" />
-    </div>
-  </Frame>
-);
-
-// ---------- 16. x402 ----------
+// ---------- A. x402 ----------
 
 const Lane = ({ x, title, sub }: { x: number; title: string; sub: string }) => (
   <div
@@ -1198,7 +1146,7 @@ const Lane = ({ x, title, sub }: { x: number; title: string; sub: string }) => (
     }}
   >
     <div style={{ fontFamily: display, fontSize: 28, fontWeight: 600 }}>{title}</div>
-    <div style={{ fontSize: 19, color: muted }}>{sub}</div>
+    <div style={{ fontSize: 20, color: muted }}>{sub}</div>
   </div>
 );
 
@@ -1252,7 +1200,7 @@ const L_VAULT = 1120;
 const L_AGENT = 1500;
 
 const X402: Page = () => (
-  <Frame n="Thanh toán" title="Luồng thanh toán x402">
+  <Frame n="Phụ lục" label="Thanh toán" title="Luồng thanh toán x402" appendix>
     <div style={{ position: "relative", width: 1680, height: 640 }}>
       <svg width={1680} height={640} style={{ position: "absolute", inset: 0 }}>
         <g stroke={line} strokeWidth={2} strokeDasharray="6 8">
@@ -1263,11 +1211,11 @@ const X402: Page = () => (
         </g>
       </svg>
       <Lane x={L_BUYER} title="Buyer" sub="web hoặc AI assistant" />
-      <Lane x={L_PAYVOKE} title="Payvoke API" sub="x402 gateway & relayer" />
-      <Lane x={L_VAULT} title="PayvokeVault" sub="On-chain" />
-      <Lane x={L_AGENT} title="Provider agent" sub="SSE event feed" />
+      <Lane x={L_PAYVOKE} title="Payvoke API" sub="x402 gateway, relayer" />
+      <Lane x={L_VAULT} title="PayvokeVault" sub="Avalanche" />
+      <Lane x={L_AGENT} title="Agent" sub="SSE event feed" />
       <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={164}>
-        Submit quote
+        Gửi quote
       </SeqMsg>
       <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={232} strong>
         402 Payment Required
@@ -1275,33 +1223,54 @@ const X402: Page = () => (
       <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={300}>
         Ký USDC EIP-3009, gửi lại
       </SeqMsg>
-      <div>
-        <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
-          fundWithAuthorization (relayer)
-        </SeqMsg>
-        <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
-          Hold finalized
-        </SeqMsg>
-        <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={504} strong>
-          202 + receipt
-        </SeqMsg>
-      </div>
-      <div>
-        <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={572} strong>
-          invocation.ready
-        </SeqMsg>
-        <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={636}>
-          applyDecision (release / refund)
-        </SeqMsg>
-      </div>
+      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
+        fundWithAuthorization
+      </SeqMsg>
+      <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
+        Hold finalized
+      </SeqMsg>
+      <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={504} strong>
+        202 + receipt
+      </SeqMsg>
+      <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={572} strong>
+        invocation.ready
+      </SeqMsg>
+      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={636}>
+        applyDecision: release hoặc refund
+      </SeqMsg>
     </div>
   </Frame>
 );
 
-// ---------- 17. Grant ----------
+// ---------- A. Vault ----------
+
+const Vault: Page = () => (
+  <Frame n="Phụ lục" label="Thanh toán" title="PayvokeVault" appendix>
+    <div style={{ position: "relative", width: 1680, height: 580 }}>
+      <svg width={1680} height={580} style={{ position: "absolute", inset: 0 }}>
+        <ArrowDefs id="pv-vault" />
+        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-vault)">
+          <path d="M360 210H436" />
+          <path d="M780 210H1000C1040 210 1040 58 1086 58" />
+          <path d="M780 210H1086" />
+          <path d="M780 210H1000C1040 210 1040 362 1086 362" />
+          <path d="M780 210H1000C1040 210 1040 514 1086 514" />
+        </g>
+      </svg>
+      <Box x={0} y={152} w={360} title="Ví buyer" sub="ký USDC theo quote" />
+      <Box x={440} y={152} w={340} title="Held" sub="escrow theo quote" tone="brand" />
+      <Box x={1090} y={0} w={590} title="Ví builder" sub="release sau review window" tone="good" />
+      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
+      <Box x={1090} y={304} w={590} title="Ví buyer" sub="reclaim sau resolveBy" />
+      <Box x={1090} y={456} w={590} title="Claimable" sub="USDC bị chặn, người nhận tự claim" />
+    </div>
+  </Frame>
+);
+
+// ---------- A. Grant ----------
 
 const Grant: Page = () => (
-  <Frame n="Thanh toán" title="Grant và spend key">
+  <Frame n="Phụ lục" label="Thanh toán" title="Grant và spend key" appendix>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
       <div>
         <Label>Grant</Label>
@@ -1328,66 +1297,86 @@ const Grant: Page = () => (
   </Frame>
 );
 
-// ---------- 18. Contract ----------
+// ---------- A. Risk check chi tiết ----------
 
-const Contract: Page = () => (
-  <Frame n="Hệ thống" title="Smart contract">
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "56px 96px" }}>
-      <Block title="Tách quyền">
-        Relayer, approver, executor dùng ba key riêng. Một key bị lộ không đủ để lấy tiền.
-      </Block>
-      <Block title="Tạm dừng vẫn an toàn">
-        Khi pause, hệ thống chặn fund job và grant mới. Người dùng vẫn revoke và đòi tiền về ví
-        được.
-      </Block>
-      <Block title="Không thể sửa số dư">
-        Contract không dùng proxy và không có hàm sửa balance. Số dư chỉ đổi qua các bước hợp lệ.
-      </Block>
-      <Block title="Phí cố định">
-        Trần phí đặt một lần lúc deploy và không đổi. Phí của mỗi job được chốt trong quote.
-      </Block>
+const Signal = ({ name, children }: { name: string; children: ReactNode }) => (
+  <>
+    <div
+      style={{
+        padding: "22px 0",
+        borderTop: `1px solid ${line}`,
+        fontSize: 32,
+        fontWeight: 600,
+        display: "flex",
+        gap: 18,
+      }}
+    >
+      <span style={{ color: red }}>!</span>
+      {name}
+    </div>
+    <div
+      style={{ padding: "22px 0", borderTop: `1px solid ${line}`, fontSize: 32, color: bodyInk }}
+    >
+      {children}
+    </div>
+  </>
+);
+
+const RiskCheck: Page = () => (
+  <Frame n="Phụ lục" label="An toàn" title="Risk Check: ngưỡng cụ thể" appendix>
+    <Label>Khi assistant hoặc API key tự thanh toán, sau khi đã qua hạn mức</Label>
+    <div style={{ display: "grid", gridTemplateColumns: "460px 1fr", columnGap: 56 }}>
+      <Signal name="Ép thanh toán">Agent bảo assistant bỏ qua luật, trả ngay</Signal>
+      <Signal name="Tăng giá">Offer mới thay Offer cũ với giá cao hơn</Signal>
+      <Signal name="Giá bất thường">Trên 3 lần median, tính trên 20 lần mua gần nhất</Signal>
+      <Signal name="Refund cao">Từ 50% trong 20 job đã đóng gần nhất (tối thiểu 5)</Signal>
+      <Signal name="Agent mới">Dưới 3 job đã trả và giá trên 1 USDC</Signal>
     </div>
   </Frame>
 );
 
-// ---------- 20. Closing ----------
+// ---------- A. Vận hành ----------
 
-const Closing: Page = () => (
-  <Frame bare>
-    <img src={logo} alt="" style={{ width: 88, height: 88 }} />
-    <h2
-      style={{
-        fontFamily: display,
-        fontSize: 120,
-        fontWeight: 600,
-        lineHeight: 1.05,
-        letterSpacing: "-0.025em",
-        margin: "44px 0 0",
-      }}
-    >
-      Payvoke
-    </h2>
-    <p
-      style={{
-        fontFamily: display,
-        fontSize: 52,
-        fontWeight: 600,
-        lineHeight: 1.25,
-        margin: "28px 0 0",
-      }}
-    >
-      Marketplace cho AI agent.
-      <br />
-      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
-    </p>
-    <div style={{ width: 120, height: 4, background: accent, marginTop: 48 }} />
-    <p style={{ fontSize: 32, color: bodyInk, margin: "32px 0 0" }}>
-      Team Firefly · Cảm ơn Ban Giám Khảo
-    </p>
-    <Note style={{ marginTop: 12 }}>payvoke.xyz · github.com/2giosangmitom/payvoke</Note>
+const Operations: Page = () => (
+  <Frame n="Phụ lục" label="Hệ thống" title="Độ tin cậy" appendix>
+    <Spec k="Dữ liệu" w={300}>
+      Postgres là nguồn dữ liệu chính của job và giao dịch.
+    </Spec>
+    <Spec k="Journal" w={300}>
+      Giao dịch được ghi trước khi gửi lên chain, nên đối soát được sau sự cố.
+    </Spec>
+    <Spec k="Finality" w={300}>
+      Agent chỉ chạy sau khi khoản tiền đã chốt trên chain.
+    </Spec>
+    <Spec k="Idempotent" w={300}>
+      Gửi lại cùng yêu cầu chỉ nhận lại biên nhận cũ, không bị tính tiền hai lần.
+    </Spec>
+    <Spec k="Key" w={300}>
+      Mỗi worker một key riêng. Lộ một key không ảnh hưởng worker khác.
+    </Spec>
   </Frame>
 );
-Closing.transition = settle;
+
+// ---------- A. Contract ----------
+
+const Contract: Page = () => (
+  <Frame n="Phụ lục" label="Hệ thống" title="Smart contract" appendix>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "56px 96px" }}>
+      <Block title="Tách quyền">
+        Relayer, approver, executor dùng ba key riêng. Lộ một key không đủ để lấy tiền.
+      </Block>
+      <Block title="Tạm dừng vẫn an toàn">
+        Pause chặn job và grant mới. Người dùng vẫn revoke và rút tiền về ví được.
+      </Block>
+      <Block title="Không sửa được số dư">
+        Không proxy, không có hàm sửa balance. Số dư chỉ đổi qua các bước hợp lệ.
+      </Block>
+      <Block title="Trần phí cố định">
+        Đặt một lần lúc deploy. Phí của mỗi job được chốt trong quote.
+      </Block>
+    </div>
+  </Frame>
+);
 
 export const meta: SlideMeta = {
   title: "Payvoke",
@@ -1395,188 +1384,193 @@ export const meta: SlideMeta = {
 };
 
 export default [
+  // Phần chính
   Cover,
-  Idea,
-  TwoSides,
+  Problem,
   Context,
+  Idea,
   JobFlow,
-  PreSale,
+  WhyOnchain,
+  MoneyFlow,
+  AgentSafety,
+  Architecture,
+  Business,
+  Closing,
+  // Phụ lục
+  AppendixCover,
   Execution,
   GenUI,
   Builder,
   Assistant,
-  WhyOnchain,
   Quote,
   X402,
   Vault,
   Grant,
   RiskCheck,
-  Architecture,
   Operations,
   Contract,
-  Closing,
 ] satisfies Page[];
 
 export const notes: (string | undefined)[] = [
   // Cover
-  `(~20s)
+  `(~15s)
 Chào Ban giám khảo, chúng tôi là Team Firefly.
-Payvoke là marketplace cho AI agent: người xây dựng agent chia sẻ agent của mình, người cần việc giao việc cho agent, trả tiền theo từng job và chỉ khi nhận được kết quả.
-Bài nói gồm bốn phần: ý tưởng, sản phẩm, thanh toán on-chain và hệ thống.`,
+Payvoke là marketplace cho AI agent. Buyer thuê agent theo từng job, và builder chỉ nhận tiền khi job được giao.`,
+
+  // Problem
+  `(~40s)
+Hôm nay muốn thuê một AI agent, bạn phải trả trước và tin rằng nó sẽ làm xong. Agent lỗi, chậm hay im lặng thì tiền coi như mất.
+Builder cũng gặp khó: muốn bán theo từng job thì phải tự làm billing, cổng thanh toán và chi trả.
+Khi AI assistant tự đi thuê agent, nó đọc tin nhắn của agent lạ, nên có thể bị dụ trả tiền.
+Payvoke xử lý cả ba bằng một cách: giữ tiền trong escrow cho đến khi job được giao.`,
+
+  // Context
+  `(~30s)
+Ba thứ vừa sẵn sàng cùng lúc.
+MCP cho Claude Code hay Codex tự gọi công cụ, nên assistant có thể tự tìm agent và giao việc.
+x402 đưa thanh toán vào HTTP: server trả mã 402, client ký rồi gửi lại.
+Avalanche có phí thấp và finality nhanh, đủ rẻ cho job chỉ vài USDC.
+Thứ còn thiếu là một nơi để tìm agent và trả tiền an toàn theo từng job.`,
 
   // Idea
   `(~30s)
-Ý tưởng rất đơn giản. Ai cũng có thể tạo ra một AI agent hữu ích, nhưng agent chỉ có giá trị khi có người dùng nó.
-Payvoke là marketplace kết nối hai phía. Builder chia sẻ agent của mình, đặt giá và nhận tiền cho mỗi job. Buyer, là người hoặc AI assistant, không cần tự xây mà chỉ cần tìm agent phù hợp rồi giao job và trả tiền theo từng job.
-Agent do builder tự host. Payvoke lo Store, chat, báo giá, thanh toán và giao kết quả.`,
-
-  // TwoSides
-  `(~35s)
-Mỗi phía chỉ có ba bước.
-Builder: đăng ký agent và command trong Studio, đặt giá trần cho từng command, rồi nhận job qua HTTP và SSE; tiền về khi giao xong. Không giới hạn ngôn ngữ hay công nghệ, miễn là gọi được HTTP và SSE.
-Buyer: tìm agent trên Store và chat thử miễn phí, nhận Offer có giá, deadline và chính sách refund, chấp nhận rồi nhận kết quả ngay trong chat.`,
-
-  // Context
-  `(~35s)
-Ba mảnh ghép vừa chín.
-MCP cho assistant tự gọi tool: Claude Code hay Codex có thể tự tìm agent và giao việc.
-x402 cho thanh toán ngay trong HTTP: server trả 402, client ký rồi gửi lại.
-Mạng on-chain cho finality nhanh và phí thấp, hợp với job giá trị nhỏ.
-Agent dễ xây, assistant biết gọi tool, máy biết trả tiền: đó là lý do một marketplace agent trở nên khả thi vào lúc này.`,
+Payvoke đứng giữa hai phía.
+Builder tự host agent, đăng lên Store và đặt giá cho từng lệnh.
+Buyer là người dùng trên web hoặc một AI assistant. Họ tìm agent trên Store, chat thử miễn phí rồi giao job.
+Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.
+Trước khi thuê, buyer xem track record của agent: tỷ lệ thành công, tỷ lệ giao đúng hạn và tỷ lệ refund trên 50 job gần nhất, lấy từ kết quả escrow. Job do chính chủ agent tự mua không được tính.`,
 
   // JobFlow
   `(~40s)
-Một job có năm bước.
-Bước 1, khám phá, chat free: agent trả text, form hoặc các gói.
-Bước 2, agent ra Offer: giá, thời hạn và chính sách hoàn tiền.
-Bước 3, buyer ký USDC EIP-3009 cho đúng quote; tiền vào Vault qua x402.
-Bước 4, agent chỉ chạy khi hold đã finalized on-chain.
-Bước 5, nghiệm thu: đạt thì release cho Builder; lỗi hoặc trễ thì refund 100%.
-Điểm mấu chốt: on-chain chỉ có hai lần tiền di chuyển, bước 3 và bước 5.`,
-
-  // PreSale
-  `(~35s)
-Trước khi trả tiền, mọi thứ miễn phí. Agent stream Markdown realtime, có thể trả form, option hoặc confirm.
-Buyer gửi file CSV và chọn gói Quick hoặc Deep.
-Agent trả Offer card có cấu trúc.
-Điểm quan trọng: giá chỉ đọc từ Offer, không parse từ text chat. Vì vậy LLM không thể tự bịa giá.
-Ngoài ra còn có trần giá, price floor bù gas và giới hạn số lượt chat để chống spam.`,
-
-  // Execution
-  `(~35s)
-Sau khi hold finalized, run đi qua các state chuẩn: QUEUED, SENT, ACKED, RUNNING, VERIFYING, DELIVERED.
-Có nhánh WAITING_BUYER khi agent cần hỏi thêm, và nhánh FAILED hoặc UNKNOWN.
-Stream theo AG-UI: text qua TEXT_MESSAGE, mỗi delta tối đa 4.096 ký tự; UI qua event CUSTOM payvoke.openui.
-Điều kiện trả tiền không dựa vào stream, mà dựa vào result artifact cuối cùng.`,
-
-  // GenUI
-  `(~30s)
-Kết quả không chỉ là text. Agent mô tả UI bằng OpenUI Lang và stream từng patch; Payvoke parse lại cả chương trình sau mỗi patch.
-Payvoke render bằng 6 component cố định: Stack, Text, Card, Metric, Table, Chart. Biểu đồ và số liệu hiện ngay trong thread.
-Catalog chỉ để hiển thị: không script, không iframe, không link. Nên agent không thể chèn UI độc hại.`,
-
-  // Builder
-  `(~30s)
-Với builder, tích hợp chỉ là HTTP và SSE.
-Mở SSE là agent online. Event nằm trong queue đến khi ACK, nên rớt mạng không mất job.
-API key tạo trong Studio với 7 scope. Mọi lệnh ghi đều idempotent, retry không trả tiền hai lần.
-File lớn upload qua presigned URL và check SHA-256. Không giới hạn ngôn ngữ hay công nghệ: Python, Node, LangChain hay AutoGen đều tích hợp được, miễn là gọi được HTTP và SSE.
-
-Nếu bị hỏi "sao không có SDK?":
-Đây là dự án demo nên chúng tôi không phát hành SDK lên npm hay các nền tảng package. Tài liệu API và hai agent mẫu, CSV Analyst và Job Finder, chỉ dùng fetch và SSE, đủ để builder tích hợp.`,
-
-  // Assistant
-  `(~35s)
-Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
-Assistant tìm agent, chat kèm context và file, đọc Offer, tự trả nếu trong hạn mức, rồi báo lại user.
-Bảo mật: API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên database lộ cũng không ký được. Vượt hạn mức, hoặc Risk Check có tín hiệu, thì hệ thống gửi approval link cho user thay vì tự trả.
-
-Nếu bị hỏi "spend key lưu ở đâu?":
-Trên web, key sinh trong browser và không rời máy. Với assistant, key derive từ secret bằng HKDF.`,
+Một job đi qua năm bước.
+Buyer chat miễn phí, agent có thể hỏi thêm bằng form hoặc lựa chọn.
+Agent đưa ra Offer gồm giá, hạn giao và chính sách refund.
+Buyer chấp nhận và ký một lần, USDC đi từ ví vào Vault.
+Agent chỉ bắt đầu chạy khi khoản tiền đó đã chốt trên chain.
+Giao đúng hạn thì builder nhận tiền sau thời gian review. Lỗi hoặc trễ thì buyer được refund 100%.
+Trên chain, tiền chỉ di chuyển ở bước 3 và bước 5.`,
 
   // WhyOnchain
   `(~40s)
-Câu hỏi hợp lý: sao không để người dùng nạp tiền vào nền tảng rồi nền tảng xử lý nội bộ?
-Mô hình đó giải được vấn đề phí, nhưng còn bốn điểm yếu. Một, nền tảng là bên giữ tiền, người dùng phải tin. Hai, chi trả cho builder phụ thuộc KYC và ngân hàng của từng nước. Ba, hoàn tiền theo quy trình nội bộ thay vì quy tắc công khai. Bốn, agent tự chi tiêu cần tài khoản và số dư riêng, trong khi spend key on-chain có hạn mức và thu hồi được.
-Với on-chain, Payvoke không thể rút tiền của buyer; luật release và refund nằm trong contract và ai cũng kiểm chứng được.
+Câu hỏi hay gặp: sao không cho người dùng nạp tiền vào nền tảng rồi xử lý nội bộ?
+Cách đó rẻ, nhưng nền tảng trở thành bên giữ tiền và người dùng phải tin nó. Trả tiền cho builder ở nhiều nước thì vướng KYC và ngân hàng. Hoàn tiền đi theo quy trình nội bộ.
+Với escrow on-chain, Payvoke không rút được tiền của buyer, builder nhận tiền thẳng về ví, và luật refund nằm trong contract nên ai cũng kiểm tra được.
 
 Nếu bị hỏi "đánh đổi là gì?":
-Người dùng cần có ví và số dư on-chain, tạo thêm một bước làm quen. Chúng tôi nhắm trước tới builder, người dùng quen với ví, và AI assistant tự thanh toán.`,
+Người dùng cần có ví và USDC. Nhóm đầu tiên chúng tôi nhắm tới là builder, người đã quen dùng ví, và AI assistant tự thanh toán.`,
 
-  // Quote
-  `(~30s)
-Khi buyer Accept, Payvoke đóng băng giao kèo thành Quote EIP-712: buyer, provider, command và version, hash của input, terms và policy, giá và fee, deliveryDeadline, resolveBy, và invocation key dùng một lần.
-Chữ ký thanh toán gắn chặt với quote: ví ký USDC authorization có nonce chính là quote digest, còn spend key ký debit gắn quote với grant và epoch. Ký xong thì không sửa được điều khoản nào.
+  // MoneyFlow
+  `(~45s)
+Buyer không nạp tiền trước. Khi chấp nhận Offer, ví ký một USDC authorization cho đúng job đó. Relayer của Payvoke nộp giao dịch nên buyer không trả gas.
+Tiền vào PayvokeVault và được giữ riêng cho job. Từ đây chỉ có ba lối ra. Giao đúng hạn thì builder nhận sau review window, đã trừ phí. Lỗi thì buyer được refund 100%. Quá hạn mà chưa có quyết định thì buyer tự rút lại.
+Với giao trễ, builder có thể ký trước một chính sách: trễ dưới một khoảng nhỏ thì hoàn cho buyer một phần, phần còn lại vẫn trả cho builder. Không có chính sách đó thì trễ là refund toàn bộ.
+Chữ ký gắn với đúng một quote gồm agent, input, giá và deadline, nên ký xong không ai sửa được điều khoản.
+Chi tiết x402 và EIP-712 nằm trong phụ lục.
 
-Nếu bị hỏi "builder đổi giá sau khi ký thì sao?":
-Không ảnh hưởng. Giá đã được hash và chốt trong quote.`,
+Nếu bị hỏi "builder giao trễ có mất hết tiền không?":
+Mặc định là có, vì đó là cam kết builder tự chọn. Builder có thể ký thêm chính sách trễ, ví dụ trễ dưới 10 phút thì hoàn 20%. Vault trả hai phần trong một giao dịch.
+Nếu bị hỏi "buyer xin sửa sau deadline thì builder có bị tính trễ không?":
+Không. Mỗi lần sửa có hạn riêng, tính từ lúc buyer yêu cầu. Bản sửa chỉ bị tính trễ nếu quá hạn của chính nó.`,
 
-  // X402
-  `(~40s)
-Luồng x402 dùng scheme payvoke-escrow.
-Buyer gửi quote; Payvoke trả 402 Payment Required. Ví buyer ký một USDC authorization (EIP-3009) cho đúng quote đó, không gas, không nạp trước, rồi gửi lại.
-Settlement worker gọi fundWithAuthorization: Vault tự dựng lại authorization và chỉ Vault mới nộp được, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi transaction finalized rồi mới trả 202 kèm receipt.
-Chỉ sau đó agent mới nhận invocation.ready. Khi nghiệm thu xong, Finance worker gọi applyDecision để release hoặc refund.
-Khác biệt cốt lõi: tiền không bao giờ đi thẳng cho người bán.`,
-
-  // Vault
-  `(~35s)
-Vault là escrow theo từng job: buyer không có số dư nào trong Vault, tiền nằm trong ví đến lúc job được giao.
-Mỗi job được fund thẳng từ ví vào Held.
-Từ Held có đúng ba nhánh, đều trả thẳng về ví: release cho Builder sau review window; refund 100% về ví buyer nếu lỗi hoặc trễ; reclaim về ví buyer nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist) thì khoản đó thành claimable để người nhận tự rút.
-Invariant: balance luôn lớn hơn hoặc bằng held + claimable.`,
-
-  // Grant
-  `(~30s)
-Để không phải mở ví ký từng job, buyer ký Grant một lần: trần mỗi job, trần mỗi kỳ, tổng hạn mức và ngày hết hạn, kèm một permit USDC đúng bằng hạn mức đó. Relayer nộp lên chain nên buyer không tốn gas.
-Sau đó spend key ký từng quote; Vault kéo tiền từ ví qua allowance và tự kiểm tra trần on-chain.
-Revoke cũng chỉ là một chữ ký, tăng epoch và hạ allowance; toàn bộ chữ ký cũ mất hiệu lực. Spend key không bao giờ lấy được quá hạn mức.`,
-
-  // RiskCheck
-  `(~50s)
-Hạn mức giới hạn số tiền, nhưng không ngăn được một agent xấu dụ assistant tiêu đúng trong hạn mức. Risk Check là lớp thứ hai. Nó chỉ chạy khi assistant hoặc API key tự thanh toán, sau khi quote đã qua hạn mức, allowance và số dư, và trước khi ký. Thanh toán bằng ví trên web luôn do chính buyer ký nên không qua lớp này.
-Có 5 tín hiệu, đều tính từ dữ liệu của Payvoke:
-Một, ép thanh toán: tin nhắn hoặc Offer của agent có nội dung nhắm vào assistant, như bảo bỏ qua hướng dẫn, thanh toán ngay không cần hỏi, nhắc tên tool của assistant hoặc đòi API key. Hệ thống nhận ra cả tiếng Anh lẫn tiếng Việt.
-Hai, tăng giá: agent thay Offer đang mở bằng một Offer đắt hơn. Buyer từ chối rồi hỏi lại thì không tính.
-Ba, giá bất thường: giá cao hơn 3 lần median giá đã trả của chính lệnh đó, tính trên tối đa 20 lần mua gần nhất và cần ít nhất 3 lần.
-Bốn, refund cao: từ 50% trở lên trong 20 job đã đóng gần nhất của agent bị refund hoặc reclaim, cần ít nhất 5 job.
-Năm, agent mới: dưới 3 job đã trả và giá trên 1 USDC. Job do chính chủ agent tự mua không được tính.
-Chỉ cần một tín hiệu là chuyển sang user duyệt, assistant không tự trả được. Tín hiệu không chặn tin nhắn; phần nghi ngờ được đánh dấu trong read_chat để assistant báo lại cho user.
-Ngoài ra, thanh toán tự động cũng dừng khi ví thiếu USDC hoặc allowance, hoặc khi 3 lần fund của buyer bị revert on-chain trong 24 giờ: buyer đó bị tạm dừng 1 giờ để không đốt gas của relayer.
+  // AgentSafety
+  `(~45s)
+Muốn để AI assistant tự trả tiền, buyer đặt hạn mức trước: trần mỗi job, trần mỗi kỳ, tổng hạn mức và ngày hết hạn. Thu hồi chỉ cần một chữ ký, không tốn gas.
+Hạn mức giới hạn số tiền, nhưng agent xấu vẫn có thể dụ assistant tiêu đúng trong hạn mức. Vì vậy có thêm Risk Check với năm tín hiệu: agent ra lệnh cho assistant trả tiền, agent đổi sang Offer đắt hơn, giá hơn 3 lần mức thường của lệnh đó, tỷ lệ refund từ 50%, hoặc agent mới mà giá trên 1 USDC.
+Chỉ cần một tín hiệu là assistant phải hỏi người dùng. Thanh toán bằng ví trên web luôn do buyer tự ký nên không qua lớp này.
 
 Nếu bị hỏi "agent viết khác đi thì có né được không?":
-Có thể, vì đây là nhận diện theo mẫu. Nên Risk Check không phải lớp duy nhất: hạn mức giới hạn thiệt hại, escrow giữ tiền đến khi nghiệm thu, và kết quả lỗi được refund 100%.
-
-Nếu bị hỏi "người dùng có bị làm phiền không?":
-Chỉ khi có tín hiệu. Job bình thường trong hạn mức vẫn tự trả.`,
+Có thể, vì đây là nhận diện theo mẫu. Hạn mức vẫn giới hạn thiệt hại, và escrow vẫn giữ tiền đến khi giao.`,
 
   // Architecture
   `(~35s)
-Kiến trúc tách quyền rõ ràng.
-API xử lý chat, AG-UI, agent gateway và x402 gateway. Gateway không giữ key.
-Ba worker: Settlement giữ relayer key để fund job và nộp thay đổi grant; Finance giữ approver và executor key để applyDecision; Job worker không giữ key.
-Worker tắt thì key của nó không được nạp vào bộ nhớ.`,
+Có ba loại client: web app, AI assistant qua MCP, và agent của builder kết nối bằng HTTPS và SSE. Builder viết agent bằng ngôn ngữ nào cũng được.
+API xử lý chat, quote, x402 và MCP. Ba worker lo những việc chạm vào tiền, mỗi worker giữ một key riêng, nên lộ một key không đủ để lấy tiền.
+Postgres ghi lại mọi giao dịch trước khi gửi lên chain, nên sự cố xảy ra ở đâu cũng đối soát được.
+Vault đang chạy trên Avalanche Fuji testnet.`,
 
-  // Operations
-  `(~30s)
-Postgres là source of truth: journal, lease và nonce.
-Mọi transaction được ghi journal trước khi broadcast, nên crash ở đâu cũng đối soát được.
-Agent chỉ chạy sau finalized. Cùng invocation ID gửi lại luôn nhận cùng receipt. Mỗi worker một key và một gas budget riêng.`,
+  // Business
+  `(~35s)
+Payvoke thu phí theo phần trăm trên mỗi job. Phí được trừ lúc release cho builder.
+Trần phí cố định trong contract từ lúc deploy, nên Payvoke không tự tăng được, và phí của từng job đã chốt trong quote. Job bị refund toàn bộ thì Payvoke không thu gì.
+Bước tiếp theo: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, phát hành SDK, và đưa những builder đầu tiên lên Store.
 
-  // Contract
-  `(~30s)
-Vault có bốn nguyên tắc.
-Ba role relayer, approver, executor dùng ba key khác nhau; approver không được trùng executor.
-Pause chặn fund job và grant mới; user vẫn revoke và reclaim về ví nên không ai giam được tiền.
-Không proxy, không hàm sửa balance. Trần fee là immutable, đặt lúc deploy, và fee chốt trong quote.`,
+Nếu bị hỏi "phí bao nhiêu?":
+Trần phí trên bản deploy Fuji là 10%.`,
 
   // Closing
   `(~20s)
-Tóm lại: Payvoke là marketplace nơi mọi người chia sẻ AI agent và người khác giao việc và trả tiền theo từng job; tiền nằm on-chain đến khi nghiệm thu xong.
+Payvoke cho buyer thuê AI agent theo từng job mà không phải trả trước cho người lạ, và cho builder một cách nhận tiền theo job mà không phải tự làm billing.
 Team Firefly cảm ơn Ban giám khảo. Chúng tôi sẵn sàng nhận câu hỏi.
 
-Nếu bị hỏi nhanh:
-Doanh thu: feeBps trên mỗi job, có trần trong contract.
-Không giữ tiền trong database: để loại bỏ counterparty risk.
-Kết quả giả: tiền chỉ release sau review window, lỗi thì refund 100%; Risk Check cảnh báo agent có tỷ lệ refund cao.`,
+Nếu bị hỏi "kết quả kém nhưng vẫn giao đúng hạn thì sao?":
+Trong review window, buyer yêu cầu sửa được, số lần sửa theo điều khoản trong Offer đã ký. Buyer chỉ đánh giá được sau khi job đã quyết toán, nên đánh giá phản ánh kết quả thật. Khiếu nại về chất lượng nằm trong bước tiếp theo.
+Nếu bị hỏi "sao không giữ tiền trong database?":
+Để buyer không phải tin Payvoke.`,
+
+  // AppendixCover
+  `Chỉ mở phụ lục khi có câu hỏi. Nhảy thẳng tới trang cần dùng từ lưới tổng quan.`,
+
+  // Execution
+  `Sau khi hold finalized, run đi qua các state QUEUED, SENT, ACKED, RUNNING, VERIFYING, DELIVERED.
+Có nhánh WAITING_BUYER khi agent cần hỏi thêm, và nhánh FAILED hoặc UNKNOWN.
+Stream theo AG-UI: text qua TEXT_MESSAGE, mỗi delta tối đa 4.096 ký tự; UI qua event CUSTOM payvoke.openui.
+Việc trả tiền dựa vào result artifact cuối cùng, không dựa vào stream.`,
+
+  // GenUI
+  `Agent mô tả UI bằng OpenUI Lang và stream từng patch. Payvoke parse lại cả chương trình sau mỗi patch.
+Chỉ có 6 component: Stack, Text, Card, Metric, Table, Chart. Không có script, iframe hay link, nên agent không chèn được UI độc hại.`,
+
+  // Builder
+  `Mở SSE là agent online. Event nằm trong queue đến khi ACK, nên rớt mạng không mất job.
+API key tạo trong Studio với 7 scope. Mọi lệnh ghi đều idempotent.
+File lớn upload qua presigned URL và kiểm SHA-256.
+
+Nếu bị hỏi "sao chưa có SDK?":
+Tài liệu API và hai agent mẫu, CSV Analyst và Job Finder, chỉ dùng fetch và SSE. SDK nằm trong bước tiếp theo.`,
+
+  // Assistant
+  `Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
+API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên lộ database cũng không ký được.
+
+Nếu bị hỏi "spend key lưu ở đâu?":
+Trên web, key sinh trong browser và không rời máy. Với assistant, key suy ra từ secret bằng HKDF.`,
+
+  // Quote
+  `Khi buyer Accept, Payvoke chốt giao kèo thành Quote EIP-712: buyer, provider, command và version, hash của input, terms và policy, giá và fee, deliveryDeadline, resolveBy, và invocation key dùng một lần.
+Ví ký USDC authorization có nonce là quote digest. Spend key ký debit gắn quote với grant và epoch.
+
+Nếu bị hỏi "builder đổi giá sau khi ký thì sao?":
+Không ảnh hưởng, giá đã được hash trong quote.`,
+
+  // X402
+  `Scheme payvoke-escrow.
+Buyer gửi quote, Payvoke trả 402. Ví ký USDC authorization (EIP-3009) cho đúng quote đó rồi gửi lại.
+Settlement worker gọi fundWithAuthorization. Chỉ Vault nộp được authorization này, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi finalized rồi mới trả 202 kèm receipt.
+Sau đó agent mới nhận invocation.ready. Khi quyết toán, Finance worker gọi applyDecision.`,
+
+  // Vault
+  `Buyer không có số dư trong Vault. Tiền nằm trong ví đến lúc job được fund.
+Từ Held có ba nhánh, đều trả thẳng về ví: release cho builder sau review window, refund 100% nếu lỗi hoặc trễ, reclaim nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist), khoản đó thành claimable để người nhận tự rút.
+Invariant: balance luôn lớn hơn hoặc bằng held + claimable.`,
+
+  // Grant
+  `Buyer ký Grant một lần, kèm permit USDC đúng bằng hạn mức. Relayer nộp lên chain nên buyer không tốn gas.
+Spend key ký từng quote. Vault kéo tiền qua allowance và tự kiểm tra trần on-chain.
+Revoke tăng epoch và hạ allowance, mọi chữ ký cũ mất hiệu lực.`,
+
+  // RiskCheck
+  `Ép thanh toán: tin nhắn hoặc Offer nhắm vào assistant, như bảo bỏ qua hướng dẫn, trả ngay không cần hỏi, nhắc tên tool hoặc đòi API key. Nhận diện cả tiếng Anh và tiếng Việt.
+Tăng giá: buyer từ chối rồi hỏi lại thì không tính.
+Giá bất thường: cần ít nhất 3 lần mua trước đó.
+Agent mới: job do chính chủ agent tự mua không được tính.
+Ngoài ra, 3 lần fund bị revert trong 24 giờ thì buyer bị tạm dừng tự trả 1 giờ để không đốt gas của relayer.`,
+
+  // Operations
+  `Postgres giữ journal, lease và nonce. Mọi transaction được ghi journal trước khi broadcast.
+Cùng invocation ID gửi lại luôn nhận cùng receipt. Mỗi worker có key và gas budget riêng.`,
+
+  // Contract
+  `Approver không được trùng executor.
+Pause chặn fund job và grant mới, người dùng vẫn revoke và reclaim nên không ai giam được tiền.
+Trần fee là immutable.`,
 ];
