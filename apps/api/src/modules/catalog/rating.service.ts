@@ -1,14 +1,16 @@
 import type { Cradle } from "../../container";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../errors";
+import { holdOutcomes } from "../stats/hold-outcomes";
 
 export const COMMENT_MAX = 500;
 const PAGE = 20;
 
 export type RatingBody = { score: number; comment?: string | null };
 
-// Star ratings of agents. A buyer rates an agent once and may change it; only
-// a buyer whose payment for one of its jobs was held can rate, so every
-// rating comes from someone who hired the agent. Owners never rate their own.
+// Star ratings of agents. A buyer rates an agent once and may change it. Only
+// a buyer with a settled job of the agent can rate: one whose escrow was
+// released or refunded, so every rating comes from someone who saw how the
+// job ended, not just paid for it. Owners never rate their own.
 export class RatingService {
   private readonly db: Cradle["db"];
   private readonly profileService: Cradle["profileService"];
@@ -31,17 +33,34 @@ export class RatingService {
     return app;
   }
 
-  private hired(userId: string, appId: string) {
-    return this.db.invocation
-      .count({ where: { buyerId: userId, quote: { appId }, settlement: { state: "HELD" } } })
-      .then((count) => count > 0);
+  // Each buyer's paid and settled jobs of the app, keyed by buyer id.
+  private async jobs(buyerIds: string[], appId: string) {
+    const rows = buyerIds.length
+      ? await this.db.invocation.findMany({
+          where: { buyerId: { in: buyerIds }, quote: { appId }, settlement: { state: "HELD" } },
+          select: { buyerId: true, settlement: { select: { invocationKey: true } } },
+        })
+      : [];
+    const outcome = await holdOutcomes(
+      this.db,
+      rows.flatMap((row) => row.settlement?.invocationKey ?? []),
+    );
+    const jobs = new Map(buyerIds.map((id) => [id, { paid: 0, finished: 0 }]));
+    for (const row of rows) {
+      const entry = jobs.get(row.buyerId)!;
+      entry.paid++;
+      if (row.settlement && outcome(row.settlement.invocationKey) !== "held") entry.finished++;
+    }
+    return jobs;
   }
 
   // Why the viewer may not rate, or null when they may.
   private async blocker(viewerId: string | null, app: { id: string; ownerId: string }) {
     if (!viewerId) return "SIGN_IN";
     if (viewerId === app.ownerId) return "OWN_APP";
-    return (await this.hired(viewerId, app.id)) ? null : "HIRE_FIRST";
+    const jobs = (await this.jobs([viewerId], app.id)).get(viewerId)!;
+    if (jobs.finished) return null;
+    return jobs.paid ? "JOB_NOT_FINISHED" : "HIRE_FIRST";
   }
 
   async list(appId: string, viewerId: string | null) {
@@ -58,7 +77,13 @@ export class RatingService {
         : null,
       this.blocker(viewerId, app),
     ]);
-    const people = await this.profileService.people(rows.map((row) => row.userId));
+    const [people, jobs] = await Promise.all([
+      this.profileService.people(rows.map((row) => row.userId)),
+      this.jobs(
+        rows.map((row) => row.userId),
+        appId,
+      ),
+    ]);
     // Count of each score, index 0 for one star.
     const distribution = [1, 2, 3, 4, 5].map(
       (score) => groups.find((group) => group.score === score)?._count._all ?? 0,
@@ -75,11 +100,13 @@ export class RatingService {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         author: people.get(row.userId)!,
+        // Settled jobs behind the rating, shown as "Hired 3x".
+        finishedJobs: jobs.get(row.userId)?.finished ?? 0,
         mine: row.userId === viewerId,
       })),
       mine: mine ? { score: mine.score, comment: mine.comment } : null,
       canRate: blocker === null,
-      // SIGN_IN | OWN_APP | HIRE_FIRST, or null.
+      // SIGN_IN | OWN_APP | HIRE_FIRST | JOB_NOT_FINISHED, or null.
       reason: blocker,
     };
   }

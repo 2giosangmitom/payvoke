@@ -649,7 +649,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       .messages.find((m: { id: string }) => m.id === `run-${quoted.invocationId}`) as {
       status: string;
       parts: Part[];
-      run: { phase: string };
+      run: { phase: string; outcome: string | null };
     };
   };
   const streamedRun = await runMessage();
@@ -967,6 +967,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(await verifyStructuredDeliveries(db), 1);
   const revised = await runMessage();
   assert.equal(revised.run.phase, "delivered");
+  // The escrow has not settled yet, so the run still shows the payment held.
+  assert.equal(revised.run.outcome, "held");
   // Plain markdown text is a delivery too; the revision request shows in the run.
   assert.equal(revised.parts.at(-1)!.text, "## Short\n\nMarkdown text.");
   assert.ok(revised.parts.some((part) => part.toolName === "revision"));

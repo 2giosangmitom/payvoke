@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { MessagePrimitive } from "@assistant-ui/react";
 import { Button } from "@/src/components/ui/button";
@@ -94,6 +95,33 @@ function RevisionControl({ run }: { run: TimelineRun }) {
   );
 }
 
+// Once the escrow has settled the job: where the money went, and an invite
+// to rate the agent now that the buyer knows how it turned out.
+function SettledNote({ run }: { run: TimelineRun }) {
+  const { thread } = useThreadChat();
+  if (run.outcome !== "released" && run.outcome !== "refunded") return null;
+  const appId = thread?.appId;
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+      <span>
+        {run.outcome === "released"
+          ? "Payment released to the builder."
+          : "Payment refunded to your wallet."}
+      </span>
+      {appId && (
+        <Link
+          to="/store/$appId"
+          params={{ appId }}
+          hash="ratings"
+          className="font-medium text-primary hover:underline"
+        >
+          Rate this agent
+        </Link>
+      )}
+    </p>
+  );
+}
+
 // A paid job: its card (status, stages, steps and the payment step while
 // one is owed), then everything the run produced in order and, once
 // delivered, the revision control. Steps live in the card, not the flow.
@@ -131,7 +159,8 @@ export function RunBody({ run }: { run: TimelineRun }) {
           }
         }}
       </MessagePrimitive.GroupedParts>
-      {run.phase === "delivered" && <RevisionControl run={run} />}
+      {run.phase === "delivered" && run.outcome === "held" && <RevisionControl run={run} />}
+      <SettledNote run={run} />
     </div>
   );
 }
