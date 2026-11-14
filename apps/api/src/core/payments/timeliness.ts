@@ -11,6 +11,27 @@ export type Evidence = {
 // revisions had their own deadline; those answer to the quote's deadline.
 export type RevisionWindow = { targetArtifactVersion: number | null; dueAt: Date | null };
 
+// The signed late-delivery terms, or null when any late delivery is refunded in full.
+export function latePolicy(terms: unknown): { graceSeconds: number; refundBps: number } | null {
+  if (!terms || typeof terms !== "object") return null;
+  const late = (terms as { latePolicy?: unknown }).latePolicy;
+  if (!late || typeof late !== "object") return null;
+  const { graceSeconds, refundBps } = late as Record<string, unknown>;
+  return Number.isSafeInteger(graceSeconds) &&
+    (graceSeconds as number) > 0 &&
+    Number.isSafeInteger(refundBps) &&
+    (refundBps as number) >= 0 &&
+    (refundBps as number) <= 10_000
+    ? { graceSeconds: graceSeconds as number, refundBps: refundBps as number }
+    : null;
+}
+
+// Basis points of the price refunded for a delivery late by `lateBy` seconds.
+export function lateRefundBps(terms: unknown, lateBy: bigint) {
+  const policy = latePolicy(terms);
+  return policy && lateBy < BigInt(policy.graceSeconds) ? policy.refundBps : 10_000;
+}
+
 const seconds = (date: Date) => BigInt(Math.ceil(date.getTime() / 1000));
 
 export type Timeliness =

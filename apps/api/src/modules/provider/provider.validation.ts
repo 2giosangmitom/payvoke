@@ -162,6 +162,26 @@ export const commandTerms = z
       .object({ minEvidence: z.enum(minEvidenceLevels) })
       .optional()
       .meta({ description: "Evidence floor that gates release. Defaults to `SIGN`." }),
+    latePolicy: z
+      .object({
+        graceSeconds: z.number().int().positive().meta({
+          description:
+            "A delivery late by less than this is settled partly; it must be shorter than the deployment's resolution grace.",
+        }),
+        refundBps: z
+          .number()
+          .int()
+          .min(0)
+          .max(10000)
+          .meta({
+            description: "Share of the price refunded for such a delivery, in basis points.",
+          }),
+      })
+      .optional()
+      .meta({
+        description:
+          "Optional. Without it any late delivery is refunded in full. With it, a slightly late delivery refunds `refundBps` and releases the rest after review.",
+      }),
   })
   .meta({
     id: "CommandTerms",

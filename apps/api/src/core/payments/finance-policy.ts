@@ -7,15 +7,22 @@ import { FinanceService, releaseSchedule, type WireDecision } from "./finance";
 import {
   deliveryRecord,
   deliveryTimeliness,
+  lateRefundBps,
   type Evidence,
   type RevisionWindow,
 } from "./timeliness";
 
 // Payvoke does not arbitrate output quality. Paid work that is not delivered,
-// fails or arrives late is refunded in full; verified on-time delivery is
-// released once the signed review window has passed. Anything the policy cannot
-// decide is left to the buyer's own reclaim after resolveBy.
-export type AutoOutcome = { refund: boolean; reason: string; evidenceId: string | null };
+// fails or arrives late is refunded in full, unless the signed terms grant a
+// late-delivery grace: then a slightly late delivery refunds the agreed share
+// and releases the rest after review. Verified on-time delivery is released
+// once the signed review window has passed. Anything the policy cannot decide
+// is left to the buyer's own reclaim after resolveBy.
+// `refundBps` is the share of the remaining hold refunded; below 10000 the
+// rest is released to the provider.
+export type AutoOutcome = { refundBps: number; reason: string; evidenceId: string | null };
+
+const FULL = 10_000;
 
 type Hold = {
   closed: boolean;
@@ -49,23 +56,28 @@ export function autoOutcome(input: {
     revisions: input.revisions ?? [],
     now,
   });
+  const refund = (reason: string): AutoOutcome => ({ refundBps: FULL, reason, evidenceId: null });
+  // Releases (all or part of) the hold once the latest delivery's review ends.
+  const release = (latest: Evidence, refundBps: number, reason: string) => {
+    const { earliest } = releaseSchedule(latest, hold);
+    if (earliest >= BigInt(hold.resolveBy)) return refund("auto_review_window_exhausted");
+    return now >= earliest ? { refundBps, reason, evidenceId: latest.id } : null;
+  };
   switch (timeliness.state) {
     case "pending":
       return !evidence.length && input.executionStatus === "FAILED"
-        ? { refund: true, reason: "auto_execution_failed", evidenceId: null }
+        ? refund("auto_execution_failed")
         : null;
     case "missing":
-      return { refund: true, reason: timeliness.reason, evidenceId: null };
-    case "late":
-      return { refund: true, reason: "auto_delivered_late", evidenceId: null };
-    case "on_time": {
-      const { earliest } = releaseSchedule(timeliness.latest, hold);
-      if (earliest >= BigInt(hold.resolveBy))
-        return { refund: true, reason: "auto_review_window_exhausted", evidenceId: null };
-      return now >= earliest
-        ? { refund: false, reason: "auto_delivered", evidenceId: timeliness.latest.id }
-        : null;
+      return refund(timeliness.reason);
+    case "late": {
+      const refundBps = lateRefundBps(input.terms, timeliness.lateBy);
+      return refundBps >= FULL
+        ? refund("auto_delivered_late")
+        : release(timeliness.latest, refundBps, "auto_delivered_late_partial");
     }
+    case "on_time":
+      return release(timeliness.latest, 0, "auto_delivered");
   }
 }
 
@@ -127,8 +139,8 @@ export class AutoFinance {
             stringToHex(`payvoke-auto:${holdId}:${hold.version}:${previous.length}`),
           ),
           expectedVersion: hold.version,
-          refundAmount: outcome.refund ? hold.remaining : 0n,
-          releaseRemainder: !outcome.refund,
+          refundAmount: (hold.remaining * BigInt(outcome.refundBps)) / BigInt(FULL),
+          releaseRemainder: outcome.refundBps < FULL,
           validUntil: hold.resolveBy,
         };
         const signature = await this.approver.signTypedData({

@@ -1258,6 +1258,18 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
   const defaulted = await command("1000");
   assert.equal(defaulted.statusCode, 201, defaulted.body);
   assert.deepEqual(defaulted.json().revision.terms.verification, { minEvidence: "SIGN" });
+  // A late-delivery grace must leave the whole review before resolveBy, so it
+  // has to be shorter than the deployment's 60s resolution grace.
+  const lateTerms = (graceSeconds: number, refundBps = 2000) =>
+    command("1000", { latePolicy: { graceSeconds, refundBps } });
+  const tooLong = await lateTerms(60);
+  assert.equal(tooLong.statusCode, 400, tooLong.body);
+  assert.equal(tooLong.json().error, "TERMS_EXCEED_POLICY");
+  assert.equal((await lateTerms(30, 20_000)).json().error, "INVALID_TERMS");
+  assert.equal((await lateTerms(0)).json().error, "INVALID_TERMS");
+  const graced = await lateTerms(30);
+  assert.equal(graced.statusCode, 201, graced.body);
+  assert.deepEqual(graced.json().revision.terms.latePolicy, { graceSeconds: 30, refundBps: 2000 });
   const receipt = await command("1000", { verification: { minEvidence: "REC" } });
   assert.deepEqual(receipt.json().revision.terms.verification, { minEvidence: "REC" });
 

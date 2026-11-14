@@ -12,7 +12,7 @@ import { QuoteCard } from "@/src/features/chat/quote-card";
 import { ResultView } from "@/src/features/chat/result-view";
 import { SchemaForm, schemaFields } from "@/src/features/chat/schema-form";
 import { useThreadChat } from "@/src/features/chat/thread-runtime";
-import { formatDuration } from "@/src/features/payments/payment-confirm";
+import { formatDuration, formatLatePolicy } from "@/src/features/apps/format";
 
 type ToolProps = ToolCallMessagePartProps<Record<string, unknown>, unknown>;
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -169,6 +169,7 @@ export function OfferTool({ toolCallId, args }: ToolProps) {
             ? [
                 { label: "Review", value: formatDuration(terms.reviewSeconds) },
                 { label: "Revisions", value: String(terms.revisionPolicy.maxIncluded) },
+                { label: "If late", value: formatLatePolicy(terms) ?? "Full refund" },
               ]
             : []),
         ]}

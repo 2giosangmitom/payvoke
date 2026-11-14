@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Cradle } from "../../container";
 import type { Prisma } from "#core/db";
+import { latePolicy } from "#core/payments/timeliness";
 import { channels } from "#core/queue";
 import { BadRequestError, ConflictError, NotFoundError, isUniqueViolation } from "../../errors";
 import { threadSlotReleased } from "../apps/schema";
@@ -152,7 +153,9 @@ export class ContinuationService {
       throw new ConflictError("REVISION_NOT_ALLOWED");
     const reviewSeconds = document.releaseNotBefore - document.deliveryDeadline;
     const dueAt = new Date(Date.now() + deliverySeconds * 1000);
-    if (Math.ceil(dueAt.getTime() / 1000) + reviewSeconds >= document.resolveBy)
+    // A fix may also arrive within the signed late grace and still be reviewed.
+    const grace = latePolicy(terms)?.graceSeconds ?? 0;
+    if (Math.ceil(dueAt.getTime() / 1000) + grace + reviewSeconds >= document.resolveBy)
       throw new ConflictError("REVISION_TOO_LATE");
     const latest = await this.db.paymentDeliveryEvidence.findFirst({
       where: { invocationId: invocation.id },

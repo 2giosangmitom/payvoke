@@ -49,7 +49,7 @@ import {
   type ProviderCommand,
   type Visibility,
 } from "@/src/features/apps/api";
-import { formatUsdc } from "@/src/features/apps/format";
+import { formatLatePolicy, formatUsdc } from "@/src/features/apps/format";
 
 const date = (value: string | Date) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -304,6 +304,7 @@ function CommandRow({ command, isDefault }: { command: ProviderCommand; isDefaul
               {revision.maxGrossAmount ? `≤ ${formatUsdc(revision.maxGrossAmount)}` : "By offer"}
             </p>
             <p className="text-xs">{Math.round(revision.deliverySeconds / 60)} min delivery</p>
+            <p className="text-xs">{formatLatePolicy(revision.terms) ?? "Late: full refund"}</p>
           </>
         ) : (
           <p className="text-xs">Not active</p>

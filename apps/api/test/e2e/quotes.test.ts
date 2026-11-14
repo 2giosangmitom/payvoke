@@ -3087,7 +3087,7 @@ describe("quotes, x402 and isolated settlement", () => {
     // Review runs from the observed delivery: 90 + (130 - 100) = 120, floored at 130.
     assert.equal(outcome({ evidence: [delivered], now: 129n }), null);
     assert.deepEqual(outcome({ evidence: [delivered], now: 130n }), {
-      refund: false,
+      refundBps: 0,
       reason: "auto_delivered",
       evidenceId: "e",
     });
@@ -3106,6 +3106,48 @@ describe("quotes, x402 and isolated settlement", () => {
       "auto_not_delivered",
     );
     assert.equal(outcome({ hold: { ...hold, closed: true }, now: 150n }), null);
+  });
+
+  it("settles a slightly late delivery partly when the signed terms allow it", () => {
+    const hold = { closed: false, deliveryDeadline: 100, releaseNotBefore: 130, resolveBy: 200 };
+    const terms = {
+      verification: { minEvidence: "SIGN" },
+      latePolicy: { graceSeconds: 20, refundBps: 2500 },
+    };
+    const late = (at: number) => ({
+      id: "e",
+      artifactVersion: 1,
+      evidenceLevel: "SIGN",
+      observedAt: new Date(at * 1000),
+      accessInterruptionSeconds: 0,
+    });
+    const outcome = (over: Partial<Parameters<typeof autoOutcome>[0]>) =>
+      autoOutcome({ hold, now: 0n, executionStatus: "DELIVERED", terms, evidence: [], ...over });
+    // Late by 10s, inside the 20s grace: 25% back to the buyer, the rest
+    // released after the full review from the delivery (110 + 30 = 140).
+    assert.equal(outcome({ evidence: [late(110)], now: 139n }), null);
+    assert.deepEqual(outcome({ evidence: [late(110)], now: 140n }), {
+      refundBps: 2500,
+      reason: "auto_delivered_late_partial",
+      evidenceId: "e",
+    });
+    // Late by exactly the grace or more: refunded in full, right away.
+    assert.deepEqual(outcome({ evidence: [late(120)], now: 121n }), {
+      refundBps: 10_000,
+      reason: "auto_delivered_late",
+      evidenceId: null,
+    });
+    // Without a late policy any lateness is refunded in full.
+    assert.equal(
+      outcome({
+        evidence: [late(101)],
+        terms: { verification: { minEvidence: "SIGN" } },
+        now: 150n,
+      })?.reason,
+      "auto_delivered_late",
+    );
+    // Still nothing is decided for work that never arrived.
+    assert.equal(outcome({ now: 100n })?.reason, "auto_not_delivered");
   });
 
   it("judges a revision against its own deadline, not the quote's", () => {
@@ -3137,7 +3179,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const fixed = { ...first, id: "v2", artifactVersion: 2, observedAt: new Date(150_000) };
     assert.equal(outcome({ evidence: [first, fixed], now: 179n }), null);
     assert.deepEqual(outcome({ evidence: [first, fixed], now: 180n }), {
-      refund: false,
+      refundBps: 0,
       reason: "auto_delivered",
       evidenceId: "v2",
     });
@@ -3210,7 +3252,20 @@ describe("quotes, x402 and isolated settlement", () => {
       }
       const delivered = await held(),
         failed = await held(),
-        silent = await held();
+        silent = await held(),
+        graced = await held();
+      // This quote's signed terms allow a 20s late grace refunding 25%.
+      const gracedQuote = await db.quote.findFirstOrThrow({
+        where: { invocationId: graced.invocationId },
+      });
+      const gracedDocument = gracedQuote.document as {
+        termsSnapshot: { definition: Record<string, unknown> };
+      };
+      gracedDocument.termsSnapshot.definition.latePolicy = { graceSeconds: 20, refundBps: 2500 };
+      await db.quote.update({
+        where: { id: gracedQuote.id },
+        data: { document: gracedDocument as never },
+      });
       const sync = () => scanFinancialLifecycle(db, evm.settlement, evm.startBlock);
       const status = async (q: QuoteDocument) =>
         (
@@ -3240,6 +3295,20 @@ describe("quotes, x402 and isolated settlement", () => {
         accessInterruptionSeconds: 0,
         evidenceLevel: "SIGN",
       });
+      await recordPaymentDelivery(db, {
+        id: "auto-graced",
+        invocationId: graced.invocationId,
+        artifactVersion: 1,
+        outputHash: `0x${"2".repeat(64)}`,
+        verifier: "isolated-test-output-verifier",
+        accessInterruptionSeconds: 0,
+        evidenceLevel: "SIGN",
+      });
+      // Delivered 5s after its deadline, inside the grace.
+      await db.paymentDeliveryEvidence.update({
+        where: { id: "auto-graced" },
+        data: { observedAt: new Date((graced.deliveryDeadline + 5) * 1000) },
+      });
       await db.invocation.update({
         where: { id: failed.invocationId },
         data: { executionStatus: "FAILED" },
@@ -3251,20 +3320,38 @@ describe("quotes, x402 and isolated settlement", () => {
       assert.equal(await status(failed), "REFUNDED");
       assert.equal(await status(delivered), "HELD");
       assert.equal(await status(silent), "HELD");
+      assert.equal(await status(graced), "HELD");
+      // The graced delivery's review runs a full 30s from its late delivery.
       await evm.test.setNextBlockTimestamp({
-        timestamp: BigInt(Math.max(delivered.releaseNotBefore, silent.releaseNotBefore)),
+        timestamp: BigInt(
+          Math.max(
+            delivered.releaseNotBefore,
+            silent.releaseNotBefore,
+            graced.deliveryDeadline + 5 + 30,
+          ),
+        ),
       });
       await evm.test.mine({ blocks: 1 });
-      assert.equal(await auto.propose(), 2);
+      assert.equal(await auto.propose(), 3);
       await settle();
       assert.equal(await status(delivered), "RELEASED");
       assert.equal(await status(silent), "REFUNDED");
+      // 25% of 100000 went back to the buyer; the rest was released, less the 1% fee.
+      assert.equal(await status(graced), "RELEASED");
+      const gracedHold = (await evm.contract.read.getHold([
+        graced.protocolQuote.invocationKey,
+      ])) as {
+        refunded: bigint;
+        providerReleased: bigint;
+      };
+      assert.equal(gracedHold.refunded, 25000n);
+      assert.equal(gracedHold.providerReleased, 74250n);
       assert.equal(await evm.contract.read.totalHeld(), 0n);
-      assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 99000n);
-      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9900000n);
+      assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 99000n + 74250n);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9900000n - 75000n);
       assert.equal(await auto.propose(), 0, "closed holds are never decided again");
       const rows = await db.financeDecision.findMany();
-      assert.equal(rows.length, 3);
+      assert.equal(rows.length, 4);
       assert.ok(
         rows.every((r) => r.state === "FINALIZED" && r.approver === approver.address.toLowerCase()),
       );

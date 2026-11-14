@@ -313,7 +313,26 @@ export type CommandTerms = {
   sideEffects: string;
   dataUse: string;
   verification: { minEvidence: MinEvidence };
+  // Optional: a delivery late by less than graceSeconds refunds refundBps of
+  // the price and releases the rest; anything later is refunded in full.
+  latePolicy?: { graceSeconds: number; refundBps: number };
 };
+
+function validLatePolicy(value: unknown) {
+  if (value === undefined) return true;
+  if (
+    !record(value) ||
+    !Object.keys(value).every((key) => ["graceSeconds", "refundBps"].includes(key))
+  )
+    return false;
+  return (
+    Number.isSafeInteger(value.graceSeconds) &&
+    (value.graceSeconds as number) >= 1 &&
+    Number.isSafeInteger(value.refundBps) &&
+    (value.refundBps as number) >= 0 &&
+    (value.refundBps as number) <= 10_000
+  );
+}
 
 export function validateTerms(value: unknown): value is Record<string, unknown> {
   if (!record(value)) return false;
@@ -333,7 +352,8 @@ export function validateTerms(value: unknown): value is Record<string, unknown> 
     (value.verification === undefined ||
       (record(value.verification) &&
         Object.keys(value.verification).every((key) => key === "minEvidence") &&
-        minEvidenceLevels.includes(value.verification.minEvidence as MinEvidence)))
+        minEvidenceLevels.includes(value.verification.minEvidence as MinEvidence))) &&
+    validLatePolicy(value.latePolicy)
   );
 }
 

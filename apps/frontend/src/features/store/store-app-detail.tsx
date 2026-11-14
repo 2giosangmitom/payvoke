@@ -26,7 +26,7 @@ import {
 import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { getStoreApp, getStars, starApp, unstarApp } from "@/src/features/apps/api";
-import { formatCommandPrice, formatUsdc } from "@/src/features/apps/format";
+import { formatCommandPrice, formatLatePolicy, formatUsdc } from "@/src/features/apps/format";
 import { formatDuration } from "@/src/features/payments/payment-confirm";
 
 export function StoreAppDetail({ appId }: { appId: string }) {
@@ -181,6 +181,7 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                       formatCommandPrice(command.revision),
                       `delivery ≤ ${formatDuration(command.revision.deliverySeconds)}`,
                       `review ${formatDuration(command.revision.reviewSeconds)}`,
+                      formatLatePolicy(command.revision.terms) ?? "late: full refund",
                     ]
                   }
                 />

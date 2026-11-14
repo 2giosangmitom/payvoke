@@ -16,7 +16,7 @@ import type { QuoteDocument } from "@payvoke/shared/x402";
 import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
 import { ErrorNotice } from "@/src/components/layout/page-kit";
-import { formatUsdc } from "@/src/features/apps/format";
+import { formatDuration, formatLatePolicy, formatUsdc } from "@/src/features/apps/format";
 import { checkGrant, checkWallet, payFromWallet, payWithGrant } from "@/src/features/payments/api";
 import { usdc } from "@/src/features/wallet/api";
 import {
@@ -32,12 +32,7 @@ import { chainError } from "@/src/features/wallet/vault";
 // Testnet USDC for a wallet that is short.
 const FAUCET = "https://faucet.circle.com/";
 
-const duration = (seconds: number) =>
-  seconds >= 3600
-    ? `${Math.round(seconds / 360) / 10} h`
-    : seconds >= 60
-      ? `${Math.round(seconds / 60)} min`
-      : `${seconds} s`;
+const duration = formatDuration;
 const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 
 // Seconds left until `until`, ticking once a second.
@@ -95,6 +90,7 @@ export function PaymentConfirm({
     deliverySeconds: number;
     reviewSeconds: number;
     refundPolicy: string;
+    latePolicy?: { graceSeconds: number; refundBps: number };
   };
 
   const isBuyer = address?.toLowerCase() === buyer.toLowerCase();
@@ -320,6 +316,10 @@ export function PaymentConfirm({
           <dt className="text-muted-foreground">Refund</dt>
           <dd className="break-words">{definition.refundPolicy}</dd>
         </div>
+        <div className="col-span-2 sm:col-span-3">
+          <dt className="text-muted-foreground">If delivered late</dt>
+          <dd>{formatLatePolicy(definition) ?? "Full refund"}</dd>
+        </div>
       </dl>
       <p className="text-xs leading-relaxed text-muted-foreground">
         The escrow holds this amount before the agent gets your request and sends it back to your
@@ -332,4 +332,4 @@ export function PaymentConfirm({
   );
 }
 
-export { duration as formatDuration };
+export { formatDuration };
