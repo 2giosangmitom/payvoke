@@ -6,7 +6,7 @@ import type {
   SchemeNetworkFacilitator,
   SettleResponse,
 } from "@x402/core/types";
-import { NETWORK, SCHEME } from "./index.js";
+import { NETWORK, SCHEME, SCHEME_VERSION } from "./index.js";
 
 export class VaultValidationError extends Error {
   constructor(
@@ -19,6 +19,7 @@ export class VaultValidationError extends Error {
 
 export type AdmissionObservation = {
   kind: "new-admission" | "existing-hold";
+  mode: "authorization" | "grant";
   payer: Address;
   quoteDigest: Hex;
   authorizationDigest: Hex;
@@ -47,7 +48,7 @@ export class VaultFacilitatorScheme implements SchemeNetworkFacilitator {
   ) {}
   getExtra(network: Network) {
     if (network !== NETWORK) throw new VaultValidationError("unsupported_network", 400);
-    return { vault: this.options.vault, schemeVersion: "1" };
+    return { vault: this.options.vault, schemeVersion: SCHEME_VERSION };
   }
   getSigners(network: string) {
     return network === NETWORK ? [this.options.relayer] : [];
@@ -59,7 +60,8 @@ export class VaultFacilitatorScheme implements SchemeNetworkFacilitator {
         isValid: true,
         payer: observed.payer,
         extra: {
-          schemeVersion: "1",
+          schemeVersion: SCHEME_VERSION,
+          mode: observed.mode,
           classification: observed.kind,
           block: observed.block,
           admission: "preview",

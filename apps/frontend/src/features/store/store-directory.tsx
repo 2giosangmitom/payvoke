@@ -6,10 +6,9 @@ import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Skeleton } from "@/src/components/ui/skeleton";
-import { ParticleText } from "@/src/components/ui/particle-text";
 import { Spinner } from "@/src/components/ui/spinner";
 import { Toggle } from "@/src/components/ui/toggle";
-import { ToggleGroup, ToggleGroupItem } from "@/src/components/ui/toggle-group";
+import { NativeSelect, NativeSelectOption } from "@/src/components/ui/native-select";
 import {
   AppStatus,
   EmptyState,
@@ -55,16 +54,28 @@ export function AppCard({
     onError: (cause) => setError(errorMessage(cause, "Could not save.")),
   });
   return (
-    <article className="group relative flex h-full min-h-64 flex-col border border-border bg-card transition-[border-color,translate,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-float">
-      <div className="flex items-center justify-between gap-3 px-5 pt-5">
-        <div className="flex items-center gap-3">
-          <AgentAvatar name={app.name} imageUrl={app.imageUrl} />
-          <AppStatus availability={app.availability} />
+    <article className="group relative flex h-full min-h-48 flex-col border border-border bg-card transition-[border-color,translate,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-float">
+      <div className="flex items-start gap-3 px-5 pt-5">
+        <AgentAvatar name={app.name} imageUrl={app.imageUrl} />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-lg leading-tight font-medium tracking-[-0.025em]">
+            <Link
+              to="/store/$appId"
+              params={{ appId: app.id }}
+              className="after:absolute after:inset-0 group-hover:text-primary"
+            >
+              {app.name}
+            </Link>
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {showOwner && <OwnerLink owner={app.owner} />}
+            {app.availability !== "AVAILABLE" && <AppStatus availability={app.availability} />}
+          </div>
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
-          className={cn("relative z-10 text-faint", starred && "text-primary")}
+          className={cn("relative z-10 -mt-1 -mr-2 text-faint", starred && "text-primary")}
           aria-label={starred ? `Remove ${app.name} from saved` : `Save ${app.name}`}
           aria-pressed={starred}
           disabled={!canSave || toggle.isPending}
@@ -74,29 +85,16 @@ export function AppCard({
           <Star fill={starred ? "currentColor" : "none"} />
         </Button>
       </div>
-      <div className="flex-1 px-5 pt-4 pb-5">
-        <h2 className="text-xl font-medium tracking-[-0.03em] break-words">
-          <Link
-            to="/store/$appId"
-            params={{ appId: app.id }}
-            className="after:absolute after:inset-0 group-hover:text-primary"
-          >
-            {app.name}
-          </Link>
-        </h2>
-        {showOwner && <OwnerLink owner={app.owner} className="mt-2" />}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-          {app.description || "No description yet."}
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-5 py-3">
-        <RatingLine rating={app.rating} />
-        <UsageLine jobs={app.jobs} users={app.users} />
-      </div>
-      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-2.5 font-mono text-[11px] text-faint">
-        <span>{plural(app.commandCount, "command")}</span>
-        <span className="text-primary">
-          {app.priceCap ? `up to ${formatUsdc(app.priceCap)}` : "priced by offer"}
+      <p className="flex-1 px-5 pt-4 pb-5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+        {app.description || "No description yet."}
+      </p>
+      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <RatingLine rating={app.rating} />
+          <UsageLine jobs={app.jobs} users={app.users} />
+        </div>
+        <span className="ml-auto shrink-0 font-mono text-xs text-primary">
+          {app.priceCap ? `up to ${formatUsdc(app.priceCap)}` : "by offer"}
         </span>
         <ArrowUpRight
           size={15}
@@ -162,32 +160,8 @@ export function StoreDirectory() {
     <PageShell>
       <PageHeader
         eyebrow="Store"
-        title="AI agents you can hire"
-        description="Chat is free. When there's a job, the agent sends an offer. Nothing is held until you accept, and undelivered jobs are refunded."
-        actions={
-          // The wordmark as particles, small in the header's corner: hover
-          // pushes them aside, a click bursts them. Decoration only.
-          <div aria-hidden="true" className="relative hidden h-16 w-56 lg:block">
-            <ParticleText
-              text="PAYVOKE"
-              density={2}
-              particleSize={2}
-              color="var(--field-crest)"
-              highlightColor="var(--field-hover)"
-              fontSize="2.75rem"
-              fontWeight={800}
-              shape="square"
-              intro="gather"
-              scatter={40}
-              gatherDuration={1200}
-              stagger={300}
-              idleDrift={0.5}
-              repelRadius={60}
-              glow={false}
-              className="absolute! -inset-x-[10%] -inset-y-[30%] size-auto!"
-            />
-          </div>
-        }
+        title="Find the right agent"
+        description="Browse agents shared by builders and hire one for your next job."
       />
       <div className="sticky top-0 z-10 -mx-1 flex flex-col gap-3 bg-background/90 px-1 py-4 backdrop-blur sm:flex-row sm:items-center">
         <label className="relative flex-1">
@@ -200,40 +174,40 @@ export function StoreDirectory() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by agent name or what you need done"
+            placeholder="Search agents or tasks"
             className="h-11 pl-10"
           />
         </label>
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-          <ToggleGroup
-            aria-label="Sort agents"
-            variant="outline"
-            spacing={0}
-            value={[sort]}
-            onValueChange={(value: string[]) => value[0] && setSort(value[0] as Sort)}
-            className="h-11"
+        <div className="flex items-center gap-3">
+          <label className="sr-only" htmlFor="store-sort">
+            Sort agents
+          </label>
+          <NativeSelect
+            id="store-sort"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as Sort)}
+            className="[&_select]:h-11"
           >
             {SORTS.map(([value, label]) => (
-              <ToggleGroupItem
-                key={value}
-                value={value}
-                className="h-11 px-3 text-xs data-pressed:border-primary data-pressed:text-primary"
-              >
+              <NativeSelectOption key={value} value={value}>
                 {label}
-              </ToggleGroupItem>
+              </NativeSelectOption>
             ))}
-          </ToggleGroup>
+          </NativeSelect>
           {canSave && (
             <Toggle
               variant="outline"
               pressed={savedOnly}
               onPressedChange={setSavedOnly}
-              className="h-11 px-3.5 font-mono text-xs data-pressed:border-primary data-pressed:text-primary"
+              className="h-11 px-3.5 text-sm data-pressed:border-primary data-pressed:text-primary"
             >
               <Star fill={savedOnly ? "currentColor" : "none"} /> Saved
             </Toggle>
           )}
-          <span className="font-mono text-xs text-faint" aria-live="polite">
+          <span
+            className="ml-auto font-mono text-xs whitespace-nowrap text-faint"
+            aria-live="polite"
+          >
             {apps.isPending ? <Skeleton className="h-3 w-12" /> : plural(items.length, "agent")}
           </span>
         </div>
@@ -268,7 +242,7 @@ export function StoreDirectory() {
       ) : (
         <section
           aria-label="Public agents"
-          className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-6 grid gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {items.map((app, index) => (
             <BlurFade key={app.id} inView delay={Math.min(index, 8) * 0.04}>
@@ -285,7 +259,7 @@ export function StoreDirectory() {
             disabled={apps.isFetchingNextPage}
             onClick={() => void apps.fetchNextPage()}
           >
-            {apps.isFetchingNextPage && <Spinner />} Load more apps
+            {apps.isFetchingNextPage && <Spinner />} Load more
           </Button>
         </div>
       )}

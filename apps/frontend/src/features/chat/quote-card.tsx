@@ -27,6 +27,7 @@ function useCountdown(until: number, active: boolean) {
 export function QuoteCard({
   command,
   amount,
+  amountLabel,
   summary,
   terms,
   refund,
@@ -41,6 +42,8 @@ export function QuoteCard({
 }: {
   command: string;
   amount: string;
+  /** Shown instead of the formatted amount, for previews outside the app. */
+  amountLabel?: string | undefined;
   summary: string;
   terms: QuoteTerm[];
   refund?: string | undefined;
@@ -77,7 +80,7 @@ export function QuoteCard({
           )}
         </div>
         <p className="font-mono text-2xl font-semibold tracking-tight tabular-nums">
-          {formatUsdc(amount)}
+          {amountLabel ?? formatUsdc(amount)}
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">{summary}</p>
       </div>

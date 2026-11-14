@@ -8,6 +8,7 @@ import {
   compileCommandInput,
   normalizeTerms,
   parseCommandOptions,
+  safeName,
   text,
   validCommandName,
   validateCommandInputSchema,
@@ -28,7 +29,7 @@ export type KeyScope = (typeof KEY_SCOPES)[number];
 const visibility = z.enum(["PUBLIC", "PRIVATE"]);
 const appName = z
   .string()
-  .refine((value) => text(value, 120))
+  .refine((value) => text(value, 120) && safeName(value))
   .transform((value) => value.trim());
 const appDescription = z
   .string()
@@ -39,7 +40,8 @@ export const newAppBody = z
   .object({
     name: appName,
     description: appDescription.optional(),
-    visibility: visibility.default("PUBLIC"),
+    // New agents start private; publishing needs a connected agent.
+    visibility: visibility.default("PRIVATE"),
     clientRequestId: z.string().refine((value) => text(value, 128)),
   })
   .transform(({ clientRequestId, description, ...fields }) => ({

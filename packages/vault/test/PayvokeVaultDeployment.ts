@@ -11,7 +11,7 @@ it("Ignition deploys the vault with explicit policy and admin, without assigning
     const token = await connection.viem.deployContract("MockUSDC");
     const { vault } = await connection.ignition.deploy(PayvokeVaultModule, {
       parameters: {
-        PayvokeVault: {
+        PayvokeVaultV2: {
           asset: token.address,
           admin: admin.account.address,
           adminDelay: 100,
@@ -50,7 +50,7 @@ it("Ignition roles module grants relayer and automatic finance roles from the ad
     const token = await connection.viem.deployContract("MockUSDC");
     const { vault } = await connection.ignition.deploy(PayvokeVaultRolesModule, {
       parameters: {
-        PayvokeVault: {
+        PayvokeVaultV2: {
           asset: token.address,
           admin: admin.account.address,
           adminDelay: 100,
@@ -58,7 +58,7 @@ it("Ignition roles module grants relayer and automatic finance roles from the ad
           maxQuoteLifetimeSeconds: 3600,
           maxHoldSeconds: 30 * 86400,
         },
-        PayvokeVaultRoles: {
+        PayvokeVaultV2Roles: {
           relayer: relayer.account.address,
           financeApprover: approver.account.address,
           financeExecutor: executor.account.address,

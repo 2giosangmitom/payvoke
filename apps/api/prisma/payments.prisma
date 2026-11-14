@@ -15,6 +15,28 @@ enum SettlementAttemptState {
   REVERTED
 }
 
+// How a job was funded: the buyer's own USDC authorization, or a grant debit.
+enum FundingMode {
+  AUTHORIZATION
+  GRANT
+}
+
+enum GrantOperationKind {
+  SET
+  REVOKE
+}
+
+enum GrantOperationState {
+  PENDING
+  SIGNED
+  BROADCAST
+  UNKNOWN
+  FINALIZED
+  REVERTED
+  REJECTED
+  QUARANTINED
+}
+
 enum InvocationExecutionStatus {
   NOT_STARTED
   QUEUED
@@ -55,6 +77,10 @@ model SettlementOperation {
   invocationKey       String @unique
   quoteDigest         String
   authorizationDigest String
+  fundingMode         FundingMode
+  // The grant that paid; null when the buyer's wallet authorized the payment.
+  grantId             String?
+  // The grant signer recovered from the debit, or the buyer for a wallet payment.
   recoveredSigner     String
   // Untrusted admission intent, not evidence of an onchain grant/hold.
   paymentPayload      Json
@@ -112,11 +138,48 @@ model RelayerLane {
   // This reservation NEVER expires with a worker lease. An ambiguous tx keeps
   // its lane until a future finality/recovery gate safely resolves it.
   activeInvocationId String? @unique
+  // A relayed grant change holds the same lane: one nonce, one transaction.
+  activeGrantOperationId String? @unique
   revision           BigInt @default(0)
   attempts           SettlementAttempt[]
 
   @@id([network, relayer])
   @@map("relayer_lanes")
+}
+
+// A buyer-signed grant change (setGrantWithSig / revokeGrantWithSig) the relayer
+// submits so the buyer pays no gas. It shares the relayer lane with funding.
+model GrantOperation {
+  id                   String @id @default(uuid())
+  userId               String
+  buyer                String
+  grantId              String
+  kind                 GrantOperationKind
+  // The signed call exactly as relayed: config, deadline, signature, permit.
+  request              Json
+  state                GrantOperationState @default(PENDING)
+  errorReason          String?
+  relayer              String?
+  nonce                BigInt?
+  gasLimit             BigInt?
+  maxFeePerGas         Decimal? @db.Decimal(78, 0)
+  maxPriorityFeePerGas Decimal? @db.Decimal(78, 0)
+  signedTransaction    String? @db.Text
+  transactionHash      String? @unique
+  broadcastCount       Int @default(0)
+  actualGasCost        Decimal? @db.Decimal(78, 0)
+  finalizedBlockNumber BigInt?
+  finalizedAt          DateTime?
+  leaseOwner           String?
+  leaseEpoch           BigInt @default(0)
+  leaseExpiresAt       DateTime?
+  nextCheckAt          DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([state, nextCheckAt])
+  @@index([userId, createdAt])
+  @@map("grant_operations")
 }
 
 // Durable handoff only. Provider delivery/ACK belongs to a later milestone.

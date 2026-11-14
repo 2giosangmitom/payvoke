@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, RouteContext } from "../../http/context";
-import { maxBody, rateLimit } from "../../http/limits";
+import { accountLimit, maxBody, rateLimit } from "../../http/limits";
 import { builderRoute } from "../../http/openapi";
 import { validate } from "../../http/validate";
 import { z } from "zod";
@@ -65,6 +65,8 @@ export const providerRoutes = new Hono<AppEnv>()
     maxBody(8192),
     validate("json", newAppBody, "INVALID_APP"),
     requireAccount,
+    // Create attempts per account per day, on top of the live-agent cap.
+    accountLimit("apps-daily", (config) => config.APP_CREATES_PER_DAY, 24 * 60 * 60 * 1000),
     async (c) => {
       const { created, app } = await c.var.cradle.providerAppService.create(
         c.var.account,

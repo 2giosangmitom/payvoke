@@ -47,7 +47,10 @@ const grantReader: GrantReader = {
     currentPeriod: BigInt(Math.floor(Date.now() / 1000 / 86400)),
     revoked: false,
   }),
-  available: async () => 1000n * USDC,
+  wallet: async () => ({ balance: 1000n * USDC, allowance: 500n * USDC }),
+  nonce: async () => 0n,
+  verify: async () => true,
+  simulate: async () => null,
 };
 
 let cookie: string;
@@ -67,6 +70,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   const config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     REDIS_URL: "redis://127.0.0.1:1",
     WEB_ORIGIN: origin,
@@ -255,6 +260,7 @@ async function history(
         invocationKey,
         quoteDigest: `0x${"1".repeat(64)}`,
         authorizationDigest: `0x${"2".repeat(64)}`,
+        fundingMode: "GRANT",
         recoveredSigner: wallet.address,
         paymentPayload: {},
         state: "HELD",

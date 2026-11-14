@@ -1,4 +1,5 @@
-import { businessKey, reserveHoldAbi } from "@payvoke/shared/protocol";
+import { businessKey } from "@payvoke/shared/protocol";
+import { fundingCalldata, fundingOf } from "@payvoke/shared/x402/chain";
 import {
   NETWORK,
   readPaymentIntent,
@@ -7,7 +8,6 @@ import {
   type QuoteDocument,
 } from "@payvoke/shared/x402";
 import {
-  encodeFunctionData,
   getAddress,
   keccak256,
   parseTransaction,
@@ -161,7 +161,9 @@ export class SettlementJournal {
           invocationKey: businessKey("invocation", row.invocationId),
           quoteDigest: document.quoteDigest,
           authorizationDigest: intent.authorizationDigest,
-          recoveredSigner: intent.recoveredSigner.toLowerCase(),
+          fundingMode: intent.mode === "authorization" ? "AUTHORIZATION" : "GRANT",
+          grantId: intent.authorization?.grantId ?? null,
+          recoveredSigner: intent.signer.toLowerCase(),
           paymentPayload: intent.paymentPayload as unknown as Prisma.InputJsonValue,
         },
       });
@@ -238,7 +240,10 @@ export class SettlementJournal {
         where: { network_relayer: { network: NETWORK, relayer } },
       });
       await lockLease(tx, lease);
-      if (lane.activeInvocationId && lane.activeInvocationId !== lease.invocationId)
+      if (
+        (lane.activeInvocationId && lane.activeInvocationId !== lease.invocationId) ||
+        lane.activeGrantOperationId
+      )
         throw new SettlementError("RELAYER_BUSY");
       const previous = await tx.settlementAttempt.findUnique({
         where: { invocationId: lease.invocationId },
@@ -324,11 +329,7 @@ export class SettlementJournal {
       throw new SettlementError("JOURNAL_INCONSISTENT", 500);
     // This check is not a simulation. It only prevents storing a different
     // destination/function/value/quote/nonce/fee transaction in this operation.
-    const expectedData = encodeFunctionData({
-      abi: reserveHoldAbi,
-      functionName: "reserveHold",
-      args: [readQuote(document.protocolQuote), intent.authorization, intent.signature],
-    });
+    const expectedData = fundingCalldata(readQuote(document.protocolQuote), fundingOf(intent));
     let transaction: ReturnType<typeof parseTransaction>;
     let sender: Address;
     try {

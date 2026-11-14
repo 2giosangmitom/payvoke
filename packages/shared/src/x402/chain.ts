@@ -1,13 +1,20 @@
 import {
+  FUNDING_SOURCE,
+  fundHoldAbi,
   hashAuthorization,
   hashQuote,
+  hashReceiveAuthorization,
   paymentTypes,
+  receiveAuthorizationTypedData,
+  usdcAbi,
   vaultAdmissionAbi,
   vaultDomain,
   type DebitAuthorization,
+  type FundingMode,
   type InvocationQuote,
 } from "@payvoke/shared/protocol";
 import { VaultValidationError, type AdmissionObservation } from "./facilitator.js";
+import type { PaymentIntent } from "./index.js";
 import {
   BaseError,
   ContractFunctionRevertedError,
@@ -16,8 +23,10 @@ import {
   recoverTypedDataAddress,
   createPublicClient,
   custom,
+  encodeFunctionData,
   stringToHex,
   zeroAddress,
+  zeroHash,
   type Address,
   type Hex,
   type PublicClient,
@@ -36,8 +45,34 @@ export type VaultDeployment = {
 };
 export type VaultRpcClient = Pick<
   PublicClient,
-  "getChainId" | "getBlock" | "getCode" | "readContract" | "simulateContract"
+  "getChainId" | "getBlock" | "getCode" | "readContract" | "simulateContract" | "verifyTypedData"
 >;
+// What pays for one quote: the buyer's own USDC authorization, or a grant debit.
+export type FundingIntent =
+  | { mode: "authorization"; signature: Hex }
+  | { mode: "grant"; authorization: DebitAuthorization; signature: Hex };
+// The chain-facing half of a parsed x402 payment.
+export function fundingOf(intent: PaymentIntent): FundingIntent {
+  if (intent.mode === "authorization") return { mode: "authorization", signature: intent.signature };
+  if (!intent.authorization) throw new VaultValidationError("invalid_payment", 400);
+  return { mode: "grant", authorization: intent.authorization, signature: intent.signature };
+}
+
+// The relayer's calldata for funding one quote.
+export function fundingCalldata(q: InvocationQuote, funding: FundingIntent): Hex {
+  return funding.mode === "authorization"
+    ? encodeFunctionData({
+        abi: fundHoldAbi,
+        functionName: "fundWithAuthorization",
+        args: [q, funding.signature],
+      })
+    : encodeFunctionData({
+        abi: fundHoldAbi,
+        functionName: "fundWithGrant",
+        args: [q, funding.authorization, funding.signature],
+      });
+}
+
 const RELAYER_ROLE = keccak256(stringToHex("RELAYER_ROLE"));
 const reverts: Record<string, string> = {
   Unauthorized: "unauthorized_relayer",
@@ -50,7 +85,10 @@ const reverts: Record<string, string> = {
   GrantRevoked: "grant_revoked",
   GrantExpired: "grant_expired",
   GrantEpochMismatch: "grant_epoch_mismatch",
-  InsufficientAvailable: "insufficient_available",
+  InsufficientAllowance: "insufficient_allowance",
+  InsufficientBalance: "insufficient_balance",
+  AuthorizationUsed: "authorization_used",
+  AuthorizationRejected: "invalid_signature",
   PerCallLimitExceeded: "per_call_limit_exceeded",
   PeriodLimitExceeded: "period_limit_exceeded",
   TotalLimitExceeded: "total_limit_exceeded",
@@ -154,25 +192,36 @@ export class VaultChain {
     );
   }
 
+  // The digest a hold funded by this intent records.
+  authorizationDigest(q: InvocationQuote, intent: FundingIntent): Hex {
+    const d = this.deployment;
+    const quoteDigest = hashQuote(vaultDomain(d.vault, d.chainId), q);
+    return intent.mode === "authorization"
+      ? hashReceiveAuthorization(d.vault, q, quoteDigest)
+      : hashAuthorization(vaultDomain(d.vault, d.chainId), intent.authorization);
+  }
+
   async validate(
     q: InvocationQuote,
-    authorization: DebitAuthorization,
-    signature: Hex,
+    intent: FundingIntent,
     admissionGate: () => Promise<void>,
   ): Promise<AdmissionObservation> {
     assert(this.initialized, "chain_not_initialized", 503);
     const d = this.deployment;
     const domain = vaultDomain(d.vault, d.chainId);
     const quoteDigest = hashQuote(domain, q);
-    const digest = hashAuthorization(domain, authorization);
-    assert(
-      authorization.quoteDigest.toLowerCase() === quoteDigest.toLowerCase(),
-      "invalid_signature",
-    );
+    if (intent.mode === "grant")
+      assert(
+        intent.authorization.quoteDigest.toLowerCase() === quoteDigest.toLowerCase(),
+        "invalid_signature",
+      );
+    const digest = this.authorizationDigest(q, intent);
+    const grantId = intent.mode === "grant" ? intent.authorization.grantId : zeroHash;
     assert((await rpc(() => this.client.getChainId())) === d.chainId, "chain_mismatch", 503);
     const block = await rpc(() => this.client.getBlock({ blockTag: "latest" }));
     assert(block.number !== null && block.hash !== null, "snapshot_unavailable", 503);
     const read = { address: d.vault, abi: vaultAdmissionAbi, blockNumber: block.number } as const;
+    const token = { address: d.asset, abi: usdcAbi, blockNumber: block.number } as const;
     let outcome: AdmissionObservation | undefined;
     let failure: unknown;
     try {
@@ -180,6 +229,7 @@ export class VaultChain {
         this.client.readContract({ ...read, functionName: "getHold", args: [q.invocationKey] }),
       );
       const observed = {
+        mode: intent.mode as FundingMode,
         payer: q.buyer,
         quoteDigest,
         authorizationDigest: digest,
@@ -204,25 +254,16 @@ export class VaultChain {
             hold.deliveryDeadline === q.deliveryDeadline &&
             hold.releaseNotBefore === q.releaseNotBefore &&
             hold.resolveBy === q.resolveBy &&
-            hold.grantId.toLowerCase() === authorization.grantId.toLowerCase(),
+            hold.source === FUNDING_SOURCE[intent.mode] &&
+            hold.grantId.toLowerCase() === grantId.toLowerCase(),
           "hold_inconsistent",
           503,
         );
         outcome = { ...observed, kind: "existing-hold" };
       } else {
         await admissionGate();
-        const [grant, available, paused, role, feeCap, quoteCap, holdCap, asset] = await rpc(() =>
+        const [paused, role, feeCap, quoteCap, holdCap, asset, balance] = await rpc(() =>
           Promise.all([
-            this.client.readContract({
-              ...read,
-              functionName: "getGrant",
-              args: [q.buyer, authorization.grantId],
-            }),
-            this.client.readContract({
-              ...read,
-              functionName: "availableBalance",
-              args: [q.buyer],
-            }),
             this.client.readContract({ ...read, functionName: "paused" }),
             this.client.readContract({
               ...read,
@@ -233,6 +274,7 @@ export class VaultChain {
             this.client.readContract({ ...read, functionName: "maxQuoteLifetimeSeconds" }),
             this.client.readContract({ ...read, functionName: "maxHoldSeconds" }),
             this.client.readContract({ ...read, functionName: "asset" }),
+            this.client.readContract({ ...token, functionName: "balanceOf", args: [q.buyer] }),
           ]),
         );
         const now = block.timestamp;
@@ -257,47 +299,36 @@ export class VaultChain {
             BigInt(q.resolveBy) - now <= BigInt(holdCap),
           "deadline_invalid",
         );
-        assert(grant.epoch !== 0n, "grant_not_found");
-        assert(!grant.revoked, "grant_revoked");
-        assert(now < BigInt(grant.config.expiresAt), "grant_expired");
-        assert(authorization.grantEpoch === grant.epoch, "grant_epoch_mismatch");
-        let signer: Address;
-        try {
-          signer = await recoverTypedDataAddress({
-            domain,
-            types: paymentTypes,
-            primaryType: "DebitAuthorization",
-            message: authorization,
-            signature,
-          });
-        } catch {
-          throw new VaultValidationError("invalid_signature");
+        if (intent.mode === "authorization") {
+          await this.admitAuthorization(q, quoteDigest, intent.signature, block.number);
+        } else {
+          await this.admitGrant(q, intent.authorization, intent.signature, block.number, now);
         }
-        assert(getAddress(signer) === getAddress(grant.config.signer), "invalid_signature");
-        assert(q.grossAmount <= available, "insufficient_available");
-        assert(q.grossAmount <= grant.config.maxPerCall, "per_call_limit_exceeded");
-        assert(grant.config.periodSeconds > 0, "invalid_grant_configuration", 503);
-        const period = now / BigInt(grant.config.periodSeconds);
-        const spent = grant.currentPeriod === period ? grant.spentInPeriod : 0n;
+        assert(q.grossAmount <= balance, "insufficient_balance");
+        const result: Hex =
+          intent.mode === "authorization"
+            ? (
+                await rpc(() =>
+                  this.client.simulateContract({
+                    ...read,
+                    functionName: "fundWithAuthorization",
+                    args: [q, intent.signature],
+                    account: d.relayer,
+                  }),
+                )
+              ).result
+            : (
+                await rpc(() =>
+                  this.client.simulateContract({
+                    ...read,
+                    functionName: "fundWithGrant",
+                    args: [q, intent.authorization, intent.signature],
+                    account: d.relayer,
+                  }),
+                )
+              ).result;
         assert(
-          spent <= grant.config.maxPerPeriod && q.grossAmount <= grant.config.maxPerPeriod - spent,
-          "period_limit_exceeded",
-        );
-        assert(
-          grant.spentTotal <= grant.config.maxTotal &&
-            q.grossAmount <= grant.config.maxTotal - grant.spentTotal,
-          "total_limit_exceeded",
-        );
-        const simulation = await rpc(() =>
-          this.client.simulateContract({
-            ...read,
-            functionName: "reserveHold",
-            args: [q, authorization, signature],
-            account: d.relayer,
-          }),
-        );
-        assert(
-          simulation.result.toLowerCase() === q.invocationKey.toLowerCase(),
+          result.toLowerCase() === q.invocationKey.toLowerCase(),
           "simulation_inconsistent",
           503,
         );
@@ -310,5 +341,97 @@ export class VaultChain {
     await this.canonical(block.number, block.hash);
     if (failure) throw failure;
     return outcome!;
+  }
+
+  // The buyer's wallet signed: check the signature the way USDC v2.2 will
+  // (ECDSA for an EOA, ERC-1271/6492 for a contract wallet) and that the
+  // authorization is still unused.
+  private async admitAuthorization(
+    q: InvocationQuote,
+    quoteDigest: Hex,
+    signature: Hex,
+    blockNumber: bigint,
+  ) {
+    const d = this.deployment;
+    const used = await rpc(() =>
+      this.client.readContract({
+        address: d.asset,
+        abi: usdcAbi,
+        blockNumber,
+        functionName: "authorizationState",
+        args: [q.buyer, quoteDigest],
+      }),
+    );
+    assert(!used, "authorization_used");
+    let valid = false;
+    try {
+      valid = await this.client.verifyTypedData({
+        address: q.buyer,
+        ...receiveAuthorizationTypedData(d.asset, d.vault, q, quoteDigest, d.chainId),
+        signature,
+        blockNumber,
+      });
+    } catch {
+      valid = false;
+    }
+    assert(valid, "invalid_signature");
+  }
+
+  private async admitGrant(
+    q: InvocationQuote,
+    authorization: DebitAuthorization,
+    signature: Hex,
+    blockNumber: bigint,
+    now: bigint,
+  ) {
+    const d = this.deployment;
+    const read = { address: d.vault, abi: vaultAdmissionAbi, blockNumber } as const;
+    const [grant, allowance] = await rpc(() =>
+      Promise.all([
+        this.client.readContract({
+          ...read,
+          functionName: "getGrant",
+          args: [q.buyer, authorization.grantId],
+        }),
+        this.client.readContract({
+          address: d.asset,
+          abi: usdcAbi,
+          blockNumber,
+          functionName: "allowance",
+          args: [q.buyer, d.vault],
+        }),
+      ]),
+    );
+    assert(grant.epoch !== 0n, "grant_not_found");
+    assert(!grant.revoked, "grant_revoked");
+    assert(now < BigInt(grant.config.expiresAt), "grant_expired");
+    assert(authorization.grantEpoch === grant.epoch, "grant_epoch_mismatch");
+    let signer: Address;
+    try {
+      signer = await recoverTypedDataAddress({
+        domain: vaultDomain(d.vault, d.chainId),
+        types: paymentTypes,
+        primaryType: "DebitAuthorization",
+        message: authorization,
+        signature,
+      });
+    } catch {
+      throw new VaultValidationError("invalid_signature");
+    }
+    assert(getAddress(signer) === getAddress(grant.config.signer), "invalid_signature");
+    assert(q.grossAmount <= grant.config.maxPerCall, "per_call_limit_exceeded");
+    assert(grant.config.periodSeconds > 0, "invalid_grant_configuration", 503);
+    const period = now / BigInt(grant.config.periodSeconds);
+    const spent = grant.currentPeriod === period ? grant.spentInPeriod : 0n;
+    assert(
+      spent <= grant.config.maxPerPeriod && q.grossAmount <= grant.config.maxPerPeriod - spent,
+      "period_limit_exceeded",
+    );
+    assert(
+      grant.spentTotal <= grant.config.maxTotal &&
+        q.grossAmount <= grant.config.maxTotal - grant.spentTotal,
+      "total_limit_exceeded",
+    );
+    assert(q.grossAmount <= allowance, "insufficient_allowance");
   }
 }

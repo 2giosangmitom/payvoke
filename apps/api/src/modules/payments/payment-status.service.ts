@@ -1,6 +1,6 @@
 import type { Cradle } from "../../container";
 import { vaultFinanceAbi } from "@payvoke/shared/protocol";
-import type { QuoteDocument } from "@payvoke/shared/x402";
+import { SCHEME_VERSION, type QuoteDocument } from "@payvoke/shared/x402";
 import { encodeFunctionData, getAddress, type Hex } from "viem";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 import { imageUrl } from "../apps/serializers";
@@ -165,7 +165,8 @@ export class PaymentStatusService {
               payer: quote.protocolQuote.buyer,
               amount: quote.grossAmount,
               extra: {
-                schemeVersion: "1",
+                schemeVersion: SCHEME_VERSION,
+                fundingMode: operation.fundingMode === "AUTHORIZATION" ? "authorization" : "grant",
                 invocationId: invocation.id,
                 quoteId: invocation.quoteId,
                 holdId: operation.invocationKey,
@@ -213,7 +214,11 @@ export class PaymentStatusService {
         return {
           invocationId: row.id,
           threadId: row.quote.threadId,
-          app: { id: row.quote.app.id, name: row.quote.app.name, imageUrl: imageUrl(row.quote.app) },
+          app: {
+            id: row.quote.app.id,
+            name: row.quote.app.name,
+            imageUrl: imageUrl(row.quote.app),
+          },
           commandName: row.quote.commandRevision?.command.name ?? null,
           grossAmount: quote.grossAmount,
           paymentStatus:

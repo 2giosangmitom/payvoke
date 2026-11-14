@@ -48,7 +48,10 @@ const grantReader: GrantReader = {
     currentPeriod: BigInt(Math.floor(Date.now() / 1000 / 86400)),
     revoked: false,
   }),
-  available: async () => 1000n * USDC,
+  wallet: async () => ({ balance: 1000n * USDC, allowance: 500n * USDC }),
+  nonce: async () => 0n,
+  verify: async () => true,
+  simulate: async () => null,
 };
 
 beforeAll(async () => {
@@ -65,6 +68,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   const config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     // Unused: the test passes in-process signals.
     REDIS_URL: "redis://127.0.0.1:1",

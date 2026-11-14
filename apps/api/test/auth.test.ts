@@ -28,6 +28,8 @@ describe("Better Auth SIWE / Prisma + Hono", () => {
 
   const configFor = (web = origin, api = "https://api.payvoke.test") =>
     loadConfig({
+      MAX_APPS_PER_OWNER: "1000",
+      APP_CREATES_PER_DAY: "1000",
       DATABASE_URL: connectionString,
       // Unused: createApp defaults to in-process signals in tests.
       REDIS_URL: "redis://127.0.0.1:1",

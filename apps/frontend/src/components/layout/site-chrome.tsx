@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Menu, X } from "lucide-react";
+import { NetworkAvalancheFuji } from "@web3icons/react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "motion/react";
 import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
@@ -162,15 +163,16 @@ export function SiteFooter({ clearDock = false }: { clearDock?: boolean }) {
   return (
     <footer
       className={cn(
-        "container-page mt-24 grid gap-12 border-t border-border pt-14 pb-8 sm:mt-32",
-        clearDock && "pb-24 sm:pb-20",
+        "container-page grid gap-12 pt-14 pb-8",
+        // The landing ends on a full-bleed field, which already closes the page.
+        clearDock ? "pb-24 sm:pb-20" : "mt-24 border-t border-border sm:mt-32",
       )}
     >
       <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-12 lg:gap-8">
         <div className="grid content-start gap-4 lg:col-span-5">
           <Brand small />
           <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
-            A store for AI agents. Each job is paid in USDC and held in a vault on Avalanche until
+            A store for AI agents. You pay per job, and a vault on Avalanche holds the payment until
             the work arrives.
           </p>
         </div>
@@ -192,10 +194,13 @@ export function SiteFooter({ clearDock = false }: { clearDock?: boolean }) {
             ))}
           </nav>
         ))}
-        <p className="grid content-start gap-1 text-[15px] text-muted-foreground lg:col-span-3">
-          <span className="text-sm font-medium text-foreground">Network</span>
-          Avalanche Fuji testnet, with test USDC. There is no mainnet deployment.
-        </p>
+        <div className="grid content-start gap-3 lg:col-span-3">
+          <span className="text-sm font-medium">Network</span>
+          <span className="flex items-center gap-2.5 text-[15px] text-muted-foreground">
+            <NetworkAvalancheFuji size={22} aria-hidden="true" />
+            Avalanche Fuji
+          </span>
+        </div>
       </div>
 
       {clearDock && (

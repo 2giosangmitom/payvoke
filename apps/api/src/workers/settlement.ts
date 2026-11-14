@@ -6,6 +6,7 @@ import { SettlementChain } from "@payvoke/shared/x402/settlement";
 import type { PrismaClient } from "#core/db";
 import { scanFinancialLifecycle } from "#core/payments/finance-ledger";
 import { scanFinalizedHolds } from "#core/payments/scanner";
+import { GrantRelay } from "#core/payments/grant-relay";
 import { SettlementWorker, validateGasPolicy } from "#core/payments/worker";
 import { channels, serial } from "#core/queue";
 import { errorTag, vaultDeployment } from "#core/runtime";
@@ -19,7 +20,8 @@ const SWEEP_MS = 5000;
 
 const log = logger("worker", "settlement");
 
-// Signs and sends reserveHold. The only code path that uses RELAYER_PRIVATE_KEY.
+// Signs and sends job funding (fundWithAuthorization / fundWithGrant) and
+// buyer-signed grant changes. The only code path that uses RELAYER_PRIVATE_KEY.
 export async function startSettlementWorker(
   config: Config,
   db: PrismaClient,
@@ -51,6 +53,7 @@ export async function startSettlementWorker(
     // The hold committed with an invocation.ready item on the provider feed.
     ({ appId }) => doorbell.ring(channels.app(appId)),
   );
+  const grants = new GrantRelay(db, chain, signer, budget);
   // One relayer, one nonce lane: jobs and the sweep never run concurrently.
   const lane = serial();
   const settler = await bus.consume(
@@ -76,6 +79,13 @@ export async function startSettlementWorker(
         busy = await lane(() => worker.tick());
       } catch (error) {
         log.error("Settlement tick failed; durable state retained ({error})", {
+          error: errorTag(error),
+        });
+      }
+      try {
+        if (await lane(() => grants.tick())) busy = true;
+      } catch (error) {
+        log.error("Grant relay tick failed; durable state retained ({error})", {
           error: errorTag(error),
         });
       }

@@ -6,7 +6,7 @@ import {
   type PublicClient,
   type Hex,
 } from "viem";
-import { holdReservedEvent, type InvocationQuote } from "@payvoke/shared/protocol";
+import { FUNDING_SOURCE, holdFundedEvent, type InvocationQuote } from "@payvoke/shared/protocol";
 import { SettlementChain } from "@payvoke/shared/x402/settlement";
 import type { VaultDeployment } from "@payvoke/shared/x402/chain";
 import { emptyHold, matchingHold } from "./vault-reader";
@@ -15,6 +15,7 @@ export function mockSettlement(
   q: InvocationQuote,
   deployment: VaultDeployment,
   digests: { quoteDigest: Hex; authorizationDigest: Hex; grantId: Hex },
+  source: number = FUNDING_SOURCE.grant,
 ) {
   const hashFor = (number: bigint) => `0x${number.toString(16).padStart(64, "0")}` as Hex;
   const state = {
@@ -89,12 +90,12 @@ export function mockSettlement(
       const log = {
         address: deployment.vault,
         data: encodeAbiParameters(
-          [{ type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }],
-          [digests.quoteDigest, digests.authorizationDigest, q.grossAmount],
+          [{ type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "uint8" }],
+          [digests.quoteDigest, digests.authorizationDigest, q.grossAmount, source],
         ),
         topics: encodeEventTopics({
-          abi: [holdReservedEvent],
-          eventName: "HoldReserved",
+          abi: [holdFundedEvent],
+          eventName: "HoldFunded",
           args: { holdId: q.invocationKey, buyer: q.buyer },
         }),
         transactionHash: hash,
@@ -102,7 +103,7 @@ export function mockSettlement(
         blockNumber: 11n,
         logIndex: 0,
         removed: false,
-        args: { holdId: q.invocationKey, buyer: q.buyer, ...digests, gross: q.grossAmount },
+        args: { holdId: q.invocationKey, buyer: q.buyer, ...digests, gross: q.grossAmount, source },
       };
       state.receipt = {
         transactionHash: hash,
@@ -121,6 +122,7 @@ export function mockSettlement(
           digests.authorizationDigest,
           digests.quoteDigest,
           digests.grantId,
+          source,
         );
         state.logs = [log];
       }

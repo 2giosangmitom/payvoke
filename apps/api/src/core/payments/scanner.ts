@@ -1,4 +1,4 @@
-import { holdReservedEvent } from "@payvoke/shared/protocol";
+import { holdFundedEvent } from "@payvoke/shared/protocol";
 import type { SettlementChain } from "@payvoke/shared/x402/settlement";
 import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
 import type { PrismaClient } from "#core/db";
@@ -34,7 +34,7 @@ export async function scanFinalizedHolds(
   if (!block.hash) throw new VaultValidationError("snapshot_unavailable", 503);
   const logs = await chain.client.getLogs({
     address: chain.deployment.vault,
-    event: holdReservedEvent,
+    event: holdFundedEvent,
     fromBlock: cursor.blockNumber + 1n,
     toBlock: end,
     strict: true,

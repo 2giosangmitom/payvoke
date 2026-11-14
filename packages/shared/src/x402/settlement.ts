@@ -1,8 +1,10 @@
 import {
-  holdReservedEvent,
+  FUNDING_SOURCE,
+  hashQuote,
+  holdFundedEvent,
   vaultAdmissionAbi,
+  vaultDomain,
   type InvocationQuote,
-  type DebitAuthorization,
 } from "@payvoke/shared/protocol";
 import {
   createPublicClient,
@@ -10,12 +12,13 @@ import {
   decodeEventLog,
   getAddress,
   zeroAddress,
+  zeroHash,
   type EIP1193RequestFn,
   type Hex,
   type PublicClient,
 } from "viem";
 import { VaultValidationError } from "./facilitator.js";
-import type { VaultDeployment } from "./chain.js";
+import type { FundingIntent, VaultDeployment } from "./chain.js";
 
 export type SettlementProof = {
   transactionHash: Hex;
@@ -62,9 +65,14 @@ export class SettlementChain {
     data: Hex;
     nonce: bigint;
     quote: InvocationQuote;
-    authorization: DebitAuthorization;
+    intent: FundingIntent;
     authorizationDigest: Hex;
   }): Promise<SettlementInspection> {
+    const quoteDigest = hashQuote(
+      vaultDomain(this.deployment.vault, this.deployment.chainId),
+      input.quote,
+    );
+    const grantId = input.intent.mode === "grant" ? input.intent.authorization.grantId : zeroHash;
     const head = await this.finalized();
     let receipt;
     try {
@@ -123,16 +131,17 @@ export class SettlementChain {
         return false;
       try {
         const { args } = decodeEventLog({
-          abi: [holdReservedEvent],
+          abi: [holdFundedEvent],
           data: log.data,
           topics: log.topics,
         });
         return (
           args.holdId.toLowerCase() === input.quote.invocationKey.toLowerCase() &&
           args.buyer.toLowerCase() === input.quote.buyer.toLowerCase() &&
-          args.quoteDigest.toLowerCase() === input.authorization.quoteDigest.toLowerCase() &&
+          args.quoteDigest.toLowerCase() === quoteDigest.toLowerCase() &&
           args.authorizationDigest.toLowerCase() === input.authorizationDigest.toLowerCase() &&
           args.gross === input.quote.grossAmount &&
+          args.source === FUNDING_SOURCE[input.intent.mode] &&
           log.transactionHash === input.hash &&
           log.blockHash === receipt.blockHash
         );
@@ -143,7 +152,7 @@ export class SettlementChain {
     check(matches.length === 1, "hold_event_inconsistent");
     const q = input.quote;
     check(
-      hold.quoteDigest.toLowerCase() === input.authorization.quoteDigest.toLowerCase() &&
+      hold.quoteDigest.toLowerCase() === quoteDigest.toLowerCase() &&
         hold.authorizationDigest.toLowerCase() === input.authorizationDigest.toLowerCase() &&
         getAddress(hold.buyer) === getAddress(q.buyer) &&
         getAddress(hold.provider) === getAddress(q.provider) &&
@@ -153,7 +162,8 @@ export class SettlementChain {
         hold.deliveryDeadline === q.deliveryDeadline &&
         hold.releaseNotBefore === q.releaseNotBefore &&
         hold.resolveBy === q.resolveBy &&
-        hold.grantId.toLowerCase() === input.authorization.grantId.toLowerCase(),
+        hold.source === FUNDING_SOURCE[input.intent.mode] &&
+        hold.grantId.toLowerCase() === grantId.toLowerCase(),
       "hold_inconsistent",
     );
     await this.canonical(receipt.blockNumber, receipt.blockHash);

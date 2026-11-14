@@ -1,6 +1,6 @@
 import type { Cradle } from "../../container";
 import { NotFoundError } from "../../errors";
-import { availabilityLabel, isAvailable } from "../apps/schema";
+import { availabilityLabel, HEARTBEAT_TTL_MS, isAvailable } from "../apps/schema";
 import { imageUrl, priceCap, serializeCommand } from "../apps/serializers";
 
 export type CatalogQuery = {
@@ -58,8 +58,27 @@ export class CatalogService {
 
   async list({ q, cursor, limit, savedBy, ownerId }: CatalogQuery) {
     const search = q?.trim();
+    // The store lists agents that are online now or have delivered real work.
+    // Agents that never connected stay off it. Saved lists keep what the buyer
+    // starred so its unavailable state can still show.
+    const listed = savedBy
+      ? {}
+      : {
+          AND: [
+            {
+              OR: [
+                {
+                  defaultCommandId: { not: null },
+                  lastHeartbeatAt: { gt: new Date(Date.now() - HEARTBEAT_TTL_MS) },
+                },
+                { quotes: { some: { invocation: { is: { executionStatus: "DELIVERED" as const } } } } },
+              ],
+            },
+          ],
+        };
     const rows = await this.db.app.findMany({
       where: {
+        ...listed,
         visibility: "PUBLIC",
         // Suspended apps remain discoverable so saved entries can show their
         // unavailable state; archived apps are removed from the store.

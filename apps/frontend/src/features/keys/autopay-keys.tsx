@@ -10,6 +10,7 @@ import { authClient } from "@/src/features/auth/auth-client";
 import { forgetGrant, listGrants, type Grant } from "@/src/features/keys/grants";
 import { SettingsRow } from "@/src/features/keys/settings-row";
 import { getWallet, usdc } from "@/src/features/wallet/api";
+import { useGrantChanges } from "@/src/features/wallet/grant-changes";
 import { chainError, useVaultWrite, vaultAccountAbi } from "@/src/features/wallet/vault";
 
 const DAY = 86_400;
@@ -73,8 +74,11 @@ export function GrantList({
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
   const send = useVaultWrite();
+  const { revokeGrant } = useGrantChanges(vault);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  // Set when the relayed revoke failed: the buyer can still revoke directly.
+  const [fallback, setFallback] = useState<Grant | null>(null);
   const chain = useReadContracts({
     allowFailure: true,
     contracts: grants.map((grant) => ({
@@ -88,24 +92,43 @@ export function GrantList({
   });
   const now = Math.floor(Date.now() / 1000);
 
-  // Revoking is a vault transaction from the buyer wallet; the list entry
-  // goes once the vault has refused the grant for good.
-  async function remove(grant: Grant, revoke: boolean) {
+  // Revoking is a buyer signature Payvoke relays (no gas), which also lowers
+  // the USDC allowance; the list entry goes once the vault refuses the grant.
+  // If the relay fails, the buyer can revoke straight from the wallet.
+  async function remove(grant: Grant, revoke: boolean, direct = false) {
     setError("");
     setBusy(grant.id);
     try {
       if (revoke) {
         if (connected?.toLowerCase() !== grant.buyer.toLowerCase())
           throw new Error(`Connect ${short(grant.buyer)}, the wallet this grant pays from.`);
-        await send((write) =>
-          write({
-            address: vault,
-            abi: vaultAccountAbi,
-            functionName: "revokeGrant",
-            args: [grant.grantId as Hex],
-          }),
-        );
+        if (direct)
+          await send((write) =>
+            write({
+              address: vault,
+              abi: vaultAccountAbi,
+              functionName: "revokeGrant",
+              args: [grant.grantId as Hex],
+            }),
+          );
+        else {
+          const onChain = chain.data?.[grants.indexOf(grant)]?.result as OnChain | undefined;
+          try {
+            await revokeGrant({
+              buyer: grant.buyer as Address,
+              grantId: grant.grantId as Hex,
+              remaining:
+                onChain && onChain.config.maxTotal > onChain.spentTotal
+                  ? onChain.config.maxTotal - onChain.spentTotal
+                  : 0n,
+            });
+          } catch (cause) {
+            setFallback(grant);
+            throw cause;
+          }
+        }
       }
+      setFallback(null);
       await forgetGrant(grant.id);
       await onRemoved?.(grant);
       await queryClient.invalidateQueries({ queryKey: ["account", session?.user.id, "grants"] });
@@ -119,6 +142,17 @@ export function GrantList({
   return (
     <div>
       {error && <ErrorNotice>{error}</ErrorNotice>}
+      {fallback && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mb-3"
+          disabled={Boolean(busy)}
+          onClick={() => void remove(fallback, true, true)}
+        >
+          Revoke {fallback.name} from your wallet instead (pays gas)
+        </Button>
+      )}
       <ul className="grid">
         {grants.map((grant, index) => {
           const onChain = chain.data?.[index]?.result as OnChain | undefined;

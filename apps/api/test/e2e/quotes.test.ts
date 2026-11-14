@@ -33,7 +33,14 @@ import {
   recoverTypedDataAddress,
 } from "viem";
 import { avalancheFuji } from "viem/chains";
-import { hashSnapshot, paymentTypes, reserveHoldAbi, vaultDomain } from "@payvoke/shared/protocol";
+import {
+  grantRevokeTypedData,
+  grantSetupTypedData,
+  hashSnapshot,
+  paymentTypes,
+  permitTypedData,
+  vaultDomain,
+} from "@payvoke/shared/protocol";
 import { x402Client } from "@x402/core/client";
 import { resolvePaymentFlow, x402ResourceServer } from "@x402/core/server";
 import {
@@ -64,10 +71,12 @@ import { createFacilitator, type Facilitator } from "#core/facilitator";
 import { MemoryJobs } from "#core/queue";
 import { SettlementError } from "#core/payments/journal";
 import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
-import type { VaultChain } from "@payvoke/shared/x402/chain";
+import { fundingCalldata, fundingOf, type VaultChain } from "@payvoke/shared/x402/chain";
 import { code, matchingHold, mockVault } from "#test/kit/vault-reader";
 import { mockSettlement } from "#test/kit/settlement-reader";
 import { SettlementWorker } from "#core/payments/worker";
+import { GrantRelay } from "#core/payments/grant-relay";
+import { createPaymentValidator, fundingThrottled } from "#core/payments/validation";
 import { createSettlementService } from "#core/payments/settlement";
 import { scanFinalizedHolds } from "#core/payments/scanner";
 import { localEvm } from "#test/kit/local-evm";
@@ -128,6 +137,8 @@ describe("quotes, x402 and isolated settlement", () => {
     await pool.query(`CREATE SCHEMA "${schema}"`);
     for (const entry of await readMigrations()) await pool.query(entry.sql);
     config = loadConfig({
+      MAX_APPS_PER_OWNER: "1000",
+      APP_CREATES_PER_DAY: "1000",
       DATABASE_URL: connectionString,
       // Unused: createApp defaults to in-process signals in tests.
       REDIS_URL: "redis://127.0.0.1:1",
@@ -154,6 +165,7 @@ describe("quotes, x402 and isolated settlement", () => {
     await db.settlementOperation.deleteMany();
     await db.invocation.deleteMany();
     await db.relayerLane.deleteMany();
+    await db.grantOperation.deleteMany();
     // Offers point at their quote and messages at their thread.
     await db.offer.deleteMany();
     await db.threadMessage.deleteMany();
@@ -357,8 +369,7 @@ describe("quotes, x402 and isolated settlement", () => {
       vault: q.vault as `0x${string}`,
       resourceUrl: `${api}/v1/invocations`,
       signer: grantSigner,
-      grantId: `0x${"a".repeat(64)}`,
-      grantEpoch: 1n,
+      funding: { mode: "grant", grantId: `0x${"a".repeat(64)}`, grantEpoch: 1n },
       maxAmount: 100000n,
       persist: async () => {},
       ...overrides,
@@ -406,11 +417,7 @@ describe("quotes, x402 and isolated settlement", () => {
       gas: reservation.gasLimit,
       maxFeePerGas: reservation.maxFeePerGas,
       maxPriorityFeePerGas: reservation.maxPriorityFeePerGas,
-      data: encodeFunctionData({
-        abi: reserveHoldAbi,
-        functionName: "reserveHold",
-        args: [readQuote(q.protocolQuote), intent.authorization, intent.signature],
-      }),
+      data: fundingCalldata(readQuote(q.protocolQuote), fundingOf(intent)),
       ...overrides,
     });
   }
@@ -486,7 +493,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const settlement = mockSettlement(readQuote(q.protocolQuote), preview.chain.deployment, {
       quoteDigest: q.quoteDigest,
       authorizationDigest: intent.authorizationDigest,
-      grantId: intent.authorization.grantId,
+      grantId: intent.authorization!.grantId,
     });
     const intents: string[] = [];
     const service = createSettlementService(
@@ -649,10 +656,11 @@ describe("quotes, x402 and isolated settlement", () => {
       primaryType: "DebitAuthorization",
       message: {
         quoteDigest: q.quoteDigest,
-        grantId: persisted.authorization.grantId,
+        grantId:
+          persisted.payload.kind === "grant" ? persisted.payload.authorization.grantId : "0x",
         grantEpoch: 1n,
       },
-      signature: persisted.signature,
+      signature: persisted.payload.signature,
     });
     assert.equal(recovered, grantSigner.address);
     assert.notEqual(recovered, wallet.address);
@@ -822,9 +830,9 @@ describe("quotes, x402 and isolated settlement", () => {
     const expected = paymentRequirements(q);
     const kind = {
       x402Version: 2,
-      scheme: "payvoke-vault",
+      scheme: "payvoke-escrow",
       network: NETWORK,
-      extra: { vault, schemeVersion: "1" },
+      extra: { vault, schemeVersion: "2" },
     };
     const facilitator = {
       async getSupported() {
@@ -936,7 +944,10 @@ describe("quotes, x402 and isolated settlement", () => {
       (await submit(q)).headers["payment-required"] as string,
     );
     const changed = await new x402Client()
-      .register(NETWORK, client(q, { grantId: `0x${"b".repeat(64)}` }))
+      .register(
+        NETWORK,
+        client(q, { funding: { mode: "grant", grantId: `0x${"b".repeat(64)}`, grantEpoch: 1n } }),
+      )
       .createPaymentPayload(challenge);
     await assert.rejects(
       journal.recordIntent({
@@ -1248,9 +1259,9 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.deepEqual(supported.kinds, [
       {
         x402Version: 2,
-        scheme: "payvoke-vault",
+        scheme: "payvoke-escrow",
         network: NETWORK,
-        extra: { vault, schemeVersion: "1" },
+        extra: { vault, schemeVersion: "2" },
       },
     ]);
     assert.deepEqual(supported.signers, { "eip155:*": [relayer.address] });
@@ -1307,7 +1318,7 @@ describe("quotes, x402 and isolated settlement", () => {
       readQuote(q.protocolQuote),
       intent.authorizationDigest,
       q.quoteDigest,
-      intent.authorization.grantId,
+      intent.authorization!.grantId,
     );
     const orphan = await f.call("verify", p);
     assert.equal(orphan.statusCode, 503, orphan.body);
@@ -1380,7 +1391,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const q = await quote();
     const p = await payment(q);
     const { f, call, state } = await facilitator(q);
-    assert.equal((await f.getSupported()).kinds[0].scheme, "payvoke-vault");
+    assert.equal((await f.getSupported()).kinds[0].scheme, "payvoke-escrow");
     const resourceServer = new x402ResourceServer(f).register(NETWORK, new VaultServerScheme(q));
     await resourceServer.initialize();
     assert.equal((await f.verify(p, paymentRequirements(q))).isValid, true);
@@ -1695,7 +1706,7 @@ describe("quotes, x402 and isolated settlement", () => {
     const mock = mockSettlement(readQuote(q.protocolQuote), f.chain.deployment, {
       quoteDigest: q.quoteDigest,
       authorizationDigest: intent.authorizationDigest,
-      grantId: intent.authorization.grantId,
+      grantId: intent.authorization!.grantId,
     });
     const worker = new SettlementWorker(
       db,
@@ -1929,14 +1940,7 @@ describe("quotes, x402 and isolated settlement", () => {
         abi: evm.vaultArtifact.abi,
         client: { public: evm.client, wallet: buyerClient },
       });
-      const buyerUsdc = getContract({
-        address: ASSET,
-        abi: evm.token.abi,
-        client: { public: evm.client, wallet: buyerClient },
-      });
-      await buyerUsdc.write.approve([evm.vault, 10000000n]);
-      await buyerVault.write.deposit([10000000n]);
-      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      await evm.setGrant(wallet, `0x${"a".repeat(64)}`, evm.grant);
       await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
       const local = createFacilitator(
         {
@@ -1985,7 +1989,7 @@ describe("quotes, x402 and isolated settlement", () => {
       const attempt = await db.settlementAttempt.findFirstOrThrow();
       assert.equal(attempt.state, "BROADCAST");
       assert.equal(await evm.contract.read.totalHeld(), 100000n);
-      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9900000n);
       assert.equal(await db.invocationReady.count(), 0);
       // Backfill must wake reconciliation without help from a browser request.
       await scanFinalizedHolds(db, evm.settlement, evm.startBlock);
@@ -2016,7 +2020,7 @@ describe("quotes, x402 and isolated settlement", () => {
       // Real revoke-after-preview race: the reserved transaction is mined reverted,
       // including when Hardhat reports send as an RPC error after executing it.
       const grantB = `0x${"b".repeat(64)}` as const;
-      await buyerVault.write.registerGrant([grantB, evm.grant]);
+      await evm.setGrant(wallet, grantB, evm.grant);
       sessionId = randomUUID();
       await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
       const second = await quote();
@@ -2024,7 +2028,10 @@ describe("quotes, x402 and isolated settlement", () => {
         (await submit(second)).headers["payment-required"] as string,
       );
       const secondPayment = await new x402Client()
-        .register(NETWORK, client(second, { grantId: grantB }))
+        .register(
+          NETWORK,
+          client(second, { funding: { mode: "grant", grantId: grantB, grantEpoch: 1n } }),
+        )
         .createPaymentPayload(challenge);
       const secondHeaders = { "payment-signature": encodePaymentSignatureHeader(secondPayment) };
       assert.equal((await submit(second, secondHeaders)).statusCode, 503);
@@ -2061,9 +2068,7 @@ describe("quotes, x402 and isolated settlement", () => {
       await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
       await evm.test.mine({ blocks: 1 });
       await buyerVault.write.reclaim([holdId]);
-      await buyerVault.write.withdrawAvailable([10000000n]);
       assert.equal(await evm.contract.read.totalHeld(), 0n);
-      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
       assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
     },
   );
@@ -2090,14 +2095,7 @@ describe("quotes, x402 and isolated settlement", () => {
         abi: evm.vaultArtifact.abi,
         client: { public: evm.client, wallet: buyerClient },
       });
-      const buyerUsdc = getContract({
-        address: ASSET,
-        abi: evm.token.abi,
-        client: { public: evm.client, wallet: buyerClient },
-      });
-      await buyerUsdc.write.approve([evm.vault, 10000000n]);
-      await buyerVault.write.deposit([10000000n]);
-      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      await evm.setGrant(wallet, `0x${"a".repeat(64)}`, evm.grant);
       for (const [role, account] of [
         ["FINANCE_EXECUTOR_ROLE", executor.address],
         ["REFUND_APPROVER_ROLE", approver.address],
@@ -2473,8 +2471,9 @@ describe("quotes, x402 and isolated settlement", () => {
         ).status,
         "RELEASED",
       );
-      assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 79200n);
-      assert.equal(await evm.contract.read.platformClaimable([platformWallet.address]), 800n);
+      // Release pays the provider and the platform straight to their wallets.
+      assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 79200n);
+      assert.equal(await evm.usdc.read.balanceOf([platformWallet.address]), 800n);
       assert.equal(await service().tick(release.decision.decisionId, executor), false);
       await finish(await approvalFor(second, "100000"));
       assert.equal(
@@ -2520,26 +2519,6 @@ describe("quotes, x402 and isolated settlement", () => {
       );
       const readyCount = await db.invocationReady.count();
       assert.equal(readyCount, 8);
-      const providerClient = createWalletClient({
-        account: providerWallet,
-        chain: avalancheFuji,
-        transport: http(evm.rpc),
-      });
-      const platformClient = createWalletClient({
-        account: platformWallet,
-        chain: avalancheFuji,
-        transport: http(evm.rpc),
-      });
-      await getContract({
-        address: evm.vault,
-        abi: evm.vaultArtifact.abi,
-        client: { public: evm.client, wallet: providerClient },
-      }).write.withdrawProvider([79200n]);
-      await getContract({
-        address: evm.vault,
-        abi: evm.vaultArtifact.abi,
-        client: { public: evm.client, wallet: platformClient },
-      }).write.withdrawPlatform([800n]);
       assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 79200n);
       assert.equal(await evm.usdc.read.balanceOf([platformWallet.address]), 800n);
       await evm.test.setNextBlockTimestamp({
@@ -2559,7 +2538,6 @@ describe("quotes, x402 and isolated settlement", () => {
       // Evidence never reached the promised REC floor before resolveBy: the buyer
       // reclaims instead of the provider being paid on weaker evidence.
       await buyerVault.write.reclaim([eighth.protocolQuote.invocationKey]);
-      await buyerVault.write.withdrawAvailable([9920000n]);
       await sync();
       assert.equal(
         (
@@ -2570,7 +2548,8 @@ describe("quotes, x402 and isolated settlement", () => {
         "RECLAIMED",
       );
       assert.equal(await evm.contract.read.totalHeld(), 0n);
-      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 0n);
+      // Refunds and reclaims landed in the wallet; only the paid release left it.
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9920000n);
       const count = await db.vaultFinancialEvent.count();
       await sync();
       assert.equal(await db.vaultFinancialEvent.count(), count);
@@ -2661,14 +2640,7 @@ describe("quotes, x402 and isolated settlement", () => {
         abi: evm.vaultArtifact.abi,
         client: { public: evm.client, wallet: buyerClient },
       });
-      const buyerUsdc = getContract({
-        address: ASSET,
-        abi: evm.token.abi,
-        client: { public: evm.client, wallet: buyerClient },
-      });
-      await buyerUsdc.write.approve([evm.vault, 10000000n]);
-      await buyerVault.write.deposit([10000000n]);
-      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      await evm.setGrant(wallet, `0x${"a".repeat(64)}`, evm.grant);
       for (const role of ["REFUND_APPROVER_ROLE", "RELEASE_APPROVER_ROLE"])
         await evm.contract.write.grantRole([keccak256(stringToHex(role)), approver.address]);
       await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
@@ -3143,23 +3115,7 @@ describe("quotes, x402 and isolated settlement", () => {
         approver = privateKeyToAccount(generatePrivateKey()),
         providerWallet = privateKeyToAccount(generatePrivateKey());
       await evm.test.setBalance({ address: executor.address, value: 10n ** 20n });
-      const buyerClient = createWalletClient({
-        account: wallet,
-        chain: avalancheFuji,
-        transport: http(evm.rpc),
-      });
-      const buyerVault = getContract({
-        address: evm.vault,
-        abi: evm.vaultArtifact.abi,
-        client: { public: evm.client, wallet: buyerClient },
-      });
-      await getContract({
-        address: ASSET,
-        abi: evm.token.abi,
-        client: { public: evm.client, wallet: buyerClient },
-      }).write.approve([evm.vault, 10000000n]);
-      await buyerVault.write.deposit([10000000n]);
-      await buyerVault.write.registerGrant([`0x${"a".repeat(64)}`, evm.grant]);
+      await evm.setGrant(wallet, `0x${"a".repeat(64)}`, evm.grant);
       for (const [role, account] of [
         ["FINANCE_EXECUTOR_ROLE", executor.address],
         ["REFUND_APPROVER_ROLE", approver.address],
@@ -3248,8 +3204,8 @@ describe("quotes, x402 and isolated settlement", () => {
       assert.equal(await status(delivered), "RELEASED");
       assert.equal(await status(silent), "REFUNDED");
       assert.equal(await evm.contract.read.totalHeld(), 0n);
-      assert.equal(await evm.contract.read.providerClaimable([providerWallet.address]), 99000n);
-      assert.equal(await evm.contract.read.availableBalance([wallet.address]), 9900000n);
+      assert.equal(await evm.usdc.read.balanceOf([providerWallet.address]), 99000n);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9900000n);
       assert.equal(await auto.propose(), 0, "closed holds are never decided again");
       const rows = await db.financeDecision.findMany();
       assert.equal(rows.length, 3);
@@ -3374,4 +3330,261 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(await db.settlementAttempt.count(), 1);
     assert.equal(await db.financeDecision.count(), 0);
   });
+
+  it("pauses a buyer whose relayed fundings keep reverting on chain", async () => {
+    for (let i = 0; i < 3; i++) {
+      sessionId = randomUUID();
+      await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+      const { operation } = await pending(await quote());
+      await db.settlementOperation.update({
+        where: { invocationId: operation.invocationId },
+        data: { state: "REJECTED", errorReason: "transaction_reverted" },
+      });
+    }
+    assert.equal(await fundingThrottled(db, buyerId), true);
+    assert.equal(await fundingThrottled(db, buyerId, new Date(Date.now() + 3600_001)), false);
+    sessionId = randomUUID();
+    await db.chatThread.create({ data: { id: sessionId, buyerId, appId: productId } });
+    const q = await quote();
+    const p = await payment(q);
+    const mock = mockVault(readQuote(q.protocolQuote), vault, grantSigner.address, relayer.address);
+    await mock.chain.initialize();
+    await assert.rejects(
+      createPaymentValidator(db, mock.chain, `${api}/v1/invocations`)(p, paymentRequirements(q)),
+      /payment_throttled/,
+    );
+    assert.ok(!mock.calls.some((c) => c.method === "simulate"));
+  });
+
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "funds a job straight from the buyer's wallet signature on real local USDC",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      await db.deploymentPolicy.updateMany({ data: { vault: evm.vault } });
+      const local = createFacilitator(
+        {
+          ...facilitatorOptions(true, { RPC_URL: evm.rpc }),
+          VAULT_ADDRESS: evm.vault,
+          EXPECTED_VAULT_CODE_HASH: evm.admission.deployment.expectedCodeHash,
+        },
+        db,
+        new MemoryJobs(),
+        evm.admission as VaultChain,
+      );
+      await app.close();
+      app = createApp(
+        { ...config, VAULT_ADDRESS: evm.vault, PAYMENTS_ENABLED: true },
+        db,
+        undefined,
+        undefined,
+        local,
+      );
+      await app.ready();
+      const q = await quote();
+      // No grant, no allowance, no deposit: the wallet's own signature pays.
+      assert.equal(await evm.usdc.read.allowance([wallet.address, evm.vault]), 0n);
+      const gasBefore = await evm.client.getBalance({ address: wallet.address });
+      const required = decodePaymentRequiredHeader(
+        (await submit(q)).headers["payment-required"] as string,
+      );
+      const p = JSON.parse(
+        JSON.stringify(
+          await new x402Client()
+            .register(NETWORK, client(q, { signer: wallet, funding: { mode: "authorization" } }))
+            .createPaymentPayload(required),
+        ),
+      );
+      assert.equal(p.payload.kind, "authorization");
+      const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
+      assert.equal((await submit(q, headers)).statusCode, 503);
+      const queued = await db.settlementOperation.findFirstOrThrow();
+      assert.equal(queued.fundingMode, "AUTHORIZATION");
+      assert.equal(queued.grantId, null);
+      assert.equal(queued.recoveredSigner, wallet.address.toLowerCase());
+      const worker = new SettlementWorker(
+        db,
+        evm.admission,
+        evm.settlement,
+        relayer,
+        `${api}/v1/invocations`,
+        gasPolicy,
+      );
+      await worker.tick();
+      assert.equal(await evm.contract.read.totalHeld(), 100000n);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 9900000n);
+      await scanFinalizedHolds(db, evm.settlement, evm.startBlock);
+      await worker.tick();
+      const operation = await db.settlementOperation.findFirstOrThrow();
+      assert.equal(operation.state, "HELD", operation.errorReason ?? "");
+      assert.equal(await db.invocationReady.count(), 1);
+      const result = await submit(q, headers);
+      assert.equal(result.statusCode, 202, result.body);
+      const receipt = JSON.parse(
+        Buffer.from(result.headers["payment-response"] as string, "base64").toString(),
+      );
+      assert.equal(receipt.extra.fundingMode, "authorization");
+      // The authorization is spent; the buyer never paid gas.
+      assert.equal(await evm.usdc.read.authorizationState([wallet.address, q.quoteDigest]), true);
+      assert.equal(await evm.client.getBalance({ address: wallet.address }), gasBefore);
+      const hold = (await evm.contract.read.getHold([q.protocolQuote.invocationKey])) as {
+        source: number;
+      };
+      assert.equal(hold.source, 1);
+      // Recovery returns the USDC straight to the wallet.
+      const buyerVault = getContract({
+        address: evm.vault,
+        abi: evm.vaultArtifact.abi,
+        client: {
+          public: evm.client,
+          wallet: createWalletClient({
+            account: wallet,
+            chain: avalancheFuji,
+            transport: http(evm.rpc),
+          }),
+        },
+      });
+      await evm.test.setNextBlockTimestamp({ timestamp: BigInt(q.resolveBy) });
+      await evm.test.mine({ blocks: 1 });
+      await buyerVault.write.reclaim([q.protocolQuote.invocationKey]);
+      assert.equal(await evm.usdc.read.balanceOf([wallet.address]), 10000000n);
+      assert.equal(await evm.contract.read.totalHeld(), 0n);
+    },
+  );
+
+  it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(
+    "relays buyer-signed grant changes so the buyer pays no gas, on real local USDC",
+    async () => {
+      const evm = await localEvm(wallet.address, relayer.address, grantSigner.address);
+      onTestFinished(evm.stop);
+      await app.close();
+      app = createApp(
+        { ...config, VAULT_ADDRESS: evm.vault, RELAYER_ADDRESS: relayer.address, RPC_URL: evm.rpc },
+        db,
+      );
+      await app.ready();
+      const grantId = `0x${"c".repeat(64)}` as const;
+      const now = Number((await evm.client.getBlock()).timestamp);
+      const deadline = now + 3600;
+      const grant = { ...evm.grant, maxPerPeriod: 2000000n, maxTotal: 3000000n };
+      const setup = (signer: typeof wallet, nonce: bigint) =>
+        signer.signTypedData(
+          grantSetupTypedData(evm.vault, {
+            buyer: wallet.address,
+            grantId,
+            ...grant,
+            nonce,
+            deadline,
+          }),
+        );
+      const permit = async (value: bigint, nonce: bigint) => ({
+        value: value.toString(),
+        deadline: String(deadline),
+        signature: await wallet.signTypedData(
+          permitTypedData(ASSET, {
+            owner: wallet.address,
+            spender: evm.vault,
+            value,
+            nonce,
+            deadline: BigInt(deadline),
+          }),
+        ),
+      });
+      const setBody = async (signer: typeof wallet) => ({
+        kind: "set",
+        buyer: wallet.address,
+        grantId,
+        config: {
+          signer: grant.signer,
+          expiresAt: grant.expiresAt,
+          maxPerCall: grant.maxPerCall.toString(),
+          periodSeconds: grant.periodSeconds,
+          maxPerPeriod: grant.maxPerPeriod.toString(),
+          maxTotal: grant.maxTotal.toString(),
+        },
+        deadline,
+        signature: await setup(signer, 0n),
+        permit: await permit(grant.maxTotal, 0n),
+      });
+      const post = async (payload: object) =>
+        inject(app, {
+          method: "POST",
+          url: "/v1/grant-operations",
+          headers: { origin, cookie },
+          payload,
+        });
+      const forged = await post(await setBody(grantSigner));
+      assert.equal(forged.statusCode, 400, forged.body);
+      assert.equal(forged.json().error, "INVALID_GRANT_SIGNATURE");
+      const queued = await post(await setBody(wallet));
+      assert.equal(queued.statusCode, 202, queued.body);
+      assert.equal(queued.json().state, "PENDING");
+      const busy = await post(await setBody(wallet));
+      assert.equal(busy.statusCode, 409, busy.body);
+      assert.equal(busy.json().error, "GRANT_OPERATION_PENDING");
+
+      const gasBefore = await evm.client.getBalance({ address: wallet.address });
+      const relay = new GrantRelay(db, evm.settlement, relayer, gasPolicy);
+      const settle = async () => {
+        for (let i = 0; i < 5; i++) {
+          await db.grantOperation.updateMany({ data: { nextCheckAt: new Date(0) } });
+          await relay.tick();
+          const row = await db.grantOperation.findFirst({
+            where: { state: { in: ["FINALIZED", "REVERTED", "REJECTED", "QUARANTINED"] } },
+            orderBy: { createdAt: "desc" },
+          });
+          if (
+            row &&
+            row.createdAt.getTime() ===
+              (
+                await db.grantOperation.findFirstOrThrow({ orderBy: { createdAt: "desc" } })
+              ).createdAt.getTime()
+          )
+            return row;
+        }
+        throw new Error("grant operation did not settle");
+      };
+      const set = await settle();
+      assert.equal(set.state, "FINALIZED", set.errorReason ?? "");
+      const onChain = (await evm.contract.read.getGrant([wallet.address, grantId])) as {
+        epoch: bigint;
+        revoked: boolean;
+      };
+      assert.equal(onChain.epoch, 1n);
+      assert.equal(await evm.usdc.read.allowance([wallet.address, evm.vault]), grant.maxTotal);
+      assert.equal(await evm.client.getBalance({ address: wallet.address }), gasBefore);
+      assert.equal((await db.relayerLane.findFirstOrThrow()).activeGrantOperationId, null);
+      const read = await inject(app, {
+        url: `/v1/grant-operations/${set.id}`,
+        headers: { origin, cookie },
+      });
+      assert.equal(read.json().state, "FINALIZED");
+
+      const revokeSignature = await wallet.signTypedData(
+        grantRevokeTypedData(evm.vault, { buyer: wallet.address, grantId, nonce: 1n, deadline }),
+      );
+      const revokeBody = {
+        kind: "revoke",
+        buyer: wallet.address,
+        grantId,
+        deadline,
+        signature: revokeSignature,
+        permit: await permit(0n, 1n),
+      };
+      const revoke = await post(revokeBody);
+      assert.equal(revoke.statusCode, 202, revoke.body);
+      const revoked = await settle();
+      assert.equal(revoked.state, "FINALIZED", revoked.errorReason ?? "");
+      assert.equal(
+        ((await evm.contract.read.getGrant([wallet.address, grantId])) as { revoked: boolean })
+          .revoked,
+        true,
+      );
+      assert.equal(await evm.usdc.read.allowance([wallet.address, evm.vault]), 0n);
+      // The signature carried nonce 1; the vault has moved on.
+      const replay = await post(revokeBody);
+      assert.equal(replay.statusCode, 400, replay.body);
+      assert.equal(await evm.client.getBalance({ address: wallet.address }), gasBefore);
+    },
+  );
 });

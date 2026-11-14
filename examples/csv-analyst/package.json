@@ -10,15 +10,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mastra/core": "^1.81.0",
-    "papaparse": "^5.5.3",
+    "@mastra/core": "^1.82.0",
+    "papaparse": "^5.7.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@openuidev/lang-core": "^1.0.1",
+    "@openuidev/lang-core": "^1.1.0",
     "@payvoke/shared": "workspace:*",
     "@types/bun": "^1.4.4",
-    "@types/papaparse": "^5.3.16",
+    "@types/papaparse": "^5.5.2",
     "typescript": "^7.0.2"
   }
 }

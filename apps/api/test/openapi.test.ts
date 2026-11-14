@@ -41,6 +41,8 @@ beforeAll(async () => {
   }
   db = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
   const config = loadConfig({
+    MAX_APPS_PER_OWNER: "1000",
+    APP_CREATES_PER_DAY: "1000",
     DATABASE_URL: connectionString,
     // Unused: the test passes in-process signals.
     REDIS_URL: "redis://127.0.0.1:1",
@@ -320,6 +322,7 @@ it("answers each builder route with the documented shape", async () => {
       invocationKey: document.protocolQuote.invocationKey,
       quoteDigest: document.quoteDigest,
       authorizationDigest: `0x${randomBytes(32).toString("hex")}`,
+      fundingMode: "GRANT",
       recoveredSigner: wallet.address,
       paymentPayload: {},
       state: "HELD",

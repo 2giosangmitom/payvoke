@@ -2,6 +2,7 @@ import type { PrismaClient } from "#core/db";
 import type { ObjectStorage } from "#core/storage";
 import type { Config } from "../config";
 import type { WorkerSignals } from "../signals";
+import { startCleanupWorker } from "./cleanup";
 import { startFinanceWorker } from "./finance";
 import { startJobWorker } from "./job";
 import { startSettlementWorker } from "./settlement";
@@ -27,6 +28,13 @@ export async function startWorkers(
     if (config.SETTLEMENT_WORKER_ENABLED)
       running.push(await startSettlementWorker(config, db, signals));
     if (config.FINANCE_WORKER_ENABLED) running.push(await startFinanceWorker(config, db, signals));
+    if (config.CLEANUP_ENABLED)
+      running.push(
+        await startCleanupWorker(db, storage, {
+          staleAppDays: config.STALE_APP_DAYS,
+          unusedAccountDays: config.UNUSED_ACCOUNT_DAYS,
+        }),
+      );
   } catch (error) {
     await close().catch(() => {});
     throw error;

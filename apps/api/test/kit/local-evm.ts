@@ -13,8 +13,10 @@ import {
   type Abi,
   type Address,
   type Hex,
+  type LocalAccount,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { grantSetupTypedData, permitTypedData, type GrantConfig } from "@payvoke/shared/protocol";
 import { avalancheFuji } from "viem/chains";
 import { ASSET } from "@payvoke/shared/x402";
 import { VaultChain } from "@payvoke/shared/x402/chain";
@@ -73,14 +75,25 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
     const token = await artifact("test/MockUSDC.sol/MockUSDC.json");
     const vaultArtifact = await artifact("PayvokeVault.sol/PayvokeVault.json");
     const test = createTestClient({ mode: "hardhat", transport: http(rpc) });
-    await test.setCode({ address: ASSET, bytecode: token.deployedBytecode });
-    await test.setBalance({ address: buyer, value: 10n ** 20n });
-    await test.setBalance({ address: relayer, value: 10n ** 20n });
     const adminWallet = createWalletClient({
       account: admin,
       chain: avalancheFuji,
       transport: http(rpc),
     });
+    // Deploy once so EIP-712 immutables (name/version hashes) are filled, then
+    // place that runtime at the Fuji USDC address the app is pinned to.
+    const tokenDeploy = await adminWallet.deployContract({
+      abi: token.abi,
+      bytecode: token.bytecode,
+    });
+    const tokenAddress = (await client.waitForTransactionReceipt({ hash: tokenDeploy }))
+      .contractAddress!;
+    await test.setCode({
+      address: ASSET,
+      bytecode: (await client.getCode({ address: tokenAddress }))!,
+    });
+    await test.setBalance({ address: buyer, value: 10n ** 20n });
+    await test.setBalance({ address: relayer, value: 10n ** 20n });
     const hash = await adminWallet.deployContract({
       abi: vaultArtifact.abi,
       bytecode: vaultArtifact.bytecode,
@@ -102,6 +115,8 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
     await usdc.write.mint([buyer, 10000000n]);
     const role = (await contract.read.RELAYER_ROLE()) as Hex;
     await contract.write.grantRole([role, relayer]);
+    // The admin relays grant setups in tests, off the settlement relayer's nonce lane.
+    await contract.write.grantRole([role, admin.address]);
     const code = await client.getCode({ address: vault });
     if (!code) throw new Error("Missing local runtime");
     const deployment = {
@@ -139,6 +154,40 @@ export async function localEvm(buyer: Address, relayer: Address, grantSigner: Ad
         maxTotal: 10000000n,
       },
       startBlock: receipt.blockNumber,
+      // The buyer signs a grant setup and a permit for `allowance`; the admin
+      // relays them, as the relayer does for setGrantWithSig in production.
+      async setGrant(
+        owner: LocalAccount,
+        grantId: Hex,
+        config: GrantConfig,
+        allowance = config.maxTotal,
+      ) {
+        const now = Number((await client.getBlock()).timestamp);
+        const deadline = now + 3600;
+        const nonce = (await contract.read.grantNonces([owner.address])) as bigint;
+        const permitNonce = (await usdc.read.nonces([owner.address])) as bigint;
+        const setup = await owner.signTypedData(
+          grantSetupTypedData(vault, { buyer: owner.address, grantId, ...config, nonce, deadline }),
+        );
+        const permit = await owner.signTypedData(
+          permitTypedData(ASSET, {
+            owner: owner.address,
+            spender: vault,
+            value: allowance,
+            nonce: permitNonce,
+            deadline: BigInt(deadline),
+          }),
+        );
+        const tx = await contract.write.setGrantWithSig([
+          owner.address,
+          grantId,
+          config,
+          deadline,
+          setup,
+          { value: allowance, deadline: BigInt(deadline), signature: permit },
+        ]);
+        await client.waitForTransactionReceipt({ hash: tx as Hex });
+      },
       stop,
     };
   } catch (error) {

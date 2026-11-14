@@ -33,13 +33,14 @@ function applyDelta(timeline: Timeline, delta: TimelineDelta): Timeline {
 // The thread as the API projects it, kept live over SSE: every connection
 // starts with a whole `timeline`, structural changes resend it, and text
 // tokens arrive as `delta` events. A dropped stream reconnects with backoff
-// and the first timeline after it replaces whatever was missed.
-export function useThreadTimeline(threadId: string) {
+// and the first timeline after it replaces whatever was missed. A draft chat
+// (null) has no thread yet: nothing is fetched and no stream is opened.
+export function useThreadTimeline(threadId: string | null) {
   const queryClient = useQueryClient();
-  const key = timelineKey(threadId);
   const timeline = useQuery({
-    queryKey: key,
-    queryFn: () => getTimeline(threadId),
+    queryKey: timelineKey(threadId ?? ""),
+    queryFn: () => getTimeline(threadId!),
+    enabled: Boolean(threadId),
     staleTime: Number.POSITIVE_INFINITY,
   });
   const [connection, setConnection] = useState<{ phase: ConnectionPhase; attempt: number }>({
@@ -48,6 +49,7 @@ export function useThreadTimeline(threadId: string) {
   });
 
   useEffect(() => {
+    if (!threadId) return;
     let closed = false;
     let source: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;

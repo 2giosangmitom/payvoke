@@ -1,5 +1,5 @@
 import type { PaymentPayload, PaymentRequirements, SettleResponse } from "@x402/core/types";
-import { NETWORK } from "@payvoke/shared/x402";
+import { NETWORK, SCHEME_VERSION } from "@payvoke/shared/x402";
 import { VaultValidationError } from "@payvoke/shared/x402/facilitator";
 import type { VaultChain } from "@payvoke/shared/x402/chain";
 import { getAddress } from "viem";
@@ -64,7 +64,8 @@ export function createSettlementService(
         payer: bound.document.protocolQuote.buyer,
         amount: bound.document.grossAmount,
         extra: {
-          schemeVersion: "1",
+          schemeVersion: SCHEME_VERSION,
+          fundingMode: bound.intent.mode,
           invocationId: bound.row.invocationId,
           quoteId: bound.row.id,
           holdId: operation.invocationKey,

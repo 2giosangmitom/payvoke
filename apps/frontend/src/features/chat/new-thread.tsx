@@ -1,12 +1,11 @@
 import { useDeferredValue, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Search, Star, Store } from "lucide-react";
 import { BlurFade } from "@/src/components/ui/blur-fade";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Skeleton } from "@/src/components/ui/skeleton";
-import { Spinner } from "@/src/components/ui/spinner";
 import {
   EmptyState,
   ErrorNotice,
@@ -18,7 +17,6 @@ import { WalletAccess } from "@/src/features/auth/wallet-access";
 import { authClient } from "@/src/features/auth/auth-client";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
 import { getStars, listProviderApps } from "@/src/features/apps/api";
-import { newThread } from "@/src/features/chat/api";
 import { cn } from "@/src/lib/utils";
 
 type Pick = {
@@ -33,24 +31,12 @@ type Pick = {
 const matches = (app: Pick, q: string) =>
   !q || app.name.toLowerCase().includes(q) || (app.description ?? "").toLowerCase().includes(q);
 
-function AgentPick({
-  app,
-  note,
-  busy,
-  disabled,
-  onStart,
-}: {
-  app: Pick;
-  note: string;
-  busy: boolean;
-  disabled: boolean;
-  onStart: () => void;
-}) {
+function AgentPick({ app, note, onStart }: { app: Pick; note: string; onStart: () => void }) {
   const available = app.availability === "AVAILABLE";
   return (
     <button
       type="button"
-      disabled={disabled || !available}
+      disabled={!available}
       onClick={onStart}
       className="group flex w-full items-center gap-4 border border-border bg-background p-4 text-left transition-[border-color,background-color] duration-150 ease-out hover:border-primary/50 hover:bg-primary-soft/40 focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background"
     >
@@ -73,7 +59,7 @@ function AgentPick({
           "grid size-9 shrink-0 place-items-center border border-border text-muted-foreground transition-[color,border-color,translate] duration-150 ease-out group-hover:border-primary group-hover:text-primary group-enabled:group-hover:translate-x-0.5",
         )}
       >
-        {busy ? <Spinner /> : <ArrowRight size={16} />}
+        <ArrowRight size={16} />
       </span>
       <span className="sr-only">Start a chat with {app.name}</span>
     </button>
@@ -133,8 +119,6 @@ export function NewThread() {
   const user = session?.user.id;
   const [search, setSearch] = useState("");
   const q = useDeferredValue(search).trim().toLowerCase();
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
   const stars = useQuery({
     queryKey: ["stars", user],
     queryFn: getStars,
@@ -163,27 +147,12 @@ export function NewThread() {
   const total = savedApps.length + ownApps.length;
   const loading = sessionPending || (Boolean(user) && (stars.isPending || owned.isPending));
 
-  const start = useMutation({
-    mutationFn: (appId: string) => newThread(appId),
-    onMutate: (appId) => {
-      setBusy(appId);
-      setError("");
-    },
-    onSuccess: (thread) =>
-      void navigate({ to: "/console/chat/$threadId", params: { threadId: thread.id } }),
-    onError: (cause) => setError(errorMessage(cause, "Could not start a chat.")),
-    onSettled: () => setBusy(""),
-  });
+  // Opens the chat straight away; the thread is created on the first message.
+  const start = (appId: string) =>
+    void navigate({ to: "/console/chat/new/$appId", params: { appId } });
 
   const pick = (app: Pick, note: string) => (
-    <AgentPick
-      key={app.id}
-      app={app}
-      note={note}
-      busy={busy === app.id}
-      disabled={Boolean(busy)}
-      onStart={() => start.mutate(app.id)}
-    />
+    <AgentPick key={app.id} app={app} note={note} onStart={() => start(app.id)} />
   );
 
   return (
@@ -239,7 +208,6 @@ export function NewThread() {
                 {errorMessage(stars.error, "Could not load your saved agents.")}
               </ErrorNotice>
             )}
-            {error && <ErrorNotice>{error}</ErrorNotice>}
 
             {loading ? (
               <PickSkeleton />

@@ -117,11 +117,14 @@ export async function handleReady(
     const cvText = await extractCvText(bytes, job.fileName);
 
     if (!cvText || cvText.length < 20) {
+      await run.progress("download", `Không thể đọc nội dung ${job.fileName}`, "failed");
       await run.startText(`error-${run.runId}`);
       await run.text(`Không thể đọc được nội dung văn bản từ tệp CV đã tải lên. Vui lòng đảm bảo tệp ở định dạng PDF, DOCX hoặc TXT hợp lệ.`);
       await run.finish({ type: "failed", data: { reason: "unreadable_file" } });
       return;
     }
+
+    await run.progress("download", `Đã đọc nội dung ${job.fileName}`, "done");
 
     await run.progress("ai_analysis", `Đang đọc CV, đánh giá hồ sơ và tìm kiếm việc làm theo khu vực...`);
     await run.startText(`result-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
@@ -175,6 +178,8 @@ export async function handleReady(
     await run.endText();
     job.artifactVersion += 1;
     await jobs.put(ev.invocationId, job);
+
+    await run.progress("ai_analysis", "Đã đánh giá hồ sơ & tìm kiếm việc làm", "done");
 
     await run.finish({
       type: "result",
@@ -258,6 +263,8 @@ export async function handleRevision(api: Payvoke, ev: RevisionEvent & { id: str
 
     job.artifactVersion += 1;
     await jobs.put(ev.invocationId, job);
+
+    await run.progress("revision", "Đã tinh chỉnh báo cáo theo phản hồi", "done");
 
     await run.finish({
       type: "result",

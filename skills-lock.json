@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "skills": {
+    "remotion-best-practices": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-best-practices/SKILL.md",
+      "computedHash": "562d0482f6aba777059ee4185a4aa997ffec8388ebeae1ad1dbe749f0127d37b"
+    },
+    "remotion-captions": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-captions/SKILL.md",
+      "computedHash": "4e3af217554259b375767b677ab5a9542b49ccd9ba9163607d7a242e88b70d89"
+    },
+    "remotion-create": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-create/SKILL.md",
+      "computedHash": "163c270f5c0341fb3fab42228207dc9ed7f29f07b5ce54621411d0bf5d07aebf"
+    },
+    "remotion-docs": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-docs/SKILL.md",
+      "computedHash": "99b2804fdd0db0cef0c57c2a3b9107913b6b64a3a9e9a6fe6f02cd51edb95c44"
+    },
+    "remotion-interactivity": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-interactivity/SKILL.md",
+      "computedHash": "154e71c65f4336f9b48735bb0a684b64e3169fe375e036629bfae762f68b2f6a"
+    },
+    "remotion-license": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-license/SKILL.md",
+      "computedHash": "63104145784296e66c0e6a5ecec944ffb1ded4f2ee99d65004f72c46eddd52b7"
+    },
+    "remotion-maps": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-maps/SKILL.md",
+      "computedHash": "6a76249cdcb43e42c9eb58d3fae0f71ed2d816e05fdab27b41fb50cda9383c7a"
+    },
+    "remotion-markup": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-markup/SKILL.md",
+      "computedHash": "cf8bdc64243ebcedc8a9edfa451ba290c3151951d038b9933aca9c8795342d61"
+    },
+    "remotion-multimedia": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-multimedia/SKILL.md",
+      "computedHash": "bf59e25c15e1217549a4f40afb7e55575840a28b0c40bc255a73931c62a3503a"
+    },
+    "remotion-render": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-render/SKILL.md",
+      "computedHash": "f672299df7dacbc1c32904e52d5577d6fafd1aa9e74d12a8eb9caac0810ed814"
+    },
+    "remotion-saas": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-saas/SKILL.md",
+      "computedHash": "a2d53713acf5cb88a2b2e35a7fa3f1c520b26fb09fd2993a50c8040221af21e4"
+    },
+    "remotion-studio": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-studio/SKILL.md",
+      "computedHash": "5c66db6fcb7dc05b0e1d3178f78f5fd184c010a63f86bdac2ed092adfc684a43"
+    },
+    "remotion-upgrade": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-upgrade/SKILL.md",
+      "computedHash": "8fc5406b280366ec0dd09fc221e9e640081549599d55dfa476e60b076e72d58d"
+    },
+    "threejs-animation": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-animation/SKILL.md",
+      "computedHash": "52acf24ba76b47b094e5734622947fcc85deebf2469bb5c8ef77a1f1dcfc3e5c"
+    },
+    "threejs-asset-pipeline": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-asset-pipeline/SKILL.md",
+      "computedHash": "be5c2bbda841382229d99182f88e94eba8974474bd065b994e881bb9cc2058d8"
+    },
+    "threejs-fundamentals": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-fundamentals/SKILL.md",
+      "computedHash": "c0293a5eaf5168cdbeb1e9bfc5d5b7aa24396f604a8695b26a72d833c2352108"
+    },
+    "threejs-geometry": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-geometry/SKILL.md",
+      "computedHash": "cae4d8f02ffe449edbc33a2a9ba79020dcb415e7c187d48ed8ffc166207d2e77"
+    },
+    "threejs-interaction": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-interaction/SKILL.md",
+      "computedHash": "3a9d60c473947217f2bd9fbdfb12084e55ae2f240aa6fc718f61c55a73d6fb34"
+    },
+    "threejs-lighting": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-lighting/SKILL.md",
+      "computedHash": "231a7aec3b2d6aa061026397b5453b22518ac9391eb0f31164bfd06dd4bcacd6"
+    },
+    "threejs-loaders": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-loaders/SKILL.md",
+      "computedHash": "f43a0994b7bead131c51361ff347ea7b2db48ec64994a8ee263171c692beac88"
+    },
+    "threejs-materials": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-materials/SKILL.md",
+      "computedHash": "8dbeb3cc26e0825e0bb6857bcdab04d997a31d8a2d685d850cdfce98df4c875d"
+    },
+    "threejs-performance": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-performance/SKILL.md",
+      "computedHash": "5aa6eb8103c8f882f86a48c65245f1e8f1c48e83abc888e0d7a37833e7d9188b"
+    },
+    "threejs-postprocessing": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-postprocessing/SKILL.md",
+      "computedHash": "21ba7ee7155d7ad8643bafc0a832d29bf87a37b24acd5e4201a0b7c01470ab09"
+    },
+    "threejs-react-three-fiber": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-react-three-fiber/SKILL.md",
+      "computedHash": "c584eb40814c9dba186a555adb9fa4acba84f4c40d47fd5b30fc90415f8ca53a"
+    },
+    "threejs-shaders": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-shaders/SKILL.md",
+      "computedHash": "af0a4cdfc80390b30a898bb5a3fe30e4f61b304776a9aebbdb7451b0fc1c2c0f"
+    },
+    "threejs-textures": {
+      "source": "CloudAI-X/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-textures/SKILL.md",
+      "computedHash": "73544dc3606b38270ddd909d57fd8a5df8291c3bae432417cf3f797ab1ca1fd3"
+    }
+  }
+}

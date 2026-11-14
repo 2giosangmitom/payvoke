@@ -3,10 +3,13 @@ import {
   canonicalSnapshot,
   hashQuote,
   hashAuthorization,
+  hashReceiveAuthorization,
   hashSnapshot,
   paymentTypes,
+  receiveAuthorizationTypedData,
   vaultDomain,
   type DebitAuthorization,
+  type FundingMode,
   type InvocationQuote,
   type Json,
 } from "@payvoke/shared/protocol";
@@ -34,7 +37,8 @@ import type {
 
 export const NETWORK = "eip155:43113" as const;
 export const ASSET = "0x5425890298aed601595a70AB815c96711a31Bc65" as const;
-export const SCHEME = "payvoke-vault";
+export const SCHEME = "payvoke-escrow";
+export const SCHEME_VERSION = "2";
 
 // Integers on the wire are canonical decimal strings, including uint16/uint48.
 export type WireQuote = { [K in keyof InvocationQuote]: string };
@@ -297,15 +301,37 @@ export function paymentRequirements(document: QuoteDocument): PaymentRequirement
     payTo: document.vault,
     maxTimeoutSeconds: document.quoteLifetimeSeconds,
     extra: {
-      schemeVersion: "1",
+      schemeVersion: SCHEME_VERSION,
       paymentFlow: "upfront",
       vault: document.vault,
       invocationId: document.invocationId,
       quoteId: document.quoteId,
       quoteDigest: document.quoteDigest,
       quote: document.protocolQuote,
+      // "authorization": the buyer's wallet signs a USDC ReceiveWithAuthorization
+      // for this quote. "grant": a spending grant's signer signs a debit.
+      funding: ["authorization", "grant"],
+      eip3009: {
+        primaryType: "ReceiveWithAuthorization",
+        name: "USD Coin",
+        version: "2",
+        validAfter: "0",
+        validBefore: String(document.validUntil),
+        nonce: document.quoteDigest,
+      },
     },
   };
+}
+
+// The USDC authorization the buyer's own wallet signs to pay one quote.
+export function authorizationTypedData(document: QuoteDocument) {
+  const vault = getAddress(document.vault);
+  return receiveAuthorizationTypedData(
+    getAddress(document.asset),
+    vault,
+    readQuote(document.protocolQuote),
+    document.quoteDigest,
+  );
 }
 
 // The EIP-712 debit the grant's signer signs to pay for one quote.
@@ -318,30 +344,85 @@ export function debitTypedData(document: QuoteDocument, grantId: Hex, grantEpoch
   } as const;
 }
 
-// The x402 v2 payment for a signed debit, base64 of its JSON as the
-// PAYMENT-SIGNATURE header carries it. All envelope values are ASCII.
-export function paymentSignatureHeader(
+export type PaymentBody =
+  | { kind: "authorization"; signature: Hex }
+  | {
+      kind: "grant";
+      authorization: { quoteDigest: Hex; grantId: Hex; grantEpoch: string };
+      signature: Hex;
+    };
+
+export function authorizationPayment(signature: Hex): PaymentBody {
+  return { kind: "authorization", signature };
+}
+
+export function grantPayment(
   document: QuoteDocument,
   grantId: Hex,
   grantEpoch: bigint,
   signature: Hex,
+): PaymentBody {
+  return {
+    kind: "grant",
+    authorization: {
+      quoteDigest: document.quoteDigest,
+      grantId,
+      grantEpoch: grantEpoch.toString(),
+    },
+    signature,
+  };
+}
+
+// The x402 v2 payment, base64 of its JSON as the PAYMENT-SIGNATURE header
+// carries it. All envelope values are ASCII.
+export function paymentSignatureHeader(
+  document: QuoteDocument,
+  payload: PaymentBody,
   resourceUrl: string,
 ) {
   const envelope = {
     x402Version: 2,
     accepted: paymentRequirements(document),
     resource: { url: resourceUrl, method: "POST" },
-    payload: {
-      authorization: {
-        quoteDigest: document.quoteDigest,
-        grantId,
-        grantEpoch: grantEpoch.toString(),
-      },
-      signature,
-    },
+    payload,
   };
   return btoa(JSON.stringify(envelope));
 }
+
+const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
+
+function ecdsaSignature(signature: unknown): Hex {
+  if (typeof signature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
+    throw new Error("Invalid ECDSA signature");
+  }
+  const s = BigInt(`0x${signature.slice(66, 130)}`);
+  const v = signature.slice(130).toLowerCase();
+  if (s === 0n || s > SECP256K1_HALF_N || !["1b", "1c"].includes(v))
+    throw new Error("Invalid ECDSA signature");
+  return signature.toLowerCase() as Hex;
+}
+
+// A buyer signature may come from an EOA (65 bytes, canonical) or a contract
+// wallet (ERC-1271/ERC-6492, any length up to a bound). Validity is checked
+// against the chain, never here.
+function buyerSignature(signature: unknown): Hex {
+  if (typeof signature !== "string" || !/^0x(?:[0-9a-fA-F]{2}){65,4096}$/.test(signature)) {
+    throw new Error("Invalid buyer signature");
+  }
+  return signature.length === 132 ? ecdsaSignature(signature) : (signature.toLowerCase() as Hex);
+}
+
+export type PaymentIntent = {
+  mode: FundingMode;
+  // The grant debit; null when the buyer's wallet authorized the payment itself.
+  authorization: DebitAuthorization | null;
+  signature: Hex;
+  // The grant signer recovered from the debit, or the quote's buyer when the
+  // buyer's wallet signed. Neither is trusted until the chain is checked.
+  signer: Address;
+  authorizationDigest: Hex;
+  paymentPayload: PaymentPayload;
+};
 
 // Local envelope/signature integrity only. The recovered EOA is NOT trusted as
 // the grant signer until the worker reads the grant and simulates reserveHold.
@@ -349,8 +430,8 @@ export async function readPaymentIntent(
   document: QuoteDocument,
   value: unknown,
   resourceUrl: string,
-) {
-  validateQuoteDocument(
+): Promise<PaymentIntent> {
+  const q = validateQuoteDocument(
     document,
     getAddress(document.vault),
     getAddress(document.protocolQuote.buyer),
@@ -365,7 +446,20 @@ export async function readPaymentIntent(
   if (resource.url !== resourceUrl || resource.method !== "POST")
     throw new Error("Invalid payment resource");
   const payload = object(envelope.payload);
-  keys(payload, ["authorization", "signature"]);
+  const vault = getAddress(document.vault);
+  if (payload.kind === "authorization") {
+    keys(payload, ["kind", "signature"]);
+    return {
+      mode: "authorization",
+      authorization: null,
+      signature: buyerSignature(payload.signature),
+      signer: q.buyer,
+      authorizationDigest: hashReceiveAuthorization(vault, q, document.quoteDigest),
+      paymentPayload: structuredClone(value) as PaymentPayload,
+    };
+  }
+  if (payload.kind !== "grant") throw new Error("Invalid payment kind");
+  keys(payload, ["kind", "authorization", "signature"]);
   const wire = object(payload.authorization);
   keys(wire, ["quoteDigest", "grantId", "grantEpoch"]);
   if (
@@ -376,35 +470,25 @@ export async function readPaymentIntent(
     throw new Error("Invalid authorization");
   const epoch = integer(wire.grantEpoch, 64);
   if (epoch === 0n) throw new Error("Invalid grant epoch");
-  const signature = payload.signature;
-  if (typeof signature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
-    throw new Error("Invalid ECDSA signature");
-  }
-  const s = BigInt(`0x${signature.slice(66, 130)}`);
-  const v = signature.slice(130).toLowerCase();
-  if (
-    s === 0n ||
-    s > 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n ||
-    !["1b", "1c"].includes(v)
-  )
-    throw new Error("Invalid ECDSA signature");
+  const signature = ecdsaSignature(payload.signature);
   const authorization: DebitAuthorization = {
     quoteDigest: document.quoteDigest,
     grantId: wire.grantId.toLowerCase() as Hex,
     grantEpoch: epoch,
   };
-  const domain = vaultDomain(getAddress(document.vault));
-  const recoveredSigner = await recoverTypedDataAddress({
+  const domain = vaultDomain(vault);
+  const signer = await recoverTypedDataAddress({
     domain,
     types: paymentTypes,
     primaryType: "DebitAuthorization",
     message: authorization,
-    signature: signature.toLowerCase() as Hex,
+    signature,
   });
   return {
+    mode: "grant",
     authorization,
-    signature: signature.toLowerCase() as Hex,
-    recoveredSigner,
+    signature,
+    signer,
     authorizationDigest: hashAuthorization(domain, authorization),
     paymentPayload: structuredClone(value) as PaymentPayload,
   };
@@ -440,7 +524,7 @@ export class VaultServerScheme implements SchemeNetworkServer {
       kind.network !== NETWORK ||
       kind.x402Version !== 2 ||
       kind.scheme !== SCHEME ||
-      kind.extra?.schemeVersion !== "1" ||
+      kind.extra?.schemeVersion !== SCHEME_VERSION ||
       !sameAddress(kind.extra?.vault, this.document.vault)
     )
       return "Payvoke facilitator capability mismatch";
@@ -458,9 +542,13 @@ export type AuthorizationRecord = {
   invocationId: string;
   quoteId: string;
   quoteDigest: Hex;
-  authorization: { quoteDigest: Hex; grantId: Hex; grantEpoch: string };
-  signature: Hex;
+  payload: PaymentBody;
 };
+
+// How the client pays: its signer is the buyer's own wallet, or a grant signer.
+export type ClientFunding =
+  | { mode: "authorization" }
+  | { mode: "grant"; grantId: Hex; grantEpoch: bigint };
 
 // The caller validates the immutable inputSchema hash and spending policy, and
 // supplies trusted buyer/vault/resource identity; none is inferred from a 402.
@@ -478,8 +566,7 @@ export class VaultClientScheme implements SchemeNetworkClient {
       vault: Address;
       resourceUrl: string;
       signer: LocalAccount;
-      grantId: Hex;
-      grantEpoch: bigint;
+      funding: ClientFunding;
       maxAmount: bigint;
       persist: (record: AuthorizationRecord) => Promise<void>;
       now?: () => number;
@@ -525,33 +612,31 @@ export class VaultClientScheme implements SchemeNetworkClient {
         q.grossAmount > integer(context.maxAmountPerPayment, 256))
     )
       throw new Error("Spend cap exceeded");
-    if (
-      !isHex(o.grantId, { strict: true }) ||
-      o.grantId.length !== 66 ||
-      o.grantEpoch <= 0n ||
-      o.grantEpoch >= 1n << 64n
-    )
-      throw new Error("Invalid grant");
-    const authorization: DebitAuthorization = {
-      quoteDigest: o.document.quoteDigest,
-      grantId: o.grantId,
-      grantEpoch: o.grantEpoch,
-    };
-    const signature = await o.signer.signTypedData({
-      domain: vaultDomain(o.vault),
-      types: paymentTypes,
-      primaryType: "DebitAuthorization",
-      message: authorization,
-    });
-    const payload = {
-      authorization: { ...authorization, grantEpoch: o.grantEpoch.toString() },
-      signature,
-    };
+    let payload: PaymentBody;
+    if (o.funding.mode === "authorization") {
+      if (getAddress(o.signer.address) !== q.buyer) throw new Error("Signer is not the buyer");
+      payload = authorizationPayment(
+        await o.signer.signTypedData(authorizationTypedData(o.document)),
+      );
+    } else {
+      const { grantId, grantEpoch } = o.funding;
+      if (
+        !isHex(grantId, { strict: true }) ||
+        grantId.length !== 66 ||
+        grantEpoch <= 0n ||
+        grantEpoch >= 1n << 64n
+      )
+        throw new Error("Invalid grant");
+      const signature = await o.signer.signTypedData(
+        debitTypedData(o.document, grantId, grantEpoch),
+      );
+      payload = grantPayment(o.document, grantId, grantEpoch, signature);
+    }
     await o.persist({
       invocationId: o.document.invocationId,
       quoteId: o.document.quoteId,
       quoteDigest: o.document.quoteDigest,
-      ...payload,
+      payload,
     });
     return { x402Version: 2, payload };
   }

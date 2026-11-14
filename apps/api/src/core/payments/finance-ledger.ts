@@ -120,11 +120,9 @@ export async function scanFinancialLifecycle(
       abi: vaultFinanceAbi,
       blockNumber: end,
     } as const;
-    const [available, held, provider, platform, tokens] = await Promise.all([
-      client.readContract({ ...read, functionName: "totalAvailable" }),
+    const [held, claimable, tokens] = await Promise.all([
       client.readContract({ ...read, functionName: "totalHeld" }),
-      client.readContract({ ...read, functionName: "totalProviderClaimable" }),
-      client.readContract({ ...read, functionName: "totalPlatformClaimable" }),
+      client.readContract({ ...read, functionName: "totalClaimable" }),
       client.readContract({
         address: chain.deployment.asset,
         abi: erc20Abi,
@@ -133,8 +131,9 @@ export async function scanFinancialLifecycle(
         blockNumber: end,
       }),
     ]);
-    if (tokens < available + held + provider + platform)
-      throw new FinancialInvariantError("vault_insolvent");
+    // Buyers keep no balance in the vault: it only owes open holds and payouts
+    // it could not deliver.
+    if (tokens < held + claimable) throw new FinancialInvariantError("vault_insolvent");
     const holdIds = [
       ...new Set(logs.flatMap((log) => ("holdId" in log.args ? [log.args.holdId!] : []))),
     ];

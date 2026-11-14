@@ -95,4 +95,3 @@ bun run typecheck
 - Files up to 5 MB (PDF, DOCX, TXT). Text extraction truncates at 15,000 characters to stay within model context limits.
 - State is kept in local JSON files, so run one instance. Feed events are acknowledged before the work starts. If the process dies mid-run, that run is not retried and the delivery deadline refunds the buyer.
 - Free OpenRouter models share a rate-limited pool and often answer `429`. Each model is retried `MODEL_RETRIES` times with backoff, then the agent moves through `FALLBACK_MODELS`. If every model fails, chat sends a fixed reply and paid runs deliver safe fallback responses. To lift the shared limit, add your own Google AI Studio key in OpenRouter's integration settings, or set `MODEL` to a paid model for a public agent.
-

@@ -9,6 +9,7 @@ import {
   UnsupportedMediaTypeError,
 } from "../../errors";
 import type { AccountIdentity } from "../auth/auth.service";
+import { publishBlocker } from "../apps/schema";
 import { serializeOwnedApp, serializeOwnedCommand } from "../apps/serializers";
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, type AppPatch, type NewApp } from "./provider.validation";
 
@@ -32,10 +33,13 @@ const appSelect = {
 export class ProviderAppService {
   private readonly db: Cradle["db"];
   private readonly storage: Cradle["storage"];
+  private readonly maxApps: number;
 
-  constructor({ db, storage }: Cradle) {
+  constructor({ db, storage, config }: Cradle) {
     this.db = db;
     this.storage = storage;
+    // Live agents per owner; archived agents do not count.
+    this.maxApps = config.MAX_APPS_PER_OWNER;
   }
 
   async owned(ownerId: string, appId: string) {
@@ -62,6 +66,10 @@ export class ProviderAppService {
         throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return { created: false, app: serializeOwnedApp(prior) };
     }
+    // A brand-new agent has never connected, so it cannot be listed yet.
+    if (fields.visibility === "PUBLIC") throw new ConflictError("APP_NEVER_CONNECTED");
+    const live = await this.db.app.count({ where: { ownerId, archivedAt: null } });
+    if (live >= this.maxApps) throw new ConflictError("APP_LIMIT_REACHED");
     const app = await this.db.app.upsert({
       where,
       create: { ownerId, clientRequestId, ...fields },
@@ -91,6 +99,16 @@ export class ProviderAppService {
   }
 
   async update(appId: string, data: AppPatch) {
+    if (data.visibility === "PUBLIC" || data.description !== undefined) {
+      const current = await this.db.app.findUniqueOrThrow({ where: { id: appId } });
+      const next = {
+        ...current,
+        description: data.description !== undefined ? data.description : current.description,
+      };
+      const visibility = data.visibility ?? current.visibility;
+      const blocker = visibility === "PUBLIC" ? publishBlocker(next) : null;
+      if (blocker) throw new ConflictError(blocker);
+    }
     return serializeOwnedApp(
       await this.db.app.update({ where: { id: appId }, data, select: appSelect }),
     );
