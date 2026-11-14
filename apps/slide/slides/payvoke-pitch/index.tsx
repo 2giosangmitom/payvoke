@@ -899,25 +899,25 @@ const Architecture: Page = () => (
   </Frame>
 );
 
-// ---------- 11. Doanh thu và bước tiếp theo ----------
+// ---------- 11. Doanh thu và roadmap ----------
 
 const Business: Page = () => (
-  <Frame n="Kinh doanh" title="Doanh thu và bước tiếp theo">
+  <Frame n="Kinh doanh" title="Doanh thu và roadmap">
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 96 }}>
       <div>
         <Label>Doanh thu</Label>
         <Spec k="Phí" w={180}>
-          Phần trăm mỗi job, trừ lúc release
+          5% mỗi job, trừ lúc release cho builder
         </Spec>
         <Spec k="Trần phí" w={180}>
-          Cố định trong contract từ lúc deploy
+          10%, cố định trong contract
         </Spec>
         <Spec k="Job lỗi" w={180}>
           Refund toàn bộ, Payvoke không thu phí
         </Spec>
       </div>
       <div>
-        <Label>Bước tiếp theo</Label>
+        <Label>Roadmap</Label>
         <Row n="01" tone="todo">
           Lên Avalanche mainnet
         </Row>
@@ -1588,12 +1588,12 @@ Vault đang chạy trên Avalanche Fuji testnet.`,
 
   // Business
   `(~35s)
-Payvoke thu phí theo phần trăm trên mỗi job. Phí được trừ lúc release cho builder.
-Trần phí cố định trong contract từ lúc deploy, nên Payvoke không tự tăng được, và phí của từng job đã chốt trong quote. Job bị refund toàn bộ thì Payvoke không thu gì.
-Bước tiếp theo: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, phát hành SDK, và đưa những builder đầu tiên lên Store.
+Payvoke thu 5% trên mỗi job. Phí được trừ lúc release cho builder, nên buyer trả đúng giá trong Offer.
+Trần phí là 10%, ghi cố định trong contract từ lúc deploy. Payvoke không tự tăng quá mức đó được, và phí của từng job đã chốt trong quote. Job bị refund toàn bộ thì Payvoke không thu gì. Job giao trễ được hoàn một phần thì phí chỉ tính trên phần trả cho builder.
+Roadmap: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, phát hành SDK, và đưa những builder đầu tiên lên Store.
 
-Nếu bị hỏi "phí bao nhiêu?":
-Trần phí trên bản deploy Fuji là 10%.`,
+Nếu bị hỏi "buyer không trả gas thì ai trả?":
+Payvoke trả gas cho cả giao dịch ký quỹ lẫn quyết toán. Phí 5% bù lại phần đó, và mỗi job có giá sàn để không job nào rẻ hơn chi phí gas.`,
 
   // Closing
   `(~20s)
@@ -1601,7 +1601,7 @@ Payvoke cho buyer thuê AI agent theo từng job mà không phải trả trướ
 Team Firefly cảm ơn Ban giám khảo. Chúng tôi sẵn sàng nhận câu hỏi.
 
 Nếu bị hỏi "kết quả kém nhưng vẫn giao đúng hạn thì sao?":
-Trong review window, buyer yêu cầu sửa được, số lần sửa theo điều khoản trong Offer đã ký. Buyer chỉ đánh giá được sau khi job đã quyết toán, nên đánh giá phản ánh kết quả thật. Khiếu nại về chất lượng nằm trong bước tiếp theo.
+Trong review window, buyer yêu cầu sửa được, số lần sửa theo điều khoản trong Offer đã ký. Buyer chỉ đánh giá được sau khi job đã quyết toán, nên đánh giá phản ánh kết quả thật. Khiếu nại về chất lượng nằm trong roadmap.
 Nếu bị hỏi "sao không giữ tiền trong database?":
 Để buyer không phải tin Payvoke.`,
 
@@ -1624,7 +1624,7 @@ API key tạo trong Studio với 7 scope. Mọi lệnh ghi đều idempotent.
 File lớn upload qua presigned URL và kiểm SHA-256.
 
 Nếu bị hỏi "sao chưa có SDK?":
-Tài liệu API và hai agent mẫu, CSV Analyst và Job Finder, chỉ dùng fetch và SSE. SDK nằm trong bước tiếp theo.`,
+Tài liệu API và ba agent mẫu (CSV Analyst, Job Finder, CV Reviewer) chỉ dùng fetch và SSE. SDK nằm trong roadmap.`,
 
   // Assistant
   `Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
