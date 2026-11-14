@@ -104,7 +104,7 @@ const options = [
 ];
 
 // Two apps with worker keys and an active policy: "agent" caps its command at
-// 50000, "tool" has no cap. Holds are fixtures, as in the catalog test.
+// 50000, "tool" at 100 USDC. Holds are fixtures, as in the catalog test.
 async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
@@ -144,6 +144,7 @@ async function marketplace() {
       options,
       positionalParameter: "brief",
       terms,
+      maxAmount: "100000000",
       ...extra,
     });
     assert.equal(command.statusCode, 201, command.body);
@@ -238,6 +239,7 @@ it("talks to every app, prices only by offer and takes one result per bot tool c
       description: "x",
       options,
       terms,
+      maxAmount: "100000000",
       ...extra,
     });
   for (const extra of [
@@ -252,7 +254,7 @@ it("talks to every app, prices only by offer and takes one result per bot tool c
   const listed = (await web("GET", `/v1/apps/${agent.appId}`)).json();
   assert.equal(listed.priceCap, "50000");
   assert.equal(listed.commands[0].revision.maxGrossAmount, "50000");
-  assert.equal((await web("GET", `/v1/apps/${tool.appId}`)).json().priceCap, null);
+  assert.equal((await web("GET", `/v1/apps/${tool.appId}`)).json().priceCap, "100000000");
 
   // Every app takes interactions; a quote always needs the bot's offer.
   const toolThread = await tool.thread();
@@ -378,17 +380,39 @@ it("talks to every app, prices only by offer and takes one result per bot tool c
     false,
   );
 
-  // The bot prices freely above the floor on an uncapped command.
+  // A revision registered before caps were required cannot be offered.
+  const legacyThread = await tool.thread();
+  assert.equal((await say(legacyThread, { content: "price it" })).statusCode, 201);
+  const revisionId = (await db.appCommand.findUniqueOrThrow({ where: { id: tool.commandId } }))
+    .activeRevisionId!;
+  await db.appCommandRevision.update({
+    where: { id: revisionId },
+    data: { maxGrossAmount: null },
+  });
+  const uncapped = await tool.worker("POST", `/threads/${legacyThread}/offers`, {
+    clientRequestId: randomUUID(),
+    arguments: { brief: "Three pages" },
+    grossAmount: "5000",
+    summary: "Three pages",
+  });
+  assert.equal(uncapped.statusCode, 422, uncapped.body);
+  assert.equal(uncapped.json().error, "PRICE_CAP_REQUIRED");
+  await db.appCommandRevision.update({
+    where: { id: revisionId },
+    data: { maxGrossAmount: "100000000" },
+  });
+
+  // The bot prices freely between the floor and the command's cap.
   const priced = await tool.worker("POST", `/threads/${toolThread}/offers`, {
     clientRequestId: randomUUID(),
     arguments: { brief: "Three pages" },
-    grossAmount: "900000000",
+    grossAmount: "90000000",
     summary: "Three pages",
   });
   assert.equal(priced.statusCode, 201, priced.body);
   const accepted = await quote({ threadId: toolThread, offerId: priced.json().id });
   assert.equal(accepted.statusCode, 201, accepted.body);
-  assert.equal(accepted.json().grossAmount, "900000000");
+  assert.equal(accepted.json().grossAmount, "90000000");
   assert.equal(accepted.json().inputSnapshot.schemaVersion, 2);
   assert.equal(accepted.json().termsSnapshot.schemaVersion, 2);
 });

@@ -342,9 +342,9 @@
             ]
           },
           "maxAmount": {
-            "description": "Optional cap on every offer for this command, in atomic USDC.",
             "type": "string",
             "pattern": "^[1-9]\\d*$",
+            "description": "Required cap on every offer for this command, in atomic USDC. Buyers see it before they chat.",
             "examples": [
               "2500000"
             ]
@@ -361,6 +361,7 @@
           "name",
           "description",
           "options",
+          "maxAmount",
           "terms"
         ]
       },
@@ -3794,7 +3795,7 @@
             }
           },
           "422": {
-            "description": "Rejected by the deployment policy: `PRICE_ABOVE_MAX`, `PRICE_BELOW_FLOOR`, `POLICY_NOT_CONFIGURED`",
+            "description": "Rejected by the deployment policy: `PRICE_ABOVE_MAX`, `PRICE_BELOW_FLOOR`, `PRICE_CAP_REQUIRED`, `POLICY_NOT_CONFIGURED`",
             "content": {
               "application/json": {
                 "schema": {

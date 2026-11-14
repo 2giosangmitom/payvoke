@@ -83,8 +83,8 @@ export const commandBody = z
     description: z.string(),
     options: z.unknown(),
     positionalParameter: z.string().nullable().optional(),
-    // Prices come from the bot's offers; this optional cap bounds them.
-    maxAmount: z.string().optional(),
+    // Prices come from the bot's offers; this required cap bounds them.
+    maxAmount: z.string(),
     terms: z.unknown(),
     expectedRevisionId: z.string().optional(),
   })
@@ -177,9 +177,10 @@ export const commandDefinition = z
       description:
         "STRING option that receives free text typed after the command. Defaults to the first required string option; null or empty for none.",
     }),
-    maxAmount: usdcAmount
-      .optional()
-      .meta({ description: "Optional cap on every offer for this command, in atomic USDC." }),
+    maxAmount: usdcAmount.meta({
+      description:
+        "Required cap on every offer for this command, in atomic USDC. Buyers see it before they chat.",
+    }),
     terms: commandTerms,
     expectedRevisionId: z.string().optional().meta({
       description: "Updates only: fails with REVISION_CONFLICT unless this is the active revision.",
@@ -252,8 +253,9 @@ export function parseCommandBody(body: CommandBody | undefined) {
       (input.positionalParameter !== "" && positional === null))
   )
     throw new BadRequestError("INVALID_POSITIONAL_PARAMETER");
-  if (input.maxAmount !== undefined && !atomicAmount(input.maxAmount))
-    throw new BadRequestError("INVALID_MAX_AMOUNT");
+  // Every command states its most expensive offer up front, so an agent can
+  // never price a job above what buyers saw in the store.
+  if (!atomicAmount(input.maxAmount)) throw new BadRequestError("INVALID_MAX_AMOUNT");
   if (!validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
   const terms = normalizeTerms(input.terms as Record<string, unknown>);
   return {
@@ -263,7 +265,7 @@ export function parseCommandBody(body: CommandBody | undefined) {
       options,
       inputSchema,
       positionalParameter: positional,
-      maxGrossAmount: input.maxAmount ?? null,
+      maxGrossAmount: input.maxAmount,
       terms,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,

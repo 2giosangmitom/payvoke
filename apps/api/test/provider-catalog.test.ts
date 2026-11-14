@@ -177,6 +177,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       },
     ],
     positionalParameter: "text",
+    maxAmount: "10000",
     terms,
   });
   assert.equal(first.statusCode, 201, first.body);
@@ -185,6 +186,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     name: "Not Valid",
     description: "Invalid command name",
     options: [{ name: "text", type: "STRING", required: true }],
+    maxAmount: "100000000",
     terms,
   });
   assert.equal(invalidName.statusCode, 400, invalidName.body);
@@ -193,6 +195,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
     description: "Explicitly has no positional argument",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: null,
+    maxAmount: "10000",
     terms,
   });
   assert.equal(formOnly.statusCode, 201, formOnly.body);
@@ -209,6 +212,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "escape",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
+        maxAmount: "100000000",
         terms,
       })
     ).statusCode,
@@ -242,8 +246,8 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
       "INVALID_APP_NAME",
     );
   assert.equal(catalog.json().items[0].availability, "AVAILABLE");
-  // No command declares a cap, so offers are bounded only by the policy floor.
-  assert.equal(catalog.json().items[0].priceCap, null);
+  // Every command declares a cap; the card shows the highest one.
+  assert.equal(catalog.json().items[0].priceCap, "10000");
   // Private apps stay out of the public catalog but remain visible to the owner.
   assert.equal(
     catalog.json().items.some((item: { id: string }) => item.id === otherAppId),
@@ -304,7 +308,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   });
   assert.equal(changed.statusCode, 200, changed.body);
   assert.notEqual(changed.json().revision.id, original.id);
-  assert.equal(original.maxGrossAmount, null);
+  assert.equal(original.maxGrossAmount?.toString(), "10000");
   assert.equal(
     (
       await db.appCommandRevision.findUniqueOrThrow({
@@ -1006,6 +1010,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
         name: "old",
         description: "No",
         options: [{ name: "text", type: "STRING", required: true }],
+        maxAmount: "100000000",
         terms,
       })
     ).statusCode,
@@ -1024,6 +1029,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "denied",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
+          maxAmount: "100000000",
           terms,
         },
         restricted.json().secret,
@@ -1045,6 +1051,7 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
           name: "revoked",
           description: "No",
           options: [{ name: "text", type: "STRING", required: true }],
+          maxAmount: "100000000",
           terms,
         },
         restricted.json().secret,
@@ -1075,6 +1082,7 @@ it("releases the thread slot after a failed run and keeps one open invocation pe
     description: "Summarizes text",
     options: [{ name: "text", type: "STRING", required: true }],
     positionalParameter: "text",
+    maxAmount: "100000000",
     terms: {
       deliverySeconds: 600,
       reviewSeconds: 3600,
@@ -1278,6 +1286,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
     name,
     description: `Runs ${name}`,
     options: [{ name: "text", type: "STRING", required: true }],
+    maxAmount: "1000",
     terms,
     ...extra,
   });
@@ -1334,6 +1343,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
       { name: "audio", type: "FILE", required: true, accept: ["audio/*"], maxBytes: 1000 },
       { name: "extra", type: "FILE", multiple: true },
     ],
+    maxAmount: "100000000",
     terms,
   });
   assert.equal(upload.statusCode, 201, upload.body);
@@ -1356,6 +1366,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
           name: `f${randomBytes(3).toString("hex")}`,
           description: "x",
           options: [option],
+          maxAmount: "100000000",
           terms,
         })
       ).statusCode,
@@ -1365,7 +1376,12 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
 
 it("retires stale agents, deletes unused accounts and orphaned objects", async () => {
   const owner = await db.user.create({
-    data: { id: randomUUID(), name: "owner", email: `${randomUUID()}@t.test`, emailVerified: false },
+    data: {
+      id: randomUUID(),
+      name: "owner",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+    },
   });
   const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const ghost = await db.app.create({
@@ -1394,10 +1410,21 @@ it("retires stale agents, deletes unused accounts and orphaned objects", async (
   assert.equal((await db.app.findUniqueOrThrow({ where: { id: fresh.id } })).status, "ACTIVE");
 
   const idle = await db.user.create({
-    data: { id: randomUUID(), name: "idle", email: `${randomUUID()}@t.test`, emailVerified: false, createdAt: old },
+    data: {
+      id: randomUUID(),
+      name: "idle",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+      createdAt: old,
+    },
   });
   const recent = await db.user.create({
-    data: { id: randomUUID(), name: "recent", email: `${randomUUID()}@t.test`, emailVerified: false },
+    data: {
+      id: randomUUID(),
+      name: "recent",
+      email: `${randomUUID()}@t.test`,
+      emailVerified: false,
+    },
   });
   await deleteUnusedAccounts(db, 14);
   assert.equal(await db.user.findUnique({ where: { id: idle.id } }), null);
@@ -1410,7 +1437,10 @@ it("retires stale agents, deletes unused accounts and orphaned objects", async (
   await storage.put("files/young", "x");
   storage.modified.set("files/young", new Date());
   await storage.put("app-images/kept", "x");
-  await db.app.update({ where: { id: fresh.id }, data: { imageKey: "app-images/kept", imageType: "image/png" } });
+  await db.app.update({
+    where: { id: fresh.id },
+    data: { imageKey: "app-images/kept", imageType: "image/png" },
+  });
   assert.equal(await deleteOrphanObjects(db, storage), 1);
   assert.deepEqual([...storage.objects.keys()].sort(), ["app-images/kept", "files/young"]);
 });

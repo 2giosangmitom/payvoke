@@ -229,9 +229,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "",
-    "createdAt": "",
-    "updatedAt": "",
+    "archivedAt": "2026-11-14T07:42:33.505Z",
+    "createdAt": "2026-11-14T07:42:33.505Z",
+    "updatedAt": "2026-11-14T07:42:33.505Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -279,7 +279,7 @@ array of [Command](#scalar-schema-command)
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": ""
+      "createdAt": "2026-11-14T07:42:33.507Z"
     }
   }
 ]
@@ -409,9 +409,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "",
-    "createdAt": "",
-    "updatedAt": "",
+    "archivedAt": "2026-11-14T07:42:33.525Z",
+    "createdAt": "2026-11-14T07:42:33.525Z",
+    "updatedAt": "2026-11-14T07:42:33.525Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -459,7 +459,7 @@ array of [Command](#scalar-schema-command)
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": ""
+      "createdAt": "2026-11-14T07:42:33.526Z"
     }
   }
 ]
@@ -581,9 +581,9 @@ Requires an app key with the `products:write` scope.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "",
-  "createdAt": "",
-  "updatedAt": "",
+  "archivedAt": "2026-11-14T07:42:33.537Z",
+  "createdAt": "2026-11-14T07:42:33.537Z",
+  "updatedAt": "2026-11-14T07:42:33.537Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -631,7 +631,7 @@ Requires an app key with the `products:write` scope.
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": ""
+    "createdAt": "2026-11-14T07:42:33.538Z"
   }
 }
 ```
@@ -1459,8 +1459,8 @@ no additional properties
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "",
-    "createdAt": ""
+    "readyAt": "2026-11-14T07:42:33.616Z",
+    "createdAt": "2026-11-14T07:42:33.616Z"
   },
   "upload": {
     "url": "",
@@ -1468,7 +1468,7 @@ no additional properties
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": ""
+    "expiresAt": "2026-11-14T07:42:33.617Z"
   }
 }
 ```
@@ -1553,8 +1553,8 @@ Requires an app key with the `files:write` scope.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "",
-  "createdAt": ""
+  "readyAt": "2026-11-14T07:42:33.626Z",
+  "createdAt": "2026-11-14T07:42:33.626Z"
 }
 ```
 
@@ -1627,7 +1627,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": ""
+  "expiresAt": "2026-11-14T07:42:33.631Z"
 }
 ```
 
@@ -1749,7 +1749,7 @@ Requires an app key with the `messages:write` scope.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:42:33.638Z"
 }
 ```
 
@@ -1993,9 +1993,9 @@ Requires an app key with the `offers:write` scope.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "",
+  "expiresAt": "2026-11-14T07:42:33.665Z",
   "quoteId": null,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:42:33.665Z"
 }
 ```
 
@@ -2006,7 +2006,7 @@ Requires an app key with the `offers:write` scope.
 - `403` The key lacks the required scope: \`INSUFFICIENT_SCOPE\`
 - `404` Not found: \`THREAD_NOT_FOUND\`, \`COMMAND_NOT_FOUND\`
 - `409` Conflict with the current state: \`IDEMPOTENCY_CONFLICT\`, \`NO_BUYER_REQUEST\`, \`OFFER_CONFLICT\`
-- `422` Rejected by the deployment policy: \`PRICE_ABOVE_MAX\`, \`PRICE_BELOW_FLOOR\`, \`POLICY_NOT_CONFIGURED\`
+- `422` Rejected by the deployment policy: \`PRICE_ABOVE_MAX\`, \`PRICE_BELOW_FLOOR\`, \`PRICE_CAP_REQUIRED\`, \`POLICY_NOT_CONFIGURED\`
 
 **Content type:** `application/json`
 
@@ -2218,9 +2218,9 @@ A one-shot form. The result is the form's values.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "",
-  "createdAt": "",
-  "updatedAt": "",
+  "archivedAt": "2026-11-14T07:42:33.690Z",
+  "createdAt": "2026-11-14T07:42:33.690Z",
+  "updatedAt": "2026-11-14T07:42:33.690Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -2268,7 +2268,7 @@ A one-shot form. The result is the form's values.
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": ""
+    "createdAt": "2026-11-14T07:42:33.690Z"
   }
 }
 ```
@@ -2280,6 +2280,9 @@ A one-shot form. The result is the form's values.
 **Type:** `object`
 
 - **`description` (required)**: `string`, minLength: `1`, maxLength: `2000`
+- **`maxAmount` (required)**: `string`, pattern: `^[1-9]\d*$`
+
+  Required cap on every offer for this command, in atomic USDC. Buyers see it before they chat.
 - **`name` (required)**: `string`, pattern: `^[a-z][a-z0-9_]{0,31}$`
 
   Lowercase slash-command name; `help`, `cancel` and `status` are reserved.
@@ -2290,9 +2293,6 @@ A one-shot form. The result is the form's values.
 - **`expectedRevisionId`**: `string`
 
   Updates only: fails with REVISION_CONFLICT unless this is the active revision.
-- **`maxAmount`**: `string`, pattern: `^[1-9]\d*$`
-
-  Optional cap on every offer for this command, in atomic USDC.
 - **`positionalParameter`**: `string | null`
 
   STRING option that receives free text typed after the command. Defaults to the first required string option; null or empty for none.
@@ -2489,7 +2489,7 @@ An immutable version of a command.
   },
   "deliverySeconds": -9007199254740991,
   "reviewSeconds": -9007199254740991,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:42:33.706Z"
 }
 ```
 
@@ -2661,7 +2661,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": ""
+  "expiresAt": "2026-11-14T07:42:33.723Z"
 }
 ```
 
@@ -2819,8 +2819,8 @@ Every failed request answers this body.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "",
-  "createdAt": ""
+  "readyAt": "2026-11-14T07:42:33.731Z",
+  "createdAt": "2026-11-14T07:42:33.731Z"
 }
 ```
 
@@ -3019,7 +3019,7 @@ The buyer answered a `tool_call` report.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:42:33.745Z"
 }
 ```
 
@@ -3093,9 +3093,9 @@ The buyer answered a `tool_call` report.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "",
+  "expiresAt": "2026-11-14T07:42:33.750Z",
   "quoteId": null,
-  "createdAt": ""
+  "createdAt": "2026-11-14T07:42:33.750Z"
 }
 ```
 
@@ -3518,8 +3518,8 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "",
-    "createdAt": ""
+    "readyAt": "2026-11-14T07:42:33.789Z",
+    "createdAt": "2026-11-14T07:42:33.789Z"
   },
   "upload": {
     "url": "",
@@ -3527,7 +3527,7 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": ""
+    "expiresAt": "2026-11-14T07:42:33.789Z"
   }
 }
 ```

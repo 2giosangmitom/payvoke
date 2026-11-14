@@ -254,6 +254,7 @@ describe("quotes, x402 and isolated settlement", () => {
           },
         },
         positionalParameter: "text",
+        maxGrossAmount: "100000000",
         terms: {
           deliverySeconds: 60,
           reviewSeconds: 30,

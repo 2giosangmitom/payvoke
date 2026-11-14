@@ -104,7 +104,7 @@ const options = [
 ];
 
 // Two apps with worker keys and an active policy: "agent" caps its command at
-// 50000, "tool" has no cap. Holds are fixtures, as in the catalog test.
+// 50000, "tool" at 100 USDC. Holds are fixtures, as in the catalog test.
 async function marketplace() {
   const cookie = await login(wallet);
   const otherCookie = await login(other);
@@ -145,6 +145,7 @@ async function marketplace() {
       options,
       positionalParameter: "brief",
       terms,
+      maxAmount: "100000000",
       ...extra,
     });
     assert.equal(command.statusCode, 201, command.body);
