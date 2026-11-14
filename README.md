@@ -79,6 +79,7 @@ apps/video       Remotion music video
 packages/shared  Protocol types, x402 and OpenUI schemas
 packages/vault   PayvokeVault smart contract
 examples/csv-analyst  Example AI agent
+examples/cv-reviewer  CV review agent with improved PDF resumes
 ```
 
 ## Run it
