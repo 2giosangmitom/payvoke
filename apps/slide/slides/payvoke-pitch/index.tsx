@@ -560,9 +560,6 @@ const Idea: Page = () => (
     <Statement style={{ marginTop: 48 }}>
       Builder không phải tự làm billing. <Em>Buyer không phải trả trước cho agent lạ.</Em>
     </Statement>
-    <Note style={{ marginTop: 24 }}>
-      Mỗi agent có track record công khai từ escrow: tỷ lệ thành công, đúng hạn, refund.
-    </Note>
   </Frame>
 );
 
@@ -639,7 +636,66 @@ const JobFlow: Page = () => (
   </Frame>
 );
 
-// ---------- 6. Vì sao on-chain ----------
+// ---------- 6. Bảo vệ buyer ----------
+
+// One stage of a job and what protects the buyer in it.
+const Guard = ({ stage, children }: { stage: string; children: ReactNode }) => (
+  <div style={{ borderTop: `3px solid ${accent}`, paddingTop: 22 }}>
+    <Label style={{ color: accent, marginBottom: 4 }}>{stage}</Label>
+    {children}
+  </div>
+);
+
+const BuyerProtection: Page = () => (
+  <Frame n="Bảo vệ buyer" title="Buyer được bảo vệ ở mọi bước">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 56 }}>
+      <Guard stage="Trước khi trả">
+        <Row n="01" size={28}>
+          Track record công khai
+        </Row>
+        <Row n="02" size={28}>
+          Nhãn New agent
+        </Row>
+        <Row n="03" size={28}>
+          Giá trần hiện trên Store
+        </Row>
+        <Row n="04" size={28}>
+          Giá chỉ lấy từ Offer
+        </Row>
+      </Guard>
+      <Guard stage="Khi trả">
+        <Row n="05" size={28}>
+          Ký đúng một quote
+        </Row>
+        <Row n="06" size={28}>
+          Hạn mức cho AI assistant
+        </Row>
+        <Row n="07" size={28}>
+          Risk Check trước khi tự trả
+        </Row>
+      </Guard>
+      <Guard stage="Sau khi trả">
+        <Row n="08" size={28}>
+          Tiền ở escrow tới khi giao
+        </Row>
+        <Row n="09" size={28}>
+          Refund khi lỗi hoặc trễ
+        </Row>
+        <Row n="10" size={28}>
+          Yêu cầu sửa, có hạn riêng
+        </Row>
+        <Row n="11" size={28}>
+          Đánh giá sau khi quyết toán
+        </Row>
+      </Guard>
+    </div>
+    <Note style={{ marginTop: 48 }}>
+      Track record tính từ kết quả escrow của 50 job gần nhất. Job chủ agent tự mua không được tính.
+    </Note>
+  </Frame>
+);
+
+// ---------- 7. Vì sao on-chain ----------
 
 const Versus = ({ k, a, b, head }: { k: string; a: string; b: string; head?: boolean }) => (
   <div
@@ -684,14 +740,18 @@ const WhyOnchain: Page = () => (
     <Versus k="Ai giữ tiền" a="Nền tảng, người dùng phải tin" b="Smart contract công khai" />
     <Versus k="Trả cho builder" a="Vướng KYC và ngân hàng từng nước" b="Về thẳng ví của builder" />
     <Versus k="Hoàn tiền" a="Theo quy trình nội bộ" b="Tự động khi lỗi hoặc trễ hạn" />
-    <Versus k="AI tự chi tiêu" a="Cần tài khoản và số dư riêng" b="Hạn mức on-chain, thu hồi được" />
+    <Versus
+      k="AI tự chi tiêu"
+      a="Cần tài khoản và số dư riêng"
+      b="Hạn mức on-chain, thu hồi được"
+    />
     <Statement style={{ marginTop: 40 }}>
       Payvoke <Em>không rút được tiền của buyer.</Em> Luật refund nằm trong contract.
     </Statement>
   </Frame>
 );
 
-// ---------- 7. Tiền đi như thế nào ----------
+// ---------- 8. Tiền đi như thế nào ----------
 
 const MoneyFlow: Page = () => (
   <Frame n="Thanh toán" title="Tiền đi như thế nào">
@@ -707,8 +767,21 @@ const MoneyFlow: Page = () => (
       </svg>
       <Box x={0} y={152} w={360} title="Ví buyer" sub="ký một lần, không gas" />
       <Box x={440} y={152} w={340} title="PayvokeVault" sub="giữ riêng cho job" tone="brand" />
-      <Box x={1090} y={0} w={590} title="Ví builder" sub="giao đúng hạn, sau review window" tone="good" />
-      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund khi lỗi; trễ ít thì hoàn một phần" />
+      <Box
+        x={1090}
+        y={0}
+        w={590}
+        title="Ví builder"
+        sub="giao đúng hạn, sau review window"
+        tone="good"
+      />
+      <Box
+        x={1090}
+        y={152}
+        w={590}
+        title="Ví buyer"
+        sub="refund khi lỗi; trễ ít thì hoàn một phần"
+      />
       <Box x={1090} y={304} w={590} title="Ví buyer" sub="tự rút lại nếu quá hạn quyết định" />
     </div>
     <Note style={{ marginTop: 48 }}>
@@ -717,7 +790,7 @@ const MoneyFlow: Page = () => (
   </Frame>
 );
 
-// ---------- 8. An toàn cho AI assistant ----------
+// ---------- 9. An toàn cho AI assistant ----------
 
 const AgentSafety: Page = () => (
   <Frame n="An toàn" title="Khi AI assistant tự trả tiền">
@@ -762,7 +835,7 @@ const AgentSafety: Page = () => (
   </Frame>
 );
 
-// ---------- 9. Kiến trúc ----------
+// ---------- 10. Kiến trúc ----------
 
 const Architecture: Page = () => (
   <Frame n="Hệ thống" title="Kiến trúc">
@@ -802,8 +875,23 @@ const Architecture: Page = () => (
       <Node x={520} y={290} w={190} h={70} title="Settlement" tone="key" />
       <Node x={725} y={290} w={190} h={70} title="Finance" tone="key" />
       <Node x={930} y={290} w={190} h={70} title="Job" />
-      <Node x={1320} y={40} w={360} h={120} title="Postgres · Redis · S3" sub="job, journal, file" />
-      <Node x={1320} y={280} w={360} h={110} title="PayvokeVault" sub="Avalanche Fuji" tone="brand" />
+      <Node
+        x={1320}
+        y={40}
+        w={360}
+        h={120}
+        title="Postgres · Redis · S3"
+        sub="job, journal, file"
+      />
+      <Node
+        x={1320}
+        y={280}
+        w={360}
+        h={110}
+        title="PayvokeVault"
+        sub="Avalanche Fuji"
+        tone="brand"
+      />
     </div>
     <Note style={{ marginTop: 40 }}>
       React, TanStack Start · Bun, Hono, Prisma · Solidity, Hardhat · x402, EIP-712, EIP-3009
@@ -811,7 +899,7 @@ const Architecture: Page = () => (
   </Frame>
 );
 
-// ---------- 10. Doanh thu và bước tiếp theo ----------
+// ---------- 11. Doanh thu và bước tiếp theo ----------
 
 const Business: Page = () => (
   <Frame n="Kinh doanh" title="Doanh thu và bước tiếp theo">
@@ -847,7 +935,7 @@ const Business: Page = () => (
   </Frame>
 );
 
-// ---------- 11. Closing ----------
+// ---------- 12. Closing ----------
 
 const Closing: Page = () => (
   <Frame bare>
@@ -915,8 +1003,8 @@ const AppendixCover: Page = () => (
       Chi tiết kỹ thuật
     </h2>
     <Note style={{ marginTop: 32 }}>
-      Thực thi job · Giao diện kết quả · Tích hợp · Quote · x402 · Vault · Hạn mức · Risk Check ·
-      Độ tin cậy · Smart contract
+      Thực thi job · Giao diện kết quả · Tích hợp · Quote · x402 · Vault · Hạn mức · Risk Check · Độ
+      tin cậy · Smart contract
     </Note>
   </Frame>
 );
@@ -1390,6 +1478,7 @@ export default [
   Context,
   Idea,
   JobFlow,
+  BuyerProtection,
   WhyOnchain,
   MoneyFlow,
   AgentSafety,
@@ -1437,8 +1526,7 @@ Thứ còn thiếu là một nơi để tìm agent và trả tiền an toàn the
 Payvoke đứng giữa hai phía.
 Builder tự host agent, đăng lên Store và đặt giá cho từng lệnh.
 Buyer là người dùng trên web hoặc một AI assistant. Họ tìm agent trên Store, chat thử miễn phí rồi giao job.
-Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.
-Trước khi thuê, buyer xem track record của agent: tỷ lệ thành công, tỷ lệ giao đúng hạn và tỷ lệ refund trên 50 job gần nhất, lấy từ kết quả escrow. Job do chính chủ agent tự mua không được tính.`,
+Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.`,
 
   // JobFlow
   `(~40s)
@@ -1449,6 +1537,16 @@ Buyer chấp nhận và ký một lần, USDC đi từ ví vào Vault.
 Agent chỉ bắt đầu chạy khi khoản tiền đó đã chốt trên chain.
 Giao đúng hạn thì builder nhận tiền sau thời gian review. Lỗi hoặc trễ thì buyer được refund 100%.
 Trên chain, tiền chỉ di chuyển ở bước 3 và bước 5.`,
+
+  // BuyerProtection
+  `(~40s)
+Gom lại, buyer được bảo vệ ở cả ba giai đoạn của một job.
+Trước khi trả: mỗi agent có track record công khai gồm tỷ lệ thành công, đúng hạn và refund. Agent mới có nhãn riêng. Mỗi lệnh phải khai giá trần trên Store, và giá chỉ lấy từ Offer có cấu trúc, nên agent không thể đòi giá trong tin nhắn chat.
+Khi trả: chữ ký gắn với đúng một quote. Nếu AI assistant trả thay, nó bị giới hạn bởi hạn mức và Risk Check.
+Sau khi trả: tiền nằm trong escrow tới khi giao. Lỗi hoặc trễ thì refund. Buyer được yêu cầu sửa, mỗi lần sửa có hạn riêng. Buyer chỉ đánh giá được sau khi job đã quyết toán, nên đánh giá phản ánh kết quả thật.
+
+Nếu bị hỏi "track record có bị làm giả không?":
+Số liệu lấy từ kết quả escrow trên chain, không từ lời agent. Job chủ agent tự mua không được tính.`,
 
   // WhyOnchain
   `(~40s)
