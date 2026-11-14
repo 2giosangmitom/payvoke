@@ -1,7 +1,7 @@
-import { cvAnalyst, jobMatcher } from "./agents";
+import { jobMatcher } from "./agents";
 import type { Commands } from "./chat";
 import type { InvocationReadyEvent, Payvoke, RevisionEvent, ToolResultEvent } from "./payvoke";
-import { Run } from "./payvoke";
+import { PayvokeError, Run } from "./payvoke";
 import type { CommandName } from "./commands";
 import { jobs, type Job } from "./state";
 import { extractText } from "unpdf";
@@ -30,6 +30,10 @@ async function guard(run: Run, work: () => Promise<void>) {
   try {
     await work();
   } catch (error) {
+    if (error instanceof PayvokeError && (error.status === 409 || error.code.includes("CONFLICT"))) {
+      console.warn(`run ${run.runId}: conflict or already finalized, skipping error reporting: ${error.message}`);
+      return;
+    }
     console.error(`run ${run.runId} failed: ${error instanceof Error ? error.message : error}`);
     try {
       await run.startText(`failed-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
@@ -113,11 +117,14 @@ export async function handleReady(
     const cvText = await extractCvText(bytes, job.fileName);
 
     if (!cvText || cvText.length < 20) {
+      await run.progress("download", `Không thể đọc nội dung ${job.fileName}`, "failed");
       await run.startText(`error-${run.runId}`);
       await run.text(`Không thể đọc được nội dung văn bản từ tệp CV đã tải lên. Vui lòng đảm bảo tệp ở định dạng PDF, DOCX hoặc TXT hợp lệ.`);
       await run.finish({ type: "failed", data: { reason: "unreadable_file" } });
       return;
     }
+
+    await run.progress("download", `Đã đọc nội dung ${job.fileName}`, "done");
 
     await run.progress("ai_analysis", `Đang đọc CV, đánh giá hồ sơ và tìm kiếm việc làm theo khu vực...`);
     await run.startText(`result-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
@@ -134,12 +141,9 @@ export async function handleReady(
       ? `Mục tiêu nghề nghiệp / Trọng tâm bổ sung: ${job.goal}`
       : `Mục tiêu: Đánh giá toàn diện hồ sơ và tìm kiếm các cơ hội việc làm đang tuyển dụng phù hợp nhất.`;
 
-    const prompt =
-      commandName === "analyze_cv"
-        ? `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc kỹ thông tin CV, đánh giá chuyên sâu điểm mạnh/yếu, chấm điểm CV và cung cấp cơ hội việc làm đang tuyển dụng tại nơi ứng viên ở cùng các tỉnh thành lân cận theo đúng cấu trúc báo cáo.`
-        : `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
+    const prompt = `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
 
-    const agent = commandName === "analyze_cv" ? cvAnalyst : jobMatcher;
+    const agent = jobMatcher;
 
     try {
       const out = await agent.stream([{ role: "user", content: prompt }], {
@@ -174,6 +178,8 @@ export async function handleReady(
     await run.endText();
     job.artifactVersion += 1;
     await jobs.put(ev.invocationId, job);
+
+    await run.progress("ai_analysis", "Đã đánh giá hồ sơ & tìm kiếm việc làm", "done");
 
     await run.finish({
       type: "result",
@@ -210,7 +216,7 @@ export async function handleRevision(api: Payvoke, ev: RevisionEvent & { id: str
 
     const bytes = await api.download(ev.invocationId, job.fileId);
     const cvText = await extractCvText(bytes, job.fileName);
-    const agent = job.command === "analyze_cv" ? cvAnalyst : jobMatcher;
+    const agent = jobMatcher;
 
     const userLocation = job.location
       ? `Địa điểm mong muốn / Nơi ở: ${job.location}`
@@ -257,6 +263,8 @@ export async function handleRevision(api: Payvoke, ev: RevisionEvent & { id: str
 
     job.artifactVersion += 1;
     await jobs.put(ev.invocationId, job);
+
+    await run.progress("revision", "Đã tinh chỉnh báo cáo theo phản hồi", "done");
 
     await run.finish({
       type: "result",

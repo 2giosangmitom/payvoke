@@ -7,7 +7,7 @@ export type PendingTool =
   | { kind: "service_choice"; threadId: string; fileId: string; goal?: string; location?: string };
 
 export type Job = {
-  command: "analyze_cv" | "find_job";
+  command: "find_job";
   threadId: string;
   fileId: string;
   fileName: string;
