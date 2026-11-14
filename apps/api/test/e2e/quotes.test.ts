@@ -3074,37 +3074,92 @@ describe("quotes, x402 and isolated settlement", () => {
     const terms = { verification: { minEvidence: "SIGN" } };
     const delivered = {
       id: "e",
+      artifactVersion: 1,
       evidenceLevel: "SIGN",
       observedAt: new Date(90_000),
       accessInterruptionSeconds: 0,
     };
     const outcome = (over: Partial<Parameters<typeof autoOutcome>[0]>) =>
-      autoOutcome({ hold, now: 0n, executionStatus: "RUNNING", terms, evidence: null, ...over });
+      autoOutcome({ hold, now: 0n, executionStatus: "RUNNING", terms, evidence: [], ...over });
     assert.equal(outcome({ now: 99n }), null, "still within the delivery window");
     assert.equal(outcome({ now: 100n })?.reason, "auto_not_delivered");
     assert.equal(outcome({ executionStatus: "FAILED" })?.reason, "auto_execution_failed");
     // Review runs from the observed delivery: 90 + (130 - 100) = 120, floored at 130.
-    assert.equal(outcome({ evidence: delivered, now: 129n }), null);
-    assert.deepEqual(outcome({ evidence: delivered, now: 130n }), {
+    assert.equal(outcome({ evidence: [delivered], now: 129n }), null);
+    assert.deepEqual(outcome({ evidence: [delivered], now: 130n }), {
       refund: false,
       reason: "auto_delivered",
       evidenceId: "e",
     });
     assert.equal(
-      outcome({ evidence: { ...delivered, observedAt: new Date(100_000) }, now: 150n })?.reason,
+      outcome({ evidence: [{ ...delivered, observedAt: new Date(100_000) }], now: 150n })?.reason,
       "auto_delivered_late",
     );
     assert.equal(
-      outcome({ evidence: { ...delivered, accessInterruptionSeconds: 80 }, now: 150n })?.reason,
+      outcome({ evidence: [{ ...delivered, accessInterruptionSeconds: 80 }], now: 150n })?.reason,
       "auto_review_window_exhausted",
     );
     // Evidence below the signed floor is not a delivery; it is refunded at the deadline.
     const rec = { verification: { minEvidence: "REC" } };
     assert.equal(
-      outcome({ evidence: delivered, terms: rec, now: 130n })?.reason,
+      outcome({ evidence: [delivered], terms: rec, now: 130n })?.reason,
       "auto_not_delivered",
     );
     assert.equal(outcome({ hold: { ...hold, closed: true }, now: 150n }), null);
+  });
+
+  it("judges a revision against its own deadline, not the quote's", () => {
+    const hold = { closed: false, deliveryDeadline: 100, releaseNotBefore: 130, resolveBy: 300 };
+    const terms = { verification: { minEvidence: "SIGN" } };
+    const first = {
+      id: "v1",
+      artifactVersion: 1,
+      evidenceLevel: "SIGN",
+      observedAt: new Date(90_000),
+      accessInterruptionSeconds: 0,
+    };
+    // Asked at 110, after the original deadline, due at 170.
+    const revision = { targetArtifactVersion: 1, dueAt: new Date(170_000) };
+    const outcome = (over: Partial<Parameters<typeof autoOutcome>[0]>) =>
+      autoOutcome({
+        hold,
+        now: 0n,
+        executionStatus: "QUEUED",
+        terms,
+        evidence: [first],
+        revisions: [revision],
+        ...over,
+      });
+    // While the revision is open nothing is released on the old artifact.
+    assert.equal(outcome({ now: 160n }), null);
+    // A fix after the quote's deadline but before its own is on time; its
+    // review runs from the fix: 150 + 30 = 180.
+    const fixed = { ...first, id: "v2", artifactVersion: 2, observedAt: new Date(150_000) };
+    assert.equal(outcome({ evidence: [first, fixed], now: 179n }), null);
+    assert.deepEqual(outcome({ evidence: [first, fixed], now: 180n }), {
+      refund: false,
+      reason: "auto_delivered",
+      evidenceId: "v2",
+    });
+    // A fix after its own deadline is late, and no fix at all is not delivered.
+    const lateFix = { ...fixed, observedAt: new Date(175_000) };
+    assert.equal(outcome({ evidence: [first, lateFix], now: 250n })?.reason, "auto_delivered_late");
+    assert.equal(outcome({ now: 170n })?.reason, "auto_revision_not_delivered");
+    // A late first delivery stays late even if its revision is on time.
+    const lateFirst = { ...first, observedAt: new Date(105_000) };
+    assert.equal(
+      outcome({ evidence: [lateFirst, fixed], now: 250n })?.reason,
+      "auto_delivered_late",
+    );
+    // Revisions made before they had deadlines answer to the quote's deadline.
+    assert.equal(
+      outcome({
+        evidence: [first, fixed],
+        revisions: [{ targetArtifactVersion: 1, dueAt: null }],
+        now: 250n,
+      })?.reason,
+      "auto_delivered_late",
+    );
   });
 
   it.skipIf(process.env.PAYMENTS_TEST_EVM !== "1")(

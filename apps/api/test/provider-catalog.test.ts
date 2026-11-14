@@ -890,6 +890,21 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   const threadDetails = await web("GET", `/v1/threads/${thread.id}`);
   assert.equal(threadDetails.json().activeQuoteId, null);
   assert.equal(threadDetails.json().revisionPolicy.maxIncluded, 1);
+  // A revision whose delivery and review could not finish before resolveBy is
+  // refused: the vault could never release the fixed work.
+  const signed = await db.quote.findFirstOrThrow({ where: { invocationId: quoted.invocationId } });
+  const document = signed.document as Record<string, number>;
+  await db.quote.update({
+    where: { id: signed.id },
+    data: { document: { ...document, resolveBy: Math.floor(Date.now() / 1000) + 600 } },
+  });
+  const tooLate = await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, {
+    reason: "Too late",
+    clientRequestId: "revision-late",
+  });
+  assert.equal(tooLate.statusCode, 409, tooLate.body);
+  assert.equal(tooLate.json().error, "REVISION_TOO_LATE");
+  await db.quote.update({ where: { id: signed.id }, data: { document } });
   // An in-scope revision reuses the invocation/hold and starts one more run.
   const revisionBody = { reason: "Shorten the summary", clientRequestId: "revision-1" };
   const revision = await web(
@@ -900,6 +915,13 @@ it("isolates provider keys, exposes public apps, and keeps stars private", async
   assert.equal(revision.statusCode, 202, revision.body);
   const revisionRun = revision.json().runId;
   assert.notEqual(revisionRun, continuationRun);
+  // It is due one full delivery time (600s) after it was asked for.
+  const due = (
+    await db.invocationRevision.findUniqueOrThrow({
+      where: { id: revision.json().revisionId },
+    })
+  ).dueAt!;
+  assert.ok(Math.abs(due.getTime() - Date.now() - 600_000) < 10_000);
   assert.equal(
     (await web("POST", `/v1/invocations/${quoted.invocationId}/revisions`, revisionBody))
       .statusCode,

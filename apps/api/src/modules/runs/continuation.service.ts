@@ -139,6 +139,21 @@ export class ContinuationService {
     if (invocation.settlement?.state !== "HELD") throw new ConflictError("HOLD_CLOSED");
     const used = await this.db.invocationRevision.count({ where: { invocationId: invocation.id } });
     if (used >= policy.maxIncluded) throw new ConflictError("NEW_INVOCATION_REQUIRED");
+    // The revision gets the command's full delivery time from now. The new
+    // result's review must still end before resolveBy, or the vault could not
+    // release it, so a revision that cannot fit is refused up front.
+    const deliverySeconds = object(terms) ? terms.deliverySeconds : undefined;
+    if (
+      typeof deliverySeconds !== "number" ||
+      typeof document.releaseNotBefore !== "number" ||
+      typeof document.deliveryDeadline !== "number" ||
+      typeof document.resolveBy !== "number"
+    )
+      throw new ConflictError("REVISION_NOT_ALLOWED");
+    const reviewSeconds = document.releaseNotBefore - document.deliveryDeadline;
+    const dueAt = new Date(Date.now() + deliverySeconds * 1000);
+    if (Math.ceil(dueAt.getTime() / 1000) + reviewSeconds >= document.resolveBy)
+      throw new ConflictError("REVISION_TOO_LATE");
     const latest = await this.db.paymentDeliveryEvidence.findFirst({
       where: { invocationId: invocation.id },
       orderBy: { artifactVersion: "desc" },
@@ -178,6 +193,7 @@ export class ContinuationService {
             clientRequestId: body.clientRequestId,
             reason: body.reason.trim(),
             targetArtifactVersion: latest?.artifactVersion ?? null,
+            dueAt,
           },
         });
         await tx.providerRun.create({ data: { invocationId: invocation.id, runId } });

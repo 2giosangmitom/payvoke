@@ -306,6 +306,9 @@ model InvocationRevision {
   clientRequestId      String   @db.VarChar(128)
   reason               String   @db.Text
   targetArtifactVersion Int?
+  // The revision's own delivery deadline: request time plus the command's
+  // delivery time. Null on revisions made before deadlines existed.
+  dueAt                DateTime?
   status               String   @default("REQUESTED")
   acknowledgedAt       DateTime?
   createdAt            DateTime @default(now())

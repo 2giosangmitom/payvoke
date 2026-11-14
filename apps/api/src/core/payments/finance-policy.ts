@@ -4,6 +4,12 @@ import { keccak256, stringToHex, type Hex, type LocalAccount } from "viem";
 import { evidenceSatisfies, termsMinEvidence } from "./evidence";
 import { readFinalizedHold } from "./finance-ledger";
 import { FinanceService, releaseSchedule, type WireDecision } from "./finance";
+import {
+  deliveryRecord,
+  deliveryTimeliness,
+  type Evidence,
+  type RevisionWindow,
+} from "./timeliness";
 
 // Payvoke does not arbitrate output quality. Paid work that is not delivered,
 // fails or arrives late is refunded in full; verified on-time delivery is
@@ -11,12 +17,6 @@ import { FinanceService, releaseSchedule, type WireDecision } from "./finance";
 // decide is left to the buyer's own reclaim after resolveBy.
 export type AutoOutcome = { refund: boolean; reason: string; evidenceId: string | null };
 
-type Evidence = {
-  id: string;
-  evidenceLevel: string;
-  observedAt: Date;
-  accessInterruptionSeconds: number;
-};
 type Hold = {
   closed: boolean;
   deliveryDeadline: number;
@@ -33,27 +33,40 @@ export function autoOutcome(input: {
   now: bigint;
   executionStatus: string;
   terms: unknown;
-  evidence: Evidence | null;
+  evidence: Evidence[];
+  revisions?: RevisionWindow[];
 }): AutoOutcome | null {
-  const { hold, now, evidence } = input;
+  const { hold, now } = input;
   if (hold.closed) return null;
   const minimum = termsMinEvidence(input.terms);
-  if (evidence && minimum && evidenceSatisfies(evidence.evidenceLevel, minimum)) {
-    const { observed, earliest } = releaseSchedule(evidence, hold);
-    if (observed < BigInt(hold.deliveryDeadline)) {
+  // Evidence below the signed floor is not a delivery.
+  const evidence = minimum
+    ? input.evidence.filter((item) => evidenceSatisfies(item.evidenceLevel, minimum))
+    : [];
+  const timeliness = deliveryTimeliness({
+    deliveryDeadline: hold.deliveryDeadline,
+    evidence,
+    revisions: input.revisions ?? [],
+    now,
+  });
+  switch (timeliness.state) {
+    case "pending":
+      return !evidence.length && input.executionStatus === "FAILED"
+        ? { refund: true, reason: "auto_execution_failed", evidenceId: null }
+        : null;
+    case "missing":
+      return { refund: true, reason: timeliness.reason, evidenceId: null };
+    case "late":
+      return { refund: true, reason: "auto_delivered_late", evidenceId: null };
+    case "on_time": {
+      const { earliest } = releaseSchedule(timeliness.latest, hold);
       if (earliest >= BigInt(hold.resolveBy))
         return { refund: true, reason: "auto_review_window_exhausted", evidenceId: null };
       return now >= earliest
-        ? { refund: false, reason: "auto_delivered", evidenceId: evidence.id }
+        ? { refund: false, reason: "auto_delivered", evidenceId: timeliness.latest.id }
         : null;
     }
-    return { refund: true, reason: "auto_delivered_late", evidenceId: null };
   }
-  if (input.executionStatus === "FAILED")
-    return { refund: true, reason: "auto_execution_failed", evidenceId: null };
-  if (now >= BigInt(hold.deliveryDeadline))
-    return { refund: true, reason: "auto_not_delivered", evidenceId: null };
-  return null;
 }
 
 export class AutoFinance {
@@ -92,10 +105,7 @@ export class AutoFinance {
           include: { invocation: { include: { quote: true } } },
         });
         if (op?.state !== "HELD") continue;
-        const evidence = await db.paymentDeliveryEvidence.findFirst({
-          where: { invocationId: op.invocationId },
-          orderBy: [{ observedAt: "desc" }, { id: "desc" }],
-        });
+        const { evidence, revisions } = await deliveryRecord(db, op.invocationId);
         const q = op.invocation.quote.document as unknown as QuoteDocument;
         const decide = (h: Hold) =>
           autoOutcome({
@@ -104,6 +114,7 @@ export class AutoFinance {
             executionStatus: op.invocation.executionStatus,
             terms: (q.termsSnapshot as { definition?: unknown } | null)?.definition,
             evidence,
+            revisions,
           });
         // The signed quote carries the same deadlines as the hold.
         if (!decide({ ...q, closed: false })) continue;
