@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { BriefcaseBusiness, UsersRound } from "lucide-react";
+import { BriefcaseBusiness, CircleCheck, Clock, Sparkles, UsersRound } from "lucide-react";
 import { Rating, RatingButton } from "@/src/components/ui/rating";
 import { AgentAvatar } from "@/src/features/apps/agent-avatar";
+import { formatDuration } from "@/src/features/apps/format";
 import { cn } from "@/src/lib/utils";
 
 type Person = { id: string; name: string; imageUrl: string | null };
@@ -85,6 +86,111 @@ export function UsageLine({
         <span className="sr-only">users</span>
       </span>
     </span>
+  );
+}
+
+/** An agent's public track record, as the API computes it from escrow outcomes. */
+export type Reputation = {
+  paidJobs: number;
+  sample: number;
+  successRate: number | null;
+  onTimeRate: number | null;
+  refundRate: number | null;
+  medianDeliverySeconds: number | null;
+  isNew: boolean;
+};
+
+/** Marks an agent with few paid jobs, so a buyer knows there is little to go on. */
+export function NewAgentBadge({ className }: { className?: string }) {
+  return (
+    <span
+      title="Fewer than 3 paid jobs. Assistants ask you before paying it more than 1 USDC."
+      className={cn(
+        "inline-flex items-center gap-1 border border-border-strong px-1.5 py-0.5 font-mono text-[11px] text-foreground",
+        className,
+      )}
+    >
+      <Sparkles size={11} aria-hidden="true" />
+      New agent
+    </span>
+  );
+}
+
+/** Success and on-time rates in one short line, or why there are none yet. */
+export function ReputationLine({
+  reputation,
+  className,
+}: {
+  reputation: Reputation;
+  className?: string;
+}) {
+  return (
+    <span className={cn("inline-flex items-center gap-3 text-xs text-muted-foreground", className)}>
+      {reputation.isNew && <NewAgentBadge />}
+      {reputation.successRate === null || reputation.onTimeRate === null ? (
+        !reputation.isNew && <span>Not enough jobs yet</span>
+      ) : (
+        <>
+          <span className="inline-flex items-center gap-1" title="Jobs paid out to the builder">
+            <CircleCheck size={13} aria-hidden="true" />
+            <span className="tabular-nums text-foreground">{reputation.successRate}%</span>
+            <span>success</span>
+          </span>
+          <span
+            className="inline-flex items-center gap-1"
+            title="Results delivered before the deadline"
+          >
+            <Clock size={13} aria-hidden="true" />
+            <span className="tabular-nums text-foreground">{reputation.onTimeRate}%</span>
+            <span>on time</span>
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+function Fact({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="grid gap-0.5 border border-border bg-card px-4 py-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="font-mono text-xl tabular-nums text-foreground">{value}</dd>
+      <dd className="text-xs text-muted-foreground">{note}</dd>
+    </div>
+  );
+}
+
+/** The full track record: four facts over the agent's recent closed jobs. */
+export function TrackRecord({ reputation }: { reputation: Reputation }) {
+  if (reputation.successRate === null)
+    return (
+      <p className="text-sm text-muted-foreground">
+        {reputation.paidJobs === 0
+          ? "No paid jobs yet."
+          : `${reputation.sample} of ${reputation.paidJobs} paid jobs have settled so far. Rates show after 5.`}{" "}
+        Payments stay in escrow until delivery either way.
+      </p>
+    );
+  const over = `last ${reputation.sample} jobs`;
+  return (
+    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <Fact label="Success" value={`${reputation.successRate}%`} note={`paid out, ${over}`} />
+      <Fact
+        label="On time"
+        value={`${reputation.onTimeRate}%`}
+        note="first result before deadline"
+      />
+      <Fact label="Refunded" value={`${reputation.refundRate}%`} note={over} />
+      <Fact
+        label="Typical delivery"
+        value={
+          reputation.medianDeliverySeconds === null
+            ? "—"
+            : formatDuration(reputation.medianDeliverySeconds)
+        }
+        note="median, payment to result"
+      />
+    </dl>
   );
 }
 

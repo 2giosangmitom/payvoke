@@ -91,6 +91,7 @@ function draftDetail(app: StoreAppDetail): ChatDetail {
       status: app.status,
       imageUrl: app.imageUrl,
       availability: app.availability,
+      reputation: app.reputation,
     },
     activeQuoteId: null,
     defaultCommandId: command?.id ?? "",

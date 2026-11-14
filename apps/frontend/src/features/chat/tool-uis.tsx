@@ -12,6 +12,7 @@ import { QuoteCard } from "@/src/features/chat/quote-card";
 import { ResultView } from "@/src/features/chat/result-view";
 import { SchemaForm, schemaFields } from "@/src/features/chat/schema-form";
 import { useThreadChat } from "@/src/features/chat/thread-runtime";
+import { ReputationLine } from "@/src/features/apps/agent-facts";
 import { formatDuration, formatLatePolicy } from "@/src/features/apps/format";
 
 type ToolProps = ToolCallMessagePartProps<Record<string, unknown>, unknown>;
@@ -181,6 +182,14 @@ export function OfferTool({ toolCallId, args }: ToolProps) {
         busy={busy}
         onAccept={() => run("accept")}
         onDecline={() => run("decline")}
+        footer={
+          status === "open" && chat.thread?.app.reputation ? (
+            <p className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              <span className="text-foreground">Track record.</span>
+              <ReputationLine reputation={chat.thread.app.reputation} />
+            </p>
+          ) : undefined
+        }
       />
       {error && (
         <p role="alert" className="text-xs text-destructive">

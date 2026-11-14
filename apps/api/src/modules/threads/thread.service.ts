@@ -3,6 +3,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../../errors";
 import { availabilityLabel, threadSlotReleased } from "../apps/schema";
 import { imageUrl, serializeCommand } from "../apps/serializers";
 import { revisionPolicy } from "../runs/run-rules";
+import { reputation } from "../stats/reputation";
 
 export type NewThreadBody = { appId: string; clientRequestId: string; title?: string };
 export type ThreadQuery = { q?: string; cursor?: string; archived?: string };
@@ -177,6 +178,8 @@ export class ThreadService {
         status: thread.app.status,
         imageUrl: imageUrl(thread.app),
         availability: availabilityLabel(thread.app),
+        // Shown beside every offer, so the buyer sees the record before paying.
+        reputation: (await reputation(this.db, [thread.app.id])).get(thread.app.id)!,
       },
       activeQuoteId: resolved ? null : thread.activeQuoteId,
       defaultCommandId: defaultCommand?.id ?? null,
