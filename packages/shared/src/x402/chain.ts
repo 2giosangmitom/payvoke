@@ -53,7 +53,8 @@ export type FundingIntent =
   | { mode: "grant"; authorization: DebitAuthorization; signature: Hex };
 // The chain-facing half of a parsed x402 payment.
 export function fundingOf(intent: PaymentIntent): FundingIntent {
-  if (intent.mode === "authorization") return { mode: "authorization", signature: intent.signature };
+  if (intent.mode === "authorization")
+    return { mode: "authorization", signature: intent.signature };
   if (!intent.authorization) throw new VaultValidationError("invalid_payment", 400);
   return { mode: "grant", authorization: intent.authorization, signature: intent.signature };
 }
@@ -114,6 +115,15 @@ async function rpc<T>(read: () => Promise<T>): Promise<T> {
         reverts[revert.data?.errorName ?? ""] ?? "simulation_reverted",
       );
     }
+    // The buyer only ever sees the code. Keep the transport's short reason
+    // (status, timeout, node error) in the server log, never the RPC URL.
+    const reason =
+      error instanceof BaseError
+        ? [error.shortMessage, error.details].filter(Boolean).join(" | ")
+        : error instanceof Error
+          ? error.name
+          : "unknown";
+    console.warn(`[vault-rpc] rpc_unavailable: ${reason.slice(0, 300)}`);
     throw new VaultValidationError("rpc_unavailable", 503);
   }
 }

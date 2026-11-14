@@ -64,7 +64,9 @@ export function createFacilitator(
     reader ??
     new VaultChain(
       createPublicClient({
-        transport: http(options.RPC_URL, { retryCount: 0, timeout: 10000 }),
+        // Admission only reads and simulates, so retrying a rate-limited,
+        // timed-out or 5xx answer is safe; viem never retries a revert.
+        transport: http(options.RPC_URL, { retryCount: 2, retryDelay: 400, timeout: 10000 }),
       }),
       deployment,
     );

@@ -132,25 +132,46 @@ export async function payWithGrant(
   await submitPayment(quote, grantPayment(quote, grantId, epoch, signature));
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Refusals before anything was journaled that a moment later may pass: the
+// chain RPC or the facilitator was briefly unavailable.
+const transient = new Set(["rpc_unavailable", "settlement_unavailable"]);
+const SUBMIT_ATTEMPTS = 4;
+
 async function submitPayment(quote: QuoteDocument, payload: PaymentBody) {
   const header = paymentSignatureHeader(quote, payload, new URL("/v1/invocations", apiOrigin).href);
-  try {
-    await call(
-      invocations.$post(
-        { json: { quoteId: quote.quoteId } },
-        { headers: { "idempotency-key": quote.invocationId, "payment-signature": header } },
-      ),
-    );
-  } catch (cause) {
-    // The first answer is usually "not settled yet": the API journaled the
-    // signed authorization and its worker is putting the hold on chain.
-    // The status endpoint, not that answer, says how it ends.
-    if (!(cause instanceof ApiError) || ![402, 503].includes(cause.status)) throw cause;
-    await waitForHold(quote.invocationId, cause);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await call(
+        invocations.$post(
+          { json: { quoteId: quote.quoteId } },
+          { headers: { "idempotency-key": quote.invocationId, "payment-signature": header } },
+        ),
+      );
+      return;
+    } catch (cause) {
+      // Nothing was recorded or sent on chain, so the same signed payment can
+      // simply be submitted again while the quote is still valid.
+      if (
+        cause instanceof ApiError &&
+        cause.status === 503 &&
+        transient.has(cause.code) &&
+        attempt < SUBMIT_ATTEMPTS &&
+        Date.now() + 2_000 * attempt < quote.validUntil * 1000
+      ) {
+        await sleep(2_000 * attempt);
+        continue;
+      }
+      // The first answer is usually "not settled yet": the API journaled the
+      // signed authorization and its worker is putting the hold on chain.
+      // The status endpoint, not that answer, says how it ends.
+      if (!(cause instanceof ApiError) || ![402, 503].includes(cause.status)) throw cause;
+      await waitForHold(quote.invocationId, cause);
+      return;
+    }
   }
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Polls the payment until the vault holds it or it stops for good. A hold
 // takes a few blocks plus finality, so this allows two minutes.
