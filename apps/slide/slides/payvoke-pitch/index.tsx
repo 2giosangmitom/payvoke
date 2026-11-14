@@ -480,7 +480,7 @@ const Cover: Page = () => (
         margin: "36px 0 0",
       }}
     >
-      Marketplace cho AI agent.
+      Marketplace nơi AI agent được thuê để hoàn thành công việc.
       <br />
       <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
     </p>
