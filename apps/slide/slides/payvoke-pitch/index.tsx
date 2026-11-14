@@ -560,6 +560,9 @@ const Idea: Page = () => (
     <Statement style={{ marginTop: 48 }}>
       Builder không phải tự làm billing. <Em>Buyer không phải trả trước cho agent lạ.</Em>
     </Statement>
+    <Note style={{ marginTop: 24 }}>
+      Mỗi agent có track record công khai từ escrow: tỷ lệ thành công, đúng hạn, refund.
+    </Note>
   </Frame>
 );
 
@@ -705,7 +708,7 @@ const MoneyFlow: Page = () => (
       <Box x={0} y={152} w={360} title="Ví buyer" sub="ký một lần, không gas" />
       <Box x={440} y={152} w={340} title="PayvokeVault" sub="giữ riêng cho job" tone="brand" />
       <Box x={1090} y={0} w={590} title="Ví builder" sub="giao đúng hạn, sau review window" tone="good" />
-      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
+      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund khi lỗi; trễ ít thì hoàn một phần" />
       <Box x={1090} y={304} w={590} title="Ví buyer" sub="tự rút lại nếu quá hạn quyết định" />
     </div>
     <Note style={{ marginTop: 48 }}>
@@ -1434,7 +1437,8 @@ Thứ còn thiếu là một nơi để tìm agent và trả tiền an toàn the
 Payvoke đứng giữa hai phía.
 Builder tự host agent, đăng lên Store và đặt giá cho từng lệnh.
 Buyer là người dùng trên web hoặc một AI assistant. Họ tìm agent trên Store, chat thử miễn phí rồi giao job.
-Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.`,
+Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.
+Trước khi thuê, buyer xem track record của agent: tỷ lệ thành công, tỷ lệ giao đúng hạn và tỷ lệ refund trên 50 job gần nhất, lấy từ kết quả escrow. Job do chính chủ agent tự mua không được tính.`,
 
   // JobFlow
   `(~40s)
@@ -1458,9 +1462,15 @@ Người dùng cần có ví và USDC. Nhóm đầu tiên chúng tôi nhắm t�
   // MoneyFlow
   `(~45s)
 Buyer không nạp tiền trước. Khi chấp nhận Offer, ví ký một USDC authorization cho đúng job đó. Relayer của Payvoke nộp giao dịch nên buyer không trả gas.
-Tiền vào PayvokeVault và được giữ riêng cho job. Từ đây chỉ có ba lối ra. Giao đúng hạn thì builder nhận sau review window, đã trừ phí. Lỗi hoặc trễ thì buyer được refund 100%. Quá hạn mà chưa có quyết định thì buyer tự rút lại.
+Tiền vào PayvokeVault và được giữ riêng cho job. Từ đây chỉ có ba lối ra. Giao đúng hạn thì builder nhận sau review window, đã trừ phí. Lỗi thì buyer được refund 100%. Quá hạn mà chưa có quyết định thì buyer tự rút lại.
+Với giao trễ, builder có thể ký trước một chính sách: trễ dưới một khoảng nhỏ thì hoàn cho buyer một phần, phần còn lại vẫn trả cho builder. Không có chính sách đó thì trễ là refund toàn bộ.
 Chữ ký gắn với đúng một quote gồm agent, input, giá và deadline, nên ký xong không ai sửa được điều khoản.
-Chi tiết x402 và EIP-712 nằm trong phụ lục.`,
+Chi tiết x402 và EIP-712 nằm trong phụ lục.
+
+Nếu bị hỏi "builder giao trễ có mất hết tiền không?":
+Mặc định là có, vì đó là cam kết builder tự chọn. Builder có thể ký thêm chính sách trễ, ví dụ trễ dưới 10 phút thì hoàn 20%. Vault trả hai phần trong một giao dịch.
+Nếu bị hỏi "buyer xin sửa sau deadline thì builder có bị tính trễ không?":
+Không. Mỗi lần sửa có hạn riêng, tính từ lúc buyer yêu cầu. Bản sửa chỉ bị tính trễ nếu quá hạn của chính nó.`,
 
   // AgentSafety
   `(~45s)
@@ -1493,7 +1503,7 @@ Payvoke cho buyer thuê AI agent theo từng job mà không phải trả trướ
 Team Firefly cảm ơn Ban giám khảo. Chúng tôi sẵn sàng nhận câu hỏi.
 
 Nếu bị hỏi "kết quả kém nhưng vẫn giao đúng hạn thì sao?":
-Trong review window, buyer yêu cầu sửa được, số lần sửa theo điều khoản trong Offer đã ký. Khiếu nại về chất lượng nằm trong bước tiếp theo.
+Trong review window, buyer yêu cầu sửa được, số lần sửa theo điều khoản trong Offer đã ký. Buyer chỉ đánh giá được sau khi job đã quyết toán, nên đánh giá phản ánh kết quả thật. Khiếu nại về chất lượng nằm trong bước tiếp theo.
 Nếu bị hỏi "sao không giữ tiền trong database?":
 Để buyer không phải tin Payvoke.`,
 
