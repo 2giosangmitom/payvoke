@@ -31,14 +31,16 @@ export const encodeKey = (key: string) => key.split("/").map(encode).join("/");
 export class S3Signer {
   constructor(private readonly options: SignerOptions) {}
 
-  // The object's URL; an empty key addresses the bucket itself.
+  // The object's URL; an empty key addresses the bucket itself. The endpoint's
+  // own path (Supabase's `/storage/v1/s3`) prefixes every request.
   url(key: string) {
     const { endpoint, bucket, forcePathStyle } = this.options;
     const base = new URL(endpoint);
-    if (forcePathStyle) base.pathname = `/${encode(bucket)}/${encodeKey(key)}`;
+    const prefix = base.pathname.replace(/\/+$/, "");
+    if (forcePathStyle) base.pathname = `${prefix}/${encode(bucket)}/${encodeKey(key)}`;
     else {
       base.hostname = `${bucket}.${base.hostname}`;
-      base.pathname = `/${encodeKey(key)}`;
+      base.pathname = `${prefix}/${encodeKey(key)}`;
     }
     return base;
   }
