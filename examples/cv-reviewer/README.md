@@ -69,8 +69,22 @@ vào PDF. Kiểm tra nguồn và token không chứng minh được mọi câu v
 ý nghĩa, nên người mua vẫn cần đọc lại CV trước khi ứng tuyển.
 
 Đầu ra model sai schema hoặc sai tham chiếu được thử lại một lần, dùng chung
-timeout 150 giây cho cả hai lần. Không dùng câu trả lời rỗng hoặc dang dở làm
-kết quả. Report `result` chỉ được gửi sau khi có báo cáo hợp lệ và PDF upload
+timeout 150 giây cho cả hai lần. Retry nêu mã lỗi và ID đoạn nguồn cần sửa.
+Model chỉ trả các đoạn cần viết lại; các đoạn không có đề xuất được giữ nguyên.
+Code quản lý thứ tự, tiêu đề và toàn bộ tham chiếu của CV, tránh lỗi model phải
+tự tái tạo một cây tài liệu đầy đủ với mọi ID nguồn.
+Khác biệt về dấu phân cách khoảng thời gian, khoảng trắng trước `%` hoặc dấu
+câu sau URL không bị coi là thay đổi dữ kiện. Nếu nội dung viết lại thay đổi
+số liệu hay thông tin liên hệ, agent giữ nguyên đoạn nguồn tương ứng trong PDF
+và thông báo trong checklist, thay vì chấp nhận dữ kiện sai hoặc hủy một báo cáo
+hữu ích. Việc này chỉ áp dụng khi schema và các ID đề xuất hợp lệ; ID không tồn
+tại hoặc bị lặp vẫn bị từ chối và yêu cầu model sửa lại.
+
+Log chẩn đoán chỉ chứa giai đoạn, mã lỗi, HTTP status, schema path và ID đoạn
+nguồn; không ghi thông báo lỗi thô hoặc nội dung request/response. Lỗi xác thực,
+rate limit và timeout có thông báo riêng để chủ agent biết cách xử lý.
+
+Không dùng câu trả lời rỗng hoặc dang dở làm kết quả. Report `result` chỉ được gửi sau khi có báo cáo hợp lệ và PDF upload
 đạt trạng thái `READY`, được Payvoke xác minh kích thước và SHA-256. Lỗi parse,
 model, font/PDF hoặc upload sẽ gửi `failed`.
 

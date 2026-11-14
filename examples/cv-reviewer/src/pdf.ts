@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { Review } from "./review";
-import { CvError } from "./document";
+import { CvError, isSectionHeading } from "./document";
 
 const FONT_ROOT = new URL("../assets/fonts/", import.meta.url);
 const WIDTH = 595.28,
@@ -115,7 +115,7 @@ export async function renderPdf(
         itemIndex === 0 &&
         item.text.length < 100 &&
         !/[\d@\n]|https?:/i.test(item.text);
-      draw(item.text, name ? "name" : "body");
+      draw(item.text, name ? "name" : isSectionHeading(item.text) ? "heading" : "body");
     }
     y -= 5;
   }

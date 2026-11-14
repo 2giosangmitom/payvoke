@@ -99,6 +99,17 @@ export async function extractCv(bytes: Uint8Array, file: FileEntry): Promise<str
 
 export type SourceBlock = { id: string; text: string };
 
+export function isSectionHeading(text: string): boolean {
+  const value = text.trim();
+  if (!value || value.length > 80 || /[\d@\n]/.test(value)) return false;
+  return (
+    (/\p{L}/u.test(value) && value === value.toUpperCase()) ||
+    /^(?:summary|profile|experience|work experience|employment|education|skills|technical skills|projects|certifications|languages|contact|mục tiêu nghề nghiệp|kinh nghiệm(?: làm việc)?|kỹ năng|dự án(?: cá nhân)?|học vấn|chứng chỉ|ngoại ngữ|liên hệ)$/iu.test(
+      value,
+    )
+  );
+}
+
 export function sourceBlocks(text: string): SourceBlock[] {
   // PDF paragraphs may be flattened; split long blocks at sentence/word boundaries.
   const parts: string[] = [];

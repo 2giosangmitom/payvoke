@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { createRunHandlers } from "../src/run";
 import { CvError } from "../src/document";
 import { PayvokeError, type RevisionEvent } from "../src/payvoke";
-import type { ReviewInput } from "../src/review";
+import { makeReviewGenerator, type ReviewInput } from "../src/review";
 import type { Job } from "../src/state";
-import { commands, cvBytes, file, memoryStore, ready, sampleReview } from "./fixtures";
+import { commands, cvBytes, file, memoryStore, ready, sampleDraft, sampleReview } from "./fixtures";
 import { FakePayvoke } from "./payvoke.fake";
 
 const revision: RevisionEvent & { id: string } = {
@@ -15,6 +15,26 @@ const revision: RevisionEvent & { id: string } = {
   threadId: "thread-1",
   reason: "Làm phần kinh nghiệm ngắn hơn",
 };
+
+test("sparse model edits with an altered metric still deliver a complete source-safe PDF", async () => {
+  const api = new FakePayvoke();
+  const draft = sampleDraft();
+  draft.rewrites = [
+    { sourceId: "s6", text: "Phát triển giao diện với React; giảm thời gian tải trang 90%." },
+  ];
+  const generateReview = makeReviewGenerator(
+    async () => draft,
+    () => {},
+  );
+  const handlers = createRunHandlers({ jobs: memoryStore<Job>(), generateReview });
+  await handlers.handleReady(api, commands, ready);
+  expect(api.uploads).toHaveLength(1);
+  const result = api.reports.at(-1)!;
+  expect(result.type).toBe("result");
+  if (result.type !== "result") throw new Error("Expected result");
+  expect(result.data.output).toContain("giữ nguyên từ bản gốc");
+  expect(result.data.output).not.toContain("90%");
+});
 
 test("funded run reports ordered progress, uploads PDF and completes with a verified file", async () => {
   const api = new FakePayvoke();

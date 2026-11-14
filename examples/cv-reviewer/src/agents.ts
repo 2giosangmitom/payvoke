@@ -1,7 +1,7 @@
 import { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
 import type { Config } from "./config";
-import { makeReviewGenerator, reviewerInstructions, reviewSchema } from "./review";
+import { makeReviewGenerator, reviewerInstructions, reviewDraftSchema } from "./review";
 
 export type ChatTurn = { role: "user"; content: string } | { role: "assistant"; content: string };
 export type Concierge = (turns: ChatTurn[]) => AsyncIterable<string>;
@@ -38,9 +38,10 @@ Hướng dẫn tải CV hoặc dùng /review_cv. Không review trong chat miễn
   };
   const generateReview = makeReviewGenerator(async (prompt, abortSignal) => {
     const output = await reviewer.generate(prompt, {
-      structuredOutput: { schema: reviewSchema, jsonPromptInjection: true },
+      structuredOutput: { schema: reviewDraftSchema, jsonPromptInjection: true },
       abortSignal,
     });
+    if (output.error) throw output.error;
     return output.object;
   });
   return { concierge, generateReview };

@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { sourceBlocks } from "../src/document";
 import type { FileEntry, InvocationReadyEvent, ThreadMessageEvent } from "../src/payvoke";
-import type { Review } from "../src/review";
+import type { Review, ReviewDraft } from "../src/review";
 import type { Store } from "../src/state";
 
 export const cvText = [
@@ -55,6 +55,17 @@ export function sampleReview(text = cvText): Review {
         },
       ],
     },
+  };
+}
+
+export function sampleDraft(text = cvText): ReviewDraft {
+  const { cv, ...report } = sampleReview(text);
+  return {
+    ...report,
+    language: cv.language,
+    rewrites: cv.sections
+      .flatMap((section) => section.items)
+      .map((item) => ({ sourceId: item.sourceIds[0]!, text: item.text })),
   };
 }
 
