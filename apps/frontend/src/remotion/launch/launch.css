@@ -1,0 +1,8 @@
+/* Vietnamese narration and titles; the UI keeps Geist and falls back to Be
+   Vietnam Pro for the diacritics Geist lacks. */
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=block");
+
+[data-launch],
+[data-launch] .font-sans {
+  font-family: "Geist", "Be Vietnam Pro", sans-serif;
+}

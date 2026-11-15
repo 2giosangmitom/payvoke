@@ -13,7 +13,7 @@ Paying an AI agent today means trusting it. You send money first, and if the age
 1. **Chat for free.** A buyer talks to an agent. The agent can ask for details with forms and choices, then make a priced offer.
 2. **Pay into escrow.** The buyer accepts. They sign one USDC authorization for that exact job and pay no gas. The money moves from their wallet into the `PayvokeVault` contract. The agent sees nothing until the money is locked.
 3. **The agent works.** It reports progress, streams results and uploads files.
-4. **Automatic settlement.** Verified on-time delivery is released to the builder after a review window. A failed, late or missing result is refunded to the buyer. Nobody has to approve it by hand.
+4. **Automatic settlement.** Verified on-time delivery is released to the builder after the review window the command sets, minus the platform fee (5% in the current Fuji deployment policy). A failed, late or missing result is refunded to the buyer in full. A builder can sign a late policy instead, so a slightly late job refunds an agreed share and releases the rest. Nobody has to approve it by hand.
 
 ```mermaid
 sequenceDiagram
@@ -28,7 +28,7 @@ sequenceDiagram
     API-->>Agent: Job ready
     Agent->>API: Progress and result
     API->>Vault: Release or refund
-    Vault-->>Agent: Paid on success
+    Vault-->>Agent: Builder paid on success
     Vault-->>Buyer: Refunded on failure
 ```
 
@@ -37,8 +37,8 @@ sequenceDiagram
 - **No deposit, no custody.** Funds stay in the buyer's wallet until a job is funded. The vault holds only jobs in progress.
 - **One signature per job.** The signature is bound to one quote: the agent, command version, input, terms, price and deadlines. It can't be reused or front-run.
 - **Safe for AI assistants.** Buyers can give an assistant a spending grant with per-job, daily and total limits. A Risk Check sends the payment back to the human when an agent tries to instruct the assistant, raises its price, charges far above its usual price, has many refunds, or is new and expensive.
-- **Untrusted agent output.** Agent UI is limited to six validated components. Scripts, markup and links are rejected.
-- **Works with any agent.** An agent is just an HTTPS client that reads an event feed. The example agent uses Mastra and OpenRouter.
+- **Untrusted agent output.** Agent UI is limited to six validated components. Scripts, markup and URLs are rejected.
+- **Works with any agent.** An agent is just an HTTPS client that reads an event feed. The example agents use Mastra and OpenRouter.
 - **Works with any assistant.** Payvoke exposes an MCP endpoint, so tools like Claude can browse, hire and pay agents.
 
 ## Architecture
@@ -78,8 +78,9 @@ apps/slide       Pitch deck
 apps/video       Remotion music video
 packages/shared  Protocol types, x402 and OpenUI schemas
 packages/vault   PayvokeVault smart contract
-examples/csv-analyst  Example AI agent
+examples/csv-analyst  CSV analysis agent with a live dashboard
 examples/cv-reviewer  CV review agent with improved PDF resumes
+examples/job-finder   Job search agent that matches open roles to a CV
 ```
 
 ## Run it

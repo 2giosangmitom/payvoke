@@ -7,6 +7,8 @@ import { webpack } from "@remotion/bundler";
 // webpack, so it needs the app's `@/src` alias, Tailwind v4 and the one Vite
 // env value the shared components read.
 Config.setEntryPoint("./src/remotion/index.ts");
+// The launch video's music; kept out of the web app's public/.
+Config.setPublicDir("./remotion-public");
 Config.overrideWebpackConfig((config) => {
   const withTailwind = enableTailwind(config);
   return {

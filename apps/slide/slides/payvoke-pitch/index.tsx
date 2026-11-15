@@ -482,7 +482,7 @@ const Cover: Page = () => (
     >
       Marketplace nơi AI agent được thuê để hoàn thành công việc.
       <br />
-      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
+      <Em>Thuê theo từng job, agent chỉ nhận tiền khi giao.</Em>
     </p>
   </Frame>
 );
@@ -542,7 +542,14 @@ const Idea: Page = () => (
           <path d="M1440 164V290H240V168" />
         </g>
       </svg>
-      <Node x={0} y={20} w={480} h={140} title="Builder" sub="Tự host agent, đặt giá từng lệnh" />
+      <Node
+        x={0}
+        y={20}
+        w={480}
+        h={140}
+        title="Builder"
+        sub="Tự host agent, đặt giá trần từng lệnh"
+      />
       <Node
         x={600}
         y={20}
@@ -870,7 +877,7 @@ const Architecture: Page = () => (
       <Node x={520} y={40} w={600} h={80} title="Chat · Offer · Quote" />
       <Node x={520} y={140} w={600} h={80} title="x402 gateway · MCP server" />
       <DiagramLabel x={512} y={250}>
-        WORKERS · MỖI WORKER MỘT KEY
+        WORKERS · BA KEY TÁCH QUYỀN
       </DiagramLabel>
       <Node x={520} y={290} w={190} h={70} title="Settlement" tone="key" />
       <Node x={725} y={290} w={190} h={70} title="Finance" tone="key" />
@@ -963,7 +970,7 @@ const Closing: Page = () => (
     >
       Marketplace cho AI agent.
       <br />
-      <Em>Trả tiền theo từng job, chỉ khi có kết quả.</Em>
+      <Em>Thuê theo từng job, agent chỉ nhận tiền khi giao.</Em>
     </p>
     <div style={{ width: 120, height: 4, background: accent, marginTop: 48 }} />
     <p style={{ fontSize: 32, color: bodyInk, margin: "32px 0 0" }}>
@@ -1348,7 +1355,7 @@ const Vault: Page = () => (
       <Box x={0} y={152} w={360} title="Ví buyer" sub="ký USDC theo quote" />
       <Box x={440} y={152} w={340} title="Held" sub="escrow theo quote" tone="brand" />
       <Box x={1090} y={0} w={590} title="Ví builder" sub="release sau review window" tone="good" />
-      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund 100% khi lỗi hoặc trễ" />
+      <Box x={1090} y={152} w={590} title="Ví buyer" sub="refund khi lỗi, trễ hoặc không giao" />
       <Box x={1090} y={304} w={590} title="Ví buyer" sub="reclaim sau resolveBy" />
       <Box x={1090} y={456} w={590} title="Claimable" sub="USDC bị chặn, người nhận tự claim" />
     </div>
@@ -1428,7 +1435,7 @@ const RiskCheck: Page = () => (
 const Operations: Page = () => (
   <Frame n="Phụ lục" label="Hệ thống" title="Độ tin cậy" appendix>
     <Spec k="Dữ liệu" w={300}>
-      Postgres là nguồn dữ liệu chính của job và giao dịch.
+      Postgres giữ trạng thái job và journal giao dịch. Vault là nguồn sự thật về tiền.
     </Spec>
     <Spec k="Journal" w={300}>
       Giao dịch được ghi trước khi gửi lên chain, nên đối soát được sau sự cố.
@@ -1440,7 +1447,7 @@ const Operations: Page = () => (
       Gửi lại cùng yêu cầu chỉ nhận lại biên nhận cũ, không bị tính tiền hai lần.
     </Spec>
     <Spec k="Key" w={300}>
-      Mỗi worker một key riêng. Lộ một key không ảnh hưởng worker khác.
+      Relayer, approver, executor là ba key riêng. Job worker không giữ key nào.
     </Spec>
   </Frame>
 );
@@ -1524,7 +1531,7 @@ Thứ còn thiếu là một nơi để tìm agent và trả tiền an toàn the
   // Idea
   `(~30s)
 Payvoke đứng giữa hai phía.
-Builder tự host agent, đăng lên Store và đặt giá cho từng lệnh.
+Builder tự host agent, đăng lên Store và đặt giá trần cho từng lệnh. Giá cụ thể của mỗi job nằm trong Offer.
 Buyer là người dùng trên web hoặc một AI assistant. Họ tìm agent trên Store, chat thử miễn phí rồi giao job.
 Payvoke lo phần chat, báo giá, giữ tiền và giao kết quả.`,
 
@@ -1535,7 +1542,7 @@ Buyer chat miễn phí, agent có thể hỏi thêm bằng form hoặc lựa ch�
 Agent đưa ra Offer gồm giá, hạn giao và chính sách refund.
 Buyer chấp nhận và ký một lần, USDC đi từ ví vào Vault.
 Agent chỉ bắt đầu chạy khi khoản tiền đó đã chốt trên chain.
-Giao đúng hạn thì builder nhận tiền sau thời gian review. Lỗi hoặc trễ thì buyer được refund 100%.
+Giao đúng hạn thì builder nhận tiền sau thời gian review. Lỗi, trễ hoặc không giao thì buyer được refund 100%, trừ khi builder đã ký chính sách trễ.
 Trên chain, tiền chỉ di chuyển ở bước 3 và bước 5.`,
 
   // BuyerProtection
@@ -1582,7 +1589,7 @@ Có thể, vì đây là nhận diện theo mẫu. Hạn mức vẫn giới hạ
   // Architecture
   `(~35s)
 Có ba loại client: web app, AI assistant qua MCP, và agent của builder kết nối bằng HTTPS và SSE. Builder viết agent bằng ngôn ngữ nào cũng được.
-API xử lý chat, quote, x402 và MCP. Ba worker lo những việc chạm vào tiền, mỗi worker giữ một key riêng, nên lộ một key không đủ để lấy tiền.
+API xử lý chat, quote, x402 và MCP. Settlement worker giữ key relayer để nộp giao dịch ký quỹ. Finance worker giữ hai key approver và executor để quyết toán. Job worker kiểm tra kết quả và không giữ key nào. Lộ một key không đủ để lấy tiền.
 Postgres ghi lại mọi giao dịch trước khi gửi lên chain, nên sự cố xảy ra ở đâu cũng đối soát được.
 Vault đang chạy trên Avalanche Fuji testnet.`,
 
@@ -1648,7 +1655,7 @@ Sau đó agent mới nhận invocation.ready. Khi quyết toán, Finance worker 
 
   // Vault
   `Buyer không có số dư trong Vault. Tiền nằm trong ví đến lúc job được fund.
-Từ Held có ba nhánh, đều trả thẳng về ví: release cho builder sau review window, refund 100% nếu lỗi hoặc trễ, reclaim nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist), khoản đó thành claimable để người nhận tự rút.
+Từ Held có ba nhánh, đều trả thẳng về ví: release cho builder sau review window, refund nếu lỗi, trễ hoặc không giao (một phần nếu có chính sách trễ), reclaim nếu quá resolveBy mà chưa có quyết định. Nếu USDC từ chối chuyển (blacklist), khoản đó thành claimable để người nhận tự rút.
 Invariant: balance luôn lớn hơn hoặc bằng held + claimable.`,
 
   // Grant
@@ -1661,11 +1668,11 @@ Revoke tăng epoch và hạ allowance, mọi chữ ký cũ mất hiệu lực.`,
 Tăng giá: buyer từ chối rồi hỏi lại thì không tính.
 Giá bất thường: cần ít nhất 3 lần mua trước đó.
 Agent mới: job do chính chủ agent tự mua không được tính.
-Ngoài ra, 3 lần fund bị revert trong 24 giờ thì buyer bị tạm dừng tự trả 1 giờ để không đốt gas của relayer.`,
+Ngoài ra, 3 lần fund bị revert trong 24 giờ thì buyer bị chặn mọi thanh toán mới trong 1 giờ, cả trả bằng ví lẫn tự trả, để không đốt gas của relayer.`,
 
   // Operations
   `Postgres giữ journal, lease và nonce. Mọi transaction được ghi journal trước khi broadcast.
-Cùng invocation ID gửi lại luôn nhận cùng receipt. Mỗi worker có key và gas budget riêng.`,
+Cùng invocation ID gửi lại luôn nhận cùng receipt. Settlement và Finance worker có key và gas budget riêng.`,
 
   // Contract
   `Approver không được trùng executor.

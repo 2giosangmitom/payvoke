@@ -31,18 +31,23 @@ Code under `core/` never imports Hono or `modules/`. Imports use package subpath
 aliases (`#core/db`, `#core/payments/finance`, `#test/kit/database`), declared in
 `package.json`, so the web app's typecheck resolves them too.
 
-| Module     | Owns                                                                              |
-| ---------- | --------------------------------------------------------------------------------- |
-| `auth`     | Better Auth SIWE bridge, `requireAccount` middleware, web-write Origin policy     |
-| `catalog`  | public store, app detail, stars                                                   |
-| `provider` | owner app lifecycle, command revisions, API keys and key authentication           |
-| `threads`  | buyer chat threads, the projected timeline and its live SSE stream                |
-| `quotes`   | immutable quote documents and the verified transcript                             |
-| `payments` | paid submission, x402 gateway, payment status and financial intents               |
-| `runs`     | provider feed/ACK/reports/NDJSON stream, run tool results and revisions, verifier |
-| `tools`    | built-in tools providers open in the chat, and the buyer's tool-result endpoint   |
-| `openui`   | OpenUI validation and the provider component catalog                              |
-| `apps`     | shared app/command rules and serializers                                          |
+| Module     | Owns                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| `auth`     | Better Auth SIWE bridge, `requireAccount` middleware, web-write Origin policy, buyer API keys |
+| `catalog`  | public store, app detail, stars                                                               |
+| `provider` | owner app lifecycle, command revisions, API keys and key authentication                       |
+| `threads`  | buyer chat threads, the projected timeline and its live SSE stream                            |
+| `presale`  | free pre-sale messages, provider replies and streamed deltas, offers                          |
+| `files`    | presigned uploads, completions and downloads for buyer inputs and provider results            |
+| `quotes`   | immutable quote documents and the verified transcript                                         |
+| `payments` | paid submission, x402 gateway, payment status, grants, autopay and the Risk Check             |
+| `mcp`      | the buyer MCP endpoint (`/mcp`), authenticated with a buyer API key                           |
+| `runs`     | provider feed/ACK/reports/NDJSON stream, run tool results and revisions, verifier             |
+| `tools`    | built-in tools providers open in the chat, and the buyer's tool-result endpoint               |
+| `openui`   | OpenUI validation and the provider component catalog                                          |
+| `apps`     | shared app/command rules and serializers                                                      |
+| `people`   | profiles, public developer pages, the account's usage and earnings                            |
+| `stats`    | agent track records and hold outcomes (no routes of its own)                                  |
 
 ### Routes, validation and RPC
 
@@ -54,9 +59,9 @@ Request params, query and JSON bodies are validated with zod through
 `validate(target, schema, code, fieldCodes?)` (`http/validate.ts`), a wrapper of
 `@hono/zod-validator`. A failure answers 400 `{ error: CODE }` with the route's
 public code, or the code of the first failing field listed in `fieldCodes`.
-Business rules beyond shape stay in the services. Middleware order mirrors the
-former Fastify lifecycle: rate limit, body limit, parsing and validation, then
-`requireAccount`, then the handler. Handlers return `c.json(value, status)` so
+Business rules beyond shape stay in the services. Middleware runs in this order:
+rate limit, body limit, parsing and validation, then `requireAccount`, then the
+handler. Handlers return `c.json(value, status)` so
 response types reach the client; serialize JSON columns with their domain types
 (see `modules/apps/serializers.ts`).
 
@@ -294,7 +299,7 @@ Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
 `bun run test:payments:evm` adds the real local-EVM flows (Hardhat node), and
 `bun run test:conformance` checks every x402 security rule against passing tests.
 
-## Quote/x402 milestone (not live payments)
+## Quotes and x402
 
 - Quote preparation authenticates the buyer, validates the active command revision
   arguments/defaults and freezes input/terms/policy snapshots plus EIP-712 quote.
@@ -304,8 +309,9 @@ Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
   after quote expiry. Rejected, never-attempted operations can release after
   expiry; finalized reverted attempts and DELIVERED/FAILED runs allow a fresh
   quote immediately. An in-scope revision must reclaim the same slot.
-- Only empty context selections are supported. Nonempty selections fail
-  explicitly; there is no silent context omission.
+- Only file context is supported: `contextSelection.fileIds` (with files
+  enabled). Message or brief selections fail with `CONTEXT_NOT_SUPPORTED`;
+  there is no silent context omission.
 - Invocation submission takes only `{quoteId}` and requires the invocation ID as
   idempotency key.
   After ownership/availability/schema gates it returns an SDK-encoded v2
@@ -323,9 +329,9 @@ Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
   `GET /v1/grant-operations/:id` reports `PENDING` → `BROADCAST` → `FINALIZED` (or
   `REJECTED`/`REVERTED`).
 - Core/client/server adapters live in `@payvoke/shared/x402`, pinned to core 2.28.0.
-  No stock x402 framework middleware is mounted: the studied Fastify one settles at
-  `onRequest`, before body validation. Final orchestration must run only after
-  auth/body/ownership gates, using core's upfront flow.
+  No stock x402 framework middleware is mounted, because those settle before body
+  validation. The gateway runs only after the auth/body/ownership gates, using
+  core's upfront flow.
 
 To exercise quotes locally, provision an app with a default command, a thread,
 an active policy and a matching `VAULT_ADDRESS` in a development DB. Quotes do
@@ -335,5 +341,6 @@ not prove onchain admission.
 submissions still return `SETTLEMENT_NOT_AVAILABLE`. Opt-in requires the vault
 deployment settings and matching facilitator capabilities at API startup,
 `SETTLEMENT_ENABLED` for journaling, and the settlement worker. The full
-path is exercised on an isolated local EVM; no Fuji deployment/E2E or production
-enablement has been performed.
+path is tested on an isolated local EVM. The vault is deployed on Avalanche Fuji
+(see [packages/vault/README.md](../../packages/vault/README.md)); there is no
+mainnet deployment.

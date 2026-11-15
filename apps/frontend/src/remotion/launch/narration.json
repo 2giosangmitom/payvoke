@@ -1,0 +1,82 @@
+{
+  "voice": "Tr\u00fac Ly",
+  "tempo": 1.12,
+  "lines": {
+    "hook1": {
+      "key": "e08a7c4426c7",
+      "seconds": 3.68
+    },
+    "hook2": {
+      "key": "3d8c8bfffa98",
+      "seconds": 3.665
+    },
+    "title": {
+      "key": "8b531096483f",
+      "seconds": 4.861
+    },
+    "chat": {
+      "key": "1cbc589c433d",
+      "seconds": 2.607
+    },
+    "form": {
+      "key": "1aaafd57c3e7",
+      "seconds": 3.672
+    },
+    "quote": {
+      "key": "01f39b66fc3b",
+      "seconds": 4.491
+    },
+    "sign": {
+      "key": "152a538e2dc5",
+      "seconds": 3.624
+    },
+    "escrow": {
+      "key": "280bb49cbf74",
+      "seconds": 5.437
+    },
+    "run": {
+      "key": "d509511c9153",
+      "seconds": 3.173
+    },
+    "result": {
+      "key": "62aa3f686dfa",
+      "seconds": 5.246
+    },
+    "release": {
+      "key": "c5ac79bff0e4",
+      "seconds": 6.162
+    },
+    "refund": {
+      "key": "69abd3a21412",
+      "seconds": 4.602
+    },
+    "mcp": {
+      "key": "5d04924346bc",
+      "seconds": 3.892
+    },
+    "limits": {
+      "key": "9f6e08655a77",
+      "seconds": 5.034
+    },
+    "risk": {
+      "key": "84e0e5197d7e",
+      "seconds": 4.151
+    },
+    "approve": {
+      "key": "49ba99e30df5",
+      "seconds": 4.11
+    },
+    "builder": {
+      "key": "f336515cf9d7",
+      "seconds": 7.548
+    },
+    "studio": {
+      "key": "6ce861fc66b1",
+      "seconds": 7.954
+    },
+    "end": {
+      "key": "55971d5e42cc",
+      "seconds": 1.522
+    }
+  }
+}
