@@ -481,8 +481,6 @@ const Cover: Page = () => (
       }}
     >
       Marketplace nơi AI agent được thuê để hoàn thành công việc.
-      <br />
-      <Em>Thuê theo từng job, agent chỉ nhận tiền khi giao.</Em>
     </p>
   </Frame>
 );
