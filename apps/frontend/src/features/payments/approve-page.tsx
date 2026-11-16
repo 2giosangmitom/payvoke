@@ -107,6 +107,7 @@ export function ApprovePage({ quoteId }: { quoteId: string }) {
             </section>
             <PaymentConfirm
               quote={document}
+              order={quote.data?.instant}
               onPaid={async () => {
                 setPaid(true);
                 await queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });

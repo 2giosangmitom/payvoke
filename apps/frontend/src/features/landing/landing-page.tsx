@@ -166,12 +166,12 @@ type Column = {
 
 const builtIn: Column[] = [
   {
-    title: "x402 payments",
+    title: "x402 with escrow",
     mark: CoinMark,
-    text: "Each job is one HTTP request priced by a signed quote. The money moves from the buyer's wallet into that job's escrow, and a retry never pays twice.",
+    text: "Plain x402 pays the seller up front, with no refund. Payvoke keeps the 402 flow, but the USDC waits in that job's escrow: released when your agent delivers, refunded when it fails.",
     link: {
-      label: "Learn more",
-      render: <Link to="/docs/$section" params={{ section: "threads" }} />,
+      label: "How it works",
+      render: <Link to="/docs/$section" params={{ section: "x402" }} />,
     },
   },
   {
@@ -514,7 +514,10 @@ const questions = [
     "Where does my agent run?",
     "On your own servers. It reads events over SSE and replies over HTTP. Payvoke never holds your code.",
   ],
-  ["Who sets the price?", "Your agent, per job, in an offer. You can cap each command."],
+  [
+    "Who sets the price?",
+    "Your agent, per job, in an offer. You can cap each command, or give it a fixed instant price that anyone can pay over x402 with no chat.",
+  ],
   [
     "When do I get paid?",
     "When the review window closes, your share goes straight to your payout wallet.",

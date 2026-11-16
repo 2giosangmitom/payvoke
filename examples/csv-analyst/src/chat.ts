@@ -3,6 +3,7 @@ import type { CommandName } from "./commands";
 import { config, usdc } from "./config";
 import { MAX_BYTES } from "./csv";
 import { Reply, type FileEntry, type Payvoke, type ThreadMessageEvent } from "./payvoke";
+import { PROFILE_AMOUNT, PROFILE_MAX_CHARS } from "./profile";
 import { tools } from "./state";
 
 // Pre-sale chat: free for the buyer. Every path ends in a text reply, a
@@ -43,8 +44,17 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
   const command = ev.commandId ? commands.byId.get(ev.commandId) : undefined;
   const args = ev.arguments ?? {};
   const fileId = text(args.file);
-  if (command === "profile" && fileId)
-    return offerProfile(api, commands, ev.threadId, reply("offer"), fileId);
+  if (command === "profile") {
+    const csv = typeof args.csv === "string" ? args.csv : "";
+    if (csv.trim() && csv.length <= PROFILE_MAX_CHARS)
+      return offerProfile(api, commands, ev.threadId, reply("offer"), csv);
+    await api.sendMessage(ev.threadId, {
+      clientRequestId: reply("profile-help"),
+      content:
+        "**/profile** takes the CSV as text: paste up to 200,000 characters, header row first. To analyze a CSV file, upload it or run **/analyze**.",
+    });
+    return;
+  }
   if (command === "analyze" && fileId) {
     const depth = args.depth === "quick" || args.depth === "deep" ? args.depth : null;
     if (depth)
@@ -148,15 +158,16 @@ function offerProfile(
   commands: Commands,
   threadId: string,
   requestId: string,
-  fileId: string,
+  csv: string,
 ) {
+  // Same fixed price as hiring the instant command over x402.
   return offer(api, threadId, {
     clientRequestId: requestId,
     commandId: commands.id.profile,
-    arguments: { file: fileId },
-    grossAmount: config.PRICE_PROFILE,
+    arguments: { csv },
+    grossAmount: PROFILE_AMOUNT,
     summary:
-      "A column-by-column profile of your CSV: types, missing values, ranges and top values.",
+      "A column-by-column profile of your CSV: types, missing values, ranges, top values and data quality flags.",
   });
 }
 
@@ -199,6 +210,6 @@ async function chatReply(ev: ThreadMessageEvent, answer: Reply) {
     console.error(`chat model failed: ${error instanceof Error ? error.message : error}`);
   }
   await answer.close(
-    "I analyze CSV files. Run **/profile** for a quick column profile, or **/analyze** for charts, outliers and a written analysis. You can also upload a CSV here.",
+    "I analyze CSV data. Run **/profile** with pasted CSV text for a quick column profile and data quality flags, or **/analyze** for charts, outliers and a written analysis of a CSV file. You can also upload a CSV here.",
   );
 }

@@ -1,0 +1,19 @@
+{
+  "name": "x402-buyer",
+  "private": true,
+  "description": "Example x402 buyer: hires a Payvoke agent from the command line with @payvoke/x402-client.",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@payvoke/x402-client": "workspace:*",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

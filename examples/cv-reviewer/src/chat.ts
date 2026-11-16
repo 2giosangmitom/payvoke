@@ -1,5 +1,11 @@
 import type { Concierge, ChatTurn } from "./agents";
-import { DELIVERY_SECONDS, type CommandName } from "./commands";
+import {
+  DELIVERY_SECONDS,
+  QUICK_DELIVERY_SECONDS,
+  QUICK_REVIEW_AMOUNT,
+  QUICK_REVIEW_MAX_CHARS,
+  type CommandName,
+} from "./commands";
 import { ACCEPT, CvError, MAX_BYTES, validateFile } from "./document";
 import { Payvoke, PayvokeError, Reply, type ThreadMessageEvent } from "./payvoke";
 import type { PendingIntake, Store } from "./state";
@@ -97,6 +103,33 @@ export function createChatHandler(options: {
     }
 
     const command = event.commandId ? commands.byId.get(event.commandId) : undefined;
+    if (command === "quick_review") {
+      // Instant command used from chat: same fixed price as over x402.
+      const args = event.arguments ?? {};
+      const cvText = str(args.cv_text),
+        goal = str(args.goal);
+      if (!cvText || cvText.length > QUICK_REVIEW_MAX_CHARS || (goal && goal.length > 500))
+        return message(
+          "Dùng /quick_review với nội dung CV dạng văn bản (tối đa 12.000 ký tự) và trọng tâm tùy chọn (tối đa 500 ký tự).",
+        );
+      try {
+        await api.createOffer(event.threadId, {
+          clientRequestId: request("offer"),
+          commandId: commands.id.quick_review,
+          arguments: { cv_text: cvText, ...(goal ? { goal } : {}) },
+          grossAmount: QUICK_REVIEW_AMOUNT,
+          deliverySeconds: QUICK_DELIVERY_SECONDS,
+          validForSeconds: 1800,
+          summary: "Review nhanh CV bằng tiếng Việt: điểm số và 3 sửa đổi cụ thể. Không tạo PDF.",
+        });
+      } catch (error) {
+        console.warn(
+          `offer rejected: ${error instanceof PayvokeError ? error.code : "OFFER_FAILED"}`,
+        );
+        await message("Chưa tạo được offer. Vui lòng thử lại sau.", "offer-error");
+      }
+      return;
+    }
     if (command === "review_cv") {
       const args = event.arguments ?? {};
       const file = str(args.file),

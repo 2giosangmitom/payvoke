@@ -13,6 +13,7 @@ import { providerRoutes } from "./modules/provider/provider.routes";
 import { quoteRoutes } from "./modules/quotes/quote.routes";
 import { runRoutes } from "./modules/runs/runs.routes";
 import { threadRoutes } from "./modules/threads/thread.routes";
+import { x402Routes } from "./modules/x402/x402.routes";
 
 // Every route, chained so the RPC client (`hc<AppType>`) sees their types.
 // Kept apart from app.ts so the docs generator can read the routes without
@@ -22,6 +23,7 @@ export const routes = new Hono<AppEnv>()
   .route("/", accessTokenRoutes)
   .route("/", quoteRoutes)
   .route("/", paymentRoutes)
+  .route("/", x402Routes)
   .route("/", grantRoutes)
   .route("/", providerRoutes)
   .route("/", catalogRoutes)

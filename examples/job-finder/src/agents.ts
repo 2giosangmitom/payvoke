@@ -1,6 +1,7 @@
 import { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
 import { config } from "./config";
+import { matcherInstructions, matchSchema, type MatchGenerator } from "./match";
 
 const model = [config.MODEL, ...config.FALLBACK_MODELS].map((id) => ({
   model: id,
@@ -19,6 +20,7 @@ Người dùng có thể trò chuyện miễn phí với bạn trước khi sử
 Bạn hỗ trợ người dùng tìm việc làm, đọc và đánh giá CV, và kết nối với các cơ hội việc làm theo địa phương nơi họ ở và các tỉnh thành lân cận.
 Bạn cung cấp lệnh chính:
 - /find_job: Đọc CV, đánh giá hồ sơ và tìm kiếm các vị trí việc làm đang tuyển dụng phù hợp theo vị trí nơi ở của ứng viên & các tỉnh lân cận (kèm mức lương thị trường).
+- /match: Gợi ý nhanh top 5 vị trí phù hợp chỉ từ mô tả kỹ năng (không cần CV), giá cố định.
 Giao tiếp bằng tiếng Việt tự nhiên, thân thiện, lịch sự và súc tích (tối đa 4 câu markdown ngắn).
 Không bao giờ tự báo giá cụ thể; mức giá luôn hiển thị minh bạch trên thẻ Offer của Payvoke.
 Khi người dùng muốn tìm việc hoặc gửi CV, hãy hướng dẫn họ tải CV lên hoặc dùng lệnh /find_job.`,
@@ -68,4 +70,23 @@ Báo cáo kết quả phải được trình bày bằng tiếng Việt với đ
 Hãy đưa ra các link ứng tuyển chính xác, số liệu lương thực tế và bám sát thị trường lao động hiện nay.`,
 });
 
-new Mastra({ agents: { concierge, jobMatcher }, logger: false });
+export const roleMatcher = new Agent({
+  id: "job-role-matcher",
+  name: "Job Finder quick matcher",
+  model,
+  defaultOptions: noReasoning,
+  instructions: matcherInstructions,
+});
+
+// Structured output for /match. The schema goes in the prompt, not
+// response_format, which not every free OpenRouter model supports.
+export const generateMatches: MatchGenerator = async (prompt, abortSignal) => {
+  const out = await roleMatcher.generate(prompt, {
+    structuredOutput: { schema: matchSchema, jsonPromptInjection: true },
+    abortSignal,
+  });
+  if (out.error) throw out.error;
+  return out.object;
+};
+
+new Mastra({ agents: { concierge, jobMatcher, roleMatcher }, logger: false });

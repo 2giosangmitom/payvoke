@@ -20,6 +20,14 @@ export const config = z
     MODEL_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
     PRICE_FIND_JOB: z.string().default("150000"),
     STATE_DIR: z.string().default(".data"),
+    // Agent hires agent (off unless both are set): find_job first buys a
+    // cv-reviewer quick_review over x402, paid from Job Finder's own wallet.
+    CV_REVIEWER_APP_ID: z.string().optional(),
+    JOB_FINDER_BUYER_KEY: z.string().optional(),
+    CV_REVIEWER_MAX_AMOUNT: z.string().regex(/^\d+$/).default("500000"),
+    CV_REVIEWER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+    // The web origin the API trusts for SIWE, when it is not PAYVOKE_API_URL's.
+    PAYVOKE_WEB_ORIGIN: z.string().url().optional(),
   })
   .parse(process.env);
 

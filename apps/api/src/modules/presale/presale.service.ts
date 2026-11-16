@@ -167,8 +167,9 @@ export class PresaleService {
       throw new BadRequestError("INVALID_MESSAGE");
     const clientRequestId = body.clientRequestId;
     const commandId = (body.commandId as string | undefined) ?? null;
+    // DIRECT threads hold one instant x402 job and have no chat.
     const thread = await this.db.chatThread.findFirst({
-      where: { id: threadId, buyerId },
+      where: { id: threadId, buyerId, kind: "CHAT" },
       include: { app: true },
     });
     if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");
@@ -236,8 +237,9 @@ export class PresaleService {
     threadId: string,
     body: { toolCallId: string; result: unknown; clientRequestId: string },
   ) {
+    // DIRECT threads hold one instant x402 job and have no chat.
     const thread = await this.db.chatThread.findFirst({
-      where: { id: threadId, buyerId },
+      where: { id: threadId, buyerId, kind: "CHAT" },
       include: { app: true },
     });
     if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");
@@ -302,7 +304,7 @@ export class PresaleService {
   // A thread of this provider app that can still be talked to.
   private async providerThread(app: App, threadId: string) {
     const thread = await this.db.chatThread.findFirst({
-      where: { id: threadId, appId: app.id, archivedAt: null },
+      where: { id: threadId, appId: app.id, archivedAt: null, kind: "CHAT" },
     });
     if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");
     return thread;

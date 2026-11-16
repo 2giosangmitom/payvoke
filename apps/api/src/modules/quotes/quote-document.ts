@@ -44,6 +44,9 @@ export type QuoteInput = {
   history: TranscriptMessage[];
   // READY buyer files; their digests, never URLs, enter the input hash.
   files: FileManifestEntry[];
+  // The URL this quote is paid at, frozen into the terms hash so a signature
+  // for it is refused at any other resource.
+  resource: string;
   now: number;
 };
 
@@ -92,7 +95,7 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
     ...(input.offer ? { offer: input.offer } : {}),
   };
   const termsSnapshot = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     productId: product.id,
     productVersion: version.number,
     commandId,
@@ -101,6 +104,7 @@ export function buildQuoteDocument(input: QuoteInput): QuoteDocument {
       deliverySeconds: input.deliverySeconds,
     },
     deliveryDeadline,
+    resource: input.resource,
   };
   const policySnapshot = {
     schemaVersion: 1,

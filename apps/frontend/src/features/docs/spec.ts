@@ -1,4 +1,5 @@
 import document from "./openapi.json";
+import x402Guide from "../../../../api/docs/x402.md?raw";
 
 // The builder API reference, generated from the API's routes by
 // `bun --filter api docs`. Never edit openapi.json by hand.
@@ -52,7 +53,14 @@ export type Operation = {
   responses: Record<string, { description: string; content?: Media }>;
 };
 
-export type Section = { slug: string; name: string; description: string; operations: Operation[] };
+export type Section = {
+  slug: string;
+  name: string;
+  description: string;
+  operations: Operation[];
+  // A guide's one-line summary for the overview; reference sections list their operations.
+  summary?: string;
+};
 
 type RawOperation = Omit<Operation, "method" | "path" | "tag" | "scope" | "parameters"> & {
   tags: string[];
@@ -73,7 +81,7 @@ export const info = spec.info;
 // The public API the reference documents.
 export const serverUrl = spec.servers[0].url;
 
-export const sections: Section[] = spec.tags.map((tag) => ({
+const referenceSections: Section[] = spec.tags.map((tag) => ({
   slug: tag.name.toLowerCase(),
   name: tag.name,
   description: tag.description,
@@ -90,6 +98,20 @@ export const sections: Section[] = spec.tags.map((tag) => ({
       })),
   ),
 }));
+
+// Guides with no builder operations of their own, written in the API's docs/
+// next to the generated sections' text.
+const guides: Section[] = [
+  {
+    slug: "x402",
+    name: "x402",
+    description: x402Guide.trim(),
+    operations: [],
+    summary: "Pay for jobs over HTTP: the 402 challenge, escrow, instant commands, the SDK",
+  },
+];
+
+export const sections: Section[] = [...referenceSections, ...guides];
 
 export const sectionOf = (operationId: string) =>
   sections.find((section) => section.operations.some((op) => op.operationId === operationId));

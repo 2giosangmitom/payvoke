@@ -414,7 +414,7 @@ it("talks to every app, prices only by offer and takes one result per bot tool c
   assert.equal(accepted.statusCode, 201, accepted.body);
   assert.equal(accepted.json().grossAmount, "90000000");
   assert.equal(accepted.json().inputSnapshot.schemaVersion, 2);
-  assert.equal(accepted.json().termsSnapshot.schemaVersion, 2);
+  assert.equal(accepted.json().termsSnapshot.schemaVersion, 3);
 });
 
 it("delivers free pre-sale messages to the provider feed with bounded abuse", async () => {

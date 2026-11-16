@@ -10,12 +10,14 @@ import {
   type ToolResultEvent,
 } from "./payvoke";
 import { renderPdf } from "./pdf";
+import { quickReviewInput, quickReviewMarkdown, type QuickReviewGenerator } from "./quick";
 import { reviewMarkdown, validateReview, type ReviewGenerator } from "./review";
 import type { Job, Store } from "./state";
 
 export function createRunHandlers(options: {
   jobs: Store<Job>;
   generateReview: ReviewGenerator;
+  generateQuickReview?: QuickReviewGenerator;
   render?: typeof renderPdf;
 }) {
   async function claim(api: Payvoke, event: { id: string; invocationId: string; runId: string }) {
@@ -88,6 +90,35 @@ export function createRunHandlers(options: {
     });
   }
 
+  // Instant /quick_review: the buyer paid a fixed price (often over x402, with
+  // no chat), so arguments arrive here directly and there are no files. The
+  // review is also uploaded as Markdown so the delivery meets `REC` evidence.
+  // Nothing is stored locally: the command allows no revisions.
+  async function quickReview(run: Run, args: Record<string, unknown>) {
+    await run.progress("read", "Đang đọc nội dung CV...");
+    const input = quickReviewInput(args);
+    await run.progress("read", "Đã đọc nội dung CV", "done");
+    if (!options.generateQuickReview)
+      throw new CvError("review_failed", "Dịch vụ review nhanh chưa được cấu hình.");
+    await run.progress("review", "Đang review nhanh CV...");
+    const review = await options.generateQuickReview(input);
+    await run.progress("review", "Đã chấm điểm và đề xuất 3 sửa đổi", "done");
+    const output = quickReviewMarkdown(review, input.goal);
+    const fileId = await run.api.upload(
+      run.invocationId,
+      "cv-quick-review.md",
+      "text/markdown",
+      new TextEncoder().encode(output),
+    );
+    await run.startText(`quick-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
+    await run.text(output);
+    await run.endText();
+    await run.finish({
+      type: "result",
+      data: { artifactVersion: 1, output, files: [{ fileId }] },
+    });
+  }
+
   return {
     async handleReady(
       api: Payvoke,
@@ -97,10 +128,12 @@ export function createRunHandlers(options: {
       const run = await claim(api, event);
       if (!run) return;
       await guard(run, async () => {
-        await run.report({ type: "started", data: { command: "review_cv" } });
+        const command = commands.byId.get(event.input.commandId);
+        await run.report({ type: "started", data: { command: command ?? "unknown" } });
         const args = event.input.arguments;
+        if (command === "quick_review") return quickReview(run, args);
         const file = event.input.context.files.find((file) => file.fileId === args.file);
-        if (commands.byId.get(event.input.commandId) !== "review_cv" || !file) {
+        if (command !== "review_cv" || !file) {
           throw new CvError("invalid_input", "Yêu cầu không có lệnh review CV hoặc tệp CV hợp lệ.");
         }
         if (args.goal !== undefined && (typeof args.goal !== "string" || args.goal.length > 500)) {

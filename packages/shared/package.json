@@ -6,6 +6,7 @@
     "./protocol": "./src/protocol/index.ts",
     "./x402": "./src/x402/index.ts",
     "./x402/chain": "./src/x402/chain.ts",
+    "./x402/client": "./src/x402/client.ts",
     "./x402/facilitator": "./src/x402/facilitator.ts",
     "./x402/settlement": "./src/x402/settlement.ts",
     "./openui": "./src/openui/index.ts"

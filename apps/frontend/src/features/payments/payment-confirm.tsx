@@ -17,7 +17,13 @@ import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
 import { ErrorNotice } from "@/src/components/layout/page-kit";
 import { formatDuration, formatLatePolicy, formatUsdc } from "@/src/features/apps/format";
-import { checkGrant, checkWallet, payFromWallet, payWithGrant } from "@/src/features/payments/api";
+import {
+  checkGrant,
+  checkWallet,
+  payFromWallet,
+  payWithGrant,
+  type InstantOrder,
+} from "@/src/features/payments/api";
 import { usdc } from "@/src/features/wallet/api";
 import {
   browserKeyQuery,
@@ -55,12 +61,15 @@ export function PaymentConfirm({
   onPaid,
   onHide,
   embedded = false,
+  order,
 }: {
   quote: QuoteDocument;
   onPaid: (quote: QuoteDocument) => void | Promise<void>;
   onHide?: () => void;
   // Inside a job card, which already shows the amount, command and terms.
   embedded?: boolean;
+  // An instant x402 purchase: paid at the command URL that quoted it.
+  order?: InstantOrder;
 }) {
   const vault = quote.vault as Address;
   const buyer = quote.protocolQuote.buyer as Address;
@@ -125,7 +134,14 @@ export function PaymentConfirm({
       }
       throw cause;
     }
-    await payWithGrant(quote, key.grantId, epoch, (args) => key.account.signTypedData(args));
+    await payWithGrant(
+      quote,
+      key.grantId,
+      epoch,
+      (args) => key.account.signTypedData(args),
+      key.signer,
+      order,
+    );
   }
 
   // The wallet signs a USDC authorization for this one quote.
@@ -134,7 +150,7 @@ export function PaymentConfirm({
     // A wallet signs typed data only for the chain it is on.
     if (chainId !== avalancheFuji.id) await switchChain({ chainId: avalancheFuji.id });
     await checkWallet(quote, buyer, publicClient);
-    await payFromWallet(quote, (args) => signTypedDataAsync(args));
+    await payFromWallet(quote, (args) => signTypedDataAsync(args), order);
   }
 
   const walletButton = (
@@ -159,7 +175,9 @@ export function PaymentConfirm({
   if (expired)
     action = (
       <p className="text-sm text-muted-foreground">
-        This quote expired. Accept the offer again for a new one.
+        {order
+          ? "This quote expired. Start again for a new one."
+          : "This quote expired. Accept the offer again for a new one."}
       </p>
     );
   else if (browserKey.data && !signInWallet)

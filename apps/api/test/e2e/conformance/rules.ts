@@ -34,7 +34,7 @@ export const rules: Rule[] = [
     id: "SR2",
     source: "P1, P4 P18",
     requirement: "Only the grant's session signer can authorize a hold",
-    evidence: [vault("test_WrongSigner()"), vault("test_MalformedSignature()")],
+    evidence: [vault("test_WrongSignerIsRejected()"), vault("test_MalformedAndWrongSignatures()")],
   },
   {
     id: "SR3",
@@ -43,7 +43,7 @@ export const rules: Rule[] = [
     evidence: [
       vault("test_ExpiredQuoteAtExactDeadline()"),
       vault("test_ExpiredGrantAtExactDeadline()"),
-      vault("test_RevokeBeforeReserveWins()"),
+      vault("test_RevokeBeforeFundWins()"),
       backend("expires unpaid quotes without extending deadlines on replay"),
     ],
   },
@@ -145,7 +145,7 @@ export const rules: Rule[] = [
     requirement: "No provider work is dispatched before funds are held",
     evidence: [
       backend("records a late/closed hold as paid but never queues an expired delivery"),
-      vault("test_WithdrawBeforeReserveWins()"),
+      vault("test_InsufficientAllowanceAndBalance()"),
     ],
   },
   {
@@ -164,7 +164,7 @@ export const rules: Rule[] = [
     source: "P3",
     requirement: "Only the authorized facilitator/relayer can settle a leaked header",
     evidence: [
-      vault("test_OnlyRelayerCanReserve()"),
+      vault("test_OnlyRelayerCanFund()"),
       backend("exposes no facilitator endpoint over HTTP; only the in-process gateway settles"),
     ],
   },
@@ -230,6 +230,30 @@ export const rules: Rule[] = [
     evidence: [
       backend("red team: an agent that raises its own offer needs the user's approval"),
       backend("decision layer: unusual prices and unreliable agents need the user's approval"),
+    ],
+  },
+  {
+    id: "RB1",
+    source: "Payvoke x402 escrow",
+    requirement:
+      "A payment is accepted only at the resource URL frozen into its quote's signed terms",
+    evidence: [
+      backend("accepts a signature only at the URL that issued its quote"),
+      backend("binds a v3 quote to the resource it names, and v2 quotes to /v1/invocations"),
+      backend("still pays chat quotes at /v1/invocations, bound to that resource"),
+    ],
+  },
+  {
+    id: "IN1",
+    source: "Payvoke x402 escrow",
+    requirement:
+      "Instant x402 purchases keep the standard 402 round trip, gate before settling and hold funds in the per-job escrow",
+    evidence: [
+      backend("answers an unpaid request with a 402 carrying the quote, idempotently"),
+      backend("pays at the instant URL, holds the escrow and hands the agent invocation.ready"),
+      backend(
+        "refuses before signing: wrong resource, spend cap, approval, mismatched or missing quote",
+      ),
     ],
   },
 ];

@@ -1,6 +1,7 @@
 import { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
 import type { Config } from "./config";
+import { makeQuickReviewGenerator, quickReviewerInstructions, quickReviewSchema } from "./quick";
 import { makeReviewGenerator, reviewerInstructions, reviewDraftSchema } from "./review";
 
 export type ChatTurn = { role: "user"; content: string } | { role: "assistant"; content: string };
@@ -30,8 +31,15 @@ Hướng dẫn tải CV hoặc dùng /review_cv. Không review trong chat miễn
     defaultOptions,
     instructions: reviewerInstructions,
   });
+  const quickReviewer = new Agent({
+    id: "cv-quick-reviewer",
+    name: "CV quick reviewer",
+    model,
+    defaultOptions,
+    instructions: quickReviewerInstructions,
+  });
   // Disable Mastra's default logging, which can include complete provider payloads.
-  new Mastra({ agents: { conciergeAgent, reviewer }, logger: false });
+  new Mastra({ agents: { conciergeAgent, reviewer, quickReviewer }, logger: false });
   const concierge: Concierge = async function* (turns) {
     const output = await conciergeAgent.stream(turns, { abortSignal: AbortSignal.timeout(30_000) });
     yield* output.textStream;
@@ -44,5 +52,13 @@ Hướng dẫn tải CV hoặc dùng /review_cv. Không review trong chat miễn
     if (output.error) throw output.error;
     return output.object;
   });
-  return { concierge, generateReview };
+  const generateQuickReview = makeQuickReviewGenerator(async (prompt, abortSignal) => {
+    const output = await quickReviewer.generate(prompt, {
+      structuredOutput: { schema: quickReviewSchema, jsonPromptInjection: true },
+      abortSignal,
+    });
+    if (output.error) throw output.error;
+    return output.object;
+  });
+  return { concierge, generateReview, generateQuickReview };
 }

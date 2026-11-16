@@ -21,6 +21,8 @@ const messages: Record<string, string> = {
   INVALID_APP_NAME: "Names can't contain links, HTML or special characters.",
   INVALID_DISPLAY_NAME: "Display names can't contain links, HTML or special characters.",
   RATE_LIMITED: "Too many requests. Try again later.",
+  INVALID_ARGUMENTS: "Some arguments don't match what this command takes.",
+  INVALID_INSTANT_REQUEST: "Some arguments don't match what this command takes.",
   rpc_unavailable:
     "The Avalanche network did not answer in time. Nothing was charged; try paying again.",
   REVISION_TOO_LATE:

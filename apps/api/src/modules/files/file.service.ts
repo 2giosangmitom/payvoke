@@ -89,7 +89,7 @@ export class FileService {
   async requestBuyerUpload(buyerId: string, body: BuyerUploadBody) {
     const storage = this.store();
     const thread = await this.db.chatThread.findFirst({
-      where: { id: body.threadId, buyerId, archivedAt: null },
+      where: { id: body.threadId, buyerId, archivedAt: null, kind: "CHAT" },
       select: { id: true },
     });
     if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");

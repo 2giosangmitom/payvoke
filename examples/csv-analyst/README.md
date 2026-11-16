@@ -24,6 +24,7 @@ If OpenRouter is down or rate limited, the job still delivers: the plan falls ba
 | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | Commands with FILE, STRING and `choices` options, a positional parameter, `maxAmount` and full terms | `src/commands.ts`, synced with `overwriteCommands` on start |
 | Two evidence levels: `/analyze` uses `REC`, `/profile` uses `SIGN`                                   | `src/commands.ts`                                           |
+| An instant command (`instantAmount`) hireable over x402 with no chat: `/profile`                     | `src/commands.ts`, `src/profile.ts`                         |
 | SSE event feed as the heartbeat, with dedupe and reconnect                                           | `src/payvoke.ts`, `src/index.ts`                            |
 | Free chat replies in markdown, streamed token by token with message deltas                           | `src/chat.ts`, `Reply` in `src/payvoke.ts`                  |
 | `ask_form` with a file field, before payment                                                         | `src/chat.ts` (shown when the buyer talks about data)       |
@@ -47,7 +48,19 @@ If OpenRouter is down or rate limited, the job still delivers: the plan falls ba
 5. On the answer, a new run plans the charts, streams the dashboard and the analysis, uploads `analysis.json` and `summary.csv`, and sends the result.
 6. The buyer can ask for one revision ("group by product instead"). After the review window the vault pays the builder.
 
-`/profile` skips the questions: one fixed-price offer, then a profile and `profile.json`.
+`/profile` skips all of this; see below.
+
+## Instant command: `/profile` over x402
+
+`/profile` is an instant command with a fixed price of **0.20 USDC** (`instantAmount: "200000"`, the same as its `maxAmount`). It takes one argument:
+
+| Name  | Type   | Required | Description                                              |
+| ----- | ------ | -------- | -------------------------------------------------------- |
+| `csv` | STRING | yes      | Raw CSV text, header row first, up to 200,000 characters |
+
+Instant commands cannot take a required FILE, so the CSV is sent as text. Any buyer, person or agent, can hire it without chat or an offer: `POST /v1/x402/apps/:appId/commands/profile` with body `{ "arguments": { "csv": "..." } }` and an `Idempotency-Key` header. The first call answers `402` with the quote; the buyer signs the authorization and retries with `PAYMENT-SIGNATURE`. The USDC is held in PayvokeVault until delivery.
+
+The agent gets `invocation.ready` directly, with no files. It parses the text with the same code as `/analyze`, streams a small dashboard (metrics, column profile, data quality card), and delivers a Markdown profile with data quality flags: duplicate rows, missing headers, empty or constant columns, columns with 20% or more missing values, all-unique text columns and numeric outliers. No model is used. `/profile` needs `SIGN` evidence, so `profile.json` is an optional extra. Bad input ends the run with `failed` and an automatic refund. Delivery is 120 seconds, the review window 600 seconds, and there are no revisions. Running `/profile` in chat makes an offer at the same price.
 
 ## Run it
 
@@ -87,7 +100,8 @@ bun run typecheck
 | `src/payvoke.ts`  | Provider API client: calls with retries, SSE feed, uploads, and `Reply` for streamed chat replies, and `Run` for sequenced reports and stream lines |
 | `src/commands.ts` | Command definitions and terms                                                                                                                       |
 | `src/chat.ts`     | Pre-sale chat: forms, choices and offers                                                                                                            |
-| `src/run.ts`      | Paid runs: profile, tool call, dashboard, analysis, files, result                                                                                   |
+| `src/run.ts`      | Paid runs: tool call, dashboard, analysis, files, result                                                                                            |
+| `src/profile.ts`  | The instant `/profile` run: CSV text in, column profile and data quality flags out                                                                  |
 | `src/csv.ts`      | Parsing, profiling, aggregation and outliers. No model                                                                                              |
 | `src/plan.ts`     | Chart plan schema, validation and the default plan                                                                                                  |
 | `src/ui.ts`       | OpenUI Lang builders and string sanitising                                                                                                          |
@@ -96,6 +110,6 @@ bun run typecheck
 
 ## Limits
 
-- Files up to 5 MB, 200,000 rows and 100 columns.
+- Files up to 5 MB, 200,000 rows and 100 columns. `/profile` text up to 200,000 characters.
 - State is kept in local JSON files, so run one instance. Feed events are acknowledged before the work starts. If the process dies mid-run, that run is not retried and the delivery deadline refunds the buyer.
 - Free OpenRouter models share a rate-limited pool and often answer `429`. Each model is retried `MODEL_RETRIES` times with backoff, then the agent moves through `FALLBACK_MODELS`. If every model fails, chat sends a fixed reply and paid runs use the default chart plan. To lift the shared limit, add your own Google AI Studio key in OpenRouter's integration settings, or set `MODEL` to a paid model for a public agent.

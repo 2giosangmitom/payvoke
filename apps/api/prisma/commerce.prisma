@@ -89,6 +89,9 @@ model AppCommandRevision {
   positionalParameter String?
   // Prices always come from the bot's offer; this optional cap bounds them.
   maxGrossAmount      Decimal? @db.Decimal(78, 0)
+  // Fixed x402 price: set, the command can be bought without a chat at this
+  // price (floor <= instant <= maxGrossAmount). Null: chat offers only.
+  instantGrossAmount  Decimal? @db.Decimal(78, 0)
   terms               Json
   deliverySeconds     Int
   reviewSeconds       Int
@@ -103,10 +106,13 @@ model AppCommandRevision {
   @@map("app_command_revisions")
 }
 
+// kind CHAT: the buyer's conversation with an agent. kind DIRECT: one instant
+// x402 purchase, with no chat; it only carries the job's run and result.
 model ChatThread {
   id               String    @id @default(uuid())
   buyerId          String
   appId            String
+  kind             String    @default("CHAT")
   title            String?
   clientRequestId  String    @default(uuid())
   activeQuoteId    String?   @unique

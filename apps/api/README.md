@@ -22,7 +22,8 @@ src/
     *.service.ts          # business rules and Prisma access
   core/                   # no HTTP: db, queue, storage, runtime, payments, facilitator
   workers/                # job, settlement and finance workers, started by server.ts
-docs/                     # builder guide text, compiled into the OpenAPI spec
+docs/                     # builder guide text, compiled into the OpenAPI spec;
+                          # x402.md is a guide page the web app imports directly
 prisma/                   # schema and migrations
 test/                     # API tests, e2e payments and conformance (e2e/), fixtures (kit/)
 ```
@@ -42,6 +43,7 @@ aliases (`#core/db`, `#core/payments/finance`, `#test/kit/database`), declared i
 | `quotes`   | immutable quote documents and the verified transcript                                         |
 | `payments` | paid submission, x402 gateway, payment status, grants, autopay and the Risk Check             |
 | `mcp`      | the buyer MCP endpoint (`/mcp`), authenticated with a buyer API key                           |
+| `x402`     | instant commands bought over x402 (`/v1/x402/apps/:appId/commands/:command`) and the catalog  |
 | `runs`     | provider feed/ACK/reports/NDJSON stream, run tool results and revisions, verifier             |
 | `tools`    | built-in tools providers open in the chat, and the buyer's tool-result endpoint               |
 | `openui`   | OpenUI validation and the provider component catalog                                          |
@@ -296,8 +298,10 @@ real S3 endpoint in `test/core/storage.test.ts` when `TEST_S3_ENDPOINT` points a
 disposable store (the test creates its own bucket).
 
 Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
-`bun run test:payments:evm` adds the real local-EVM flows (Hardhat node), and
-`bun run test:conformance` checks every x402 security rule against passing tests.
+`bun run test:payments:evm` adds the real local-EVM flows (Hardhat node) of
+`test/e2e/quotes.test.ts`; the instant x402 one (release and refund) runs with
+`PAYMENTS_TEST_EVM=1 bun test test/e2e/x402-instant.test.ts` after compiling the
+vault. `bun run test:conformance` checks every x402 security rule against passing tests.
 
 ## Quotes and x402
 
@@ -312,26 +316,72 @@ Quote, x402, facilitator, settlement and finance flows are tested in `test/e2e`.
 - Only file context is supported: `contextSelection.fileIds` (with files
   enabled). Message or brief selections fail with `CONTEXT_NOT_SUPPORTED`;
   there is no silent context omission.
-- Invocation submission takes only `{quoteId}` and requires the invocation ID as
-  idempotency key.
-  After ownership/availability/schema gates it returns an SDK-encoded v2
-  `PAYMENT-REQUIRED` header for `payvoke-escrow` (scheme version 2) on Fuji, with
-  `payTo` set to the vault. The payment is either the buyer wallet's USDC
-  `ReceiveWithAuthorization` for this quote (nonce = quote digest, valid until the
-  quote expires) or a spending grant's debit; the settlement worker funds the hold
-  with `fundWithAuthorization` or `fundWithGrant`. Three funding transactions that
-  reverted on chain within a day pause that buyer's new payments for an hour
-  (`payment_throttled`).
+- Every paid job is an x402 v2 payment in the `payvoke-escrow` scheme (scheme
+  version 2) on Fuji, with `payTo` set to the vault. `exact` is never accepted.
+  The scheme is specified in
+  [packages/shared/src/x402/SPEC.md](../../packages/shared/src/x402/SPEC.md); the
+  buyer guide is `docs/x402.md` (the `/docs/x402` page).
+- Each quote is bound to the URL it is paid at. Terms snapshot v3 stores it as
+  `termsSnapshot.resource` (read with `quoteResource(doc)`), so it is inside the
+  terms hash and the signed quote digest. Any other URL answers
+  `409 QUOTE_RESOURCE_MISMATCH`, and an envelope naming another `resource.url` is
+  refused. Chat quotes are paid at `POST /v1/invocations` (`{quoteId}`, invocation
+  ID as idempotency key); v2 quotes, which have no `resource`, are paid there too.
+  Instant quotes are paid at the URL below.
+- After the auth/body/ownership gates, a request without a signature answers `402`
+  with an SDK-encoded `PAYMENT-REQUIRED` header (standard `PaymentRequired`, no
+  extensions) and the same object as body. The instant route's body also carries
+  the full quote as `extensions.payvoke.quote`; it never goes in the header,
+  which has size limits. The payment is
+  either the buyer wallet's USDC `ReceiveWithAuthorization` for this quote (nonce =
+  quote digest, valid until the quote expires) or a spending grant's debit; the
+  settlement worker funds the hold with `fundWithAuthorization` or `fundWithGrant`.
+- `402` means only two things: the challenge, or a payment refused at verify (body
+  `{ error }` with the facilitator's code). Once the signature is journaled the
+  answer is `202 { invocationId, paymentStatus: "PENDING", nextActions: ["poll"] }`
+  with `Retry-After: 5`, `Location: /v1/invocations/:id` and, once the funding
+  transaction is broadcast, a `PAYMENT-RESPONSE` with its hash. When the hold is
+  finalized it is `202` `HELD` with `executionStatus` and the `PAYMENT-RESPONSE`
+  receipt (`extra.holdId`). Rejected funding is `422` (`REJECTED`); every other
+  unsettled state is `503`.
+  `GET /v1/invocations/:id` returns the same state plus `threadId`.
+- Instant commands: a command revision with `instantAmount` (floor ≤ amount ≤
+  `maxAmount`, no required FILE option) is paid at
+  `POST /v1/x402/apps/:appId/commands/:command` with `{ "arguments": {…} }` and a
+  UUID `Idempotency-Key` (body ≤ 512 KiB, text only, 30 requests/min). Without a
+  signature it opens a DIRECT thread, a system
+  offer at `instantAmount` and a quote, and returns the `402`, whose
+  `extensions.payvoke.quote` is the full quote document for the client to check.
+  The same key and body replay that quote; a different body is
+  `409 IDEMPOTENCY_CONFLICT`. With a signature it settles like any invocation. The
+  agent gets `invocation.ready` without a chat. Errors before payment:
+  `IDEMPOTENCY_KEY_REQUIRED`, `INVALID_INSTANT_REQUEST`, `INVALID_ARGUMENTS`
+  (400); `APP_NOT_FOUND`, `COMMAND_NOT_FOUND`, `QUOTE_NOT_FOUND` (404);
+  `IDEMPOTENCY_CONFLICT`, `APP_OFFLINE`, `PRICE_BELOW_FLOOR` (409);
+  `QUOTE_EXPIRED` (410). Registration refuses `INVALID_INSTANT_AMOUNT` (above
+  `maxAmount`), `PRICE_BELOW_FLOOR` (422) and `INSTANT_FILES_NOT_SUPPORTED`.
+  DIRECT threads are hidden from the thread list and have no composer; their
+  timeline shows the offer and the run.
+- `GET /v1/x402/catalog` is public (`Cache-Control: public, max-age=30`, 120
+  requests/min): scheme, network, asset, vault and up to 500 non-archived instant
+  commands of PUBLIC ACTIVE apps with their amount, deadlines, input schema,
+  resource URL and `available` (online and at or above the floor).
+- The x402 buyer routes are not in the OpenAPI spec, which documents app-key
+  builder routes only; `docs/x402.md` is a guide section on the docs site.
+- Three funding transactions that reverted on chain within a day pause that
+  buyer's new payments for an hour (`payment_throttled`).
 - Grant changes are gasless for the buyer: `POST /v1/grant-operations` takes a
   signed `GrantSetup` or `GrantRevoke` plus an optional USDC permit, checks the
   signature (ECDSA or ERC-1271) and simulates the vault call before queueing it;
   the settlement worker's grant relay submits it on the same relayer nonce lane.
   `GET /v1/grant-operations/:id` reports `PENDING` → `BROADCAST` → `FINALIZED` (or
   `REJECTED`/`REVERTED`).
-- Core/client/server adapters live in `@payvoke/shared/x402`, pinned to core 2.28.0.
-  No stock x402 framework middleware is mounted, because those settle before body
-  validation. The gateway runs only after the auth/body/ownership gates, using
-  core's upfront flow.
+- Core/client/server adapters live in `@payvoke/shared/x402`, pinned to core 2.28.0;
+  the shared client round trip is `@payvoke/shared/x402/client`, used by the web
+  app (offers and the store's "Hire instantly"), MCP `pay_offer` and
+  `hire_instant`, and `@payvoke/x402-client`. No stock x402 framework
+  middleware is mounted, because those settle before body validation. The gateway
+  runs only after the auth/body/ownership gates, using core's upfront flow.
 
 To exercise quotes locally, provision an app with a default command, a thread,
 an active policy and a matching `VAULT_ADDRESS` in a development DB. Quotes do

@@ -25,6 +25,30 @@ import { loadTranscript } from "./transcript";
 type StoredQuote = { requestHash: string; document: Prisma.JsonValue };
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
+// A chat thread, or the DIRECT thread of one instant x402 purchase.
+export type ThreadKind = "CHAT" | "DIRECT";
+
+export type InstantRequest = {
+  appId: string;
+  command: string;
+  arguments: Record<string, unknown>;
+};
+
+// Instant purchases share the buyer-wide idempotency namespace with chat
+// quotes and threads; the prefix keeps them apart (client keys are UUIDs).
+export const instantRequestId = (key: string) => `x402:${key}`;
+// What the Idempotency-Key of an instant purchase is bound to.
+export const instantRequestHash = (request: InstantRequest) =>
+  hashSnapshot({
+    kind: "x402.instant",
+    appId: request.appId,
+    command: request.command,
+    arguments: request.arguments,
+  } as unknown as Json);
+// How long the system offer of an instant purchase stays acceptable. It is
+// accepted in the same transaction that creates it.
+const INSTANT_OFFER_SECONDS = 300;
+
 export class QuoteService {
   private readonly db: Cradle["db"];
   private readonly config: Cradle["config"];
@@ -44,6 +68,11 @@ export class QuoteService {
     )
       throw new ServiceUnavailableError("PAYMENT_CONFIGURATION_MISMATCH");
     return getAddress(this.config.VAULT_ADDRESS);
+  }
+
+  // The resource chat quotes are paid at.
+  invocationResource() {
+    return new URL("/v1/invocations", this.config.API_ORIGIN).href;
   }
 
   // Stored documents are re-validated against the configured vault and buyer
@@ -82,7 +111,15 @@ export class QuoteService {
     if (existing) return this.replay(existing, requestHash, buyer.walletAddress);
     try {
       return await this.db.$transaction((tx) =>
-        this.admit(tx, { buyer, body, vault, requestHash, key }),
+        this.admit(tx, {
+          buyer,
+          body,
+          vault,
+          requestHash,
+          key,
+          kind: "CHAT",
+          resource: this.invocationResource(),
+        }),
       );
     } catch (error) {
       // The buyer-wide idempotency key can also race across different threads.
@@ -102,13 +139,17 @@ export class QuoteService {
       vault: Address;
       requestHash: string;
       key: { buyerId: string; clientRequestId: string };
+      // Chat quotes are only admitted in CHAT threads and instant ones only
+      // in their own DIRECT thread.
+      kind: ThreadKind;
+      resource: string;
     },
   ) {
-    const { buyer, body, vault, requestHash, key } = input;
+    const { buyer, body, vault, requestHash, key, kind, resource } = input;
     // A write lock serializes admissions per session on PostgreSQL. Re-read
     // after acquiring it; PGlite tests alone do not prove cross-process locks.
     const locked = await tx.chatThread.updateMany({
-      where: { id: body.threadId, buyerId: buyer.id, archivedAt: null },
+      where: { id: body.threadId, buyerId: buyer.id, archivedAt: null, kind },
       data: { quoteLockVersion: { increment: 1 } },
     });
     if (!locked.count) throw new NotFoundError("THREAD_NOT_FOUND");
@@ -134,7 +175,7 @@ export class QuoteService {
     if (!policy || getAddress(policy.vault) !== vault)
       throw new ServiceUnavailableError("POLICY_NOT_CONFIGURED");
     const floor = BigInt(policy.minGrossAmount.toFixed(0));
-    const priced = await this.offerTerms(tx, thread.id, product.id, body);
+    const priced = await this.offerTerms(tx, thread.id, product.id, body, kind);
     const { commandId, revision, grossAmount, deliverySeconds, offer } = priced;
     // A floor raised after publication or an offer still blocks new sales.
     if (grossAmount < floor) throw new ConflictError("PRICE_BELOW_FLOOR");
@@ -179,6 +220,7 @@ export class QuoteService {
       effectiveArguments: effective,
       history: await loadTranscript(tx, thread.id),
       files,
+      resource,
       now,
     });
     await tx.quote.create({
@@ -216,6 +258,7 @@ export class QuoteService {
     threadId: string,
     appId: string,
     body: PrepareQuoteBody,
+    kind: ThreadKind,
   ) {
     if (!body.offerId) throw new BadRequestError("OFFER_REQUIRED");
     const offer = await tx.offer.findFirst({
@@ -236,6 +279,17 @@ export class QuoteService {
     const entries = await conversation(tx, threadId, offer.messageSeq);
     if (conversationHash(entries) !== offer.conversationHash)
       throw new ConflictError("OFFER_INVALID");
+    // A DIRECT thread has no conversation: its only offer is the system offer
+    // at the revision's fixed instant price and full delivery time.
+    if (
+      kind === "DIRECT" &&
+      (offer.messageSeq !== 0 ||
+        entries.length !== 0 ||
+        !revision.instantGrossAmount ||
+        grossAmount !== BigInt(revision.instantGrossAmount.toFixed(0)) ||
+        offer.deliverySeconds !== revision.deliverySeconds)
+    )
+      throw new ConflictError("OFFER_INVALID");
     return {
       commandId: revision.commandId,
       revision,
@@ -251,16 +305,118 @@ export class QuoteService {
     };
   }
 
+  // An instant x402 purchase: a fresh DIRECT thread holding one system offer
+  // at the command's fixed price, accepted through the same admission as a
+  // chat offer (floor, cap, availability, deadlines, files). Idempotent on
+  // (buyer, Idempotency-Key): the same request replays the same quote.
+  async prepareInstant(
+    buyer: AccountIdentity,
+    request: InstantRequest,
+    idempotencyKey: string,
+    resource: string,
+  ) {
+    const vault = this.vault();
+    const requestHash = instantRequestHash(request);
+    const clientRequestId = instantRequestId(idempotencyKey);
+    const key = { buyerId: buyer.id, clientRequestId };
+    const existing = await this.db.quote.findUnique({ where: { buyerId_clientRequestId: key } });
+    if (existing) return this.replay(existing, requestHash, buyer.walletAddress);
+    try {
+      return await this.db.$transaction(async (tx) => {
+        const app = await tx.app.findFirst({
+          where: {
+            id: request.appId,
+            status: "ACTIVE",
+            archivedAt: null,
+            OR: [{ visibility: "PUBLIC" }, { ownerId: buyer.id }],
+          },
+        });
+        if (!app) throw new NotFoundError("APP_NOT_FOUND");
+        const command = await tx.appCommand.findFirst({
+          where: { appId: app.id, name: request.command, archivedAt: null },
+          include: { activeRevision: true },
+        });
+        const revision = command?.activeRevision;
+        if (!revision?.instantGrossAmount) throw new NotFoundError("COMMAND_NOT_FOUND");
+        // Bad arguments fail before anything is written.
+        effectiveArguments(revision.inputSchema, request.arguments);
+        const thread = await tx.chatThread.create({
+          data: {
+            buyerId: buyer.id,
+            appId: app.id,
+            kind: "DIRECT",
+            clientRequestId,
+            title: `/${command!.name}`,
+          },
+        });
+        const offer = await tx.offer.create({
+          data: {
+            threadId: thread.id,
+            appId: app.id,
+            commandRevisionId: revision.id,
+            arguments: request.arguments as Prisma.InputJsonValue,
+            grossAmount: revision.instantGrossAmount,
+            deliverySeconds: revision.deliverySeconds,
+            summary: `Instant /${command!.name}`,
+            messageSeq: 0,
+            conversationHash: conversationHash([]),
+            expiresAt: new Date(Date.now() + INSTANT_OFFER_SECONDS * 1000),
+            // Offer keys are unique per app, across buyers.
+            clientRequestId: `${clientRequestId}:${buyer.id}`,
+          },
+        });
+        return this.admit(tx, {
+          buyer,
+          body: {
+            threadId: thread.id,
+            offerId: offer.id,
+            contextSelection: { messageIds: [], briefVersionId: null, fileIds: [] },
+            clientRequestId,
+          },
+          vault,
+          requestHash,
+          key,
+          kind: "DIRECT",
+          resource,
+        });
+      });
+    } catch (error) {
+      // A concurrent request with the same key created the thread first.
+      if (!isUniqueViolation(error)) throw error;
+      const prior = await this.db.quote.findUnique({ where: { buyerId_clientRequestId: key } });
+      if (!prior) throw new ConflictError("IDEMPOTENCY_CONFLICT");
+      return this.replay(prior, requestHash, buyer.walletAddress);
+    }
+  }
+
   // Restores an unpaid authorization after a tab refresh. Paid or expired
   // quotes cannot be submitted again through checkout.
   async restore(buyer: AccountIdentity, quoteId: string) {
     const row = await this.db.quote.findFirst({
       where: { id: quoteId, buyerId: buyer.id },
-      include: { invocation: { include: { settlement: true } }, thread: true },
+      include: {
+        invocation: { include: { settlement: true } },
+        thread: true,
+        offer: { include: { commandRevision: { include: { command: true } } } },
+      },
     });
     if (!row || row.thread.archivedAt) throw new NotFoundError("QUOTE_NOT_FOUND");
     if (row.invocation?.settlement || row.validUntil.getTime() <= Date.now())
       return { quote: null };
-    return { quote: this.document(row.document, buyer.walletAddress) };
+    const quote = this.document(row.document, buyer.walletAddress);
+    // An instant quote is payable only by resending its own request (same URL,
+    // Idempotency-Key and arguments), so the buyer's approval page needs it.
+    const prefix = instantRequestId("");
+    if (row.thread.kind === "DIRECT" && row.offer && row.clientRequestId.startsWith(prefix))
+      return {
+        quote,
+        instant: {
+          appId: row.appId,
+          command: row.offer.commandRevision.command.name,
+          arguments: row.offer.arguments as Record<string, unknown>,
+          key: row.clientRequestId.slice(prefix.length),
+        },
+      };
+    return { quote };
   }
 }

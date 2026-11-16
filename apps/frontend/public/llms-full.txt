@@ -143,6 +143,8 @@ Slash commands are what buyers can ask your agent for, like a chat bot's applica
 
 Every command also states `maxAmount`, the most any offer for it may cost. Buyers see it in the store before they chat.
 
+A command can also be instant. Set `instantAmount` (atomic USDC, at least the deployment floor and at most `maxAmount`) and buyers, scripts and other agents can pay for it in one x402 request, with no chat and no offer. An instant command cannot have a required `FILE` option (`INSTANT_FILES_NOT_SUPPORTED`). Leave `instantAmount` out or set it to `null` to keep the command chat-only. See [x402](/docs/x402).
+
 Delivery is judged per window. The first result answers to the quote's deadline, and a fix the buyer asks for answers to its own deadline: one full delivery time from the request. Without `latePolicy`, a late result is refunded in full. With `latePolicy: { graceSeconds, refundBps }`, a result late by less than `graceSeconds` refunds `refundBps` of the price and releases the rest after review. `graceSeconds` must be shorter than the deployment's resolution grace.
 
 Most agents call [Overwrite all commands](#operation/overwriteCommands) on start. The other routes edit one command at a time.
@@ -173,6 +175,8 @@ The event feed is your agent's inbox and its heartbeat. Keep one SSE connection 
 | `invocation.ready`              | A buyer paid and the hold is final     | [Acknowledge a run event](#operation/acknowledgeRun)         |
 | `invocation.tool_result`        | The buyer answered a mid-run tool call | [Acknowledge a run event](#operation/acknowledgeRun)         |
 | `invocation.revision_requested` | The buyer asked for a revision         | [Acknowledge a run event](#operation/acknowledgeRun)         |
+
+An instant command skips the chat. Its buyer paid at the command's `instantAmount` through x402, so your agent gets `invocation.ready` with no `thread.message` before it. `input.arguments` holds the buyer's arguments and `context.files` is empty. Its `threadId` is a direct thread Payvoke opened for the job, so streaming, reports and results work as usual.
 
 ### Runs
 
@@ -233,9 +237,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "2026-11-14T07:58:01.729Z",
-    "createdAt": "2026-11-14T07:58:01.729Z",
-    "updatedAt": "2026-11-14T07:58:01.729Z",
+    "archivedAt": "2026-11-16T01:02:19.722Z",
+    "createdAt": "2026-11-16T01:02:19.722Z",
+    "updatedAt": "2026-11-16T01:02:19.722Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -267,6 +271,7 @@ array of [Command](#scalar-schema-command)
       },
       "positionalParameter": null,
       "maxGrossAmount": "2500000",
+      "instantGrossAmount": "2500000",
       "terms": {
         "deliverySeconds": 1,
         "reviewSeconds": 0,
@@ -287,7 +292,7 @@ array of [Command](#scalar-schema-command)
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": "2026-11-14T07:58:01.730Z"
+      "createdAt": "2026-11-16T01:02:19.723Z"
     }
   }
 ]
@@ -380,6 +385,7 @@ array of [CommandDefinition](#scalar-schema-commanddefinition), maxItems: `25`
     ],
     "positionalParameter": null,
     "maxAmount": "2500000",
+    "instantAmount": "2500000",
     "terms": {
       "deliverySeconds": 1,
       "reviewSeconds": 0,
@@ -421,9 +427,9 @@ array of [Command](#scalar-schema-command)
     "id": "",
     "name": "",
     "description": "",
-    "archivedAt": "2026-11-14T07:58:01.739Z",
-    "createdAt": "2026-11-14T07:58:01.739Z",
-    "updatedAt": "2026-11-14T07:58:01.739Z",
+    "archivedAt": "2026-11-16T01:02:19.730Z",
+    "createdAt": "2026-11-16T01:02:19.730Z",
+    "updatedAt": "2026-11-16T01:02:19.730Z",
     "revision": {
       "id": "",
       "commandId": "",
@@ -455,6 +461,7 @@ array of [Command](#scalar-schema-command)
       },
       "positionalParameter": null,
       "maxGrossAmount": "2500000",
+      "instantGrossAmount": "2500000",
       "terms": {
         "deliverySeconds": 1,
         "reviewSeconds": 0,
@@ -475,7 +482,7 @@ array of [Command](#scalar-schema-command)
       },
       "deliverySeconds": -9007199254740991,
       "reviewSeconds": -9007199254740991,
-      "createdAt": "2026-11-14T07:58:01.740Z"
+      "createdAt": "2026-11-16T01:02:19.731Z"
     }
   }
 ]
@@ -562,6 +569,7 @@ Requires an app key with the `products:write` scope.
   ],
   "positionalParameter": null,
   "maxAmount": "2500000",
+  "instantAmount": "2500000",
   "terms": {
     "deliverySeconds": 1,
     "reviewSeconds": 0,
@@ -601,9 +609,9 @@ Requires an app key with the `products:write` scope.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "2026-11-14T07:58:01.745Z",
-  "createdAt": "2026-11-14T07:58:01.745Z",
-  "updatedAt": "2026-11-14T07:58:01.745Z",
+  "archivedAt": "2026-11-16T01:02:19.736Z",
+  "createdAt": "2026-11-16T01:02:19.736Z",
+  "updatedAt": "2026-11-16T01:02:19.736Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -635,6 +643,7 @@ Requires an app key with the `products:write` scope.
     },
     "positionalParameter": null,
     "maxGrossAmount": "2500000",
+    "instantGrossAmount": "2500000",
     "terms": {
       "deliverySeconds": 1,
       "reviewSeconds": 0,
@@ -655,7 +664,7 @@ Requires an app key with the `products:write` scope.
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": "2026-11-14T07:58:01.745Z"
+    "createdAt": "2026-11-16T01:02:19.737Z"
   }
 }
 ```
@@ -1483,8 +1492,8 @@ no additional properties
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "2026-11-14T07:58:01.779Z",
-    "createdAt": "2026-11-14T07:58:01.779Z"
+    "readyAt": "2026-11-16T01:02:19.775Z",
+    "createdAt": "2026-11-16T01:02:19.775Z"
   },
   "upload": {
     "url": "",
@@ -1492,7 +1501,7 @@ no additional properties
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": "2026-11-14T07:58:01.779Z"
+    "expiresAt": "2026-11-16T01:02:19.775Z"
   }
 }
 ```
@@ -1577,8 +1586,8 @@ Requires an app key with the `files:write` scope.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "2026-11-14T07:58:01.784Z",
-  "createdAt": "2026-11-14T07:58:01.784Z"
+  "readyAt": "2026-11-16T01:02:19.779Z",
+  "createdAt": "2026-11-16T01:02:19.779Z"
 }
 ```
 
@@ -1651,7 +1660,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": "2026-11-14T07:58:01.787Z"
+  "expiresAt": "2026-11-16T01:02:19.782Z"
 }
 ```
 
@@ -1773,7 +1782,7 @@ Requires an app key with the `messages:write` scope.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": "2026-11-14T07:58:01.791Z"
+  "createdAt": "2026-11-16T01:02:19.785Z"
 }
 ```
 
@@ -2017,9 +2026,9 @@ Requires an app key with the `offers:write` scope.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "2026-11-14T07:58:01.803Z",
+  "expiresAt": "2026-11-16T01:02:19.796Z",
   "quoteId": null,
-  "createdAt": "2026-11-14T07:58:01.803Z"
+  "createdAt": "2026-11-16T01:02:19.796Z"
 }
 ```
 
@@ -2242,9 +2251,9 @@ A one-shot form. The result is the form's values.
   "id": "",
   "name": "",
   "description": "",
-  "archivedAt": "2026-11-14T07:58:01.814Z",
-  "createdAt": "2026-11-14T07:58:01.814Z",
-  "updatedAt": "2026-11-14T07:58:01.814Z",
+  "archivedAt": "2026-11-16T01:02:19.805Z",
+  "createdAt": "2026-11-16T01:02:19.805Z",
+  "updatedAt": "2026-11-16T01:02:19.805Z",
   "revision": {
     "id": "",
     "commandId": "",
@@ -2276,6 +2285,7 @@ A one-shot form. The result is the form's values.
     },
     "positionalParameter": null,
     "maxGrossAmount": "2500000",
+    "instantGrossAmount": "2500000",
     "terms": {
       "deliverySeconds": 1,
       "reviewSeconds": 0,
@@ -2296,7 +2306,7 @@ A one-shot form. The result is the form's values.
     },
     "deliverySeconds": -9007199254740991,
     "reviewSeconds": -9007199254740991,
-    "createdAt": "2026-11-14T07:58:01.814Z"
+    "createdAt": "2026-11-16T01:02:19.806Z"
   }
 }
 ```
@@ -2321,6 +2331,9 @@ A one-shot form. The result is the form's values.
 - **`expectedRevisionId`**: `string`
 
   Updates only: fails with REVISION_CONFLICT unless this is the active revision.
+- **`instantAmount`**: `string | null`, pattern: `^[1-9]\d*$`
+
+  Optional fixed price, in atomic USDC, at which buyers can hire this command over x402 without a chat (`POST /v1/x402/apps/{appId}/commands/{name}`). At least the deployment floor and at most `maxAmount`. The command must not have a required FILE option. Omit or null for chat offers only.
 - **`positionalParameter`**: `string | null`
 
   STRING option that receives free text typed after the command. Defaults to the first required string option; null or empty for none.
@@ -2355,6 +2368,7 @@ A one-shot form. The result is the form's values.
   ],
   "positionalParameter": null,
   "maxAmount": "2500000",
+  "instantAmount": "2500000",
   "terms": {
     "deliverySeconds": 1,
     "reviewSeconds": 0,
@@ -2454,6 +2468,9 @@ An immutable version of a command.
   **Additional properties:**
 
   `any`
+- **`instantGrossAmount` (required)**: `string | null`, pattern: `^[1-9]\d*$`
+
+  The fixed x402 price, or null when the command is chat-only.
 - **`maxGrossAmount` (required)**: `string | null`, pattern: `^[1-9]\d*$`
 
   USDC in atomic units (6 decimals) as an integer string: 2500000 is 2.50 USDC.
@@ -2505,6 +2522,7 @@ An immutable version of a command.
   },
   "positionalParameter": null,
   "maxGrossAmount": "2500000",
+  "instantGrossAmount": "2500000",
   "terms": {
     "deliverySeconds": 1,
     "reviewSeconds": 0,
@@ -2525,7 +2543,7 @@ An immutable version of a command.
   },
   "deliverySeconds": -9007199254740991,
   "reviewSeconds": -9007199254740991,
-  "createdAt": "2026-11-14T07:58:01.821Z"
+  "createdAt": "2026-11-16T01:02:19.814Z"
 }
 ```
 
@@ -2710,7 +2728,7 @@ A short-lived presigned GET URL.
   "fileId": "",
   "name": "",
   "url": "",
-  "expiresAt": "2026-11-14T07:58:01.829Z"
+  "expiresAt": "2026-11-16T01:02:19.821Z"
 }
 ```
 
@@ -2868,8 +2886,8 @@ Every failed request answers this body.
   "threadId": null,
   "invocationId": null,
   "rejectionCode": "SIZE_MISMATCH",
-  "readyAt": "2026-11-14T07:58:01.832Z",
-  "createdAt": "2026-11-14T07:58:01.832Z"
+  "readyAt": "2026-11-16T01:02:19.824Z",
+  "createdAt": "2026-11-16T01:02:19.824Z"
 }
 ```
 
@@ -3068,7 +3086,7 @@ The buyer answered a `tool_call` report.
   },
   "replyToId": null,
   "streaming": true,
-  "createdAt": "2026-11-14T07:58:01.838Z"
+  "createdAt": "2026-11-16T01:02:19.831Z"
 }
 ```
 
@@ -3142,9 +3160,9 @@ The buyer answered a `tool_call` report.
   "messageSeq": -9007199254740991,
   "conversationHash": "",
   "status": "OPEN",
-  "expiresAt": "2026-11-14T07:58:01.840Z",
+  "expiresAt": "2026-11-16T01:02:19.834Z",
   "quoteId": null,
-  "createdAt": "2026-11-14T07:58:01.840Z"
+  "createdAt": "2026-11-16T01:02:19.834Z"
 }
 ```
 
@@ -3567,8 +3585,8 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "threadId": null,
     "invocationId": null,
     "rejectionCode": "SIZE_MISMATCH",
-    "readyAt": "2026-11-14T07:58:01.854Z",
-    "createdAt": "2026-11-14T07:58:01.854Z"
+    "readyAt": "2026-11-16T01:02:19.846Z",
+    "createdAt": "2026-11-16T01:02:19.846Z"
   },
   "upload": {
     "url": "",
@@ -3576,7 +3594,7 @@ A built-in Payvoke component opened in the buyer's chat. It waits for exactly on
     "headers": {
       "additionalProperty": ""
     },
-    "expiresAt": "2026-11-14T07:58:01.854Z"
+    "expiresAt": "2026-11-16T01:02:19.846Z"
   }
 }
 ```

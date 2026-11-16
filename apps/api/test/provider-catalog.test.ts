@@ -1312,7 +1312,7 @@ it("enforces the approved price floor and defaults the evidence floor in signed 
   });
   const quoted = await quote("floor-restored");
   assert.equal(quoted.statusCode, 201, quoted.body);
-  assert.equal(quoted.json().termsSnapshot.schemaVersion, 2);
+  assert.equal(quoted.json().termsSnapshot.schemaVersion, 3);
   assert.deepEqual(quoted.json().termsSnapshot.definition.verification, { minEvidence: "SIGN" });
 
   // Bulk overwrite: the body is the whole list, matched by name.

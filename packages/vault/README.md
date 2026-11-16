@@ -41,6 +41,25 @@ Local tests are not a security audit or Fuji E2E proof. Deployment policy, multi
 admin and role/key ownership must be approved before deployment. Backend approvers
 must also enforce actual delivery/review eligibility; the vault only knows signed deadlines.
 
+## x402 mapping
+
+Payvoke's x402 scheme `payvoke-escrow` uses the vault as `payTo`. Each x402 step maps
+to one vault function (scheme spec: `packages/shared/src/x402/SPEC.md`).
+
+| x402 concept                                   | Vault                                                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `PaymentRequirements.payTo`, `extra.vault`     | This contract's address                                                                           |
+| `extra.quote`, `extra.quoteDigest`             | `InvocationQuote`, `hashQuote(quote)` under the `PayvokeVault` v2 EIP-712 domain                  |
+| Payload `authorization` (nonce = quote digest) | `fundWithAuthorization(quote, signature)` → USDC `receiveWithAuthorization`                       |
+| Payload `grant` (`DebitAuthorization`)         | `fundWithGrant(quote, authorization, signature)`, within the grant's limits                       |
+| Settle (upfront, finalized before `202 HELD`)  | `HoldFunded` event; hold id = `quote.invocationKey`, read with `getHold`                          |
+| `PAYMENT-RESPONSE.extra.holdId`                | `getHold(holdId)`                                                                                 |
+| Release after delivery and review window       | `applyDecision` with `releaseRemainder`, not before `releaseNotBefore`                            |
+| Refund on failure or late delivery             | `applyDecision` with `refundAmount`                                                               |
+| No decision in time                            | `reclaim(holdId)` by the buyer, from `resolveBy`                                                  |
+| Payout USDC refused                            | `claimable`, withdrawn with `claim(to)`                                                           |
+| Replay of the same payment                     | Same authorization digest returns the existing hold; a different one reverts `InvocationConflict` |
+
 ## Ignition
 
 Module: `ignition/modules/PayvokeVault.ts` (id `PayvokeVaultV2`). Asset defaults to Fuji USDC

@@ -210,7 +210,7 @@ export type ReviewDiagnostic = {
   issues?: { code: string; path: string }[];
 };
 
-function modelFailure(error: unknown): { code: string; status?: number } {
+export function modelFailure(error: unknown): { code: string; status?: number } {
   const seen = new Set<unknown>();
   for (let entry = error; entry && typeof entry === "object" && !seen.has(entry);) {
     seen.add(entry);
@@ -298,7 +298,7 @@ export function makeReviewGenerator(
   };
 }
 
-const md = (value: string) => value.replace(/[\\`*_{}[\]<>#|!]/g, "\\$&");
+export const md = (value: string) => value.replace(/[\\`*_{}[\]<>#|!]/g, "\\$&");
 
 export function reviewMarkdown(review: Review, blocks: SourceBlock[]): string {
   const source = new Map(blocks.map((block) => [block.id, block.text]));

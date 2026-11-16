@@ -1,15 +1,14 @@
 import {
-  authorizationPayment,
   authorizationTypedData,
   debitTypedData,
-  grantPayment,
-  paymentSignatureHeader,
   validateQuoteDocument,
-  type PaymentBody,
+  type ClientFunding,
+  type PaymentSigner,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
+import { readChallenge, signChallenge, type X402Send } from "@payvoke/shared/x402/client";
 import { usdcAbi, vaultAdmissionAbi } from "@payvoke/shared/protocol";
-import type { Address, Hex, PublicClient } from "viem";
+import { getAddress, type Address, type Hex, type PublicClient } from "viem";
 import { ApiError, apiOrigin, call, callAs, client } from "@/src/lib/api/client";
 import { usdc } from "@/src/features/wallet/api";
 
@@ -32,8 +31,57 @@ export async function quoteFor(threadId: string, offerId: string, fileIds: strin
     ),
   );
 }
+// An instant (fixed-price) command bought over x402, with no chat. The
+// Idempotency-Key and body stay the same for the unpaid and the paid request:
+// together they select the one quote the 402 issued.
+export type InstantOrder = {
+  appId: string;
+  command: string;
+  arguments: Record<string, unknown>;
+  key: string;
+};
+
+const instantRoute = client.v1.x402.apps[":appId"].commands[":command"];
+
+function instantSend(order: InstantOrder): X402Send {
+  return async (headers) => {
+    const response = await instantRoute.$post(
+      {
+        param: { appId: order.appId, command: order.command },
+        json: { arguments: order.arguments },
+      },
+      { headers: { "idempotency-key": order.key, ...headers } },
+    );
+    return {
+      status: response.status,
+      header: (name) => response.headers.get(name),
+      body: await response.json().catch(() => null),
+    };
+  };
+}
+
+const instantUrl = (order: InstantOrder) =>
+  new URL(
+    `/v1/x402/apps/${encodeURIComponent(order.appId)}/commands/${encodeURIComponent(order.command)}`,
+    apiOrigin,
+  ).href;
+
+// The unpaid half of an instant purchase: the 402 challenge and the Payvoke
+// quote in its body, checked before the buyer sees the price. The API issued
+// it to the signed-in account; PaymentConfirm makes sure the connected wallet
+// is that buyer. Nothing is signed here: PaymentConfirm pays it with `order`.
+export async function orderInstant(
+  input: Omit<InstantOrder, "key">,
+): Promise<{ quote: QuoteDocument; order: InstantOrder }> {
+  const order = { ...input, key: crypto.randomUUID() };
+  const first = await instantSend(order)({});
+  if (first.status !== 402) throw failure(first.status, first.body);
+  const { quote } = readChallenge(first);
+  checkQuote(quote, getAddress(quote.protocolQuote.buyer));
+  return { quote, order };
+}
 export const getPendingQuote = (quoteId: string) =>
-  callAs<{ quote: QuoteDocument | null }>(
+  callAs<{ quote: QuoteDocument | null; instant?: InstantOrder }>(
     client.v1.quotes[":quoteId"].$get({ param: { quoteId } }),
   );
 
@@ -115,9 +163,15 @@ export async function checkGrant(
 export async function payFromWallet(
   quote: QuoteDocument,
   sign: (args: ReturnType<typeof authorizationTypedData>) => Promise<Hex>,
+  order?: InstantOrder,
 ) {
   if (Date.now() >= quote.validUntil * 1000) throw new Error("Quote expired. Prepare a new quote.");
-  await submitPayment(quote, authorizationPayment(await sign(authorizationTypedData(quote))));
+  // The x402 scheme asks this signer only for the quote's USDC authorization.
+  const signer: PaymentSigner = {
+    address: getAddress(quote.protocolQuote.buyer),
+    signTypedData: (args) => sign(args as ReturnType<typeof authorizationTypedData>),
+  };
+  await submitPayment(quote, signer, { mode: "authorization" }, order);
 }
 
 // Pays with a spending grant's key (one-click or a coding agent).
@@ -126,10 +180,17 @@ export async function payWithGrant(
   grantId: Hex,
   epoch: bigint,
   sign: (args: ReturnType<typeof debitTypedData>) => Promise<Hex>,
+  signerAddress?: Address,
+  order?: InstantOrder,
 ) {
   if (Date.now() >= quote.validUntil * 1000) throw new Error("Quote expired. Prepare a new quote.");
-  const signature = await sign(debitTypedData(quote, grantId, epoch));
-  await submitPayment(quote, grantPayment(quote, grantId, epoch, signature));
+  // In grant mode the scheme asks only for the debit of this quote; the vault,
+  // not the client, checks the signer against the grant.
+  const signer: PaymentSigner = {
+    address: signerAddress ?? getAddress(quote.protocolQuote.buyer),
+    signTypedData: (args) => sign(args as ReturnType<typeof debitTypedData>),
+  };
+  await submitPayment(quote, signer, { mode: "grant", grantId, grantEpoch: epoch }, order);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -139,37 +200,67 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const transient = new Set(["rpc_unavailable", "settlement_unavailable"]);
 const SUBMIT_ATTEMPTS = 4;
 
-async function submitPayment(quote: QuoteDocument, payload: PaymentBody) {
-  const header = paymentSignatureHeader(quote, payload, new URL("/v1/invocations", apiOrigin).href);
+const failure = (status: number, body: unknown) =>
+  new ApiError(status, (body as { error?: string } | null)?.error || `HTTP ${status}`);
+
+// The x402 round trip for a quote the buyer approved: post it unpaid, read
+// the 402 challenge, sign exactly this quote and post again with the
+// PAYMENT-SIGNATURE header. A chat quote is paid at /v1/invocations; an
+// instant one at the command URL that issued it, with the same key and body.
+async function submitPayment(
+  quote: QuoteDocument,
+  signer: PaymentSigner,
+  funding: ClientFunding,
+  order?: InstantOrder,
+) {
+  const chatSend: X402Send = async (headers) => {
+    const response = await invocations.$post(
+      { json: { quoteId: quote.quoteId } },
+      { headers: { "idempotency-key": quote.invocationId, ...headers } },
+    );
+    return {
+      status: response.status,
+      header: (name) => response.headers.get(name),
+      body: await response.json().catch(() => null),
+    };
+  };
+  const send = order ? instantSend(order) : chatSend;
+  const challenge = await send({});
+  if (challenge.status !== 402) throw failure(challenge.status, challenge.body);
+  const payment = await signChallenge(readChallenge(challenge, quote), {
+    resourceUrl: order ? instantUrl(order) : new URL("/v1/invocations", apiOrigin).href,
+    buyer: getAddress(quote.protocolQuote.buyer),
+    vault: getAddress(quote.vault),
+    signer,
+    funding,
+    // The buyer approved this quote's price, and nothing above it.
+    maxAmount: BigInt(quote.grossAmount),
+  });
   for (let attempt = 1; ; attempt++) {
-    try {
-      await call(
-        invocations.$post(
-          { json: { quoteId: quote.quoteId } },
-          { headers: { "idempotency-key": quote.invocationId, "payment-signature": header } },
-        ),
-      );
-      return;
-    } catch (cause) {
-      // Nothing was recorded or sent on chain, so the same signed payment can
-      // simply be submitted again while the quote is still valid.
-      if (
-        cause instanceof ApiError &&
-        cause.status === 503 &&
-        transient.has(cause.code) &&
-        attempt < SUBMIT_ATTEMPTS &&
-        Date.now() + 2_000 * attempt < quote.validUntil * 1000
-      ) {
-        await sleep(2_000 * attempt);
-        continue;
-      }
-      // The first answer is usually "not settled yet": the API journaled the
-      // signed authorization and its worker is putting the hold on chain.
-      // The status endpoint, not that answer, says how it ends.
-      if (!(cause instanceof ApiError) || ![402, 503].includes(cause.status)) throw cause;
-      await waitForHold(quote.invocationId, cause);
+    const answer = await send(payment.headers);
+    // 202: the payment is journaled (PENDING) or already held (HELD).
+    if (answer.status === 202) {
+      if ((answer.body as { paymentStatus?: string } | null)?.paymentStatus === "HELD") return;
+      await waitForHold(quote.invocationId, failure(answer.status, answer.body));
       return;
     }
+    const cause = failure(answer.status, answer.body);
+    // Nothing was recorded or sent on chain, so the same signed payment can
+    // simply be submitted again while the quote is still valid.
+    if (
+      answer.status === 503 &&
+      transient.has(cause.code) &&
+      attempt < SUBMIT_ATTEMPTS &&
+      Date.now() + 2_000 * attempt < quote.validUntil * 1000
+    ) {
+      await sleep(2_000 * attempt);
+      continue;
+    }
+    // A 402 is a refusal of this signature; a 503 may still have journaled
+    // it, and the status endpoint says how that ends.
+    if (answer.status !== 503) throw cause;
+    await waitForHold(quote.invocationId, cause);
+    return;
   }
 }
 

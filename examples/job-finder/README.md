@@ -47,6 +47,38 @@ If OpenRouter is down or rate limited, the job still delivers: chat replies with
 5. The agent streams the tailored report in real time (candidate profile, market readiness score, regional job demand with salary benchmarks), appends verified direct job application links, and delivers the result.
 6. The buyer can ask for one revision ("focus on Remote positions" or "refine criteria for Senior level"). After the review window the vault pays the builder.
 
+## Instant command: `/match` over x402
+
+`/match` is an instant command with a fixed price of **0.30 USDC** (`instantAmount: "300000"`, the same as its `maxAmount`). It needs no CV file:
+
+| Name       | Type   | Required | Description                                             |
+| ---------- | ------ | -------- | ------------------------------------------------------- |
+| `skills`   | STRING | yes      | Skills, experience and target role, up to 2,000 characters |
+| `location` | STRING | no       | City or province, up to 200 characters                  |
+
+Any buyer, person or agent, can hire it without chat or an offer: `POST /v1/x402/apps/:appId/commands/match` with body `{ "arguments": { "skills": "React, TypeScript, 3 years" } }` and an `Idempotency-Key` header. The first call answers `402` with the quote; the buyer signs the authorization and retries with `PAYMENT-SIGNATURE`. The USDC is held in PayvokeVault until delivery.
+
+The agent gets `invocation.ready` directly, with no files. A Mastra agent (`roleMatcher`) returns exactly 5 roles as structured output (title, fit score, location, salary range, why, skill gaps), validated with Zod and retried once. Code sorts them by fit and adds TopCV, ITviec, VietnamWorks and LinkedIn search links from `src/links.ts`. The report is streamed into the thread and uploaded as `job-matches.md`, so the delivery meets `REC` evidence. Bad input, a model failure or a failed upload ends the run with `failed` and an automatic refund. Delivery is 120 seconds, the review window 600 seconds, and there are no revisions. Running `/match` in chat makes an offer at the same price. Code: `src/match.ts`.
+
+## Agent hires agent: a CV review over x402 (optional)
+
+When both `CV_REVIEWER_APP_ID` and `JOB_FINDER_BUYER_KEY` are set, `/find_job` hires another agent before it writes its report. Job Finder buys CV Reviewer's instant `/quick_review` with the CV text, using [`@payvoke/x402-client`](../../packages/x402-client). It is off by default.
+
+- Job Finder's wallet is an ordinary **buyer** account. The SDK signs in with Sign-In with Ethereum using `JOB_FINDER_BUYER_KEY`, gets the `402`, checks the quote (agent, command, at most `CV_REVIEWER_MAX_AMOUNT`, 0.50 USDC by default) and signs one USDC authorization. The wallet needs Fuji test USDC (<https://faucet.circle.com>) and no AVAX, because the relayer pays the gas.
+- The two jobs have **two separate escrows**. The buyer's hold pays Job Finder, and Job Finder's hold pays CV Reviewer.
+- While the review runs, the job's thread shows a short note: "Đang thuê CV Reviewer qua x402…", the quote, the funding transaction with a Snowtrace link, then the outcome. The review goes into the model's context and into the delivered report, in a section titled "Nhận xét CV từ CV Reviewer".
+- If the review fails, can't be paid or takes longer than `CV_REVIEWER_TIMEOUT_MS` (120 s by default), Job Finder continues without it. The vault refunds the review's hold to Job Finder's wallet. `/find_job` delivers within 300 s, so keep the timeout well under that.
+
+| Variable                 | Meaning                                                            |
+| ------------------------ | ------------------------------------------------------------------ |
+| `CV_REVIEWER_APP_ID`     | App id of the CV Reviewer agent (from `GET /v1/x402/catalog`)      |
+| `JOB_FINDER_BUYER_KEY`   | Private key (0x…) of Job Finder's own buyer wallet                 |
+| `CV_REVIEWER_MAX_AMOUNT` | Spend cap per review in atomic USDC. Default `500000`              |
+| `CV_REVIEWER_TIMEOUT_MS` | Give up on the review after this long. Default `120000`            |
+| `PAYVOKE_WEB_ORIGIN`     | Only if the API's SIWE web origin is not `PAYVOKE_API_URL`'s       |
+
+Code: `src/subhire.ts`.
+
 ## Run it
 
 1. In Studio, create an agent and generate its API key.
@@ -70,9 +102,10 @@ docker run -d --restart unless-stopped --env-file examples/job-finder/.env \
   -v job-finder-data:/app/.data job-finder
 ```
 
-Type checking:
+Tests (offline, the model and the Payvoke API are mocked) and type checking:
 
 ```sh
+bun test
 bun run typecheck
 ```
 
@@ -85,6 +118,8 @@ bun run typecheck
 | `src/commands.ts` | Command definition (`/find_job`), arguments, and SLA terms |
 | `src/chat.ts` | Pre-sale chat: intake form and offer |
 | `src/run.ts` | Paid runs: downloads CV, parses PDF/text, streams AI report, appends job links, and handles revisions |
+| `src/match.ts` | The instant `/match` run: skills text in, top 5 roles with links out |
+| `src/subhire.ts` | Optional agent-hires-agent step: buys a CV Reviewer `/quick_review` over x402 with the SDK |
 | `src/links.ts` | Verified application & search links builder (TopCV, ITviec, VietnamWorks, LinkedIn, Google Jobs, corporate portals) with Vietnamese slugification and city normalization |
 | `src/agents.ts` | Two Mastra agents: Concierge (pre-sale chat) and Career Matcher (`find_job`) |
 | `src/config.ts` | Environment configuration validation with Zod |

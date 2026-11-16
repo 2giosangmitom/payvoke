@@ -193,10 +193,8 @@ export class TimelineService {
       list.push(offer);
       offersBySeq.set(offer.messageSeq, list);
     }
-    for (const row of conversation) {
-      // A tool result is shown on the call it answers, not as its own bubble.
-      if (!row.replyToId) messages.push(this.conversationMessage(row, file));
-      for (const offer of offersBySeq.get(row.seq) ?? []) {
+    const pushOffers = (seq: number) => {
+      for (const offer of offersBySeq.get(seq) ?? []) {
         messages.push(this.offerMessage(offer));
         const quote = offer.quote;
         if (!quote) continue;
@@ -212,6 +210,14 @@ export class TimelineService {
           ),
         );
       }
+    };
+    // Seq 0 answers no message: the system offer of an instant x402 purchase,
+    // whose DIRECT thread has no conversation at all.
+    pushOffers(0);
+    for (const row of conversation) {
+      // A tool result is shown on the call it answers, not as its own bubble.
+      if (!row.replyToId) messages.push(this.conversationMessage(row, file));
+      pushOffers(row.seq);
     }
     return { cursor: upTo.toString(), messages };
   }

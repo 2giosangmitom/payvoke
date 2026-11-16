@@ -16,6 +16,7 @@ import {
   UsageLine,
 } from "@/src/features/apps/agent-facts";
 import { AgentRatings } from "@/src/features/store/agent-ratings";
+import { InstantHire } from "@/src/features/store/instant-hire";
 import {
   AppStatus,
   BackLink,
@@ -178,7 +179,11 @@ export function StoreAppDetail({ appId }: { appId: string }) {
           id="commands-title"
           eyebrow="Slash commands"
           title="What this agent can do"
-          aside="Type / in the chat to run one."
+          aside={
+            app.commands.some((command) => command.revision?.instantGrossAmount)
+              ? "Type / in the chat to run one. Instant ones can also be bought over x402, with no chat."
+              : "Type / in the chat to run one."
+          }
         />
         {app.commands.length === 0 ? (
           <EmptyState title="No commands yet.">
@@ -201,7 +206,19 @@ export function StoreAppDetail({ appId }: { appId: string }) {
                       formatLatePolicy(command.revision.terms) ?? "late: full refund",
                     ]
                   }
-                />
+                >
+                  {command.revision?.instantGrossAmount && (
+                    <InstantHire
+                      appId={app.id}
+                      appName={app.name}
+                      command={command.name}
+                      description={command.description}
+                      revision={command.revision}
+                      signedIn={Boolean(session)}
+                      available={!offline}
+                    />
+                  )}
+                </CommandCard>
               </BlurFade>
             ))}
           </div>

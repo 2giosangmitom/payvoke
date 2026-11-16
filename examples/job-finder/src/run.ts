@@ -1,4 +1,5 @@
-import { jobMatcher } from "./agents";
+import { generateMatches, jobMatcher } from "./agents";
+import { MatchError, runMatch } from "./match";
 import type { Commands } from "./chat";
 import type { InvocationReadyEvent, Payvoke, RevisionEvent, ToolResultEvent } from "./payvoke";
 import { PayvokeError, Run } from "./payvoke";
@@ -6,6 +7,18 @@ import type { CommandName } from "./commands";
 import { jobs, type Job } from "./state";
 import { extractText } from "unpdf";
 import { formatQuickApplySection } from "./links";
+import { config } from "./config";
+import { createReviewer, reviewCv, reviewSection, subhireSettings, type Reviewer } from "./subhire";
+
+// Agent hires agent, when CV_REVIEWER_APP_ID and JOB_FINDER_BUYER_KEY are set:
+// one SDK client (one SIWE session) for Job Finder's own buyer wallet.
+const subhire = subhireSettings(config);
+let reviewer: Reviewer | null = null;
+function cvReviewer() {
+  if (subhire && !reviewer)
+    reviewer = createReviewer(config.PAYVOKE_API_URL, subhire.key, config.PAYVOKE_WEB_ORIGIN);
+  return reviewer;
+}
 
 function extractTargetRole(cvText: string, goal?: string): string {
   if (goal && goal.trim().length > 2) return goal.trim();
@@ -35,10 +48,18 @@ async function guard(run: Run, work: () => Promise<void>) {
       return;
     }
     console.error(`run ${run.runId} failed: ${error instanceof Error ? error.message : error}`);
+    const known = error instanceof MatchError;
     try {
       await run.startText(`failed-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
-      await run.text(`Đã xảy ra sự cố trong quá trình xử lý yêu cầu. Bạn sẽ được hoàn tiền tự động.`);
-      await run.finish({ type: "failed", data: { reason: "internal_error" } });
+      await run.text(
+        known
+          ? `${error.message} Bạn sẽ được hoàn tiền tự động.`
+          : `Đã xảy ra sự cố trong quá trình xử lý yêu cầu. Bạn sẽ được hoàn tiền tự động.`,
+      );
+      await run.finish({
+        type: "failed",
+        data: { reason: known ? "invalid_input_or_match" : "internal_error" },
+      });
     } catch {}
   }
 }
@@ -85,6 +106,18 @@ export async function handleReady(
   const commandId = ev.input.commandId;
   const args = ev.input.arguments;
   const commandName = commands.byId.get(commandId) as CommandName | undefined;
+
+  // Instant /match: skills text as an argument, no files and no chat. It
+  // allows no revisions, so no job state is kept.
+  if (commandName === "match") {
+    const run = await claim(api, ev.invocationId, ev.id, ev.runId);
+    if (!run) return;
+    return guard(run, async () => {
+      await run.report({ type: "started", data: { command: commandName } });
+      await runMatch(run, args, generateMatches);
+    });
+  }
+
   const fileId = typeof args.file === "string" ? args.file : undefined;
   const location = typeof args.location === "string" ? args.location : undefined;
 
@@ -126,6 +159,12 @@ export async function handleReady(
 
     await run.progress("download", `Đã đọc nội dung ${job.fileName}`, "done");
 
+    // A quick review bought from CV Reviewer (a second escrow). On failure or
+    // timeout its hold is refunded and this job carries on without it.
+    const hired = cvReviewer();
+    const review =
+      hired && subhire ? await reviewCv(hired, run, { cvText, goal: job.goal }, subhire) : null;
+
     await run.progress("ai_analysis", `Đang đọc CV, đánh giá hồ sơ và tìm kiếm việc làm theo khu vực...`);
     await run.startText(`result-${run.runId}`.slice(0, 100).replace(/[^\w-]/g, "_"));
 
@@ -141,7 +180,7 @@ export async function handleReady(
       ? `Mục tiêu nghề nghiệp / Trọng tâm bổ sung: ${job.goal}`
       : `Mục tiêu: Đánh giá toàn diện hồ sơ và tìm kiếm các cơ hội việc làm đang tuyển dụng phù hợp nhất.`;
 
-    const prompt = `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\nHãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
+    const prompt = `Nội dung trích xuất từ CV của ứng viên:\n"""\n${cvText}\n"""\n\nThông tin ngữ cảnh:\n- ${userLocation}\n- ${userGoal}\n- Tên tệp: ${job.fileName}\n\n${review ? `Nhận xét CV từ chuyên gia CV Reviewer (tham khảo):\n"""\n${review}\n"""\n\n` : ""}Hãy đọc và đánh giá hồ sơ CV, sau đó khảo sát và đề xuất các vị trí việc làm đang có nhu cầu tuyển dụng thực tế phù hợp nhất theo vị trí nơi ứng viên ở và các tỉnh thành lân cận (kèm mức lương thị trường, yêu cầu cốt lõi và kênh tìm việc) theo đúng cấu trúc báo cáo.`;
 
     const agent = jobMatcher;
 
@@ -173,6 +212,11 @@ export async function handleReady(
       const quickApplyLinks = formatQuickApplySection(targetRole, job.location);
       fullReport += quickApplyLinks;
       await run.text(quickApplyLinks);
+    }
+    if (review) {
+      const section = reviewSection(review);
+      fullReport += section;
+      await run.text(section);
     }
 
     await run.endText();

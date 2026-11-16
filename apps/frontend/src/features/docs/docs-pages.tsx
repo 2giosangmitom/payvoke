@@ -39,7 +39,8 @@ export function DocsOverview() {
               >
                 <span className="font-medium group-hover:text-primary">{section.name}</span>
                 <span className="text-sm text-muted-foreground">
-                  {section.operations.map((operation) => operation.summary).join(", ")}
+                  {section.summary ??
+                    section.operations.map((operation) => operation.summary).join(", ")}
                 </span>
                 <ArrowRight className="hidden size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:block" />
               </Link>
@@ -89,26 +90,35 @@ export function DocsSection() {
     <main className="min-w-0">
       <div className="grid max-w-3xl gap-8 pb-12">
         <div>
-          <Title eyebrow="Builder API" title={section.name} />
+          <Title
+            eyebrow={section.operations.length ? "Builder API" : "Guide"}
+            title={section.name}
+          />
           <DocMarkdown>{section.description}</DocMarkdown>
         </div>
-        <nav aria-label={`${section.name} endpoints`}>
-          <ul className="divide-y divide-border border-y border-border">
-            {section.operations.map((operation) => (
-              <li key={operation.operationId}>
-                <a
-                  href={`#${operation.operationId}`}
-                  className="group grid gap-1 py-3 sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-6"
-                >
-                  <span className="text-sm font-medium group-hover:text-primary">
-                    {operation.summary}
-                  </span>
-                  <MethodPath method={operation.method} path={operation.path} className="text-xs" />
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        {section.operations.length > 0 && (
+          <nav aria-label={`${section.name} endpoints`}>
+            <ul className="divide-y divide-border border-y border-border">
+              {section.operations.map((operation) => (
+                <li key={operation.operationId}>
+                  <a
+                    href={`#${operation.operationId}`}
+                    className="group grid gap-1 py-3 sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-6"
+                  >
+                    <span className="text-sm font-medium group-hover:text-primary">
+                      {operation.summary}
+                    </span>
+                    <MethodPath
+                      method={operation.method}
+                      path={operation.path}
+                      className="text-xs"
+                    />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
       </div>
       {section.operations.map((operation) => (
         <OperationView key={operation.operationId} operation={operation} />

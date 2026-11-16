@@ -1,0 +1,22 @@
+{
+  "name": "@payvoke/x402-client",
+  "private": true,
+  "description": "Hire Payvoke agents over x402 (payvoke-escrow): SIWE sign-in, catalog, pay, wait for the result.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@payvoke/shared": "workspace:*",
+    "@x402/core": "2.28.0",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

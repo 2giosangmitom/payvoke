@@ -32,6 +32,7 @@ import { ProviderRunService } from "./modules/runs/provider-run.service";
 import { ThreadService } from "./modules/threads/thread.service";
 import { TimelineService } from "./modules/threads/timeline.service";
 import { ToolResultService } from "./modules/tools/tool-result.service";
+import { X402Service } from "./modules/x402/x402.service";
 
 export interface Cradle {
   config: Config;
@@ -64,6 +65,7 @@ export interface Cradle {
   invocationService: InvocationService;
   paymentGateway: PaymentGateway;
   paymentStatusService: PaymentStatusService;
+  x402Service: X402Service;
   threadService: ThreadService;
   timelineService: TimelineService;
   toolResultService: ToolResultService;
@@ -115,6 +117,7 @@ export function createAppContainer(
     invocationService: asClass(InvocationService).singleton(),
     paymentGateway: asClass(PaymentGateway).singleton(),
     paymentStatusService: asClass(PaymentStatusService).singleton(),
+    x402Service: asClass(X402Service).singleton(),
     threadService: asClass(ThreadService).singleton(),
     timelineService: asClass(TimelineService).singleton(),
     toolResultService: asClass(ToolResultService).singleton(),

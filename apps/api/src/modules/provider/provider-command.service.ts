@@ -50,9 +50,10 @@ export class ProviderCommandService {
       throw new BadRequestError("TERMS_EXCEED_POLICY");
     // Payvoke sponsors hold and release gas, so offers never go below the
     // approved floor; a cap under it would leave no valid price at all.
+    const floor = BigInt(policy.minGrossAmount.toFixed(0));
     if (
-      revision.maxGrossAmount !== null &&
-      BigInt(revision.maxGrossAmount) < BigInt(policy.minGrossAmount.toFixed(0))
+      (revision.maxGrossAmount !== null && BigInt(revision.maxGrossAmount) < floor) ||
+      (revision.instantGrossAmount !== null && BigInt(revision.instantGrossAmount) < floor)
     )
       throw new UnprocessableEntityError("PRICE_BELOW_FLOOR");
   }
@@ -64,6 +65,7 @@ export class ProviderCommandService {
       inputSchema: revision.inputSchema as Prisma.InputJsonValue,
       positionalParameter: revision.positionalParameter,
       maxGrossAmount: revision.maxGrossAmount,
+      instantGrossAmount: revision.instantGrossAmount,
       terms: revision.terms as Prisma.InputJsonValue,
       deliverySeconds: revision.deliverySeconds,
       reviewSeconds: revision.reviewSeconds,
@@ -85,6 +87,7 @@ export class ProviderCommandService {
       sameJson(active.terms, stored(revision.terms)) &&
       active.positionalParameter === revision.positionalParameter &&
       (active.maxGrossAmount?.toFixed(0) ?? null) === revision.maxGrossAmount &&
+      (active.instantGrossAmount?.toFixed(0) ?? null) === revision.instantGrossAmount &&
       active.outputSchema === null
     );
   }

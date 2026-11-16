@@ -22,7 +22,6 @@ export const config = z
       ),
     // Retries per model, with backoff, before moving to the next one.
     MODEL_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
-    PRICE_PROFILE: atomic.default("200000"),
     PRICE_QUICK: atomic.default("500000"),
     PRICE_DEEP: atomic.default("1000000"),
     STATE_DIR: z.string().default(".data"),

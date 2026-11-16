@@ -437,7 +437,7 @@ const Box = ({
 );
 
 // =====================================================================
-// PHẦN CHÍNH (11 trang, khoảng 6 phút lời thoại)
+// PHẦN CHÍNH (14 trang, khoảng 7 phút lời thoại)
 // =====================================================================
 
 // ---------- 1. Cover ----------
@@ -514,8 +514,8 @@ const Context: Page = () => (
       <Block tag="MCP" title="Assistant biết gọi công cụ">
         Claude Code hay Codex tự tìm agent và giao việc.
       </Block>
-      <Block tag="x402" title="Thanh toán trong HTTP">
-        Server trả mã 402, client ký rồi gửi lại.
+      <Block tag="x402" title="Trả qua HTTP, chưa refund">
+        Ký là trả ngay. Job lỗi thì mất.
       </Block>
       <Block tag="Avalanche" title="Phí thấp, finality nhanh">
         Đủ rẻ cho những job chỉ vài USDC.
@@ -756,7 +756,22 @@ const WhyOnchain: Page = () => (
   </Frame>
 );
 
-// ---------- 8. Tiền đi như thế nào ----------
+// ---------- 8. x402 + Escrow ----------
+
+const X402Escrow: Page = () => (
+  <Frame n="Thanh toán" title="x402 + Escrow">
+    <Versus head k="" a="X402 EXACT" b="PAYVOKE-ESCROW" />
+    <Versus k="Tiền đi đâu" a="Thẳng tới người bán" b="Vào hold riêng của job trong Vault" />
+    <Versus k="Khi nào settle" a="Ngay lúc gọi" b="Trước khi job chạy, chờ finalized" />
+    <Versus k="Lỗi thì sao" a="Mất tiền, không có refund" b="Tự refund, quá hạn thì buyer tự rút" />
+    <Versus k="Ai trả gas" a="Facilitator" b="Relayer của Payvoke, buyer không tốn gas" />
+    <Statement style={{ marginTop: 40 }}>
+      Vẫn là 402, ký, gửi lại. <Em>Chỉ khác tiền đi đâu.</Em>
+    </Statement>
+  </Frame>
+);
+
+// ---------- 9. Tiền đi như thế nào ----------
 
 const MoneyFlow: Page = () => (
   <Frame n="Thanh toán" title="Tiền đi như thế nào">
@@ -795,7 +810,69 @@ const MoneyFlow: Page = () => (
   </Frame>
 );
 
-// ---------- 9. An toàn cho AI assistant ----------
+// ---------- 10. Agent thuê agent ----------
+
+const AgentHiresAgent: Page = () => (
+  <Frame n="Thanh toán" title="Agent thuê agent">
+    <div style={{ position: "relative", width: 1680, height: 430 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 300,
+          top: 236,
+          width: 1080,
+          height: 194,
+          border: `2px dashed ${lineStrong}`,
+          boxSizing: "border-box",
+        }}
+      />
+      <DiagramLabel x={600} y={225}>
+        PAYVOKEVAULT · AVALANCHE
+      </DiagramLabel>
+      <svg width={1680} height={430} style={{ position: "absolute", inset: 0 }}>
+        <ArrowDefs id="pv-a2a" />
+        <g stroke={lineStrong} strokeWidth={2.5} fill="none" markerEnd="url(#pv-a2a)">
+          <path d="M380 65H646" />
+          <path d="M1030 65H1296" />
+          <path d="M513 65V286" />
+          <path d="M1163 65V286" />
+        </g>
+      </svg>
+      <DiagramLabel x={408} y={22}>
+        X402 · KÝ 1 LẦN
+      </DiagramLabel>
+      <DiagramLabel x={1058} y={22}>
+        X402 · KÝ 1 LẦN
+      </DiagramLabel>
+      <Node x={0} y={0} w={380} h={130} title="Buyer" sub="người hoặc AI assistant" />
+      <Node
+        x={650}
+        y={0}
+        w={380}
+        h={130}
+        title="job-finder"
+        sub="nhận job, cần review CV"
+        tone="brand"
+      />
+      <Node x={1300} y={0} w={380} h={130} title="cv-reviewer" sub="lệnh instant quick_review" />
+      <Node x={360} y={290} w={420} h={110} title="Hold 1" sub="buyer → job-finder" tone="key" />
+      <Node
+        x={900}
+        y={290}
+        w={420}
+        h={110}
+        title="Hold 2"
+        sub="job-finder → cv-reviewer"
+        tone="key"
+      />
+    </div>
+    <Statement style={{ marginTop: 48 }}>
+      Mỗi job một hold. <Em>Lỗi ở tầng nào, refund đúng tầng đó.</Em>
+    </Statement>
+  </Frame>
+);
+
+// ---------- 11. An toàn cho AI assistant ----------
 
 const AgentSafety: Page = () => (
   <Frame n="An toàn" title="Khi AI assistant tự trả tiền">
@@ -873,7 +950,14 @@ const Architecture: Page = () => (
       <Node x={0} y={140} w={360} h={110} title="AI assistant" sub="qua MCP" />
       <Node x={0} y={280} w={360} h={110} title="Agent của builder" sub="HTTPS và SSE" />
       <Node x={520} y={40} w={600} h={80} title="Chat · Offer · Quote" />
-      <Node x={520} y={140} w={600} h={80} title="x402 gateway · MCP server" />
+      <Node
+        x={520}
+        y={135}
+        w={600}
+        h={100}
+        title="x402 gateway + facilitator"
+        sub="MCP · catalog"
+      />
       <DiagramLabel x={512} y={250}>
         WORKERS · BA KEY TÁCH QUYỀN
       </DiagramLabel>
@@ -930,7 +1014,7 @@ const Business: Page = () => (
           Khiếu nại khi kết quả kém
         </Row>
         <Row n="03" tone="todo">
-          SDK cho Python và TypeScript
+          SDK cho builder: Python và TypeScript
         </Row>
         <Row n="04" tone="todo">
           Đưa những builder đầu tiên lên Store
@@ -1287,51 +1371,80 @@ const SeqMsg = ({
   );
 };
 
+// Một bước tự làm trên lane, không gửi đi đâu.
+const SeqSelf = ({ x, y, children }: { x: number; y: number; children: ReactNode }) => (
+  <div
+    style={{
+      position: "absolute",
+      left: x - 170,
+      top: y - 30,
+      width: 340,
+      boxSizing: "border-box",
+      padding: "6px 10px",
+      textAlign: "center",
+      background: soft,
+      border: `1px solid ${accent}`,
+      fontSize: 22,
+      fontWeight: 600,
+      color: accent,
+    }}
+  >
+    {children}
+  </div>
+);
+
 const L_BUYER = 180;
 const L_PAYVOKE = 660;
 const L_VAULT = 1120;
 const L_AGENT = 1500;
+const SEQ_H = 600;
 
 const X402: Page = () => (
   <Frame n="Phụ lục" label="Thanh toán" title="Luồng thanh toán x402" appendix>
-    <div style={{ position: "relative", width: 1680, height: 640 }}>
-      <svg width={1680} height={640} style={{ position: "absolute", inset: 0 }}>
+    <div style={{ position: "relative", width: 1680, height: SEQ_H }}>
+      <svg width={1680} height={SEQ_H} style={{ position: "absolute", inset: 0 }}>
         <g stroke={line} strokeWidth={2} strokeDasharray="6 8">
-          <path d={`M${L_BUYER} 84V640`} />
-          <path d={`M${L_PAYVOKE} 84V640`} />
-          <path d={`M${L_VAULT} 84V640`} />
-          <path d={`M${L_AGENT} 84V640`} />
+          <path d={`M${L_BUYER} 84V${SEQ_H}`} />
+          <path d={`M${L_PAYVOKE} 84V${SEQ_H}`} />
+          <path d={`M${L_VAULT} 84V${SEQ_H}`} />
+          <path d={`M${L_AGENT} 84V${SEQ_H}`} />
         </g>
       </svg>
-      <Lane x={L_BUYER} title="Buyer" sub="web hoặc AI assistant" />
-      <Lane x={L_PAYVOKE} title="Payvoke API" sub="x402 gateway, relayer" />
+      <Lane x={L_BUYER} title="Buyer" sub="web, AI assistant, SDK" />
+      <Lane x={L_PAYVOKE} title="Payvoke API" sub="x402 gateway, facilitator" />
       <Lane x={L_VAULT} title="PayvokeVault" sub="Avalanche" />
       <Lane x={L_AGENT} title="Agent" sub="SSE event feed" />
-      <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={164}>
-        Gửi quote
+      <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={140}>
+        POST, chưa có chữ ký
       </SeqMsg>
-      <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={232} strong>
-        402 Payment Required
+      <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={196} strong>
+        402 PAYMENT-REQUIRED
       </SeqMsg>
-      <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={300}>
-        Ký USDC EIP-3009, gửi lại
+      <SeqSelf x={L_BUYER} y={244}>
+        Ký ReceiveWithAuthorization
+      </SeqSelf>
+      <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={316}>
+        POST + PAYMENT-SIGNATURE
       </SeqMsg>
-      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={368}>
+      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={370}>
         fundWithAuthorization
       </SeqMsg>
-      <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={436}>
+      <SeqMsg from={L_VAULT} to={L_PAYVOKE} y={424}>
         Hold finalized
       </SeqMsg>
-      <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={504} strong>
+      <SeqMsg from={L_PAYVOKE} to={L_BUYER} y={478} strong>
         202 + receipt
       </SeqMsg>
-      <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={572} strong>
+      <SeqMsg from={L_PAYVOKE} to={L_AGENT} y={532} strong>
         invocation.ready
       </SeqMsg>
-      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={636}>
+      <SeqMsg from={L_PAYVOKE} to={L_VAULT} y={586}>
         applyDecision: release hoặc refund
       </SeqMsg>
     </div>
+    <Note style={{ marginTop: 16 }}>
+      Lệnh instant: cùng luồng, POST thẳng tới /v1/x402/apps/:appId/commands/:command, không chat.
+    </Note>
   </Frame>
 );
 
@@ -1485,7 +1598,9 @@ export default [
   JobFlow,
   BuyerProtection,
   WhyOnchain,
+  X402Escrow,
   MoneyFlow,
+  AgentHiresAgent,
   AgentSafety,
   Architecture,
   Business,
@@ -1522,7 +1637,7 @@ Payvoke xử lý cả ba bằng một cách: giữ tiền trong escrow cho đế
   `(~30s)
 Ba thứ vừa sẵn sàng cùng lúc.
 MCP cho Claude Code hay Codex tự gọi công cụ, nên assistant có thể tự tìm agent và giao việc.
-x402 đưa thanh toán vào HTTP: server trả mã 402, client ký rồi gửi lại.
+x402 đưa thanh toán vào HTTP: server trả mã 402, client ký rồi gửi lại. Nhưng scheme exact chuyển tiền thẳng cho người bán ngay lúc gọi. Job lỗi thì không có đường refund nào trong giao thức.
 Avalanche có phí thấp và finality nhanh, đủ rẻ cho job chỉ vài USDC.
 Thứ còn thiếu là một nơi để tìm agent và trả tiền an toàn theo từng job.`,
 
@@ -1562,6 +1677,23 @@ Với escrow on-chain, Payvoke không rút được tiền của buyer, builder 
 Nếu bị hỏi "đánh đổi là gì?":
 Người dùng cần có ví và USDC. Nhóm đầu tiên chúng tôi nhắm tới là builder, người đã quen dùng ví, và AI assistant tự thanh toán.`,
 
+  // X402Escrow
+  `(~40s)
+Payvoke mang escrow vào x402 trên Avalanche.
+Với exact, ký xong là tiền tới người bán, settle ngay lúc gọi. Agent lỗi thì tiền đã đi rồi.
+Scheme của Payvoke là payvoke-escrow. Luồng HTTP y hệt: 402, ký, gửi lại. Khác ở chỗ payTo là Vault. Tiền vào một hold riêng cho job, chờ finalized rồi agent mới chạy. Giao đúng hạn thì release, lỗi thì refund, quá hạn mà không ai quyết thì buyer tự rút. Gas do relayer của Payvoke trả.
+
+Nếu bị hỏi "sao không dùng exact?":
+Exact hợp với thứ trả về ngay trong response, như một bài báo hay một API call. Job của agent xong sau vài phút và có thể hỏng. Với exact, refund phải xin tay ngoài giao thức. Nên Payvoke không bao giờ nhận exact.
+Nếu bị hỏi "ví x402 bên ngoài có trả được không?":
+Có. Client dùng @x402/core đăng ký thêm client scheme payvoke-escrow (VaultClientScheme trong @payvoke/shared/x402), truyền vào quote lấy từ body của 402 cùng ví, Vault, URL và trần chi tiêu của chính nó. Hoặc dùng SDK @payvoke/x402-client, hiện là package trong repo, chưa publish lên npm. Client kiểm lại quote trước khi ký, nên 402 giả không lừa được nó ký thứ khác.
+Nếu bị hỏi "đã chạy thật chưa?":
+Toàn bộ luồng x402 có test e2e trên EVM local (Hardhat node, contract PayvokeVault thật, USDC giả lập): cả nhánh release khi giao và refund khi lỗi. SDK có thêm test tích hợp chạy API thật trong process.
+
+[Chỉ cho người trình bày, không nói ra] Các route mới (/v1/x402, lệnh instant, catalog) chưa deploy lên Fuji: API đang chạy chưa có /v1/x402. Đừng demo lệnh instant trên bản deploy; nếu được hỏi, nói rõ phần này đã có code và test, đang chờ deploy.
+Nếu bị hỏi "Payvoke có giữ tiền không?":
+Không. Buyer không nạp tiền vào đâu cả. Tiền nằm trong hold của contract, chỉ đi ra ba nơi đã ghi trong quote: buyer, builder, hoặc phí. Payvoke không có hàm rút tiền của buyer.`,
+
   // MoneyFlow
   `(~45s)
 Buyer không nạp tiền trước. Khi chấp nhận Offer, ví ký một USDC authorization cho đúng job đó. Relayer của Payvoke nộp giao dịch nên buyer không trả gas.
@@ -1575,6 +1707,20 @@ Mặc định là có, vì đó là cam kết builder tự chọn. Builder có t
 Nếu bị hỏi "buyer xin sửa sau deadline thì builder có bị tính trễ không?":
 Không. Mỗi lần sửa có hạn riêng, tính từ lúc buyer yêu cầu. Bản sửa chỉ bị tính trễ nếu quá hạn của chính nó.`,
 
+  // AgentHiresAgent
+  `(~30s)
+x402 cho phép agent thuê agent mà không cần người ngồi giữa.
+Ví dụ: buyer thuê job-finder. Job-finder cần review CV nên tự gọi lệnh instant quick_review của cv-reviewer, cũng qua x402.
+Hai lần ký, hai hold riêng trong Vault. cv-reviewer lỗi thì hold 2 refund về job-finder. Hold 1 vẫn đi theo kết quả job-finder giao cho buyer.
+Mỗi tầng chỉ chịu rủi ro của đúng job nó thuê.
+
+Nếu bị hỏi "agent lấy tiền đâu để thuê tiếp?":
+Agent có ví riêng và ký bằng ví đó, qua SDK @payvoke/x402-client. Tiền của buyer ở hold 1 không bị dùng lại.
+Nếu bị hỏi "review CV lỗi thì job-finder có hỏng không?":
+Không. Hold 2 được refund về ví job-finder, job-finder vẫn viết báo cáo mà không có phần review. Bước thuê thêm này chỉ bật khi job-finder được cấu hình ví riêng (CV_REVIEWER_APP_ID, JOB_FINDER_BUYER_KEY).
+
+[Chỉ cho người trình bày] Luồng này có trong code ví dụ và test, chưa chạy trên Fuji vì route /v1/x402 chưa deploy.`,
+
   // AgentSafety
   `(~45s)
 Muốn để AI assistant tự trả tiền, buyer đặt hạn mức trước: trần mỗi job, trần mỗi kỳ, tổng hạn mức và ngày hết hạn. Thu hồi chỉ cần một chữ ký, không tốn gas.
@@ -1587,15 +1733,18 @@ Có thể, vì đây là nhận diện theo mẫu. Hạn mức vẫn giới hạ
   // Architecture
   `(~35s)
 Có ba loại client: web app, AI assistant qua MCP, và agent của builder kết nối bằng HTTPS và SSE. Builder viết agent bằng ngôn ngữ nào cũng được.
-API xử lý chat, quote, x402 và MCP. Settlement worker giữ key relayer để nộp giao dịch ký quỹ. Finance worker giữ hai key approver và executor để quyết toán. Job worker kiểm tra kết quả và không giữ key nào. Lộ một key không đủ để lấy tiền.
+API xử lý chat, quote, MCP, và x402: gateway trả 402, facilitator kiểm chữ ký và mô phỏng giao dịch, catalog công khai các lệnh instant. Settlement worker giữ key relayer để nộp giao dịch ký quỹ. Finance worker giữ hai key approver và executor để quyết toán. Job worker kiểm tra kết quả và không giữ key nào. Lộ một key không đủ để lấy tiền.
 Postgres ghi lại mọi giao dịch trước khi gửi lên chain, nên sự cố xảy ra ở đâu cũng đối soát được.
-Vault đang chạy trên Avalanche Fuji testnet.`,
+Vault đang chạy trên Avalanche Fuji testnet.
+
+[Chỉ cho người trình bày] Bản API trên Fuji chưa có route /v1/x402 (lệnh instant, catalog). Đừng nói phần đó đang chạy trên Fuji.`,
 
   // Business
   `(~35s)
 Payvoke thu 5% trên mỗi job. Phí được trừ lúc release cho builder, nên buyer trả đúng giá trong Offer.
 Trần phí là 10%, ghi cố định trong contract từ lúc deploy. Payvoke không tự tăng quá mức đó được, và phí của từng job đã chốt trong quote. Job bị refund toàn bộ thì Payvoke không thu gì. Job giao trễ được hoàn một phần thì phí chỉ tính trên phần trả cho builder.
-Roadmap: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, phát hành SDK, và đưa những builder đầu tiên lên Store.
+Roadmap: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, SDK cho builder, và đưa những builder đầu tiên lên Store.
+Phía buyer đã có SDK TypeScript @payvoke/x402-client trong repo, chưa publish lên npm.
 
 Nếu bị hỏi "buyer không trả gas thì ai trả?":
 Payvoke trả gas cho cả giao dịch ký quỹ lẫn quyết toán. Phí 5% bù lại phần đó, và mỗi job có giá sàn để không job nào rẻ hơn chi phí gas.`,
@@ -1629,10 +1778,11 @@ API key tạo trong Studio với 7 scope. Mọi lệnh ghi đều idempotent.
 File lớn upload qua presigned URL và kiểm SHA-256.
 
 Nếu bị hỏi "sao chưa có SDK?":
-Tài liệu API và ba agent mẫu (CSV Analyst, Job Finder, CV Reviewer) chỉ dùng fetch và SSE. SDK nằm trong roadmap.`,
+Tài liệu API và ba agent mẫu (CSV Analyst, Job Finder, CV Reviewer) chỉ dùng fetch và SSE. SDK cho builder nằm trong roadmap. Phía người mua đã có @payvoke/x402-client trong repo.`,
 
   // Assistant
   `Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
+Lệnh instant cũng vậy: search_agents và get_agent liệt kê instantCommands, tool hire_instant mua theo giá cố định với cùng hạn mức autopay và Risk Check như pay_offer. Vượt hạn mức thì trả về approvalUrl để người dùng tự duyệt trong console.
 API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên lộ database cũng không ký được.
 
 Nếu bị hỏi "spend key lưu ở đâu?":
@@ -1646,10 +1796,16 @@ Nếu bị hỏi "builder đổi giá sau khi ký thì sao?":
 Không ảnh hưởng, giá đã được hash trong quote.`,
 
   // X402
-  `Scheme payvoke-escrow.
-Buyer gửi quote, Payvoke trả 402. Ví ký USDC authorization (EIP-3009) cho đúng quote đó rồi gửi lại.
-Settlement worker gọi fundWithAuthorization. Chỉ Vault nộp được authorization này, nên USDC đi thẳng từ ví vào escrow của job. Payvoke đợi finalized rồi mới trả 202 kèm receipt.
-Sau đó agent mới nhận invocation.ready. Khi quyết toán, Finance worker gọi applyDecision.`,
+  `Scheme payvoke-escrow, x402 v2.
+Buyer POST mà chưa ký, Payvoke trả 402 kèm header PAYMENT-REQUIRED: payTo là Vault, amount là giá, nonce là quote digest.
+Ví ký ReceiveWithAuthorization (EIP-3009) cho đúng quote đó rồi POST lại với PAYMENT-SIGNATURE.
+Settlement worker gọi fundWithAuthorization. Chỉ Vault nộp được authorization này, nên USDC đi thẳng từ ví vào hold của job. Chưa finalized thì API trả 202 PENDING để client poll. Finalized rồi mới trả 202 HELD kèm PAYMENT-RESPONSE.
+Sau đó agent mới nhận invocation.ready. Khi quyết toán, Finance worker gọi applyDecision.
+Thường lần POST có chữ ký nhận 202 PENDING trước (Retry-After 5, Location, và PAYMENT-RESPONSE có tx hash khi đã broadcast), client poll đến HELD.
+Lệnh instant đi đúng luồng này, chỉ khác URL: POST /v1/x402/apps/:appId/commands/:command, không qua chat và offer từ agent. Body của 402 mang cả quote trong extensions.payvoke.quote; header PAYMENT-REQUIRED thì không, vì header có giới hạn kích thước. URL được ghi vào terms của quote (termsSnapshot.resource), nằm trong quote digest, nên chữ ký chỉ dùng được ở đúng URL đó. Gửi sang URL khác bị 409 QUOTE_RESOURCE_MISMATCH. Danh sách lệnh instant ở GET /v1/x402/catalog.
+
+Nếu bị hỏi "gửi lại chữ ký hai lần có bị trừ tiền hai lần không?":
+Không. Nonce là quote digest nên USDC chỉ chấp nhận một lần, và cùng chữ ký luôn nhận lại cùng receipt.`,
 
   // Vault
   `Buyer không có số dư trong Vault. Tiền nằm trong ví đến lúc job được fund.

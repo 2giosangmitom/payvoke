@@ -61,13 +61,15 @@ export class SettlementWorker {
   // Prisma stores these columns as UTC `timestamp`, so compare against the clock
   // in UTC; a bare timestamptz comparison would shift by the session time zone.
   //
-  // Only operations signed for this deployment's resource URL are due here. A
-  // second deployment sharing the database (a staging or local API with its
-  // own origin and vault) must neither settle nor quarantine them: its checks
+  // Only operations signed for this deployment's resources (its origin:
+  // /v1/invocations and the instant command URLs) are due here. A second
+  // deployment sharing the database (a staging or local API with its own
+  // origin and vault) must neither settle nor quarantine them: its checks
   // would fail on the foreign binding and wrongly quarantine a valid payment.
   private get dueFilter() {
+    const prefix = `${new URL(this.resourceUrl).origin}/`;
     return Prisma.sql`state = 'PENDING'
-      AND "paymentPayload"->'resource'->>'url' = ${this.resourceUrl}
+      AND left("paymentPayload"->'resource'->>'url', ${prefix.length}) = ${prefix}
       AND "nextCheckAt" <= (clock_timestamp() AT TIME ZONE 'UTC')
       AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= (clock_timestamp() AT TIME ZONE 'UTC'))`;
   }

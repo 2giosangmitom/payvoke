@@ -98,6 +98,22 @@ export type Report =
     }
   | { type: "failed"; data?: Record<string, unknown> };
 
+// A command as registered with overwriteCommands. Amounts are atomic USDC
+// strings (6 decimals). `instantAmount` makes the command instant: buyers can
+// hire it at that fixed price without chat, over x402 at
+// POST /v1/x402/apps/:appId/commands/:command. It must be between the
+// deployment floor and `maxAmount`, and an instant command cannot have a
+// required FILE option.
+export type CommandDefinition = {
+  name: string;
+  description: string;
+  options: ({ name: string; type: string; required?: boolean } & Record<string, unknown>)[];
+  positionalParameter?: string | null;
+  maxAmount: string;
+  instantAmount?: string;
+  terms: Record<string, unknown>;
+};
+
 export class PayvokeError extends Error {
   constructor(
     readonly status: number,
@@ -150,7 +166,7 @@ export class Payvoke {
     }
   }
 
-  overwriteCommands = (definitions: unknown[]) =>
+  overwriteCommands = (definitions: CommandDefinition[]) =>
     this.call<{ id: string; name: string }[]>("PUT", "/commands", definitions);
 
   sendMessage = (

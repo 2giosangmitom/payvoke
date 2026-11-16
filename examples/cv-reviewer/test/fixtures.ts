@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import type { Commands } from "../src/chat";
 import { sourceBlocks } from "../src/document";
 import type { FileEntry, InvocationReadyEvent, ThreadMessageEvent } from "../src/payvoke";
 import type { Review, ReviewDraft } from "../src/review";
@@ -69,9 +70,12 @@ export function sampleDraft(text = cvText): ReviewDraft {
   };
 }
 
-export const commands = {
-  byId: new Map([["review-command", "review_cv" as const]]),
-  id: { review_cv: "review-command" },
+export const commands: Commands = {
+  byId: new Map([
+    ["review-command", "review_cv"],
+    ["quick-command", "quick_review"],
+  ]),
+  id: { review_cv: "review-command", quick_review: "quick-command" },
 };
 export const ready: InvocationReadyEvent & { id: string } = {
   id: "ready-event",

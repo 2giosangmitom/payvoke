@@ -13,6 +13,7 @@ import {
   SCHEME_VERSION,
   VaultServerScheme,
   paymentRequirements,
+  paymentResource,
   readPaymentIntent,
   type QuoteDocument,
 } from "@payvoke/shared/x402";
@@ -20,20 +21,22 @@ import type { Context } from "hono";
 import { parseFinancialJson } from "#core/runtime";
 import type { Facilitator } from "#core/facilitator";
 import { getAddress } from "viem";
-import { BadRequestError, ServiceUnavailableError } from "../../errors";
+import { BadRequestError, ConflictError, ServiceUnavailableError } from "../../errors";
 import { logger } from "../../logging";
 
 const log = logger("payments", "gateway");
 
 const PATH = "/v1/invocations";
 
-// x402 adapter for the paid invocation resource. Settlement goes to the
+// x402 adapter for the paid resources: /v1/invocations for chat quotes and
+// each instant command's own URL. Settlement goes to the
 // in-process facilitator, which only journals an intent; the settlement worker
 // signs and broadcasts it.
 export class PaymentGateway {
   private readonly db: Cradle["db"];
   private readonly config: Cradle["config"];
-  private readonly resource: string;
+  // This deployment's /v1/invocations URL: the resource of chat quotes.
+  readonly resource: string;
   readonly facilitator: Facilitator | null;
 
   constructor({ db, config, facilitator }: Cradle) {
@@ -64,12 +67,34 @@ export class PaymentGateway {
       throw new Error("Facilitator capability mismatch");
   }
 
-  // The 402 challenge for an unpaid submission.
-  async challenge(quote: QuoteDocument, c: Context) {
+  // A quote is paid only at the resource it names (chat quotes from before
+  // v3 terms: /v1/invocations). Returns the request path to route on.
+  private bind(quote: QuoteDocument, resource: string) {
+    let expected: string;
+    try {
+      expected = paymentResource(quote, this.resource);
+    } catch {
+      throw new ServiceUnavailableError("QUOTE_INCONSISTENT");
+    }
+    if (expected !== resource) throw new ConflictError("QUOTE_RESOURCE_MISMATCH");
+    return new URL(resource).pathname;
+  }
+
+  // The 402 challenge for an unpaid submission. With `includeQuote`, the JSON
+  // body also carries the whole quote document as `extensions.payvoke.quote`
+  // for a client that has not seen it; headers have size limits, so the
+  // PAYMENT-REQUIRED header never does.
+  async challenge(
+    quote: QuoteDocument,
+    c: Context,
+    resourceUrl = this.resource,
+    includeQuote = false,
+  ) {
+    this.bind(quote, resourceUrl);
     const core = new x402ResourceServer().register(NETWORK, new VaultServerScheme(quote));
     // `method` is not part of core's ResourceInfo type but is kept on the wire.
     const resource = {
-      url: this.resource,
+      url: resourceUrl,
       method: "POST",
       description: "Payvoke invocation",
       mimeType: "application/json",
@@ -79,12 +104,16 @@ export class PaymentGateway {
       resource,
     );
     c.header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(required));
-    return c.json(required, 402);
+    return c.json(
+      includeQuote ? { ...required, extensions: { payvoke: { quote } } } : required,
+      402,
+    );
   }
 
   // Headers are written to the reply as soon as they are known: a buyer must
   // keep the receipt for held funds even if a later consistency check fails.
-  async settle(quote: QuoteDocument, c: Context, body: unknown) {
+  async settle(quote: QuoteDocument, c: Context, body: unknown, resourceUrl = this.resource) {
+    const path = this.bind(quote, resourceUrl);
     if (!this.facilitator) throw new ServiceUnavailableError("SETTLEMENT_NOT_AVAILABLE");
     const header = c.req.header("payment-signature");
     if (typeof header !== "string" || header.length > 16384)
@@ -101,7 +130,7 @@ export class PaymentGateway {
     );
     const expected = paymentRequirements(quote);
     const http = new x402HTTPResourceServer(core, {
-      [`POST ${PATH}`]: {
+      [`POST ${path}`]: {
         accepts: {
           scheme: expected.scheme,
           network: expected.network,
@@ -110,7 +139,7 @@ export class PaymentGateway {
           maxTimeoutSeconds: expected.maxTimeoutSeconds,
           extra: expected.extra,
         },
-        resource: this.resource,
+        resource: resourceUrl,
         description: "Payvoke invocation",
         mimeType: "application/json",
       },
@@ -118,15 +147,15 @@ export class PaymentGateway {
     await http.initialize();
     const context: HTTPRequestContext = {
       method: "POST",
-      path: PATH,
+      path,
       paymentHeader: header,
       adapter: {
         getHeader: (name) => {
           return c.req.header(name);
         },
         getMethod: () => "POST",
-        getPath: () => PATH,
-        getUrl: () => this.resource,
+        getPath: () => path,
+        getUrl: () => resourceUrl,
         getAcceptHeader: () => "application/json",
         getUserAgent: () => "",
         getBody: () => body,
@@ -194,11 +223,7 @@ export class PaymentGateway {
           ["BROADCAST", "UNKNOWN", "CONFIRMED"].includes(operation.attempt.state)
         ) {
           c.header("PAYMENT-RESPONSE", encoded);
-          c.header("Retry-After", "5");
-          return c.json(
-            { invocationId: quote.invocationId, paymentStatus: "PENDING", nextActions: ["poll"] },
-            402,
-          );
+          return this.pending(quote, c);
         }
       } catch {
         /* No trusted receipt; status polling remains authoritative. */
@@ -263,25 +288,29 @@ export class PaymentGateway {
         503,
       );
     }
-    const rejected = operation?.state === "REJECTED";
     // PENDING is the normal first answer: the authorization is journaled and
-    // the worker is putting the hold on chain. Tell the client to poll, not
-    // that settlement is down.
-    const pending = operation?.state === "PENDING";
+    // the worker is putting the hold on chain. The payment was accepted, so
+    // this is a 202 to poll, not a 402 or a settlement outage.
+    if (operation.state === "PENDING") return this.pending(quote, c);
+    const rejected = operation.state === "REJECTED";
     c.header("Retry-After", "5");
     return c.json(
       {
         invocationId: quote.invocationId,
-        paymentStatus: operation?.state ?? "UNKNOWN",
-        error: rejected
-          ? operation?.errorReason
-          : pending
-            ? "settlement_pending"
-            : "settlement_unavailable",
-        nextActions:
-          rejected || operation?.state === "QUARANTINED" ? ["contact_support"] : ["poll"],
+        paymentStatus: operation.state,
+        error: rejected ? operation.errorReason : "settlement_unavailable",
+        nextActions: rejected || operation.state === "QUARANTINED" ? ["contact_support"] : ["poll"],
       },
       rejected ? 422 : 503,
+    );
+  }
+
+  // The signed authorization is journaled; the hold is not final yet.
+  private pending(quote: QuoteDocument, c: Context) {
+    c.header("Retry-After", "5");
+    return c.json(
+      { invocationId: quote.invocationId, paymentStatus: "PENDING", nextActions: ["poll"] },
+      202,
     );
   }
 }

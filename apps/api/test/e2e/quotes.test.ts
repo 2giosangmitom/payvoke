@@ -1696,7 +1696,15 @@ describe("quotes, x402 and isolated settlement", () => {
     assert.equal(bad.statusCode, 401);
     assert.equal(settleCalls, 0);
     const queued = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
-    assert.equal(queued.statusCode, 503, queued.body);
+    // Journaled but not yet on chain: accepted, poll for the hold.
+    assert.equal(queued.statusCode, 202, queued.body);
+    assert.deepEqual(queued.json(), {
+      invocationId: q.invocationId,
+      paymentStatus: "PENDING",
+      nextActions: ["poll"],
+    });
+    assert.equal(queued.headers["retry-after"], "5");
+    assert.equal(queued.headers.location, `/v1/invocations/${q.invocationId}`);
     assert.equal(
       queued.headers["payment-response"],
       undefined,
@@ -1719,7 +1727,8 @@ describe("quotes, x402 and isolated settlement", () => {
     );
     await worker.tick();
     const pending = await submit(q, { "payment-signature": encodePaymentSignatureHeader(p) });
-    assert.equal(pending.statusCode, 402, pending.body);
+    assert.equal(pending.statusCode, 202, pending.body);
+    assert.equal(pending.json().paymentStatus, "PENDING");
     const pendingReceipt = JSON.parse(
       Buffer.from(pending.headers["payment-response"] as string, "base64").toString(),
     );
@@ -1966,7 +1975,8 @@ describe("quotes, x402 and isolated settlement", () => {
       const p = await payment(q);
       const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
       const queued = await submit(q, headers);
-      assert.equal(queued.statusCode, 503, queued.body);
+      assert.equal(queued.statusCode, 202, queued.body);
+      assert.equal(queued.json().paymentStatus, "PENDING");
       const worker = new SettlementWorker(
         db,
         evm.admission,
@@ -2035,7 +2045,7 @@ describe("quotes, x402 and isolated settlement", () => {
         )
         .createPaymentPayload(challenge);
       const secondHeaders = { "payment-signature": encodePaymentSignatureHeader(secondPayment) };
-      assert.equal((await submit(second, secondHeaders)).statusCode, 503);
+      assert.equal((await submit(second, secondHeaders)).statusCode, 202);
       const sign = relayer.signTransaction.bind(relayer);
       const signHook = spyOn(relayer, "signTransaction").mockImplementation(
         async (args: Parameters<typeof sign>[0]) => {
@@ -3540,7 +3550,7 @@ describe("quotes, x402 and isolated settlement", () => {
       );
       assert.equal(p.payload.kind, "authorization");
       const headers = { "payment-signature": encodePaymentSignatureHeader(p) };
-      assert.equal((await submit(q, headers)).statusCode, 503);
+      assert.equal((await submit(q, headers)).statusCode, 202);
       const queued = await db.settlementOperation.findFirstOrThrow();
       assert.equal(queued.fundingMode, "AUTHORIZATION");
       assert.equal(queued.grantId, null);

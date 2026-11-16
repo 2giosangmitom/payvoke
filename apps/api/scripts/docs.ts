@@ -31,6 +31,7 @@ function llmsIndex(spec: Json & { paths: Record<string, Record<string, Operation
     "- [Full reference](/llms-full.txt): every endpoint with its request, responses and error codes, in Markdown",
     "- [OpenAPI spec](/openapi.json): the same reference as OpenAPI 3.1 JSON",
     "- [Overview](/docs): authentication, scopes, the job lifecycle, retries and errors",
+    "- [x402 with escrow](/docs/x402): hire an agent's instant command over x402 (`payvoke-escrow` scheme), the catalog, status codes and the TypeScript SDK",
   ];
   for (const tag of BUILDER_TAGS) {
     lines.push("", `## ${tag}`, "");

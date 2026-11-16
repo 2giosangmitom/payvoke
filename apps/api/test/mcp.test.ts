@@ -280,6 +280,7 @@ it("lets an MCP host find an agent, chat and pay with its API key alone", async 
     "get_agent",
     "get_job",
     "get_spending_limits",
+    "hire_instant",
     "list_jobs",
     "pay_offer",
     "prepare_reclaim",
@@ -403,5 +404,155 @@ it("lets an MCP host find an agent, chat and pay with its API key alone", async 
   // Revoking the token takes its spending policy with it.
   assert.equal((await web("DELETE", `/v1/access-tokens/${tokenId}`)).statusCode, 200);
   assert.equal(await db.vaultGrant.count({ where: { grantId } }), 0);
+  await host.close();
+});
+
+it("lets an MCP host hire an instant command under the same autopay rules", async () => {
+  const cookie = await login();
+  const web = (method: string, url: string, payload?: unknown) =>
+    inject(app, {
+      method: method as "GET",
+      url,
+      headers: { origin, cookie },
+      ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
+    });
+  await db.deploymentPolicy.upsert({
+    where: { version: "test" },
+    update: {},
+    create: {
+      version: "test",
+      activeSlot: "active",
+      vault: wallet.address,
+      feeBps: 0,
+      feeRecipient: wallet.address,
+      quoteLifetimeSeconds: 60,
+      maxHoldSeconds: 10000,
+      resolutionGraceSeconds: 60,
+      minGrossAmount: "1000",
+    },
+  });
+  const name = `Instant ${randomUUID().slice(0, 6)}`;
+  const created = await web("POST", "/v1/provider/apps", {
+    name,
+    payoutAddress: wallet.address,
+    clientRequestId: randomUUID(),
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const appId = created.json().id as string;
+  const terms = {
+    deliverySeconds: 600,
+    reviewSeconds: 3600,
+    revisionPolicy: { maxIncluded: 0, description: "None" },
+    refundPolicy: "Refund undelivered",
+    sideEffects: "none",
+    dataUse: "This request",
+  };
+  const commands = await web("PUT", `/v1/provider/apps/${appId}/commands`, [
+    {
+      name: "quick_review",
+      description: "Reviews a CV at a fixed price",
+      options: [{ name: "cv_text", type: "STRING", required: true }],
+      maxAmount: "1000000",
+      instantAmount: "500000",
+      terms,
+    },
+    {
+      name: "deep_review",
+      description: "Reviews a whole portfolio at a fixed price",
+      options: [{ name: "brief", type: "STRING", required: true }],
+      maxAmount: "10000000",
+      instantAmount: "6000000",
+      terms,
+    },
+    {
+      name: "chat_review",
+      description: "Reviews after a chat",
+      options: [{ name: "brief", type: "STRING", required: true }],
+      maxAmount: "1000000",
+      terms,
+    },
+  ]);
+  assert.equal(commands.statusCode, 200, commands.body);
+  await db.app.update({
+    where: { id: appId },
+    data: { lastHeartbeatAt: new Date(), visibility: "PUBLIC" },
+  });
+
+  const issued = await web("POST", "/v1/access-tokens", { name: "Agent" });
+  assert.equal(issued.statusCode, 201, issued.body);
+  const token = issued.json().secret as string;
+  const tokenId = issued.json().id as string;
+  vault.signer = issued.json().signer;
+  vault.spentToday = 0n;
+  const grantId = `0x${randomBytes(32).toString("hex")}` as Hex;
+  const linked = await web("PUT", `/v1/access-tokens/${tokenId}/grant`, {
+    grantId,
+    buyer: wallet.address,
+  });
+  assert.equal(linked.statusCode, 200, linked.body);
+  const host = await connect(token);
+
+  // Instant commands and their fixed prices show where the host looks.
+  const instant = [
+    { command: "deep_review", price: "6 USDC", amount: "6000000" },
+    { command: "quick_review", price: "0.5 USDC", amount: "500000" },
+  ];
+  const found = json(await host.callTool({ name: "search_agents", arguments: { query: name } }));
+  assert.equal(found.items[0].id, appId);
+  assert.deepEqual(found.items[0].instantCommands, instant);
+  const agent = json(await host.callTool({ name: "get_agent", arguments: { appId } }));
+  assert.deepEqual(
+    [...agent.instantCommands].sort((a: { command: string }, b: { command: string }) =>
+      a.command.localeCompare(b.command),
+    ),
+    instant,
+  );
+
+  const hire = (command: string, args: Record<string, unknown>) =>
+    host.callTool({ name: "hire_instant", arguments: { appId, command, arguments: args } });
+
+  // The API's own gates answer first: no 402, nothing to sign.
+  const chatOnly = await hire("chat_review", { brief: "x" });
+  assert.equal(chatOnly.isError, true);
+  assert.equal(json(chatOnly).error, "COMMAND_NOT_FOUND");
+  const invalid = await hire("quick_review", { cv: "wrong option" });
+  assert.equal(invalid.isError, true);
+  assert.equal(json(invalid).status, 400);
+
+  // Within the limits Payvoke signs with the key's derived signer and sends
+  // the payment to the command's x402 URL. This app has no facilitator, so
+  // it cannot settle; the host sees the API's error, not a success.
+  const paid = await hire("quick_review", { cv_text: "Ten years of TypeScript" });
+  assert.equal(paid.isError, true);
+  assert.deepEqual(json(paid), { status: 503, error: "SETTLEMENT_NOT_AVAILABLE" });
+  // It was a DIRECT purchase: a thread with no chat, hidden from the list.
+  const direct = await db.chatThread.findMany({ where: { appId, kind: "DIRECT" } });
+  assert.equal(direct.length, 1);
+
+  // Above the per-job limit: the user approves the same quote in the console.
+  const perJob = json(await hire("deep_review", { brief: "Portfolio" }));
+  assert.equal(perJob.mode, "approve");
+  assert.match(perJob.reason, /per-job autopay limit/);
+  assert.equal(perJob.price, "6 USDC");
+  assert.equal(perJob.approvalUrl, `${origin}/console/approve/${perJob.quoteId}`);
+  assert.equal(perJob.limits.perJob, "5 USDC");
+  assert.equal(typeof perJob.threadId, "string");
+
+  // Over today's limit.
+  vault.spentToday = 99_800_000n;
+  const daily = json(await hire("quick_review", { cv_text: "Another CV" }));
+  assert.equal(daily.mode, "approve");
+  assert.match(daily.reason, /today's autopay limit/);
+  vault.spentToday = 0n;
+
+  // A key without a derived signer never pays by itself.
+  await db.buyerAccessToken.update({ where: { id: tokenId }, data: { signer: null } });
+  const legacy = json(await hire("quick_review", { cv_text: "Third CV" }));
+  assert.equal(legacy.mode, "approve");
+  assert.match(legacy.reason, /made before keys could pay/);
+
+  // Each approval left an unpaid quote only; nothing was journaled for them.
+  const quotes = await db.quote.findMany({ where: { thread: { appId } } });
+  assert.equal(quotes.length, 4);
   await host.close();
 });

@@ -80,6 +80,8 @@ export class ThreadService {
     const rows = await this.db.chatThread.findMany({
       where: {
         buyerId,
+        // Instant x402 jobs live in DIRECT threads: they show as jobs, not chats.
+        kind: "CHAT",
         ...(archived === "1" ? { archivedAt: { not: null } } : { archivedAt: null }),
         ...(q
           ? {
@@ -168,6 +170,8 @@ export class ThreadService {
     return {
       id: thread.id,
       appId: thread.appId,
+      // DIRECT: one instant x402 job, with no chat to continue.
+      kind: thread.kind as "CHAT" | "DIRECT",
       title: thread.title,
       archivedAt: thread.archivedAt,
       app: {

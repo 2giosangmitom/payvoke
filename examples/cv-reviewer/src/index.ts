@@ -18,11 +18,12 @@ const config = parsed.data;
 const api = new Payvoke(config.PAYVOKE_API_URL, config.PAYVOKE_APP_ID, config.PAYVOKE_KEY);
 const jobs = diskStore<Job>(config.STATE_DIR, "jobs");
 const tools = diskStore<PendingIntake>(config.STATE_DIR, "tools");
-const { concierge, generateReview } = createAgents(config);
+const { concierge, generateReview, generateQuickReview } = createAgents(config);
 const handleMessage = createChatHandler({ price: config.PRICE_REVIEW_CV, tools, concierge });
 const { handleReady, handleRevision, handleToolResult } = createRunHandlers({
   jobs,
   generateReview,
+  generateQuickReview,
 });
 const registered = await api.overwriteCommands(commandDefinitions(config.PRICE_REVIEW_CV));
 const commands: Commands = {
@@ -85,7 +86,7 @@ function dispatch(event: FeedEvent) {
   });
 }
 
-console.log("CV Reviewer listening for Payvoke events (/review_cv)");
+console.log("CV Reviewer listening for Payvoke events (/review_cv, /quick_review)");
 try {
   for await (const event of api.events(controller.signal)) dispatch(event);
 } finally {

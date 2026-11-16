@@ -85,6 +85,8 @@ export const commandBody = z
     positionalParameter: z.string().nullable().optional(),
     // Prices come from the bot's offers; this required cap bounds them.
     maxAmount: z.string(),
+    // Optional fixed price for buying the command over x402 without a chat.
+    instantAmount: z.string().nullable().optional(),
     terms: z.unknown(),
     expectedRevisionId: z.string().optional(),
   })
@@ -97,6 +99,7 @@ export const commandCodes = {
   description: "INVALID_COMMAND",
   positionalParameter: "INVALID_POSITIONAL_PARAMETER",
   maxAmount: "INVALID_MAX_AMOUNT",
+  instantAmount: "INVALID_INSTANT_AMOUNT",
 };
 // The whole command list, checked item by item by the service.
 export const commandListBody = z.array(z.unknown());
@@ -168,14 +171,9 @@ export const commandTerms = z
           description:
             "A delivery late by less than this is settled partly; it must be shorter than the deployment's resolution grace.",
         }),
-        refundBps: z
-          .number()
-          .int()
-          .min(0)
-          .max(10000)
-          .meta({
-            description: "Share of the price refunded for such a delivery, in basis points.",
-          }),
+        refundBps: z.number().int().min(0).max(10000).meta({
+          description: "Share of the price refunded for such a delivery, in basis points.",
+        }),
       })
       .optional()
       .meta({
@@ -201,6 +199,10 @@ export const commandDefinition = z
       description:
         "Required cap on every offer for this command, in atomic USDC. Buyers see it before they chat.",
     }),
+    instantAmount: usdcAmount.nullable().optional().meta({
+      description:
+        "Optional fixed price, in atomic USDC, at which buyers can hire this command over x402 without a chat (`POST /v1/x402/apps/{appId}/commands/{name}`). At least the deployment floor and at most `maxAmount`. The command must not have a required FILE option. Omit or null for chat offers only.",
+    }),
     terms: commandTerms,
     expectedRevisionId: z.string().optional().meta({
       description: "Updates only: fails with REVISION_CONFLICT unless this is the active revision.",
@@ -219,6 +221,9 @@ export const commandRevision = z
     outputSchema: z.record(z.string(), z.unknown()).nullable(),
     positionalParameter: z.string().nullable(),
     maxGrossAmount: usdcAmount.nullable(),
+    instantGrossAmount: usdcAmount
+      .nullable()
+      .meta({ description: "The fixed x402 price, or null when the command is chat-only." }),
     terms: commandTerms,
     deliverySeconds: z.number().int(),
     reviewSeconds: z.number().int(),
@@ -246,6 +251,7 @@ const COMMAND_KEYS = new Set([
   "options",
   "positionalParameter",
   "maxAmount",
+  "instantAmount",
   "terms",
   "expectedRevisionId",
 ]);
@@ -276,6 +282,14 @@ export function parseCommandBody(body: CommandBody | undefined) {
   // Every command states its most expensive offer up front, so an agent can
   // never price a job above what buyers saw in the store.
   if (!atomicAmount(input.maxAmount)) throw new BadRequestError("INVALID_MAX_AMOUNT");
+  // An instant price is fixed and bounded by the cap buyers see; the floor is
+  // checked against the deployment policy by the command service.
+  const instant = input.instantAmount ?? null;
+  if (instant !== null && (!atomicAmount(instant) || BigInt(instant) > BigInt(input.maxAmount)))
+    throw new BadRequestError("INVALID_INSTANT_AMOUNT");
+  // An instant job has no chat to upload into, so it cannot need a file.
+  if (instant !== null && options.some((option) => option.type === "FILE" && option.required))
+    throw new BadRequestError("INSTANT_FILES_NOT_SUPPORTED");
   if (!validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
   const terms = normalizeTerms(input.terms as Record<string, unknown>);
   return {
@@ -286,6 +300,7 @@ export function parseCommandBody(body: CommandBody | undefined) {
       inputSchema,
       positionalParameter: positional,
       maxGrossAmount: input.maxAmount,
+      instantGrossAmount: instant,
       terms,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,

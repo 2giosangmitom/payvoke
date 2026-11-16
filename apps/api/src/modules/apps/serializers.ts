@@ -8,6 +8,7 @@ type Revision = {
   outputSchema: Prisma.JsonValue | null;
   positionalParameter: string | null;
   maxGrossAmount: Prisma.Decimal | null;
+  instantGrossAmount: Prisma.Decimal | null;
   terms: Prisma.JsonValue;
   deliverySeconds: number;
   reviewSeconds: number;
@@ -31,6 +32,7 @@ export function serializeRevision(revision: Revision | null) {
         options: revision.options as CommandOption[],
         terms: revision.terms as CommandTerms,
         maxGrossAmount: amount(revision.maxGrossAmount),
+        instantGrossAmount: amount(revision.instantGrossAmount),
       }
     : null;
 }

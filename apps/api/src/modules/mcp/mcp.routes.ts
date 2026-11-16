@@ -43,7 +43,7 @@ export const mcpRoutes = (fetch: Fetch) =>
       } catch {
         body = { error: "UNEXPECTED_RESPONSE" };
       }
-      return { status: response.status, body };
+      return { status: response.status, body, headers: response.headers };
     };
 
     const server = payvokeMcpServer(api, {

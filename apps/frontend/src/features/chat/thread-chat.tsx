@@ -15,7 +15,7 @@ import {
   useExternalStoreRuntime,
   type AppendMessage,
 } from "@assistant-ui/react";
-import { ArrowDown, ArrowUp, SquareSlash } from "lucide-react";
+import { ArrowDown, ArrowUp, SquareSlash, Zap } from "lucide-react";
 import {
   ComposerAddAttachment,
   ComposerAttachments,
@@ -81,6 +81,7 @@ function draftDetail(app: StoreAppDetail): ChatDetail {
   return {
     id: "",
     appId: app.id,
+    kind: "CHAT",
     title: null,
     archivedAt: null,
     app: {
@@ -446,21 +447,25 @@ export function ThreadChat(props: { threadId: string } | { appId: string }) {
   });
 
   const notice = detail ? unavailableNotice(detail) : null;
-  const presale = detail?.presale;
+  // An instant x402 purchase: one paid job, no conversation to continue.
+  const direct = detail?.kind === "DIRECT";
+  const presale = direct ? null : detail?.presale;
   const last = messages.at(-1);
   const replying =
     !notice &&
+    !direct &&
     last?.role === "user" &&
     !last.id.startsWith("local-") &&
     !last.parts.some((part) => part.type === "tool-call" && part.toolName === "revision");
-  const sendBlocked = Boolean(notice) || presale?.remaining === 0 || Boolean(detail?.activeQuoteId);
+  const sendBlocked =
+    Boolean(notice) || direct || presale?.remaining === 0 || Boolean(detail?.activeQuoteId);
 
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: toThreadMessage,
     onNew,
     isLoading: Boolean(threadId) && timeline.isPending && !timelineMessages,
-    isDisabled: Boolean(notice),
+    isDisabled: Boolean(notice) || direct,
     isSendDisabled: sendBlocked,
     adapters: { attachments },
   });
@@ -536,7 +541,9 @@ export function ThreadChat(props: { threadId: string } | { appId: string }) {
                 </span>
                 <span aria-hidden>·</span>
                 <span>
-                  {commands.length} {commands.length === 1 ? "command" : "commands"}
+                  {direct
+                    ? "Instant x402 job"
+                    : `${commands.length} ${commands.length === 1 ? "command" : "commands"}`}
                 </span>
               </p>
             </div>
@@ -570,6 +577,7 @@ export function ThreadChat(props: { threadId: string } | { appId: string }) {
             connection={connection}
             error={error}
             replying={replying}
+            direct={direct}
             sendBlocked={sendBlocked}
             placeholder={
               notice
@@ -613,6 +621,7 @@ function ThreadView({
   connection,
   error,
   replying,
+  direct,
   sendBlocked,
   placeholder,
   slash,
@@ -623,6 +632,7 @@ function ThreadView({
   connection: ReturnType<typeof useThreadTimeline>["connection"];
   error: string;
   replying: boolean;
+  direct: boolean;
   sendBlocked: boolean;
   placeholder: string;
   slash: ReturnType<typeof unstable_useSlashCommandAdapter>;
@@ -649,9 +659,11 @@ function ThreadView({
             />
           </div>
 
-          <AuiIf condition={(s) => s.thread.isEmpty}>
-            <ThreadWelcome appName={appName} />
-          </AuiIf>
+          {!direct && (
+            <AuiIf condition={(s) => s.thread.isEmpty}>
+              <ThreadWelcome appName={appName} />
+            </AuiIf>
+          )}
 
           <div className="mb-10 flex flex-col gap-y-7 empty:hidden">
             <ThreadPrimitive.Messages>
@@ -677,13 +689,17 @@ function ThreadView({
               </TooltipIconButton>
             </ThreadPrimitive.ScrollToBottom>
             {error && <ErrorNotice className="my-0">{error}</ErrorNotice>}
-            <Composer
-              appName={appName}
-              placeholder={placeholder}
-              slash={slash}
-              hasCommands={commands.length > 0}
-            />
-            {isEmpty && commands.length > 0 && (
+            {direct ? (
+              <DirectNote empty={isEmpty} />
+            ) : (
+              <Composer
+                appName={appName}
+                placeholder={placeholder}
+                slash={slash}
+                hasCommands={commands.length > 0}
+              />
+            )}
+            {!direct && isEmpty && commands.length > 0 && (
               <CommandSuggestions
                 commands={commands}
                 disabled={sendBlocked}
@@ -694,6 +710,27 @@ function ThreadView({
         </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+}
+
+// Stands in for the composer on a DIRECT thread: the job was bought over x402
+// at a fixed price, so there is nobody to message. The run above still shows
+// its payment, progress and result.
+function DirectNote({ empty }: { empty: boolean }) {
+  return (
+    <p
+      role="note"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border border-border bg-background-deep px-4 py-3 text-center text-sm text-muted-foreground"
+    >
+      <Zap size={14} className="text-primary" aria-hidden />
+      <span className="font-medium text-foreground">Instant x402 job</span>
+      <span aria-hidden>·</span>
+      <span>
+        {empty
+          ? "Bought at a fixed price, so there is no chat. The job shows here once its payment is held."
+          : "Bought at a fixed price, so there is no chat. The job and its result show above."}
+      </span>
+    </p>
   );
 }
 

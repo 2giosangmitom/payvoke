@@ -46,9 +46,32 @@ không tạo được sản phẩm hợp lệ, agent báo thất bại để Pay
 4. Agent hiển thị tiến độ đọc CV, review, tạo PDF và upload. Sau khi hoàn tất, báo cáo xuất hiện trong chat cùng tệp `cv-improved-v1.pdf`.
 5. Người mua có một lần yêu cầu chỉnh sửa trên cùng CV. Agent dùng CV gốc và phản hồi để tạo lại báo cáo cùng `cv-improved-v2.pdf`.
 
-Lệnh duy nhất là `/review_cv`, gồm `file` bắt buộc và `goal` tùy chọn. Delivery là
+Lệnh `/review_cv` gồm `file` bắt buộc và `goal` tùy chọn. Delivery là
 300 giây, review window 1.800 giây, evidence `REC`. Agent không tìm việc, nhận JD,
 tự ứng tuyển hoặc đảm bảo vượt qua hệ thống ATS.
+
+## Lệnh tức thì `/quick_review` (x402, không cần chat)
+
+`/quick_review` là lệnh **instant** giá cố định **0,50 USDC** (`instantAmount: "500000"`,
+`maxAmount` bằng giá này). Tham số:
+
+| Tên       | Kiểu   | Bắt buộc | Mô tả                                            |
+| --------- | ------ | -------- | ------------------------------------------------ |
+| `cv_text` | STRING | Có       | Nội dung CV dạng văn bản, tối đa 12.000 ký tự    |
+| `goal`    | STRING | Không    | Vị trí mục tiêu hoặc trọng tâm, tối đa 500 ký tự |
+
+Người mua (người hoặc agent khác) thuê trực tiếp qua x402, không qua chat hay offer:
+`POST /v1/x402/apps/:appId/commands/quick_review` với body `{ "arguments": { "cv_text": "..." } }`
+và header `Idempotency-Key`. Lần gọi đầu nhận `402` kèm quote; ký authorization rồi gửi lại
+với `PAYMENT-SIGNATURE`. Tiền được giữ trong PayvokeVault và chỉ trả khi giao hàng.
+
+Agent nhận thẳng `invocation.ready` (không có tệp), chấm điểm CV trên thang 100 và đưa ra
+đúng 3 sửa đổi cụ thể bằng tiếng Việt (model trả object theo schema Zod, thử lại một lần
+nếu sai). Không tạo PDF. Báo cáo được stream vào thread và upload thành
+`cv-quick-review.md` để đạt evidence `REC`; lỗi đầu vào, model hoặc upload đều gửi
+`failed` và hoàn tiền tự động. Delivery 120 giây, review window 600 giây, không có
+lượt chỉnh sửa, không lưu state local. Trong chat, `/quick_review` tạo offer cùng giá.
+Code: `src/quick.ts`.
 
 ## Đọc CV, review và PDF
 

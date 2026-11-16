@@ -20,7 +20,7 @@ import {
   zeroAddress,
   type Address,
   type Hex,
-  type LocalAccount,
+  type TypedDataDefinition,
 } from "viem";
 import type {
   AssetAmount,
@@ -135,6 +135,45 @@ function sameAddress(value: unknown, expected: string): boolean {
   }
 }
 
+// A paid resource URL as Payvoke issues it: absolute http(s), already in
+// canonical form, with no credentials, query or fragment that could make two
+// spellings of one URL compare unequal.
+export function validResourceUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 512) return false;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.href === value &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
+// The URL a quote may be paid at. TermsSnapshot v3 freezes it into the terms
+// hash, so the buyer's signature (over the quote digest) is bound to it; v2
+// quotes predate that and are paid at the deployment's invocation resource.
+export function quoteResource(document: QuoteDocument): string | null {
+  const terms = document.termsSnapshot;
+  if (!terms || typeof terms !== "object" || Array.isArray(terms)) return null;
+  return terms.schemaVersion === 3 && typeof terms.resource === "string" ? terms.resource : null;
+}
+
+// The resource a payment for this quote must name. A v3 quote must have been
+// issued by this deployment: same origin as its default invocation resource.
+export function paymentResource(document: QuoteDocument, deploymentResource: string): string {
+  const own = quoteResource(document);
+  if (own === null) return deploymentResource;
+  if (!validResourceUrl(own) || new URL(own).origin !== new URL(deploymentResource).origin)
+    throw new Error("Foreign payment resource");
+  return own;
+}
+
 // Used both before advertising a persisted quote and before the client signs it.
 export function validateQuoteDocument(document: QuoteDocument, vault: Address, buyer: Address) {
   const q = readQuote(document.protocolQuote);
@@ -155,6 +194,7 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
     "context",
     ...(input.schemaVersion === 2 ? ["offer"] : []),
   ]);
+  // v2: paid at the deployment's /v1/invocations. v3: also names its resource.
   keys(terms, [
     "schemaVersion",
     "productId",
@@ -162,6 +202,7 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
     "commandId",
     "definition",
     "deliveryDeadline",
+    ...(terms.schemaVersion === 3 ? ["resource"] : []),
   ]);
   keys(policy, [
     "schemaVersion",
@@ -203,12 +244,14 @@ export function validateQuoteDocument(document: QuoteDocument, vault: Address, b
   assert(q.validUntil < q.deliveryDeadline && q.deliveryDeadline <= q.releaseNotBefore);
   assert(q.releaseNotBefore < q.resolveBy);
   assert(Number.isSafeInteger(document.productVersion) && document.productVersion > 0);
-  // TermsSnapshot v2 carries the evidence floor that gates release (M05).
+  // TermsSnapshot v2 carries the evidence floor that gates release (M05); v3
+  // adds the payment resource.
   assert(
     (input.schemaVersion === 1 || input.schemaVersion === 2) &&
-      terms.schemaVersion === 2 &&
+      (terms.schemaVersion === 2 || terms.schemaVersion === 3) &&
       policy.schemaVersion === 1,
   );
+  if (terms.schemaVersion === 3) assert(validResourceUrl(terms.resource));
   if (input.schemaVersion === 2) {
     const offer = object(input.offer);
     keys(offer, ["offerId", "summary", "conversation", "conversationHash"]);
@@ -426,10 +469,12 @@ export type PaymentIntent = {
 
 // Local envelope/signature integrity only. The recovered EOA is NOT trusted as
 // the grant signer until the worker reads the grant and simulates reserveHold.
+// `deploymentResource` is this deployment's /v1/invocations URL: the resource
+// of v2 quotes, and the origin a v3 quote's own resource must share.
 export async function readPaymentIntent(
   document: QuoteDocument,
   value: unknown,
-  resourceUrl: string,
+  deploymentResource: string,
 ): Promise<PaymentIntent> {
   const q = validateQuoteDocument(
     document,
@@ -443,7 +488,7 @@ export async function readPaymentIntent(
     throw new Error("Invalid payment requirements");
   }
   const resource = object(envelope.resource);
-  if (resource.url !== resourceUrl || resource.method !== "POST")
+  if (resource.url !== paymentResource(document, deploymentResource) || resource.method !== "POST")
     throw new Error("Invalid payment resource");
   const payload = object(envelope.payload);
   const vault = getAddress(document.vault);
@@ -545,6 +590,13 @@ export type AuthorizationRecord = {
   payload: PaymentBody;
 };
 
+// Anything that signs EIP-712 for an address: a viem LocalAccount, a browser
+// wallet or an MCP token's grant key.
+export type PaymentSigner = {
+  address: Address;
+  signTypedData(args: TypedDataDefinition): Promise<Hex>;
+};
+
 // How the client pays: its signer is the buyer's own wallet, or a grant signer.
 export type ClientFunding =
   | { mode: "authorization" }
@@ -565,7 +617,7 @@ export class VaultClientScheme implements SchemeNetworkClient {
       buyer: Address;
       vault: Address;
       resourceUrl: string;
-      signer: LocalAccount;
+      signer: PaymentSigner;
       funding: ClientFunding;
       maxAmount: bigint;
       persist: (record: AuthorizationRecord) => Promise<void>;
@@ -573,15 +625,17 @@ export class VaultClientScheme implements SchemeNetworkClient {
     },
   ) {
     this.options = { ...options, document: structuredClone(options.document) };
-    const resource = new URL(options.resourceUrl);
+    // A v3 quote names the one URL it is paid at; a v2 quote is paid at
+    // /v1/invocations. Either way the caller's trusted URL must match.
+    const own = quoteResource(options.document);
     if (
-      resource.pathname !== "/v1/invocations" ||
-      resource.search ||
-      resource.hash ||
-      resource.username ||
-      resource.password
+      !validResourceUrl(options.resourceUrl) ||
+      (own === null
+        ? new URL(options.resourceUrl).pathname !== "/v1/invocations"
+        : own !== options.resourceUrl)
     )
       throw new Error("Invalid invocation resource");
+    const resource = new URL(options.resourceUrl);
     this.schemeHooks = {
       onBeforePaymentCreation: async ({ paymentRequired }) => {
         if (paymentRequired.resource?.url !== resource.href) {

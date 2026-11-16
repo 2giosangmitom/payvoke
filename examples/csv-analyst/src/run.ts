@@ -24,6 +24,7 @@ import {
   type ChartSpec,
   type Plan,
 } from "./plan";
+import { columnsTable, headline, mdTable, runProfile } from "./profile";
 import { jobs, type Job } from "./state";
 import * as ui from "./ui";
 
@@ -40,12 +41,19 @@ export async function handleReady(
 ) {
   const command = commands.byId.get(ev.input.commandId);
   const args = ev.input.arguments;
-  const fileId = str(args.file);
-  const file = ev.input.context.files.find((f) => f.fileId === fileId) ?? ev.input.context.files[0];
   const run = await claim(api, ev.invocationId, ev.id, ev.runId);
   if (!run) return;
+  // Instant /profile: the CSV text is an argument and there are no files. It
+  // allows no revisions, so no job state is kept.
+  if (command === "profile")
+    return guard(run, async () => {
+      await run.report({ type: "started", data: { command } });
+      await runProfile(run, args, (name, type, body) => uploads(run, [[name, type, body]]));
+    });
+  const fileId = str(args.file);
+  const file = ev.input.context.files.find((f) => f.fileId === fileId) ?? ev.input.context.files[0];
   await guard(run, async () => {
-    if (!command || !file) throw new CsvError("This job has no CSV file attached.");
+    if (command !== "analyze" || !file) throw new CsvError("This job has no CSV file attached.");
     const job: Job = {
       command,
       threadId: ev.threadId,
@@ -58,7 +66,6 @@ export async function handleReady(
     await jobs.put(ev.invocationId, job);
     await run.report({ type: "started", data: { command } });
     const data = await load(run, job);
-    if (command === "profile") return deliverProfile(run, job, data);
 
     // Ask which metric matters, with the real column names. This ends the
     // run; the answer arrives as invocation.tool_result in a new run.
@@ -169,30 +176,6 @@ async function load(run: Run, job: Job): Promise<Data> {
     `${profile.rows} rows, ${profile.columns.length} columns`,
   );
   return { rows, profile };
-}
-
-async function deliverProfile(run: Run, job: Job, { profile }: Data) {
-  await run.progress("ui", "Building the profile");
-  const sections = ["head", "kpi", "cols"];
-  await run.surface(
-    "profile",
-    `${ui.header("head", `Profile of ${job.fileName}`, "Computed directly from the file")}\n${ui.root(sections)}`,
-  );
-  await run.surface("profile", ui.metrics("kpi", headline(profile)));
-  await run.surface("profile", ui.profileCard("cols", profile));
-  await run.progress("ui", "Built the profile", "done");
-
-  const files = await uploads(run, [
-    ["profile.json", "application/json", JSON.stringify(profile, null, 2)],
-  ]);
-  await run.finish({
-    type: "result",
-    data: {
-      artifactVersion: await nextVersion(run, job),
-      output: profileMarkdown(job, profile),
-      files,
-    },
-  });
 }
 
 async function analyze(run: Run, job: Job, { rows, profile }: Data, feedback?: string) {
@@ -379,58 +362,10 @@ async function nextVersion(run: Run, job: Job) {
   return job.artifactVersion;
 }
 
-function headline(p: Profile, focus?: string) {
-  const cells = p.rows * p.columns.length;
-  const missing = p.columns.reduce((a, c) => a + c.missing, 0);
-  const items: { label: string; value: number | string; unit?: string }[] = [
-    { label: "Rows", value: p.rows },
-    { label: "Columns", value: p.columns.length },
-    { label: "Missing", value: cells ? Math.round((missing / cells) * 1000) / 10 : 0, unit: "%" },
-  ];
-  const column = p.columns.find((c) => c.name === focus);
-  if (column?.sum !== undefined) items.push({ label: `Total ${column.name}`, value: column.sum });
-  else items.push({ label: "Numeric columns", value: numericColumns(p).length });
-  return items;
-}
-
 const chartTitle = (s: ChartSpec) =>
   s.agg === "count"
     ? `Rows by ${s.groupBy}`
     : `${s.agg === "mean" ? "Average" : "Total"} ${s.metric} by ${s.groupBy}`;
-
-const cell = (v: unknown) =>
-  String(v ?? "")
-    .replace(/\|/g, "\\|")
-    .replace(/\n/g, " ");
-const mdTable = (head: string[], rows: unknown[][]) =>
-  [
-    `| ${head.join(" | ")} |`,
-    `| ${head.map(() => "---").join(" | ")} |`,
-    ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`),
-  ].join("\n");
-
-function columnsTable(p: Profile) {
-  return mdTable(
-    ["Column", "Type", "Missing", "Distinct", "Min", "Max", "Mean", "Top values"],
-    p.columns.map((c) => [
-      c.name,
-      c.type,
-      c.missing,
-      c.distinct,
-      c.min ?? c.first ?? "",
-      c.max ?? c.last ?? "",
-      c.mean ?? "",
-      c.top
-        ?.slice(0, 3)
-        .map((t) => `${t.value} (${t.count})`)
-        .join(", ") ?? "",
-    ]),
-  );
-}
-
-function profileMarkdown(job: Job, p: Profile) {
-  return `# Profile of ${job.fileName}\n\n${p.rows} rows, ${p.columns.length} columns.\n\n${columnsTable(p)}\n`;
-}
 
 function analysisMarkdown(
   job: Job,

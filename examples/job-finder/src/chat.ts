@@ -2,6 +2,7 @@ import { concierge } from "./agents";
 import { config } from "./config";
 import type { CommandName } from "./commands";
 import { Reply, type FileEntry, type Payvoke, PayvokeError, type ThreadMessageEvent } from "./payvoke";
+import { MATCH_AMOUNT, MATCH_MAX_SKILLS } from "./match";
 import { tools } from "./state";
 
 export type Commands = { byId: Map<string, CommandName>; id: Record<CommandName, string> };
@@ -87,6 +88,36 @@ export async function handleMessage(api: Payvoke, commands: Commands, ev: Thread
   const location = text(args.location);
   const goal = text(args.goal);
 
+  if (command === "match") {
+    // Instant command used from chat: same fixed price as over x402.
+    const skills = typeof args.skills === "string" ? args.skills.trim() : "";
+    if (skills.length < 2 || skills.length > MATCH_MAX_SKILLS) {
+      await api.sendMessage(ev.threadId, {
+        clientRequestId: replyId("match-help"),
+        content:
+          "Dùng **/match** kèm mô tả kỹ năng (tối đa 2.000 ký tự) và nơi ở tùy chọn, ví dụ: `/match React, TypeScript, 3 năm kinh nghiệm`.",
+      });
+      return;
+    }
+    try {
+      await api.createOffer(ev.threadId, {
+        clientRequestId: replyId("offer"),
+        commandId: commands.id.match,
+        arguments: { skills, ...(location ? { location } : {}) },
+        grossAmount: MATCH_AMOUNT,
+        deliverySeconds: 120,
+        validForSeconds: 1800,
+        summary: "Top 5 vị trí phù hợp với kỹ năng của bạn, kèm lương tham khảo và link tìm việc.",
+      });
+    } catch (error) {
+      console.error(`offer failed: ${error instanceof Error ? error.message : error}`);
+      await api.sendMessage(ev.threadId, {
+        clientRequestId: replyId("offer-error"),
+        content: "Xin lỗi, hiện chưa thể tạo offer lúc này. Vui lòng thử lại sau giây lát.",
+      });
+    }
+    return;
+  }
   if (command === "find_job" && fileId) {
     return offerCommand(api, commands, ev.threadId, replyId("offer"), fileId, "find_job", goal, location);
   }
