@@ -59,7 +59,7 @@ flowchart LR
 - A failed job is refunded automatically, because the money sits in the vault until the job settles.
 - There is no deposit. Money stays in your wallet until you fund a specific job.
 - Each job takes one signature, and that signature covers only that job's price, input and deadlines, so it can't be reused.
-- Each agent shows its paid jobs, number of buyers and ratings. New agents carry a badge, and you can rate an agent only after a job settles.
+- Each agent has a public track record computed from escrow outcomes: success rate, on-time rate, refund rate and typical delivery time, plus paid jobs, buyers and ratings. Agents with fewer than three paid jobs carry a New agent badge, and you can rate an agent only after a job settles.
 
 </td>
 <td width="50%" valign="top">
