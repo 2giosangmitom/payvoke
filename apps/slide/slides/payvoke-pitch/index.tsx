@@ -1694,7 +1694,7 @@ Toàn bộ luồng x402 có test e2e trên EVM local (Hardhat node, contract Pay
 Nếu bị hỏi "giá có cố định không?":
 Có, tại thời điểm trả. Builder đặt giá gốc và tối đa năm bậc theo dung lượng input (text cộng file). Payvoke đo input, chọn bậc, rồi ghi giá vào quote trước khi trả 402. Buyer ký đúng con số đó, nên agent không đổi giá sau được.
 
-[Chỉ cho người trình bày, không nói ra] Bản deploy Fuji đã có /v1/x402 và catalog. Bậc giá và file cho lệnh instant có từ bản code mới nhất: trước khi demo, mở https://payvoke.up.railway.app/v1/x402/catalog và kiểm tra có trường tiers.
+[Chỉ cho người trình bày, không nói ra] Bản deploy Fuji đã có /v1/x402, catalog, bậc giá và file cho lệnh instant: https://payvoke.xyz/v1/x402/catalog
 Nếu bị hỏi "Payvoke có giữ tiền không?":
 Không. Buyer không nạp tiền vào đâu cả. Tiền nằm trong hold của contract, chỉ đi ra ba nơi đã ghi trong quote: buyer, builder, hoặc phí. Payvoke không có hàm rút tiền của buyer.`,
 
@@ -1723,7 +1723,7 @@ Agent có ví riêng và ký bằng ví đó, qua SDK @payvoke/x402-client. Ti�
 Nếu bị hỏi "review CV lỗi thì job-finder có hỏng không?":
 Không. Hold 2 được refund về ví job-finder, job-finder vẫn viết báo cáo mà không có phần review. Bước thuê thêm này chỉ bật khi job-finder được cấu hình ví riêng (CV_REVIEWER_APP_ID, JOB_FINDER_BUYER_KEY).
 
-[Chỉ cho người trình bày] Luồng này có trong code ví dụ và test, chưa chạy trên Fuji vì route /v1/x402 chưa deploy.`,
+[Chỉ cho người trình bày] Luồng này có trong code ví dụ và test; route /v1/x402 đã chạy trên Fuji.`,
 
   // AgentSafety
   `(~45s)
@@ -1739,9 +1739,7 @@ Có thể, vì đây là nhận diện theo mẫu. Hạn mức vẫn giới hạ
 Có ba loại client: web app, AI assistant qua MCP, và agent của builder kết nối bằng HTTPS và SSE. Builder viết agent bằng ngôn ngữ nào cũng được.
 API xử lý chat, quote, MCP, và x402: gateway trả 402, facilitator kiểm chữ ký và mô phỏng giao dịch, catalog công khai các lệnh instant. Settlement worker giữ key relayer để nộp giao dịch ký quỹ. Finance worker giữ hai key approver và executor để quyết toán. Job worker kiểm tra kết quả và không giữ key nào. Lộ một key không đủ để lấy tiền.
 Postgres ghi lại mọi giao dịch trước khi gửi lên chain, nên sự cố xảy ra ở đâu cũng đối soát được.
-Vault đang chạy trên Avalanche Fuji testnet.
-
-[Chỉ cho người trình bày] Bản API trên Fuji đã có route /v1/x402 và catalog. Bậc giá và file cho lệnh instant cần bản deploy mới nhất; kiểm tra catalog trước khi nói phần đó đang chạy.`,
+Vault đang chạy trên Avalanche Fuji testnet.`,
 
   // Business
   `(~35s)

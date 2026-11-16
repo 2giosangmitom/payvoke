@@ -5,7 +5,7 @@ import { vaultAddress, wallet } from "@/src/remotion/launch/mock";
 import { Logo } from "@/src/remotion/launch/screens/console";
 
 // A browser wallet's signature prompt for the EIP-3009 authorization that
-// PaymentConfirm asks for: one TransferWithAuthorization of 1 USDC to the
+// PaymentConfirm asks for: one ReceiveWithAuthorization of 1 USDC to the
 // vault, valid for this quote only. Generic, not any one wallet's design.
 
 const rows: [string, string][] = [
@@ -39,7 +39,7 @@ export function WalletPopup({ press = 0, confirmed = false }: { press?: number; 
         <div className="grid gap-1 border border-white/10 bg-black/20 p-3 text-xs">
           <p className="mb-1 flex justify-between text-[#a9b8ad]">
             <span>Primary type</span>
-            <span className="font-mono text-[#e8ecdf]">TransferWithAuthorization</span>
+            <span className="font-mono text-[#e8ecdf]">ReceiveWithAuthorization</span>
           </p>
           <p className="mb-1 flex justify-between text-[#a9b8ad]">
             <span>Contract</span>
