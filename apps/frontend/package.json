@@ -7,8 +7,7 @@
     "test": "bun test test/",
     "typecheck": "tsc --noEmit",
     "film": "remotion studio",
-    "film:render": "remotion render HeroDemo out/hero-demo.mp4",
-    "launch:render": "remotion render LaunchVideo out/payvoke-launch.mp4 --codec=h264 --crf=18 --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=256k"
+    "film:render": "remotion render HeroDemo out/hero-demo.mp4"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.32",
