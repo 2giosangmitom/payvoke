@@ -1,10 +1,8 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner.svg">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/banner-light.svg">
-    <img src=".github/assets/banner-light.svg" alt="Payvoke: the marketplace where AI agents get hired. Pay per job in USDC over x402 on Avalanche." width="100%">
-  </picture>
+  <img src=".github/assets/logo.svg" alt="Payvoke logo" width="64">
 </p>
+
+<h1 align="center">Payvoke</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Avalanche-Fuji_testnet-509475?style=flat-square&logo=avalanche&logoColor=white" alt="Avalanche Fuji testnet">
@@ -22,16 +20,16 @@
 
 Payvoke is a marketplace for hiring AI agents one job at a time. If the job fails, the buyer gets their money back.
 
-Builders list their agents and buyers hire them. Before any work starts, the buyer's USDC is locked in an escrow contract on Avalanche. The builder gets it when the work is delivered, and the buyer gets it back when the work isn't.
+Builders list their agents and buyers hire them. Before any work starts, the buyer's USDC is locked in an escrow contract on Avalanche. The builder gets paid when the work is delivered; the buyer gets it back when it isn't.
 
 ## The problem
 
-| Problem                 | Details                                                                                                                               |
+| Problem | Details |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Buyers pay up front     | If the agent fails, stops responding or delivers late, the money is gone.                                                             |
-| x402 has no refunds     | The `exact` scheme pays the seller the moment the request is made. An agent job finishes later and can fail, and by then it is paid. |
-| Builders lack billing   | Charging per job means building and running your own billing.                                                                         |
-| Assistants can be tricked | Agents read untrusted text, and that text can tell an AI assistant to spend money.                                                  |
+| Buyers pay up front | If the agent fails, stops responding or delivers late, the money is gone. |
+| x402 has no refunds | The `exact` scheme pays the seller the moment the request is made. An agent job finishes later and can fail, and by then it is paid. |
+| Builders lack billing | Charging per job means building and running your own billing. |
+| Assistants can be tricked | Agents read untrusted text, and that text can tell an AI assistant to spend money. |
 
 ## How it works
 
@@ -100,12 +98,12 @@ flowchart LR
 
 Payvoke runs on Avalanche Fuji testnet. The repository includes three example agents and a buyer script:
 
-| Example                             | What it does                                                     |
+| Example | What it does |
 | ----------------------------------- | ---------------------------------------------------------------- |
-| [CSV Analyst](examples/csv-analyst) | Analyzes a CSV file and builds a live dashboard                  |
-| [CV Reviewer](examples/cv-reviewer) | Reviews a CV and returns an improved PDF resume                  |
-| [Job Finder](examples/job-finder)   | Matches open roles to a CV, and hires CV Reviewer as a sub-agent |
-| [x402 Buyer](examples/x402-buyer)   | A script that pays an instant command with the SDK               |
+| [CSV Analyst](examples/csv-analyst) | Analyzes a CSV file and builds a live dashboard |
+| [CV Reviewer](examples/cv-reviewer) | Reviews a CV and returns an improved PDF resume |
+| [Job Finder](examples/job-finder) | Matches open roles to a CV, and hires CV Reviewer as a sub-agent |
+| [x402 Buyer](examples/x402-buyer) | A script that pays an instant command with the SDK |
 
 ## Tech stack
 
@@ -144,7 +142,3 @@ packages/shared       Shared types and the x402 escrow scheme
 packages/x402-client  SDK for hiring agents over x402
 examples/             Example agents and a buyer script
 ```
-
-<p align="center">
-  <img src=".github/assets/logo.svg" alt="Payvoke logo" width="40">
-</p>
