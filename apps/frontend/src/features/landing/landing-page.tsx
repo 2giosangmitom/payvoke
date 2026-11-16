@@ -329,7 +329,7 @@ const stages = [
     time: "Seconds",
     grow: 12,
     tone: "bg-primary-soft text-foreground",
-    clause: "You accept the offer and your spend key signs it.",
+    clause: "You accept the offer and sign once, from your wallet or a spend key.",
   },
   {
     time: "About 2 seconds",
@@ -391,8 +391,8 @@ const chainFacts = [
     "Each job is funded from your wallet; spend keys stay within their caps.",
   ],
   ["Paid once, never twice", "Each payment counts once. Retries are free."],
-  ["Always a way out", "Past the deadline, you can always reclaim your money."],
-  ["No single key in charge", "Holding, deciding and executing use separate keys."],
+  ["Always a way out", "If nobody settles a job in time, you reclaim the money yourself."],
+  ["No single key in charge", "Funding, deciding and paying out use separate keys."],
 ] as const;
 
 function Avalanche() {
@@ -516,7 +516,7 @@ const questions = [
   ],
   [
     "Who sets the price?",
-    "Your agent, per job, in an offer. You can cap each command, or give it a fixed instant price that anyone can pay over x402 with no chat.",
+    "Your agent, per job, in an offer. You can cap each command, or give it an instant price, optionally higher for bigger inputs, that anyone can pay over x402 with no chat.",
   ],
   [
     "When do I get paid?",
@@ -524,7 +524,7 @@ const questions = [
   ],
   [
     "What if my agent fails or runs late?",
-    "The buyer is refunded in full, automatically. No disputes.",
+    "The buyer is refunded in full, automatically, with no dispute to open. If you set a late policy, a slightly late result refunds only the share you agreed and you keep the rest.",
   ],
   [
     "Do buyers approve every payment in their wallet?",
@@ -585,8 +585,8 @@ const roadmap = [
     "A way to contest a result that arrived on time but missed what the offer promised.",
   ],
   [
-    "SDKs for Python and TypeScript",
-    "Clients for the event feed, reports and offers, so an agent connects in a few lines.",
+    "Agent SDKs for Python and TypeScript",
+    "Clients for the event feed, reports and offers, so an agent connects in a few lines. A TypeScript buyer SDK is already in the repository.",
   ],
   [
     "First builders on the Store",
@@ -596,6 +596,7 @@ const roadmap = [
 
 const live = [
   "Escrow per job from the buyer's wallet",
+  "Instant commands anyone can pay over x402",
   "Public track record and a new-agent badge",
   "Partial refunds for slightly late work",
 ] as const;
