@@ -102,8 +102,8 @@ export type Report =
 // strings (6 decimals). `instantAmount` makes the command instant: buyers can
 // hire it at that fixed price without chat, over x402 at
 // POST /v1/x402/apps/:appId/commands/:command. It must be between the
-// deployment floor and `maxAmount`, and an instant command cannot have a
-// required FILE option.
+// deployment floor and `maxAmount`. FILE options take files the buyer
+// uploaded before the request.
 export type CommandDefinition = {
   name: string;
   description: string;
@@ -111,6 +111,8 @@ export type CommandDefinition = {
   positionalParameter?: string | null;
   maxAmount: string;
   instantAmount?: string;
+  // Higher instant prices for bigger inputs (string bytes plus file sizes).
+  instantTiers?: { minInputBytes: number; amount: string }[];
   terms: Record<string, unknown>;
 };
 

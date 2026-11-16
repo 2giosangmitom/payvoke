@@ -75,6 +75,21 @@ export async function deleteUnusedAccounts(db: PrismaClient, days: number, now =
 
 // Deletes stored objects that no row references. Staging and final file keys,
 // agent pictures and profile pictures are the only things the API stores.
+// Staged inputs for instant purchases that no purchase bound within a day.
+// Expiring the row drops its object key, so the orphan sweep deletes the bytes.
+export async function expireUnboundStaged(db: PrismaClient, now = new Date()) {
+  const { count } = await db.fileAsset.updateMany({
+    where: {
+      purpose: "BUYER_INPUT",
+      status: "READY",
+      threadId: null,
+      readyAt: { lt: new Date(now.getTime() - DAY_MS) },
+    },
+    data: { status: "EXPIRED", objectKey: null },
+  });
+  return count;
+}
+
 export async function deleteOrphanObjects(
   db: PrismaClient,
   storage: ObjectStorage,
@@ -108,13 +123,13 @@ export async function startCleanupWorker(
       try {
         const apps = await retireStaleApps(db, options.staleAppDays);
         const accounts = await deleteUnusedAccounts(db, options.unusedAccountDays);
+        const staged = await expireUnboundStaged(db);
         const objects = storage ? await deleteOrphanObjects(db, storage) : 0;
-        if (apps.archived || apps.hidden || accounts || objects)
-          log.info("Cleanup: {archived} archived, {hidden} hidden, {accounts} accounts, {objects} objects", {
-            ...apps,
-            accounts,
-            objects,
-          });
+        if (apps.archived || apps.hidden || accounts || staged || objects)
+          log.info(
+            "Cleanup: {archived} archived, {hidden} hidden, {accounts} accounts, {staged} staged files, {objects} objects",
+            { ...apps, accounts, staged, objects },
+          );
       } catch (error) {
         log.warn("Cleanup sweep failed; will retry ({error})", { error: errorTag(error) });
       }

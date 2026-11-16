@@ -24,27 +24,34 @@ class FakePayvoke extends Payvoke {
   };
 }
 
-test("profile is an instant command that takes CSV text, not a file", () => {
+test("profile is an instant command that takes CSV text or a file, priced by size", () => {
   const profile = commandDefinitions.find((c) => c.name === "profile")!;
   expect(profile.instantAmount).toBe("200000");
-  expect(BigInt(profile.maxAmount) >= BigInt(profile.instantAmount!)).toBe(true);
-  expect(profile.options).toEqual([
-    expect.objectContaining({ name: "csv", type: "STRING", required: true, maxLength: 200000 }),
+  expect(profile.instantTiers).toEqual([
+    { minInputBytes: 262144, amount: "500000" },
+    { minInputBytes: 1048576, amount: "1000000" },
   ]);
-  expect(profile.options.some((o) => o.type === "FILE")).toBe(false);
+  // Every tier fits under the cap buyers see.
+  for (const tier of profile.instantTiers!)
+    expect(BigInt(tier.amount) <= BigInt(profile.maxAmount)).toBe(true);
+  expect(profile.options).toEqual([
+    expect.objectContaining({ name: "csv", type: "STRING", maxLength: 200000 }),
+    expect.objectContaining({ name: "file", type: "FILE", required: false, accept: ["text/csv"] }),
+  ]);
+  expect(profile.options[0]!.required).toBeUndefined();
   expect(profile.terms).toMatchObject({ verification: { minEvidence: "SIGN" } });
   expect(commandDefinitions.find((c) => c.name === "analyze")!.instantAmount).toBeUndefined();
 });
 
 test("quality flags find duplicates, missing values, constants and outliers", () => {
   const csv = `${salesCsv}\n${salesCsv.split("\n")[1]}`;
-  const { rows, profile } = parseProfileInput({ csv });
+  const { rows, profile } = parseProfileInput(csv);
   const flags = qualityFlags(rows, profile);
   expect(flags).toContainEqual({ column: null, issue: "1 duplicate row" });
   expect(flags).toContainEqual({ column: "note", issue: expect.stringContaining("missing") });
   expect(flags).toContainEqual({ column: "revenue", issue: expect.stringContaining("1 outlier") });
 
-  const odd = parseProfileInput({ csv: "a,,c\n1,,x\n2,,x\n" });
+  const odd = parseProfileInput("a,,c\n1,,x\n2,,x\n");
   const oddFlags = qualityFlags(odd.rows, odd.profile);
   expect(oddFlags).toContainEqual({ column: "column_2", issue: "Missing header" });
   expect(oddFlags).toContainEqual({ column: "column_2", issue: "Every value is empty" });
@@ -78,6 +85,20 @@ test("instant run streams a valid surface and ends with a result, no download", 
   expect(source).toContain("Data quality");
 });
 
+test("profiles an uploaded CSV file, downloaded from the job's input", async () => {
+  const api = new FakePayvoke();
+  const asked: string[] = [];
+  api.download = async (_invocation, fileId) => {
+    asked.push(fileId);
+    return new TextEncoder().encode(salesCsv);
+  };
+  await runProfile(new Run(api, "job-1", "run-1"), { file: "f-1" }, async () => []);
+  expect(asked).toEqual(["f-1"]);
+  const result = api.reports.at(-1)!;
+  if (result.type !== "result") throw new Error("expected result");
+  expect(result.data.output).toContain("60 rows, 6 columns");
+});
+
 test("a result is still delivered when the optional upload fails", async () => {
   const api = new FakePayvoke();
   await runProfile(new Run(api, "job-1", "run-1"), { csv: salesCsv }, async () => []);
@@ -91,6 +112,8 @@ test("bad input throws CsvError before anything is delivered", async () => {
     { csv: "a,b\n" },
     { csv: "x".repeat(200_001) },
     { csv: 5 },
+    // Text and a file at once is ambiguous.
+    { csv: salesCsv, file: "f-1" },
   ]) {
     const api = new FakePayvoke();
     const run = new Run(api, "job-1", "run-1");

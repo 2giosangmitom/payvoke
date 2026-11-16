@@ -92,6 +92,8 @@ model AppCommandRevision {
   // Fixed x402 price: set, the command can be bought without a chat at this
   // price (floor <= instant <= maxGrossAmount). Null: chat offers only.
   instantGrossAmount  Decimal? @db.Decimal(78, 0)
+  // Optional higher instant prices by input size: [{ minInputBytes, amount }].
+  instantTiers        Json?
   terms               Json
   deliverySeconds     Int
   reviewSeconds       Int

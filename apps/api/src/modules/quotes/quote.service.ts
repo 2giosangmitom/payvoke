@@ -21,6 +21,7 @@ import { conversation, conversationHash } from "../presale/conversation";
 import { offerStatus } from "../presale/presale.service";
 import { effectiveArguments } from "./arguments";
 import { loadTranscript } from "./transcript";
+import { inputBytes, instantPrice, storedTiers } from "../x402/pricing";
 
 type StoredQuote = { requestHash: string; document: Prisma.JsonValue };
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -175,7 +176,7 @@ export class QuoteService {
     if (!policy || getAddress(policy.vault) !== vault)
       throw new ServiceUnavailableError("POLICY_NOT_CONFIGURED");
     const floor = BigInt(policy.minGrossAmount.toFixed(0));
-    const priced = await this.offerTerms(tx, thread.id, product.id, body, kind);
+    const priced = await this.offerTerms(tx, thread.id, product.id, body, kind, buyer.id);
     const { commandId, revision, grossAmount, deliverySeconds, offer } = priced;
     // A floor raised after publication or an offer still blocks new sales.
     if (grossAmount < floor) throw new ConflictError("PRICE_BELOW_FLOOR");
@@ -259,6 +260,7 @@ export class QuoteService {
     appId: string,
     body: PrepareQuoteBody,
     kind: ThreadKind,
+    buyerId: string,
   ) {
     if (!body.offerId) throw new BadRequestError("OFFER_REQUIRED");
     const offer = await tx.offer.findFirst({
@@ -280,14 +282,21 @@ export class QuoteService {
     if (conversationHash(entries) !== offer.conversationHash)
       throw new ConflictError("OFFER_INVALID");
     // A DIRECT thread has no conversation: its only offer is the system offer
-    // at the revision's fixed instant price and full delivery time.
+    // at the instant price this input weighs in at, and full delivery time.
     if (
       kind === "DIRECT" &&
       (offer.messageSeq !== 0 ||
         entries.length !== 0 ||
         !revision.instantGrossAmount ||
-        grossAmount !== BigInt(revision.instantGrossAmount.toFixed(0)) ||
-        offer.deliverySeconds !== revision.deliverySeconds)
+        offer.deliverySeconds !== revision.deliverySeconds ||
+        grossAmount !==
+          (await this.instantPrice(
+            tx,
+            revision,
+            buyerId,
+            threadId,
+            effectiveArguments(revision.inputSchema, offer.arguments),
+          )))
     )
       throw new ConflictError("OFFER_INVALID");
     return {
@@ -339,7 +348,7 @@ export class QuoteService {
         const revision = command?.activeRevision;
         if (!revision?.instantGrossAmount) throw new NotFoundError("COMMAND_NOT_FOUND");
         // Bad arguments fail before anything is written.
-        effectiveArguments(revision.inputSchema, request.arguments);
+        const effective = effectiveArguments(revision.inputSchema, request.arguments);
         const thread = await tx.chatThread.create({
           data: {
             buyerId: buyer.id,
@@ -349,13 +358,17 @@ export class QuoteService {
             title: `/${command!.name}`,
           },
         });
+        // Staged uploads the arguments name move into this purchase's thread,
+        // so the quote freezes them like files attached in a chat.
+        await this.files.bindStaged(tx, buyer.id, thread.id, revision.inputSchema, effective);
+        const price = await this.instantPrice(tx, revision, buyer.id, thread.id, effective);
         const offer = await tx.offer.create({
           data: {
             threadId: thread.id,
             appId: app.id,
             commandRevisionId: revision.id,
             arguments: request.arguments as Prisma.InputJsonValue,
-            grossAmount: revision.instantGrossAmount,
+            grossAmount: price.toString(),
             deliverySeconds: revision.deliverySeconds,
             summary: `Instant /${command!.name}`,
             messageSeq: 0,
@@ -387,6 +400,33 @@ export class QuoteService {
       if (!prior) throw new ConflictError("IDEMPOTENCY_CONFLICT");
       return this.replay(prior, requestHash, buyer.walletAddress);
     }
+  }
+
+  // The instant price of these arguments: the base price, or the highest tier
+  // their size reaches (string bytes plus the bound files' sizes).
+  private async instantPrice(
+    tx: Prisma.TransactionClient,
+    revision: {
+      inputSchema: Prisma.JsonValue;
+      instantGrossAmount: Prisma.Decimal | null;
+      instantTiers: Prisma.JsonValue;
+    },
+    buyerId: string,
+    threadId: string,
+    args: Record<string, unknown>,
+  ) {
+    const sizes = await this.files.argumentFileSizes(
+      tx,
+      buyerId,
+      threadId,
+      revision.inputSchema,
+      args,
+    );
+    return instantPrice(
+      revision.instantGrossAmount!.toFixed(0),
+      storedTiers(revision.instantTiers),
+      inputBytes(revision.inputSchema, args, sizes),
+    );
   }
 
   // Restores an unpaid authorization after a tab refresh. Paid or expired

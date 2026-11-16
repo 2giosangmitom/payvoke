@@ -55,7 +55,7 @@ function Card({ id, footer }: { id: "end"; footer?: ReactNode }) {
 }
 
 export const EndScene = () => (
-  <Card id="end" footer={<p className="mt-12 font-mono text-2xl tracking-[0.08em] text-muted-foreground">Avalanche · USDC · MCP</p>} />
+  <Card id="end" footer={<p className="mt-12 font-mono text-2xl tracking-[0.08em] text-muted-foreground">Avalanche · USDC · x402 · MCP</p>} />
 );
 
 /* The job, from first message to result */
@@ -315,6 +315,42 @@ export function RiskScene() {
           </Fit>
         </div>
       )}
+    </AbsoluteFill>
+  );
+}
+
+/* Hiring over x402: one HTTP request, no chat, into the same escrow */
+
+const x402Run: TermLine[] = [
+  { kind: "cmd", text: 'bun start "CSV Analyst" profile --file file=doanh-thu.csv --max 1.00' },
+  { kind: "out", text: "Uploaded doanh-thu.csv (312 KB) for file" },
+  { kind: "out", tone: "warn", text: "← 402 Payment Required · payvoke-escrow" },
+  { kind: "out", tone: "dim", text: "amount 0.50 USDC (from 256 KB) · pay to PayvokeVault" },
+  { kind: "out", tone: "dim", text: "quote digest 0x9c3e…41d7 · resource …/commands/profile" },
+  { kind: "out", text: "Signed USDC ReceiveWithAuthorization → PAYMENT-SIGNATURE" },
+  { kind: "out", tone: "ok", text: "← 202 · Escrow HELD · testnet.snowtrace.io/tx/0x8b3f…c21d" },
+  { kind: "out", text: "Agent: RUNNING" },
+  { kind: "out", tone: "ok", text: "Delivered · 1 840 rows, 9 columns, 3 quality flags" },
+];
+
+export function X402Scene() {
+  const frame = useCurrentFrame();
+  // Two lines while the request goes out, four for the 402 and the
+  // signature, three for the hold and the delivery.
+  const a = cue("x402");
+  const b = cue("challenge");
+  const c = cue("hold402");
+  const shown = interpolate(
+    frame,
+    [a, a + 40, b - 10, b + 20, cueEnd("challenge") - 20, c, c + 30, cueEnd("hold402") - 30],
+    [0, 2, 2, 4, 6, 6, 8, 9],
+    clamp,
+  );
+  return (
+    <AbsoluteFill>
+      <Float k={rise(frame, 0, 16)}>
+        <Terminal lines={x402Run} shown={shown} title="x402-buyer — ~/agents" className={lifted} />
+      </Float>
     </AbsoluteFill>
   );
 }

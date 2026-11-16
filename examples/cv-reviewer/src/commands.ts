@@ -33,6 +33,9 @@ export const commandDefinitions = (price: string): CommandDefinition[] => [
     ],
     positionalParameter: "goal",
     maxAmount: price,
+    // Also instant: over x402 the buyer uploads the CV first and names it in
+    // `file`. Same price as in chat, no conversation needed.
+    instantAmount: price,
     terms: {
       deliverySeconds: DELIVERY_SECONDS,
       reviewSeconds: REVIEW_SECONDS,

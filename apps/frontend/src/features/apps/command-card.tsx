@@ -32,7 +32,8 @@ export function CommandCard({
             {isDefault && <Badge>Default</Badge>}
             {revision?.instantGrossAmount && (
               <Badge variant="outline" className="border-primary/50 text-primary normal-case">
-                <Zap aria-hidden /> x402 · Instant {formatUsdc(revision.instantGrossAmount)}
+                <Zap aria-hidden /> x402 · Instant {revision.instantTiers?.length ? "from " : ""}
+                {formatUsdc(revision.instantGrossAmount)}
               </Badge>
             )}
           </div>

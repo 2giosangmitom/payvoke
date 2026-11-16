@@ -14,20 +14,35 @@ import {
 import { apiOrigin } from "@/src/lib/api/client";
 import { formatUsdc } from "@/src/features/apps/format";
 import type { CommandOption, CommandRevision } from "@/src/features/chat/api";
+import { formatBytes, uploadStagedFile } from "@/src/features/chat/files";
 import { SchemaForm } from "@/src/features/chat/schema-form";
 import { CodeBlock } from "@/src/features/keys/settings-row";
 import { orderInstant, type InstantOrder } from "@/src/features/payments/api";
 import { PaymentConfirm } from "@/src/features/payments/payment-confirm";
 
+// "0.50 USDC", or "from 0.50 USDC" when bigger inputs cost more.
+export function instantPriceLabel(revision: CommandRevision) {
+  const price = formatUsdc(revision.instantGrossAmount);
+  return revision.instantTiers?.length ? `from ${price}` : price;
+}
+
+// "0.80 USDC from 20 KB, 1.00 USDC from 100 KB" for the price tiers.
+export function tiersLabel(revision: CommandRevision) {
+  return (revision.instantTiers ?? [])
+    .map((tier) => `${formatUsdc(tier.amount)} from ${formatBytes(tier.minInputBytes)}`)
+    .join(", ");
+}
+
 // A placeholder per argument, typed like the option, for the curl example.
 function sampleValue(option: CommandOption) {
   if (option.type === "BOOLEAN") return true;
   if (option.type === "INTEGER" || option.type === "NUMBER") return 1;
+  if (option.type === "FILE") return `<${option.name} file id>`;
   return `<${option.name}>`;
 }
 
 export function instantCurl(appId: string, command: string, revision: CommandRevision) {
-  const options = revision.options.filter((option) => option.type !== "FILE");
+  const options = revision.options;
   const required = options.filter((option) => option.required);
   const shown = required.length ? required : options.slice(0, 1);
   const body = JSON.stringify({
@@ -67,7 +82,9 @@ export function InstantHire({
   available: boolean;
 }) {
   const [hiring, setHiring] = useState(false);
-  const price = formatUsdc(revision.instantGrossAmount);
+  const price = instantPriceLabel(revision);
+  const tiers = tiersLabel(revision);
+  const files = revision.options.some((option) => option.type === "FILE");
   return (
     <details className="group/x402 mt-4 border-t border-border">
       <summary className="flex cursor-pointer list-none items-center gap-2 pt-4 text-sm text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
@@ -81,13 +98,26 @@ export function InstantHire({
       </summary>
       <div className="grid gap-4 pt-4">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          One request, a fixed price. The first call answers{" "}
+          One request, a price fixed before you sign. The first call answers{" "}
           <code className="font-mono text-foreground">402</code> with a quote for {price}; sign it
           and send the same request again with{" "}
           <code className="font-mono text-foreground">PAYMENT-SIGNATURE</code>. The vault holds the
           USDC until {appName} delivers, and refunds it if it doesn&apos;t.
         </p>
+        {tiers && (
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Bigger inputs cost more: {tiers}. Size counts the text arguments and the files; the 402
+            states the exact price.
+          </p>
+        )}
         <CodeBlock title="402 challenge" code={instantCurl(appId, command, revision)} />
+        {files && (
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            File arguments take a file id: upload first with{" "}
+            <code className="font-mono text-foreground">POST /v1/files</code> and no thread. A
+            purchase uses each uploaded file once.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           {signedIn && (
             <Button disabled={!available} onClick={() => setHiring(true)}>
@@ -157,11 +187,14 @@ function HireDialog({
         ) : (
           <>
             <p className="text-xs text-muted-foreground">
-              Fixed price {formatUsdc(revision.instantGrossAmount)}. You see the quote before
-              anything is signed.
+              {revision.instantTiers?.length
+                ? `Price ${instantPriceLabel(revision)}, by input size (${tiersLabel(revision)}).`
+                : `Fixed price ${formatUsdc(revision.instantGrossAmount)}.`}{" "}
+              You see the quote before anything is signed.
             </p>
             <SchemaForm
               schema={revision.inputSchema}
+              uploadFile={uploadStagedFile}
               submitLabel="Get quote"
               submitIcon={<Zap />}
               onSubmit={async (values) =>

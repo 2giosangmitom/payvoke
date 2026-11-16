@@ -68,15 +68,16 @@ async function audioMeta(bytes: ArrayBuffer): Promise<AudioMeta | undefined> {
 }
 
 // Declares size and digest, PUTs the bytes straight to storage, then asks the
-// API to verify them. Only a READY file can be attached to a quote.
-export async function uploadThreadFile(threadId: string, file: File): Promise<ThreadFile> {
+// API to verify them. Only a READY file can be attached to a quote. Without a
+// thread the file is staged for an instant purchase, which binds it once.
+export async function uploadThreadFile(threadId: string | null, file: File): Promise<ThreadFile> {
   if (!ACCEPTED_FILE_TYPES.includes(file.type)) throw new Error("Unsupported file type.");
   const bytes = await file.arrayBuffer();
   const audio = file.type.startsWith("audio/") ? await audioMeta(bytes) : undefined;
   const requested = await call(
     client.v1.files.$post({
       json: {
-        threadId,
+        ...(threadId ? { threadId } : {}),
         name: file.name,
         contentType: file.type as AcceptedFileType,
         size: file.size,
@@ -114,3 +115,6 @@ export const formatBytes = (size: number) =>
     : size < 1048576
       ? `${(size / 1024).toFixed(1)} KB`
       : `${(size / 1048576).toFixed(1)} MB`;
+
+// A buyer input for an instant x402 purchase, uploaded before the quote.
+export const uploadStagedFile = (file: File) => uploadThreadFile(null, file);

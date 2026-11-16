@@ -20,7 +20,9 @@ export type ClientErrorCode =
   // SIWE sign-in did not produce a session.
   | "SIGN_IN_FAILED"
   // The request never got an answer (DNS, connection, TLS).
-  | "NETWORK_ERROR";
+  | "NETWORK_ERROR"
+  // A file upload failed, or the API rejected the stored bytes.
+  | "UPLOAD_REJECTED";
 
 export class PayvokeError extends Error {
   override readonly name = "PayvokeError";

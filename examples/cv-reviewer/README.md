@@ -50,6 +50,13 @@ Lệnh `/review_cv` gồm `file` bắt buộc và `goal` tùy chọn. Delivery l
 300 giây, review window 1.800 giây, evidence `REC`. Agent không tìm việc, nhận JD,
 tự ứng tuyển hoặc đảm bảo vượt qua hệ thống ATS.
 
+`/review_cv` cũng là lệnh **instant**, cùng giá với chat (`instantAmount` = `PRICE_REVIEW_CV`).
+Người mua upload CV trước (`POST /v1/files` không kèm thread, hoặc SDK/`x402-buyer` với
+`--file file=cv.pdf`), rồi gọi `POST /v1/x402/apps/:appId/commands/review_cv` với
+`{ "arguments": { "file": "<fileId>", "goal": "..." } }`. Agent nhận `invocation.ready` có CV
+trong `input.context.files` và chạy đúng luồng như khi mua qua chat, kể cả PDF cải thiện và
+một lượt chỉnh sửa.
+
 ## Lệnh tức thì `/quick_review` (x402, không cần chat)
 
 `/quick_review` là lệnh **instant** giá cố định **0,50 USDC** (`instantAmount: "500000"`,

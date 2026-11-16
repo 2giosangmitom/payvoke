@@ -13,8 +13,11 @@ export type CatalogItem = {
   appName: string;
   command: string;
   description: string;
-  // Atomic USDC (6 decimals).
+  // The base price, atomic USDC (6 decimals).
   amount: string;
+  // Higher prices for bigger inputs: UTF-8 bytes of the string arguments plus
+  // the file sizes. The 402 states the exact price before anything is signed.
+  tiers: { minInputBytes: number; amount: string }[];
   deliverySeconds: number;
   reviewSeconds: number;
   inputSchema: Record<string, unknown>;
@@ -87,6 +90,15 @@ export type JobResult = {
 
 export type Job = InvocationStatus & { result: JobResult | null };
 
+// A buyer file for a FILE argument. Uploaded before the request, it becomes
+// the argument's file id; the purchase binds it, so it is used once.
+export type FileInput = {
+  name: string;
+  // One of the API's accepted types, e.g. application/pdf or text/csv.
+  contentType: string;
+  data: Uint8Array | ArrayBuffer | Blob;
+};
+
 // Progress of one hire, in order. `pending` repeats once the funding
 // transaction hash is known.
 export type HireEvent =
@@ -102,6 +114,7 @@ export type HireEvent =
       deliveryDeadline: number;
       quote: QuoteDocument;
     }
+  | { type: "uploaded"; field: string; fileId: string; name: string; size: number }
   | { type: "signed"; invocationId: string; quoteDigest: Hex }
   | { type: "pending"; invocationId: string; transaction: Hex | null }
   | {
@@ -120,6 +133,10 @@ export type HireRequest = {
   appId: string;
   command: string;
   arguments: Record<string, unknown>;
+  // Files for FILE arguments, by argument name (an array for multi-file ones).
+  // To resume a hire with `idempotencyKey`, pass the earlier file ids in
+  // `arguments` instead: re-uploading makes new files and a different request.
+  files?: Record<string, FileInput | FileInput[]>;
   // Never sign more than this, in atomic USDC (1_000_000n = 1 USDC).
   maxAmount: bigint;
   // Awaited, so a handler can slow the flow down (e.g. to stream a note).

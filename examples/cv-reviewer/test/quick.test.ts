@@ -39,7 +39,8 @@ test("quick_review is registered as an instant command with no FILE option", () 
   expect(quick.options[0]!.maxLength).toBe(12000);
   expect(quick.terms).toMatchObject({ verification: { minEvidence: "REC" } });
   const full = commandDefinitions("150000").find((c) => c.name === "review_cv")!;
-  expect(full.instantAmount).toBeUndefined();
+  // The full review is instant too: the CV is uploaded before the request.
+  expect(full.instantAmount).toBe("150000");
 });
 
 test("instant ready event delivers a scored review with three fixes and a REC file", async () => {

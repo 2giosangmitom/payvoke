@@ -3,6 +3,7 @@ import { ASSET, NETWORK, SCHEME } from "@payvoke/shared/x402";
 import { ConflictError, NotFoundError } from "../../errors";
 import type { AccountIdentity } from "../auth/auth.service";
 import { isAvailable } from "../apps/schema";
+import { storedTiers } from "./pricing";
 import { instantRequestHash, instantRequestId, type InstantRequest } from "../quotes/quote.service";
 
 const CATALOG_LIMIT = 500;
@@ -93,7 +94,9 @@ export class X402Service {
           appName: app.name,
           command: command.name,
           description: command.description,
+          // The base price; `tiers` raise it for bigger inputs (see pricing.ts).
           amount: amount.toString(),
+          tiers: storedTiers(activeRevision!.instantTiers),
           deliverySeconds: activeRevision!.deliverySeconds,
           reviewSeconds: activeRevision!.reviewSeconds,
           inputSchema: activeRevision!.inputSchema,

@@ -7,10 +7,13 @@ import { createSiweMessage } from "viem/siwe";
 import { PayvokeError, apiError } from "./errors";
 import { signingError, transport, x402Fetch } from "./fetch";
 import { readResult } from "./result";
+import { threadWaker, type Waker } from "./stream";
+import { uploadFile } from "./upload";
 import { CookieJar, readBody, sessionFetch, type FetchLike } from "./session";
 import type {
   Catalog,
   ExecutionStatus,
+  FileInput,
   HireEvent,
   HireRequest,
   HireResult,
@@ -35,8 +38,12 @@ export type PayvokeOptions = {
   // The PayvokeVault you trust. Default: the one the catalog names.
   vault?: Address;
   fetch?: FetchLike;
-  // Between two status reads while waiting. Default 2000.
+  // Between two status reads while the hold is pending, and while no thread
+  // event stream is open. Default 2000.
   pollIntervalMs?: number;
+  // The longest wait between status reads while the thread's event stream is
+  // open (events wake the loop sooner). Default 15000.
+  streamFallbackMs?: number;
   // Test hooks.
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   now?: () => number;
@@ -54,6 +61,9 @@ export type Payvoke = {
   hire(request: HireRequest): Promise<HireResult>;
   // A job's status, with its result once delivered.
   job(invocationId: string): Promise<Job>;
+  // Uploads a buyer file for a FILE argument and returns its id. `hire` does
+  // this for `files`; use it to upload once and resume with the id.
+  upload(file: FileInput): Promise<string>;
   // `fetch` with this session and wallet that pays any 402 up to `maxAmount`.
   x402Fetch(options: {
     maxAmount: bigint;
@@ -105,13 +115,15 @@ export function createPayvoke(options: PayvokeOptions): Payvoke {
   const sleep = options.sleep ?? defaultSleep;
   const now = options.now ?? Date.now;
   const pollMs = options.pollIntervalMs ?? 2000;
+  const streamMs = options.streamFallbackMs ?? 15000;
+  const raw: FetchLike = options.fetch ?? ((input, init) => fetch(input, init));
   const jar = new CookieJar();
   const http = sessionFetch(
     {
       baseUrl: base.href,
       webOrigin,
       accessToken: options.accessToken,
-      fetch: options.fetch ?? ((input, init) => fetch(input, init)),
+      fetch: raw,
     },
     jar,
   );
@@ -205,6 +217,11 @@ export function createPayvoke(options: PayvokeOptions): Payvoke {
     };
   }
 
+  async function upload(file: FileInput) {
+    await ensureSession();
+    return uploadFile(http, raw, url, file);
+  }
+
   async function hire(request: HireRequest): Promise<HireResult> {
     const { appId, command, maxAmount, signal } = request;
     if (typeof maxAmount !== "bigint" || maxAmount <= 0n)
@@ -218,7 +235,19 @@ export function createPayvoke(options: PayvokeOptions): Payvoke {
     const resourceUrl = url(
       `/v1/x402/apps/${encodeURIComponent(appId)}/commands/${encodeURIComponent(command)}`,
     );
-    const body = JSON.stringify({ arguments: request.arguments });
+    // FILE arguments: upload first, then name the file ids in the request.
+    const args = { ...request.arguments };
+    for (const [field, value] of Object.entries(request.files ?? {})) {
+      const ids: string[] = [];
+      for (const file of Array.isArray(value) ? value : [value]) {
+        const fileId = await uploadFile(http, raw, url, file);
+        const size = file.data instanceof Blob ? file.data.size : file.data.byteLength;
+        await emit({ type: "uploaded", field, fileId, name: file.name, size });
+        ids.push(fileId);
+      }
+      args[field] = Array.isArray(value) ? ids : ids[0];
+    }
+    const body = JSON.stringify({ arguments: args });
     const send = async (headers: Record<string, string>) =>
       x402Response(
         await transport(http, resourceUrl, {
@@ -309,70 +338,87 @@ export function createPayvoke(options: PayvokeOptions): Payvoke {
     let pendingShown = false;
     let pendingTx: Hex | null = null;
     let shown: ExecutionStatus | null = null;
-
-    for (;;) {
-      if (paymentStatus === "PENDING" || paymentStatus === "UNKNOWN") {
-        if (!pendingShown || transaction !== pendingTx) {
-          pendingShown = true;
-          pendingTx = transaction;
-          await emit({ type: "pending", invocationId, transaction });
-        }
-      } else if (paymentStatus === "HELD") {
-        if (!held) {
-          held = true;
-          await emit({
-            type: "held",
-            invocationId,
-            threadId,
-            transaction,
-            holdId: receipt?.holdId ?? null,
-          });
-        }
-      } else {
-        await emit({ type: "failed", invocationId, reason: paymentStatus });
-        throw new PayvokeError("PAYMENT_REJECTED", 0, { paymentStatus }, invocationId);
-      }
-      if (held && executionStatus !== shown && ACTIVE.includes(executionStatus)) {
-        shown = executionStatus;
-        await emit({ type: "running", invocationId, executionStatus });
-      }
-      if (held && executionStatus === "DELIVERED") {
-        const delivered = threadId ? await result(threadId, invocationId, signal) : null;
-        await emit({ type: "delivered", invocationId, result: delivered });
-        return done(delivered);
-      }
-      if (now() >= deadline)
-        throw new PayvokeError(
-          "TIMEOUT",
-          0,
-          { paymentStatus, executionStatus, transaction },
-          invocationId,
+    // Once the hold is in, the thread's event stream wakes the loop.
+    let waker: Waker | null = null;
+    const pause = async () => {
+      if (held && threadId && !waker)
+        waker = threadWaker(
+          http,
+          url(`/v1/threads/${encodeURIComponent(threadId)}/events`),
+          signal,
         );
-      await sleep(pollMs, signal);
-      let current: InvocationStatus;
-      try {
-        current = await status(invocationId, signal);
-      } catch (error) {
-        // Transient: the network, a 5xx, or the journal not visible yet.
-        if (
-          error instanceof PayvokeError &&
-          (error.code === "NETWORK_ERROR" ||
-            error.status >= 500 ||
-            error.code === "INVOCATION_NOT_FOUND")
-        )
-          continue;
-        throw error;
+      if (!waker) return sleep(pollMs, signal);
+      const current = waker;
+      return current.wait(() => sleep(current.live ? streamMs : pollMs, signal));
+    };
+
+    try {
+      for (;;) {
+        if (paymentStatus === "PENDING" || paymentStatus === "UNKNOWN") {
+          if (!pendingShown || transaction !== pendingTx) {
+            pendingShown = true;
+            pendingTx = transaction;
+            await emit({ type: "pending", invocationId, transaction });
+          }
+        } else if (paymentStatus === "HELD") {
+          if (!held) {
+            held = true;
+            await emit({
+              type: "held",
+              invocationId,
+              threadId,
+              transaction,
+              holdId: receipt?.holdId ?? null,
+            });
+          }
+        } else {
+          await emit({ type: "failed", invocationId, reason: paymentStatus });
+          throw new PayvokeError("PAYMENT_REJECTED", 0, { paymentStatus }, invocationId);
+        }
+        if (held && executionStatus !== shown && ACTIVE.includes(executionStatus)) {
+          shown = executionStatus;
+          await emit({ type: "running", invocationId, executionStatus });
+        }
+        if (held && executionStatus === "DELIVERED") {
+          const delivered = threadId ? await result(threadId, invocationId, signal) : null;
+          await emit({ type: "delivered", invocationId, result: delivered });
+          return done(delivered);
+        }
+        if (now() >= deadline)
+          throw new PayvokeError(
+            "TIMEOUT",
+            0,
+            { paymentStatus, executionStatus, transaction },
+            invocationId,
+          );
+        await pause();
+        let current: InvocationStatus;
+        try {
+          current = await status(invocationId, signal);
+        } catch (error) {
+          // Transient: the network, a 5xx, or the journal not visible yet.
+          if (
+            error instanceof PayvokeError &&
+            (error.code === "NETWORK_ERROR" ||
+              error.status >= 500 ||
+              error.code === "INVOCATION_NOT_FOUND")
+          )
+            continue;
+          throw error;
+        }
+        paymentStatus = current.paymentStatus;
+        executionStatus = current.executionStatus;
+        threadId = current.threadId ?? threadId;
+        transaction = current.transaction ?? current.receipt?.transaction ?? transaction;
+        const refunded = !!current.financial && REFUNDED.includes(current.financial.status);
+        if (executionStatus === "FAILED" || (refunded && executionStatus !== "DELIVERED")) {
+          await emit({ type: "failed", invocationId, reason: current.failure?.code ?? null });
+          if (refunded) await emit({ type: "refunded", invocationId });
+          return done(null);
+        }
       }
-      paymentStatus = current.paymentStatus;
-      executionStatus = current.executionStatus;
-      threadId = current.threadId ?? threadId;
-      transaction = current.transaction ?? current.receipt?.transaction ?? transaction;
-      const refunded = !!current.financial && REFUNDED.includes(current.financial.status);
-      if (executionStatus === "FAILED" || (refunded && executionStatus !== "DELIVERED")) {
-        await emit({ type: "failed", invocationId, reason: current.failure?.code ?? null });
-        if (refunded) await emit({ type: "refunded", invocationId });
-        return done(null);
-      }
+    } finally {
+      (waker as Waker | null)?.close();
     }
 
     function done(output: JobResult | null): HireResult {
@@ -395,6 +441,7 @@ export function createPayvoke(options: PayvokeOptions): Payvoke {
     catalog,
     hire,
     job,
+    upload,
     x402Fetch:
       ({ maxAmount, approve }) =>
       async (input, init) => {

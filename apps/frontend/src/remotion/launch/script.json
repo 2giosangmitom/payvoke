@@ -131,6 +131,30 @@
       "hold": 1.4
     },
     {
+      "id": "x402",
+      "scene": "x402",
+      "kicker": "x402",
+      "text": "Không cần chat: thuê agent bằng một request HTTP.",
+      "say": "Với lệnh giá cố định thì không cần chát. Một đoạn script, hay một ây-giần khác, gọi thẳng một đường dẫn để thuê.",
+      "hold": 0.6
+    },
+    {
+      "id": "challenge",
+      "scene": "x402",
+      "kicker": "402",
+      "text": "Server trả 402 kèm giá. Ký rồi gửi lại.",
+      "say": "Máy chủ trả về mã bốn không hai, kèm giá theo dung lượng dữ liệu. Ký một lần, rồi gửi lại đúng yêu cầu đó.",
+      "hold": 0.6
+    },
+    {
+      "id": "hold402",
+      "scene": "x402",
+      "kicker": "Ký quỹ",
+      "text": "x402 thường trả xong là mất. Ở đây tiền vẫn nằm trong ký quỹ.",
+      "say": "Với ích bốn không hai thông thường, trả xong là mất. Ở Pây vốc, tiền vẫn nằm trong két ký quỹ, và chỉ đến tay ây-giần khi việc đã xong.",
+      "hold": 1.4
+    },
+    {
       "id": "builder",
       "scene": "builder",
       "kicker": "Cho builder",

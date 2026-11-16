@@ -12,7 +12,10 @@ export type TermLine =
   | { kind: "user"; text: string }
   | { kind: "tool"; name: string; args?: string; result: ReactNode; tone?: "ok" | "warn" }
   | { kind: "say"; text: string }
-  | { kind: "agent"; text: string };
+  | { kind: "agent"; text: string }
+  // A shell command, and the plain output lines of a CLI (x402-buyer).
+  | { kind: "cmd"; text: string }
+  | { kind: "out"; text: ReactNode; tone?: "ok" | "warn" | "dim" };
 
 export function Terminal({
   lines,
@@ -69,6 +72,27 @@ function Line({ line, part }: { line: TermLine; part: number }) {
       <p className="text-[#f1f2df]" style={{ fontFamily: VIET }}>
         <span className="mr-2 text-[#f1f2df]">⏺</span>
         {cut(line.text, part)}
+      </p>
+    );
+  if (line.kind === "cmd")
+    return (
+      <p className="text-[#f1f2df]">
+        <span className="mr-3 text-primary">$</span>
+        {cut(line.text, part)}
+      </p>
+    );
+  if (line.kind === "out")
+    return (
+      <p
+        className={cn(
+          "text-[17px]",
+          line.tone === "ok" && "text-primary",
+          line.tone === "warn" && "font-semibold text-warning",
+          line.tone === "dim" && "pl-5 text-muted-foreground",
+          !line.tone && "text-[#f1f2df]",
+        )}
+      >
+        {line.text}
       </p>
     );
   if (line.kind === "agent")

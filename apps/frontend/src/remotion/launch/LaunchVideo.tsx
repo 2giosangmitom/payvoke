@@ -17,6 +17,7 @@ import {
   RiskScene,
   SettleScene,
   ThreadScene,
+  X402Scene,
 } from "@/src/remotion/launch/scenes";
 import { IntroScene } from "@/src/remotion/launch/intro";
 import { Region, clamp, glide } from "@/src/remotion/launch/stage";
@@ -34,6 +35,7 @@ const views: Record<SceneId, ComponentType> = {
   settle: SettleScene,
   assistant: AssistantScene,
   risk: RiskScene,
+  x402: X402Scene,
   builder: BuilderScene,
   end: EndScene,
 };

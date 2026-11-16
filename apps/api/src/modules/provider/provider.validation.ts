@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BadRequestError } from "../../errors";
+import { isInvalidTiers, parseInstantTiers, type InstantTier } from "../x402/pricing";
 import { minEvidenceLevels } from "#core/payments/evidence";
 import { timestamp, usdcAmount } from "../schemas";
 import {
@@ -87,6 +88,8 @@ export const commandBody = z
     maxAmount: z.string(),
     // Optional fixed price for buying the command over x402 without a chat.
     instantAmount: z.string().nullable().optional(),
+    // Optional higher instant prices by input size; checked by parseCommandBody.
+    instantTiers: z.unknown().optional(),
     terms: z.unknown(),
     expectedRevisionId: z.string().optional(),
   })
@@ -100,11 +103,18 @@ export const commandCodes = {
   positionalParameter: "INVALID_POSITIONAL_PARAMETER",
   maxAmount: "INVALID_MAX_AMOUNT",
   instantAmount: "INVALID_INSTANT_AMOUNT",
+  instantTiers: "INVALID_INSTANT_TIERS",
 };
 // The whole command list, checked item by item by the service.
 export const commandListBody = z.array(z.unknown());
 
 // The documented command definition: what parseCommandBody accepts in full.
+const instantTier = z
+  .object({
+    minInputBytes: z.number().int().min(1),
+    amount: usdcAmount,
+  })
+  .meta({ id: "InstantTier" });
 const commandName = z
   .string()
   .regex(/^[a-z][a-z0-9_]{0,31}$/)
@@ -201,7 +211,11 @@ export const commandDefinition = z
     }),
     instantAmount: usdcAmount.nullable().optional().meta({
       description:
-        "Optional fixed price, in atomic USDC, at which buyers can hire this command over x402 without a chat (`POST /v1/x402/apps/{appId}/commands/{name}`). At least the deployment floor and at most `maxAmount`. The command must not have a required FILE option. Omit or null for chat offers only.",
+        "Optional fixed price, in atomic USDC, at which buyers can hire this command over x402 without a chat (`POST /v1/x402/apps/{appId}/commands/{name}`). At least the deployment floor and at most `maxAmount`. FILE options take files the buyer uploaded beforehand. Omit or null for chat offers only.",
+    }),
+    instantTiers: z.array(instantTier).max(5).nullable().optional().meta({
+      description:
+        "Optional higher instant prices for bigger inputs, needs `instantAmount`. The input size is the UTF-8 bytes of every string argument plus the size of every file argument; the highest tier whose `minInputBytes` it reaches sets the price, else `instantAmount`. Tiers rise in both size and price and stay within `maxAmount`.",
     }),
     terms: commandTerms,
     expectedRevisionId: z.string().optional().meta({
@@ -224,6 +238,10 @@ export const commandRevision = z
     instantGrossAmount: usdcAmount
       .nullable()
       .meta({ description: "The fixed x402 price, or null when the command is chat-only." }),
+    instantTiers: z
+      .array(instantTier)
+      .nullable()
+      .meta({ description: "Higher instant prices by input size, or null." }),
     terms: commandTerms,
     deliverySeconds: z.number().int(),
     reviewSeconds: z.number().int(),
@@ -252,6 +270,7 @@ const COMMAND_KEYS = new Set([
   "positionalParameter",
   "maxAmount",
   "instantAmount",
+  "instantTiers",
   "terms",
   "expectedRevisionId",
 ]);
@@ -287,9 +306,13 @@ export function parseCommandBody(body: CommandBody | undefined) {
   const instant = input.instantAmount ?? null;
   if (instant !== null && (!atomicAmount(instant) || BigInt(instant) > BigInt(input.maxAmount)))
     throw new BadRequestError("INVALID_INSTANT_AMOUNT");
-  // An instant job has no chat to upload into, so it cannot need a file.
-  if (instant !== null && options.some((option) => option.type === "FILE" && option.required))
-    throw new BadRequestError("INSTANT_FILES_NOT_SUPPORTED");
+  let tiers: InstantTier[] | null;
+  try {
+    tiers = parseInstantTiers(input.instantTiers, instant, input.maxAmount);
+  } catch (error) {
+    if (isInvalidTiers(error)) throw new BadRequestError("INVALID_INSTANT_TIERS");
+    throw error;
+  }
   if (!validateTerms(input.terms)) throw new BadRequestError("INVALID_TERMS");
   const terms = normalizeTerms(input.terms as Record<string, unknown>);
   return {
@@ -301,6 +324,7 @@ export function parseCommandBody(body: CommandBody | undefined) {
       positionalParameter: positional,
       maxGrossAmount: input.maxAmount,
       instantGrossAmount: instant,
+      instantTiers: tiers,
       terms,
       deliverySeconds: terms.deliverySeconds as number,
       reviewSeconds: terms.reviewSeconds as number,

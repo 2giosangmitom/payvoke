@@ -1,6 +1,6 @@
 import { MAX_BYTES } from "./csv";
 import type { CommandDefinition } from "./payvoke";
-import { PROFILE_AMOUNT, PROFILE_MAX_CHARS } from "./profile";
+import { PROFILE_AMOUNT, PROFILE_MAX_AMOUNT, PROFILE_MAX_CHARS, PROFILE_TIERS } from "./profile";
 
 // Registered with overwriteCommands on every start. Payvoke compiles the
 // options into a JSON Schema and every quote signs the terms.
@@ -52,31 +52,32 @@ export const commandDefinitions: CommandDefinition[] = [
       verification: { minEvidence: "REC" },
     },
   },
-  // Instant: a fixed price, hireable without chat over x402 at
-  // POST /v1/x402/apps/:appId/commands/profile. Instant commands cannot take a
-  // required FILE, so the CSV comes as text.
+  // Instant: hireable without chat over x402 at
+  // POST /v1/x402/apps/:appId/commands/profile. The CSV comes as pasted text
+  // or as a file uploaded beforehand; bigger inputs move up a price tier.
   {
     name: "profile",
     description:
-      "A fast column-by-column profile of pasted CSV text: types, missing values, ranges, top values and data quality flags.",
+      "A fast column-by-column profile of a CSV (pasted text or a file): types, missing values, ranges, top values and data quality flags.",
     options: [
       {
         name: "csv",
         type: "STRING",
-        required: true,
         maxLength: PROFILE_MAX_CHARS,
         description: "The raw CSV text with a header row, up to 200,000 characters",
       },
+      { ...file, required: false, description: "Or the CSV file, up to 5 MB" },
     ],
     positionalParameter: null,
-    maxAmount: PROFILE_AMOUNT,
+    maxAmount: PROFILE_MAX_AMOUNT,
     instantAmount: PROFILE_AMOUNT,
+    instantTiers: PROFILE_TIERS,
     terms: {
       refundPolicy:
         "Full automatic refund if the CSV cannot be parsed, has no usable columns, or the result is not delivered before the deadline.",
-      sideEffects: "None. The agent only reads the supplied text.",
+      sideEffects: "None. The agent only reads the supplied CSV.",
       dataUse:
-        "The CSV text is processed in memory for this job and never sent to an LLM. The agent stores nothing locally for this command.",
+        "The CSV is processed in memory for this job and never sent to an LLM. The agent stores nothing locally for this command.",
       deliverySeconds: 120,
       reviewSeconds: 600,
       revisionPolicy: {

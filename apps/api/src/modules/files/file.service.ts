@@ -63,6 +63,14 @@ const view = (file: FileAsset) => ({
 // The file ids a stored provider result or quote context lists.
 const manifestIds = (value: unknown) => parseManifest(value)?.map((entry) => entry.fileId) ?? [];
 
+// The file ids the file fields of validated arguments name.
+const argumentFileIds = (schema: unknown, args: Record<string, unknown>) =>
+  fileFields(schema).flatMap((field) => {
+    const value = args[field.name];
+    const ids = field.multiple ? ((value as string[] | undefined) ?? []) : value ? [value] : [];
+    return ids.filter((id): id is string => typeof id === "string");
+  });
+
 // Buyer inputs and provider artifacts share one lifecycle: presigned PUT to a
 // staging key, then a server-side completion that copies the bytes to a key no
 // upload URL can reach, re-hashes that copy and only then marks it READY.
@@ -86,20 +94,70 @@ export class FileService {
     return this.storage;
   }
 
-  async requestBuyerUpload(buyerId: string, body: BuyerUploadBody) {
+  async requestBuyerUpload(buyerId: string, { threadId, ...body }: BuyerUploadBody) {
     const storage = this.store();
+    // No thread: a staged input for an instant purchase, owned by the buyer.
+    if (threadId === undefined)
+      return this.request(storage, this.buyerOwner(buyerId, undefined), body);
     const thread = await this.db.chatThread.findFirst({
-      where: { id: body.threadId, buyerId, archivedAt: null, kind: "CHAT" },
+      where: { id: threadId, buyerId, archivedAt: null, kind: "CHAT" },
       select: { id: true },
     });
     if (!thread) throw new NotFoundError("THREAD_NOT_FOUND");
-    const owner: Owner = {
+    return this.request(storage, this.buyerOwner(buyerId, thread.id), body);
+  }
+
+  private buyerOwner(buyerId: string, threadId: string | undefined): Owner {
+    return {
       purpose: "BUYER_INPUT",
       uploadScope: `account:${buyerId}`,
       ownerId: buyerId,
-      threadId: thread.id,
+      ...(threadId ? { threadId } : {}),
     };
-    return this.request(storage, owner, body);
+  }
+
+  // Moves the staged inputs an instant purchase names into its DIRECT thread,
+  // inside the quote's transaction. A staged file is bound once: a second
+  // purchase naming it finds no staged file and fails.
+  async bindStaged(
+    tx: Prisma.TransactionClient,
+    buyerId: string,
+    threadId: string,
+    schema: unknown,
+    args: Record<string, unknown>,
+  ) {
+    const ids = [...new Set(argumentFileIds(schema, args))];
+    if (!ids.length) return;
+    if (!this.enabled) throw new BadRequestError("FILES_NOT_SUPPORTED");
+    if (ids.length > MAX_CONTEXT_FILES) throw new BadRequestError("TOO_MANY_FILES");
+    const bound = await tx.fileAsset.updateMany({
+      where: {
+        id: { in: ids },
+        purpose: "BUYER_INPUT",
+        status: "READY",
+        ownerId: buyerId,
+        threadId: null,
+      },
+      data: { threadId },
+    });
+    if (bound.count !== ids.length) throw new BadRequestError("INVALID_ARGUMENT_FILES");
+  }
+
+  // Sizes of the files the arguments name, as bound to this thread.
+  async argumentFileSizes(
+    tx: Prisma.TransactionClient,
+    buyerId: string,
+    threadId: string,
+    schema: unknown,
+    args: Record<string, unknown>,
+  ) {
+    const ids = [...new Set(argumentFileIds(schema, args))];
+    if (!ids.length) return [];
+    const rows = await tx.fileAsset.findMany({
+      where: { id: { in: ids }, purpose: "BUYER_INPUT", ownerId: buyerId, threadId },
+      select: { size: true },
+    });
+    return rows.map((row) => Number(row.size));
   }
 
   // Artifacts belong to one held invocation whose current run was acknowledged.

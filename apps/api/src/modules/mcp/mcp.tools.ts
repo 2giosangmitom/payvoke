@@ -93,7 +93,13 @@ const commandName = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/);
 
 // Instant commands of an agent, from its command list: bought at this fixed
 // price with hire_instant, no chat.
-type ListedCommand = { name: string; revision: { instantGrossAmount?: string | null } | null };
+type ListedCommand = {
+  name: string;
+  revision: {
+    instantGrossAmount?: string | null;
+    instantTiers?: { minInputBytes: number; amount: string }[] | null;
+  } | null;
+};
 const instantCommands = (commands: ListedCommand[]) =>
   commands.flatMap(({ name, revision }) =>
     revision?.instantGrossAmount
@@ -102,6 +108,16 @@ const instantCommands = (commands: ListedCommand[]) =>
             command: name,
             price: `${usdc(revision.instantGrossAmount)} USDC`,
             amount: revision.instantGrossAmount,
+            // Bigger inputs (string bytes plus file sizes) cost more; the 402
+            // states the exact price before anything is paid.
+            ...(revision.instantTiers?.length
+              ? {
+                  tiers: revision.instantTiers.map((tier) => ({
+                    fromInputBytes: tier.minInputBytes,
+                    price: `${usdc(tier.amount)} USDC`,
+                  })),
+                }
+              : {}),
           },
         ]
       : [],

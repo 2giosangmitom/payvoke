@@ -1,4 +1,5 @@
 import type { Prisma } from "#core/db";
+import { storedTiers } from "../x402/pricing";
 import { availabilityLabel, type CommandOption, type CommandTerms } from "./schema";
 
 type Revision = {
@@ -9,6 +10,7 @@ type Revision = {
   positionalParameter: string | null;
   maxGrossAmount: Prisma.Decimal | null;
   instantGrossAmount: Prisma.Decimal | null;
+  instantTiers?: Prisma.JsonValue | null;
   terms: Prisma.JsonValue;
   deliverySeconds: number;
   reviewSeconds: number;
@@ -33,6 +35,7 @@ export function serializeRevision(revision: Revision | null) {
         terms: revision.terms as CommandTerms,
         maxGrossAmount: amount(revision.maxGrossAmount),
         instantGrossAmount: amount(revision.instantGrossAmount),
+        instantTiers: revision.instantGrossAmount ? storedTiers(revision.instantTiers) : null,
       }
     : null;
 }

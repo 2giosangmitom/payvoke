@@ -1,5 +1,6 @@
 import {
   CsvError,
+  MAX_BYTES,
   numericColumns,
   outliers,
   parseCsv,
@@ -10,12 +11,19 @@ import {
 import type { Run } from "./payvoke";
 import * as ui from "./ui";
 
-// /profile: an instant, fixed-price command. The buyer pastes the CSV text as
-// the `csv` argument (often over x402, with no chat), so the run gets no files
-// and nothing is downloaded. No model is involved: every number comes from code.
+// /profile: an instant command (often hired over x402, with no chat). The CSV
+// comes either as pasted text (`csv`) or as an uploaded file (`file`), exactly
+// one of the two. No model is involved: every number comes from code.
 
-export const PROFILE_AMOUNT = "200000"; // 0.20 USDC, atomic
+export const PROFILE_AMOUNT = "200000"; // 0.20 USDC, atomic: the base price
 export const PROFILE_MAX_CHARS = 200_000;
+// Bigger inputs cost more. The API measures the input (text bytes plus file
+// size) and puts the price in the 402 before the buyer signs.
+export const PROFILE_TIERS = [
+  { minInputBytes: 256 * 1024, amount: "500000" }, // 0.50 USDC from 256 KB
+  { minInputBytes: 1024 * 1024, amount: "1000000" }, // 1.00 USDC from 1 MB
+];
+export const PROFILE_MAX_AMOUNT = "1000000";
 
 export type Flag = { column: string | null; issue: string };
 
@@ -120,12 +128,27 @@ function flagCard(id: string, flags: Flag[]) {
   return `${id} = Card("Data quality", ${JSON.stringify(ui.safe(text, 1500))})`;
 }
 
-export function parseProfileInput(args: Record<string, unknown>) {
-  if (typeof args.csv !== "string" || !args.csv.trim())
-    throw new CsvError("The csv argument must contain the CSV text.");
-  if (args.csv.length > PROFILE_MAX_CHARS)
-    throw new CsvError(`The CSV text is longer than ${PROFILE_MAX_CHARS} characters.`);
-  const rows = parseCsv(args.csv);
+// The CSV text of a /profile job: the pasted `csv`, or the uploaded `file`.
+export async function profileText(
+  args: Record<string, unknown>,
+  download: (fileId: string) => Promise<Uint8Array>,
+) {
+  const text = typeof args.csv === "string" && args.csv.trim() ? args.csv : null;
+  const fileId = typeof args.file === "string" ? args.file : null;
+  if (text && fileId) throw new CsvError("Send the CSV as text or as a file, not both.");
+  if (text) {
+    if (text.length > PROFILE_MAX_CHARS)
+      throw new CsvError(`The CSV text is longer than ${PROFILE_MAX_CHARS} characters.`);
+    return text;
+  }
+  if (!fileId) throw new CsvError("Send the CSV as the csv text or as a file.");
+  const bytes = await download(fileId);
+  if (bytes.byteLength > MAX_BYTES) throw new CsvError("The file is larger than 5 MB.");
+  return new TextDecoder().decode(bytes);
+}
+
+export function parseProfileInput(csv: string) {
+  const rows = parseCsv(csv);
   const p = profile(rows);
   if (p.columns.every((c) => c.type === "empty")) throw new CsvError("Every column is empty.");
   return { rows, profile: p };
@@ -137,9 +160,11 @@ export async function runProfile(
   run: Run,
   args: Record<string, unknown>,
   upload: (name: string, type: string, body: string) => Promise<{ fileId: string }[]>,
+  download: (fileId: string) => Promise<Uint8Array> = (fileId) =>
+    run.api.download(run.invocationId, fileId),
 ) {
   await run.progress("read", "Reading the CSV");
-  const { rows, profile: p } = parseProfileInput(args);
+  const { rows, profile: p } = parseProfileInput(await profileText(args, download));
   await run.progress("read", "Read the CSV", "done", `${p.rows} rows, ${p.columns.length} columns`);
 
   await run.progress("ui", "Building the profile");

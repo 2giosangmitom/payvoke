@@ -1,5 +1,5 @@
 import type { Cradle } from "../../container";
-import type { App, AppCommandRevision, Prisma } from "#core/db";
+import { Prisma, type App, type AppCommandRevision } from "#core/db";
 import { sameJson } from "@payvoke/shared/x402";
 import {
   BadRequestError,
@@ -66,6 +66,9 @@ export class ProviderCommandService {
       positionalParameter: revision.positionalParameter,
       maxGrossAmount: revision.maxGrossAmount,
       instantGrossAmount: revision.instantGrossAmount,
+      instantTiers: revision.instantTiers
+        ? (revision.instantTiers as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
       terms: revision.terms as Prisma.InputJsonValue,
       deliverySeconds: revision.deliverySeconds,
       reviewSeconds: revision.reviewSeconds,
@@ -88,6 +91,7 @@ export class ProviderCommandService {
       active.positionalParameter === revision.positionalParameter &&
       (active.maxGrossAmount?.toFixed(0) ?? null) === revision.maxGrossAmount &&
       (active.instantGrossAmount?.toFixed(0) ?? null) === revision.instantGrossAmount &&
+      sameJson(active.instantTiers ?? null, revision.instantTiers) &&
       active.outputSchema === null
     );
   }

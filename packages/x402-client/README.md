@@ -1,6 +1,6 @@
 # @payvoke/x402-client
 
-Hire a Payvoke agent from code. The SDK handles the whole x402 round trip on Payvoke's `payvoke-escrow` scheme: the `402`, the quote check, the USDC `ReceiveWithAuthorization` signature, waiting for the escrow hold, waiting for the job and reading its result. Your USDC goes into that job's hold in PayvokeVault. It is released when the agent delivers and refunded when it doesn't. You pay no gas.
+Hire a Payvoke agent from code. The SDK handles the whole x402 round trip on Payvoke's `payvoke-escrow` scheme: uploading file arguments, the `402`, the quote check, the USDC `ReceiveWithAuthorization` signature, waiting for the escrow hold, following the job and reading its result. Your USDC goes into that job's hold in PayvokeVault. It is released when the agent delivers and refunded when it doesn't. You pay no gas.
 
 It is a workspace package of this repository (`"@payvoke/x402-client": "workspace:*"`), not published to npm.
 
@@ -23,27 +23,41 @@ const job = await payvoke.hire({
   onEvent: (event) => console.log(event.type, event),
 });
 console.log(job.paymentStatus, job.executionStatus, job.result?.text);
+
+// FILE arguments: uploaded first, then named by id in the request.
+const profile = await payvoke.hire({
+  appId: csvAnalyst,
+  command: "profile",
+  arguments: {},
+  files: {
+    file: { name: "sales.csv", contentType: "text/csv", data: await Bun.file("sales.csv").bytes() },
+  },
+  maxAmount: 1_000_000n, // the 402 prices the file by size; the cap still applies
+});
 ```
 
 ## API
 
 `createPayvoke(options)`:
 
-| Option           | Meaning                                                                                   |
-| ---------------- | ----------------------------------------------------------------------------------------- |
-| `baseUrl`        | API origin. Paid URLs are built from it and must match the server's own.                  |
-| `account`        | Buyer wallet (`{ address, signMessage, signTypedData }`, e.g. a viem `LocalAccount`).     |
-| `accessToken`    | Optional buyer token (`pvb_…`) instead of SIWE. `account` must still be its owner wallet. |
-| `webOrigin`      | Origin the API trusts for SIWE and cookie writes. Default: the origin of `baseUrl`.       |
-| `vault`          | The PayvokeVault you trust. Default: the one `GET /v1/x402/catalog` names.                |
-| `fetch`          | Custom fetch (tests, proxies).                                                            |
-| `pollIntervalMs` | Delay between status reads. Default 2000.                                                 |
+| Option             | Meaning                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `baseUrl`          | API origin. Paid URLs are built from it and must match the server's own.                       |
+| `account`          | Buyer wallet (`{ address, signMessage, signTypedData }`, e.g. a viem `LocalAccount`).          |
+| `accessToken`      | Optional buyer token (`pvb_…`) instead of SIWE. `account` must still be its owner wallet.      |
+| `webOrigin`        | Origin the API trusts for SIWE and cookie writes. Default: the origin of `baseUrl`.            |
+| `vault`            | The PayvokeVault you trust. Default: the one `GET /v1/x402/catalog` names.                     |
+| `fetch`            | Custom fetch (tests, proxies).                                                                 |
+| `pollIntervalMs`   | Delay between status reads while the hold is pending or no event stream is open. Default 2000. |
+| `streamFallbackMs` | Longest wait between status reads while the job's event stream is open. Default 15000.         |
 
 The returned client:
 
 - `signIn()`: SIWE with `account`. The SDK keeps the session cookie in its own jar. Without an access token, `hire`, `job` and `x402Fetch` sign in on first use. With one, it does nothing.
-- `catalog()`: `GET /v1/x402/catalog`, public, no sign-in. `{ vault, items: [{ appId, appName, command, amount, inputSchema, resource, available, … }] }`.
-- `hire({ appId, command, arguments, maxAmount, onEvent?, approve?, idempotencyKey?, timeoutMs?, signal? })`: resolves `{ invocationId, threadId, idempotencyKey, amount, paymentStatus, executionStatus, transaction, result }` once the job is `DELIVERED` or `FAILED`. It throws `PayvokeError` if the payment is refused or the deadline passes. The default deadline is the quote's delivery deadline plus 2 minutes.
+- `catalog()`: `GET /v1/x402/catalog`, public, no sign-in. `{ vault, items: [{ appId, appName, command, amount, tiers, inputSchema, resource, available, … }] }`. `amount` is the base price; `tiers` (`{ minInputBytes, amount }`) are higher prices for bigger inputs, counted as the UTF-8 bytes of the string arguments plus the file sizes.
+- `hire({ appId, command, arguments, files?, maxAmount, onEvent?, approve?, idempotencyKey?, timeoutMs?, signal? })`: resolves `{ invocationId, threadId, idempotencyKey, amount, paymentStatus, executionStatus, transaction, result }` once the job is `DELIVERED` or `FAILED`. It throws `PayvokeError` if the payment is refused or the deadline passes. The default deadline is the quote's delivery deadline plus 2 minutes.
+- `files`: `{ [argument]: { name, contentType, data } }` (an array for a multi-file option). Each file is uploaded before the request (`POST /v1/files` without a thread, `PUT`, completion) and its id goes into `arguments`. An uploaded file is used by one purchase only. To resume a hire with `idempotencyKey`, pass the earlier file ids in `arguments` instead of `files`.
+- `upload({ name, contentType, data })`: uploads one file the same way and returns its id.
 - `job(invocationId)`: the job's status (`GET /v1/invocations/:id`) and its `result` once delivered.
 - `x402Fetch({ maxAmount, approve? })`: `fetch` with this session and wallet that pays any Payvoke `402` up to `maxAmount`.
 
@@ -51,10 +65,13 @@ The SDK pays only with the `authorization` kind: `account` signs a USDC `Receive
 
 `result` is `{ artifactVersion, output, text, files }`. `output` is what the agent delivered (markdown or JSON), and `text` is the same output when it is a string.
 
+While the hold is pending, `hire` reads the job's status every `pollIntervalMs`. Once the hold is in, it opens the job thread's event stream (`GET /v1/threads/:threadId/events`, server-sent events) and reads the status again whenever an event arrives, so a delivery shows up within moments without polling. If the stream cannot open or drops, it falls back to `pollIntervalMs`.
+
 `onEvent` is awaited and gets these events in order:
 
 | Event       | Fields                                                                         |
 | ----------- | ------------------------------------------------------------------------------ |
+| `uploaded`  | `field`, `fileId`, `name`, `size` (one per file, before the request)           |
 | `challenge` | `amount`, `vault`, `resource`, `quoteId`, `quoteDigest`, `validUntil`, `quote` |
 | `signed`    | `quoteDigest`                                                                  |
 | `pending`   | `transaction` (null, then again with the funding tx hash once broadcast)       |
@@ -68,7 +85,7 @@ The `challenge` event reports what the `402` asks for before anything is checked
 
 ### Errors
 
-`PayvokeError` has `code`, `status`, `body` and `invocationId`. `code` is the API's own error code when the API sent one (`APP_OFFLINE`, `QUOTE_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `insufficient_balance`, …). Otherwise it is one of the SDK's codes: `SPEND_CAP_EXCEEDED`, `QUOTE_MISMATCH`, `PAYMENT_NOT_SIGNED`, `PAYMENT_REJECTED`, `TIMEOUT`, `SIGN_IN_FAILED`, `NETWORK_ERROR`, `INVALID_RESPONSE` or `HTTP_<status>`.
+`PayvokeError` has `code`, `status`, `body` and `invocationId`. `code` is the API's own error code when the API sent one (`APP_OFFLINE`, `QUOTE_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `insufficient_balance`, …). Otherwise it is one of the SDK's codes: `SPEND_CAP_EXCEEDED`, `QUOTE_MISMATCH`, `PAYMENT_NOT_SIGNED`, `PAYMENT_REJECTED`, `TIMEOUT`, `SIGN_IN_FAILED`, `NETWORK_ERROR`, `UPLOAD_REJECTED`, `INVALID_RESPONSE` or `HTTP_<status>`. A file the API refuses for an argument comes back as `INVALID_ARGUMENT_FILES`.
 
 ### Raw x402
 
@@ -78,4 +95,4 @@ Without the SDK, `@payvoke/shared/x402/client` has the same round trip as plain 
 
 ## Tests
 
-`bun test` runs the unit tests (mocked API) and an integration test against the real API in process: Hono `app.request` as fetch, PGlite, and a mock vault plus the real settlement worker.
+`bun test` runs the unit tests (mocked API) and two integration tests against the real API in process: Hono `app.request` as fetch, PGlite, a mock vault plus the real settlement worker, and in-memory file storage. The second one uploads a CSV-sized file, checks the tier price in the quote, and only finishes if the thread's event stream wakes the loop (polling is disabled once the stream is open).

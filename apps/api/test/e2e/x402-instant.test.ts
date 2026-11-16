@@ -2,7 +2,7 @@
 /// <reference types="bun" />
 import { inject } from "#test/kit/http";
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, it, onTestFinished } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -36,6 +36,8 @@ import { verifyStructuredDeliveries } from "#core/payments/delivery";
 import { FinanceService } from "#core/payments/finance";
 import { scanFinancialLifecycle } from "#core/payments/finance-ledger";
 import { AutoFinance } from "#core/payments/finance-policy";
+import { MemoryStorage } from "#core/storage";
+import { expireUnboundStaged } from "../../src/workers/cleanup";
 
 // Instant (fixed-price) commands: the standard x402 402 -> sign -> retry
 // round trip on the command's own URL, with no chat, into the per-job escrow.
@@ -284,26 +286,18 @@ describe("x402 instant commands", () => {
         [400, "INVALID_INSTANT_AMOUNT"],
         String(bad),
       );
-    assert.deepEqual(
-      await code([
-        quickReview({
-          options: [
-            { name: "cv_text", type: "STRING", required: true },
-            { name: "cv", type: "FILE", required: true },
-          ],
-        }),
-      ]),
-      [400, "INSTANT_FILES_NOT_SUPPORTED"],
-    );
-    // A required file is fine for a chat-only command.
+    // A required file is fine: instant buyers upload it beforehand.
     const files = await put([
       quickReview({
-        instantAmount: null,
-        options: [{ name: "cv", type: "FILE", required: true }],
+        options: [
+          { name: "cv_text", type: "STRING", required: true },
+          { name: "cv", type: "FILE", required: true },
+        ],
       }),
     ]);
     assert.equal(files.statusCode, 200, files.body);
-    assert.equal(files.json()[0].revision.instantGrossAmount, null);
+    assert.equal(files.json()[0].revision.instantGrossAmount, "500000");
+    assert.deepEqual(files.json()[0].revision.instantTiers, []);
     // Floor <= instant <= max, and an unchanged list keeps its revision.
     const set = await put([quickReview({ instantAmount: "1000000" })]);
     assert.equal(set.statusCode, 200, set.body);
@@ -344,6 +338,7 @@ describe("x402 instant commands", () => {
       "inputSchema",
       "resource",
       "reviewSeconds",
+      "tiers",
     ]);
     assert.equal(mine[0].command, "quick_review");
     assert.equal(mine[0].amount, "500000");
@@ -855,4 +850,130 @@ describe("x402 instant commands", () => {
       assert.equal(await evm.contract.read.totalHeld(), 0n);
     },
   );
+
+  it("prices instant commands by input size with tiers", async () => {
+    const put = (list: unknown[]) => web("PUT", `/v1/provider/apps/${appId}/commands`, list);
+    const tiers = [
+      { minInputBytes: 100, amount: "700000" },
+      { minInputBytes: 1000, amount: "900000" },
+    ];
+    for (const bad of [
+      [{ minInputBytes: 100, amount: "500000" }], // not above the base price
+      [{ minInputBytes: 100, amount: "1000001" }], // above maxAmount
+      [tiers[1], tiers[0]], // not rising
+      [{ minInputBytes: 0, amount: "700000" }],
+      [{ minInputBytes: 100, amount: "700000", extra: 1 }],
+      Array.from({ length: 6 }, (_, i) => ({ minInputBytes: i + 1, amount: `${600000 + i}` })),
+      [],
+      "tiers",
+    ]) {
+      const response = await put([quickReview({ instantTiers: bad })]);
+      assert.deepEqual(
+        [response.statusCode, response.json().error],
+        [400, "INVALID_INSTANT_TIERS"],
+      );
+    }
+    // Tiers need a base instant price.
+    const orphan = await put([quickReview({ instantAmount: null, instantTiers: tiers })]);
+    assert.equal(orphan.json().error, "INVALID_INSTANT_TIERS");
+    const set = await put([quickReview({ instantTiers: tiers }), chatOnly]);
+    assert.equal(set.statusCode, 200, set.body);
+    assert.deepEqual(set.json()[0].revision.instantTiers, tiers);
+    const same = await put([quickReview({ instantTiers: tiers }), chatOnly]);
+    assert.equal(same.json()[0].revision.id, set.json()[0].revision.id);
+    // The catalog shows the base price and the tiers.
+    const catalog = (await inject(app, { method: "GET", url: "/v1/x402/catalog" })).json();
+    const item = catalog.items.find((entry: { appId: string }) => entry.appId === appId);
+    assert.equal(item.amount, "500000");
+    assert.deepEqual(item.tiers, tiers);
+    // The 402 prices this input: UTF-8 bytes of every string argument.
+    const price = async (args: Record<string, unknown>) => {
+      const response = await buy(randomUUID(), args);
+      assert.equal(response.statusCode, 402, response.body);
+      return response.json().extensions.payvoke.quote.grossAmount;
+    };
+    assert.equal(await price({ cv_text: "x".repeat(99) }), "500000");
+    assert.equal(await price({ cv_text: "x".repeat(60), goal: "y".repeat(40) }), "700000");
+    assert.equal(await price({ cv_text: "é".repeat(50) }), "700000"); // 100 bytes
+    assert.equal(await price({ cv_text: "x".repeat(1000) }), "900000");
+  });
+
+  it("takes files uploaded beforehand, bound once to the purchase", async () => {
+    const storage = new MemoryStorage();
+    await app.close();
+    app = createApp(config, db, undefined, storage);
+    await app.ready();
+    const synced = await web("PUT", `/v1/provider/apps/${appId}/commands`, [
+      {
+        name: "scan",
+        description: "Reviews a PDF CV",
+        options: [
+          { name: "cv", type: "FILE", required: true, accept: ["application/pdf"], maxBytes: 5000 },
+        ],
+        maxAmount: "1000000",
+        instantAmount: "500000",
+        instantTiers: [{ minInputBytes: 1000, amount: "800000" }],
+        terms,
+      },
+    ]);
+    assert.equal(synced.statusCode, 200, synced.body);
+    // A staged upload: no thread yet.
+    const stage = async (body: string, name = "cv.pdf") => {
+      const requested = await web("POST", "/v1/files", {
+        name,
+        contentType: "application/pdf",
+        size: body.length,
+        sha256: createHash("sha256").update(body).digest("hex"),
+        clientRequestId: randomUUID(),
+      });
+      assert.equal(requested.statusCode, 200, requested.body);
+      const { file } = requested.json();
+      assert.equal(file.threadId, null);
+      storage.put(`staging/${file.id}`, body);
+      const done = await web("POST", `/v1/files/${file.id}/completions`);
+      assert.equal(done.json().status, "READY", done.body);
+      return file.id as string;
+    };
+    const fileId = await stage("%PDF-".padEnd(1500, "x"));
+    const first = await buy(randomUUID(), { cv: fileId }, {}, "scan");
+    assert.equal(first.statusCode, 402, first.body);
+    const q = first.json().extensions.payvoke.quote as QuoteDocument;
+    // Priced by the file's size, frozen into the quote like a chat attachment.
+    assert.equal(q.grossAmount, "800000");
+    assert.deepEqual(
+      (q.contextManifest as { files: { fileId: string }[] }).files.map((f) => f.fileId),
+      [fileId],
+    );
+    const bound = await db.fileAsset.findUniqueOrThrow({ where: { id: fileId } });
+    assert.equal(bound.threadId, q.sessionId);
+    // Bound once: another purchase cannot reuse it, and leaves nothing behind.
+    const threads = await db.chatThread.count({ where: { kind: "DIRECT", appId } });
+    const again = await buy(randomUUID(), { cv: fileId }, {}, "scan");
+    assert.deepEqual([again.statusCode, again.json().error], [400, "INVALID_ARGUMENT_FILES"]);
+    assert.equal(await db.chatThread.count({ where: { kind: "DIRECT", appId } }), threads);
+    // A small file stays at the base price; a wrong type is refused.
+    const small = await stage("%PDF-small");
+    const cheap = await buy(randomUUID(), { cv: small }, {}, "scan");
+    assert.equal(cheap.json().extensions.payvoke.quote.grossAmount, "500000");
+    const picture = await web("POST", "/v1/files", {
+      name: "cv.png",
+      contentType: "image/png",
+      size: 3,
+      sha256: createHash("sha256").update("png").digest("hex"),
+      clientRequestId: randomUUID(),
+    });
+    storage.put(`staging/${picture.json().file.id}`, "png");
+    await web("POST", `/v1/files/${picture.json().file.id}/completions`);
+    const wrong = await buy(randomUUID(), { cv: picture.json().file.id }, {}, "scan");
+    assert.deepEqual([wrong.statusCode, wrong.json().error], [400, "INVALID_ARGUMENT_FILES"]);
+    // Staged files nobody bound expire after a day; bound ones stay.
+    await db.fileAsset.updateMany({
+      where: { purpose: "BUYER_INPUT" },
+      data: { readyAt: new Date(Date.now() - 2 * 86400000) },
+    });
+    assert.equal(await expireUnboundStaged(db), 1);
+    const expired = await db.fileAsset.findUniqueOrThrow({ where: { id: picture.json().file.id } });
+    assert.deepEqual([expired.status, expired.objectKey], ["EXPIRED", null]);
+    assert.equal((await db.fileAsset.findUniqueOrThrow({ where: { id: fileId } })).status, "READY");
+  });
 });

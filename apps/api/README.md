@@ -346,25 +346,33 @@ vault. `bun run test:conformance` checks every x402 security rule against passin
   unsettled state is `503`.
   `GET /v1/invocations/:id` returns the same state plus `threadId`.
 - Instant commands: a command revision with `instantAmount` (floor ≤ amount ≤
-  `maxAmount`, no required FILE option) is paid at
+  `maxAmount`) is paid at
   `POST /v1/x402/apps/:appId/commands/:command` with `{ "arguments": {…} }` and a
-  UUID `Idempotency-Key` (body ≤ 512 KiB, text only, 30 requests/min). Without a
-  signature it opens a DIRECT thread, a system
-  offer at `instantAmount` and a quote, and returns the `402`, whose
+  UUID `Idempotency-Key` (body ≤ 512 KiB, 30 requests/min). Without a
+  signature it opens a DIRECT thread, binds the staged files the arguments name
+  (uploaded with `POST /v1/files` and no `threadId`; each is bound once), prices
+  the input and makes a system offer at that price and a quote, and returns the
+  `402`, whose
   `extensions.payvoke.quote` is the full quote document for the client to check.
   The same key and body replay that quote; a different body is
   `409 IDEMPOTENCY_CONFLICT`. With a signature it settles like any invocation. The
   agent gets `invocation.ready` without a chat. Errors before payment:
-  `IDEMPOTENCY_KEY_REQUIRED`, `INVALID_INSTANT_REQUEST`, `INVALID_ARGUMENTS`
-  (400); `APP_NOT_FOUND`, `COMMAND_NOT_FOUND`, `QUOTE_NOT_FOUND` (404);
+  `IDEMPOTENCY_KEY_REQUIRED`, `INVALID_INSTANT_REQUEST`, `INVALID_ARGUMENTS`,
+  `INVALID_ARGUMENT_FILES` (400); `APP_NOT_FOUND`, `COMMAND_NOT_FOUND`, `QUOTE_NOT_FOUND` (404);
   `IDEMPOTENCY_CONFLICT`, `APP_OFFLINE`, `PRICE_BELOW_FLOOR` (409);
   `QUOTE_EXPIRED` (410). Registration refuses `INVALID_INSTANT_AMOUNT` (above
-  `maxAmount`), `PRICE_BELOW_FLOOR` (422) and `INSTANT_FILES_NOT_SUPPORTED`.
+  `maxAmount`), `INVALID_INSTANT_TIERS` and `PRICE_BELOW_FLOOR` (422).
+- Instant price (`modules/x402/pricing.ts`): `instantAmount`, or the highest of up
+  to five `instantTiers` (`{ minInputBytes, amount }`, rising, ≤ `maxAmount`) the
+  input reaches. Input size = UTF-8 bytes of the string arguments + sizes of the
+  bound argument files. The offer check recomputes it, and the quote freezes it.
+- Staged buyer files that no purchase bound expire after a day (cleanup worker),
+  and the orphan sweep then deletes their bytes.
   DIRECT threads are hidden from the thread list and have no composer; their
   timeline shows the offer and the run.
 - `GET /v1/x402/catalog` is public (`Cache-Control: public, max-age=30`, 120
   requests/min): scheme, network, asset, vault and up to 500 non-archived instant
-  commands of PUBLIC ACTIVE apps with their amount, deadlines, input schema,
+  commands of PUBLIC ACTIVE apps with their base amount, `tiers`, deadlines, input schema,
   resource URL and `available` (online and at or above the floor).
 - The x402 buyer routes are not in the OpenAPI spec, which documents app-key
   builder routes only; `docs/x402.md` is a guide section on the docs site.

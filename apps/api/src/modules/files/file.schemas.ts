@@ -51,7 +51,9 @@ const upload = {
 };
 
 export const providerUploadBody = z.object(upload).strict();
-export const buyerUploadBody = z.object({ ...upload, threadId: id }).strict();
+// Without a thread the file is staged for an instant x402 purchase: it is
+// bound to that purchase's DIRECT thread when its quote is made.
+export const buyerUploadBody = z.object({ ...upload, threadId: id.optional() }).strict();
 export type UploadBody = z.infer<typeof providerUploadBody>;
 export type BuyerUploadBody = z.infer<typeof buyerUploadBody>;
 

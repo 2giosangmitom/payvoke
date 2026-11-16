@@ -23,6 +23,7 @@ import {
 } from "../../../apps/api/test/kit/database";
 import { code, mockVault } from "../../../apps/api/test/kit/vault-reader";
 import { mockSettlement } from "../../../apps/api/test/kit/settlement-reader";
+import { MemoryStorage } from "../../../apps/api/src/core/storage";
 import { createPayvoke, type FetchLike, type HireEvent } from "../src";
 
 const origin = "https://app.payvoke.test";
@@ -271,4 +272,184 @@ test("hires an instant command end to end through the real API", async () => {
   expect(types.slice(-1)).toEqual(["delivered"]);
   expect(types.indexOf("held")).toBeGreaterThan(types.indexOf("pending"));
   expect((await buyer.job(job.invocationId)).executionStatus).toBe("DELIVERED");
+}, 60_000);
+
+test("uploads a file, prices it by tier and learns of delivery from the event stream", async () => {
+  // Storage on: presigned PUTs to memory:// land in this store.
+  const storage = new MemoryStorage();
+  // Its own relayer: the first test already used nonces on the shared one.
+  const relayer = privateKeyToAccount(generatePrivateKey());
+  const requested: string[] = [];
+  const files: FetchLike = async (input, init) => {
+    const href = input instanceof Request ? input.url : input.toString();
+    requested.push(href);
+    if (href.startsWith("memory://put/")) {
+      const body = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+      storage.put(href.slice("memory://put/".length), body);
+      return new Response(null, { status: 200 });
+    }
+    return fetch(input, init);
+  };
+  apps.push(app);
+  app = createApp(config, db, undefined, storage);
+
+  const provider = createPayvoke({
+    baseUrl: api,
+    webOrigin: origin,
+    account: privateKeyToAccount(generatePrivateKey()),
+    fetch: files,
+  });
+  await provider.signIn();
+  const studio = provider.x402Fetch({ maxAmount: 1n });
+  const write = async (method: string, path: string, body: unknown) => {
+    const response = await studio(`${api}${path}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const parsed = await response.json();
+    expect(response.status).toBeLessThan(300);
+    return parsed;
+  };
+  const appId: string = (
+    await write("POST", "/v1/provider/apps", {
+      name: `PDF desk ${randomBytes(3).toString("hex")}`,
+      clientRequestId: randomUUID(),
+    })
+  ).id;
+  await write("PUT", `/v1/provider/apps/${appId}/commands`, [
+    {
+      name: "scan",
+      description: "Reviews a PDF CV",
+      options: [{ name: "cv", type: "FILE", required: true, accept: ["application/pdf"] }],
+      maxAmount: "1000000",
+      instantAmount: "500000",
+      instantTiers: [{ minInputBytes: 1000, amount: "800000" }],
+      terms,
+    },
+  ]);
+  await db.app.update({
+    where: { id: appId },
+    data: { visibility: "PUBLIC", lastHeartbeatAt: new Date() },
+  });
+  const key = await write("POST", `/v1/provider/apps/${appId}/keys`, {
+    scopes: ["events:read", "events:ack", "reports:write"],
+  });
+  const agent = (path: string, body: unknown) =>
+    app.request(`${api}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key.secret}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  // Polling never fires once the stream is open: only a thread event can
+  // wake the loop after the hold, so finishing proves the stream works.
+  const never = 60_000;
+  const buyer = createPayvoke({
+    baseUrl: api,
+    webOrigin: origin,
+    account: privateKeyToAccount(generatePrivateKey()),
+    fetch: files,
+    pollIntervalMs: 1,
+    streamFallbackMs: never,
+    sleep: (ms) => (ms === never ? new Promise<void>(() => {}) : Promise.resolve()),
+  });
+  const item = (await buyer.catalog()).items.find((entry) => entry.appId === appId)!;
+  expect(item.tiers).toEqual([{ minInputBytes: 1000, amount: "800000" }]);
+
+  let worker: SettlementWorker | null = null;
+  let quote: QuoteDocument | null = null;
+  const events: HireEvent[] = [];
+  const pdf = new TextEncoder().encode("%PDF-".padEnd(1500, "x"));
+  const job = await buyer.hire({
+    appId,
+    command: "scan",
+    arguments: {},
+    files: { cv: { name: "cv.pdf", contentType: "application/pdf", data: pdf } },
+    maxAmount: 1_000_000n,
+    timeoutMs: 30_000,
+    onEvent: async (event) => {
+      events.push(event);
+      if (event.type === "challenge") {
+        quote = event.quote;
+        const q = readQuote(quote.protocolQuote);
+        const mock = mockVault(q, vault, grantSigner.address, relayer.address);
+        const facilitator = createFacilitator(
+          {
+            API_ORIGIN: api,
+            RPC_URL: "https://rpc.payvoke.test",
+            VAULT_ADDRESS: vault,
+            RELAYER_ADDRESS: relayer.address,
+            EXPECTED_VAULT_CODE_HASH: keccak256(code),
+            VAULT_FEE_CAP_BPS: 500,
+            VAULT_MAX_QUOTE_LIFETIME_SECONDS: 3600,
+            VAULT_MAX_HOLD_SECONDS: 30 * 86400,
+            SETTLEMENT_ENABLED: true,
+          },
+          db,
+          new MemoryJobs(),
+          mock.chain,
+        );
+        await facilitator.ready();
+        apps.push(app);
+        app = createApp({ ...config, PAYMENTS_ENABLED: true }, db, undefined, storage, facilitator);
+        const settlement = mockSettlement(
+          q,
+          mock.chain.deployment,
+          {
+            quoteDigest: quote.quoteDigest,
+            authorizationDigest: hashReceiveAuthorization(vault, q, quote.quoteDigest),
+            grantId: zeroHash,
+          },
+          FUNDING_SOURCE.authorization,
+        );
+        worker = new SettlementWorker(
+          db,
+          mock.chain as VaultChain,
+          settlement.chain,
+          relayer,
+          `${api}/v1/invocations`,
+          gasPolicy,
+        );
+      }
+      if (event.type === "pending" && event.transaction === null) {
+        await worker!.tick();
+        await db.settlementOperation.updateMany({ data: { nextCheckAt: new Date(0) } });
+        await worker!.tick();
+      }
+      if (event.type === "held") {
+        // Deliver after the loop is waiting on the stream, not inside this event.
+        const id = event.invocationId;
+        setTimeout(async () => {
+          const task = `/v1/provider/apps/${appId}/invocations/${id}`;
+          await agent(`${task}/acks`, { eventId: id });
+          await agent(`${task}/reports`, {
+            reportId: "r-1",
+            sequence: 1,
+            type: "started",
+            data: {},
+          });
+          await agent(`${task}/reports`, {
+            reportId: "r-2",
+            sequence: 2,
+            type: "result",
+            data: { artifactVersion: 1, output: "## Scan\nClean PDF.", files: [] },
+          });
+          await verifyStructuredDeliveries(db);
+        }, 50);
+      }
+    },
+  });
+
+  // The file was staged, priced by its size and frozen into the quote.
+  const uploaded = events.find((event) => event.type === "uploaded");
+  expect(uploaded).toMatchObject({ field: "cv", name: "cv.pdf", size: 1500 });
+  expect(quote!.grossAmount).toBe("800000");
+  const manifest = quote!.contextManifest as { files: { fileId: string; size: number }[] };
+  expect(manifest.files).toEqual([
+    expect.objectContaining({ fileId: (uploaded as { fileId: string }).fileId, size: 1500 }),
+  ]);
+  expect(job).toMatchObject({ executionStatus: "DELIVERED", amount: "800000" });
+  expect(job.result?.text).toBe("## Scan\nClean PDF.");
+  expect(requested.some((href) => href.endsWith(`/v1/threads/${job.threadId}/events`))).toBe(true);
 }, 60_000);

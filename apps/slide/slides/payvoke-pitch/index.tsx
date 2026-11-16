@@ -1421,7 +1421,7 @@ const X402: Page = () => (
         402 PAYMENT-REQUIRED
       </SeqMsg>
       <SeqSelf x={L_BUYER} y={244}>
-        Ký ReceiveWithAuthorization
+        Ký EIP-3009
       </SeqSelf>
       <SeqMsg from={L_BUYER} to={L_PAYVOKE} y={316}>
         POST + PAYMENT-SIGNATURE
@@ -1443,7 +1443,8 @@ const X402: Page = () => (
       </SeqMsg>
     </div>
     <Note style={{ marginTop: 16 }}>
-      Lệnh instant: cùng luồng, POST thẳng tới /v1/x402/apps/:appId/commands/:command, không chat.
+      Lệnh instant: cùng luồng, POST thẳng tới /v1/x402/apps/:appId/commands/:command, không chat. File
+      upload trước; giá theo bậc dung lượng, chốt trong 402.
     </Note>
   </Frame>
 );
@@ -1686,11 +1687,14 @@ Scheme của Payvoke là payvoke-escrow. Luồng HTTP y hệt: 402, ký, gửi l
 Nếu bị hỏi "sao không dùng exact?":
 Exact hợp với thứ trả về ngay trong response, như một bài báo hay một API call. Job của agent xong sau vài phút và có thể hỏng. Với exact, refund phải xin tay ngoài giao thức. Nên Payvoke không bao giờ nhận exact.
 Nếu bị hỏi "ví x402 bên ngoài có trả được không?":
-Có. Client dùng @x402/core đăng ký thêm client scheme payvoke-escrow (VaultClientScheme trong @payvoke/shared/x402), truyền vào quote lấy từ body của 402 cùng ví, Vault, URL và trần chi tiêu của chính nó. Hoặc dùng SDK @payvoke/x402-client, hiện là package trong repo, chưa publish lên npm. Client kiểm lại quote trước khi ký, nên 402 giả không lừa được nó ký thứ khác.
+Có. Client dùng @x402/core đăng ký thêm client scheme payvoke-escrow (VaultClientScheme trong @payvoke/shared/x402), truyền vào quote lấy từ body của 402 cùng ví, Vault, URL và trần chi tiêu của chính nó. Hoặc dùng SDK @payvoke/x402-client, là package trong repo (không publish lên npm). Client kiểm lại quote trước khi ký, nên 402 giả không lừa được nó ký thứ khác.
 Nếu bị hỏi "đã chạy thật chưa?":
 Toàn bộ luồng x402 có test e2e trên EVM local (Hardhat node, contract PayvokeVault thật, USDC giả lập): cả nhánh release khi giao và refund khi lỗi. SDK có thêm test tích hợp chạy API thật trong process.
 
-[Chỉ cho người trình bày, không nói ra] Các route mới (/v1/x402, lệnh instant, catalog) chưa deploy lên Fuji: API đang chạy chưa có /v1/x402. Đừng demo lệnh instant trên bản deploy; nếu được hỏi, nói rõ phần này đã có code và test, đang chờ deploy.
+Nếu bị hỏi "giá có cố định không?":
+Có, tại thời điểm trả. Builder đặt giá gốc và tối đa năm bậc theo dung lượng input (text cộng file). Payvoke đo input, chọn bậc, rồi ghi giá vào quote trước khi trả 402. Buyer ký đúng con số đó, nên agent không đổi giá sau được.
+
+[Chỉ cho người trình bày, không nói ra] Bản deploy Fuji đã có /v1/x402 và catalog. Bậc giá và file cho lệnh instant có từ bản code mới nhất: trước khi demo, mở https://payvoke.up.railway.app/v1/x402/catalog và kiểm tra có trường tiers.
 Nếu bị hỏi "Payvoke có giữ tiền không?":
 Không. Buyer không nạp tiền vào đâu cả. Tiền nằm trong hold của contract, chỉ đi ra ba nơi đã ghi trong quote: buyer, builder, hoặc phí. Payvoke không có hàm rút tiền của buyer.`,
 
@@ -1737,14 +1741,14 @@ API xử lý chat, quote, MCP, và x402: gateway trả 402, facilitator kiểm c
 Postgres ghi lại mọi giao dịch trước khi gửi lên chain, nên sự cố xảy ra ở đâu cũng đối soát được.
 Vault đang chạy trên Avalanche Fuji testnet.
 
-[Chỉ cho người trình bày] Bản API trên Fuji chưa có route /v1/x402 (lệnh instant, catalog). Đừng nói phần đó đang chạy trên Fuji.`,
+[Chỉ cho người trình bày] Bản API trên Fuji đã có route /v1/x402 và catalog. Bậc giá và file cho lệnh instant cần bản deploy mới nhất; kiểm tra catalog trước khi nói phần đó đang chạy.`,
 
   // Business
   `(~35s)
 Payvoke thu 5% trên mỗi job. Phí được trừ lúc release cho builder, nên buyer trả đúng giá trong Offer.
 Trần phí là 10%, ghi cố định trong contract từ lúc deploy. Payvoke không tự tăng quá mức đó được, và phí của từng job đã chốt trong quote. Job bị refund toàn bộ thì Payvoke không thu gì. Job giao trễ được hoàn một phần thì phí chỉ tính trên phần trả cho builder.
 Roadmap: lên mainnet, thêm cơ chế khiếu nại khi kết quả kém, SDK cho builder, và đưa những builder đầu tiên lên Store.
-Phía buyer đã có SDK TypeScript @payvoke/x402-client trong repo, chưa publish lên npm.
+Phía buyer đã có SDK TypeScript @payvoke/x402-client, dùng trực tiếp trong repo (workspace package, không publish lên npm).
 
 Nếu bị hỏi "buyer không trả gas thì ai trả?":
 Payvoke trả gas cho cả giao dịch ký quỹ lẫn quyết toán. Phí 5% bù lại phần đó, và mỗi job có giá sàn để không job nào rẻ hơn chi phí gas.`,
@@ -1782,7 +1786,7 @@ Tài liệu API và ba agent mẫu (CSV Analyst, Job Finder, CV Reviewer) chỉ 
 
   // Assistant
   `Mọi agent trên Store đều dùng được qua MCP, builder không phải viết thêm gì.
-Lệnh instant cũng vậy: search_agents và get_agent liệt kê instantCommands, tool hire_instant mua theo giá cố định với cùng hạn mức autopay và Risk Check như pay_offer. Vượt hạn mức thì trả về approvalUrl để người dùng tự duyệt trong console.
+Lệnh instant cũng vậy: search_agents và get_agent liệt kê instantCommands, tool hire_instant mua theo giá Payvoke tính sẵn trong 402 (giá gốc hoặc bậc theo dung lượng) với cùng hạn mức autopay và Risk Check như pay_offer. Vượt hạn mức thì trả về approvalUrl để người dùng tự duyệt trong console.
 API key chỉ lưu hash SHA-256. Signer suy ra bằng HKDF-SHA256, nên lộ database cũng không ký được.
 
 Nếu bị hỏi "spend key lưu ở đâu?":
@@ -1799,10 +1803,11 @@ Không ảnh hưởng, giá đã được hash trong quote.`,
   `Scheme payvoke-escrow, x402 v2.
 Buyer POST mà chưa ký, Payvoke trả 402 kèm header PAYMENT-REQUIRED: payTo là Vault, amount là giá, nonce là quote digest.
 Ví ký ReceiveWithAuthorization (EIP-3009) cho đúng quote đó rồi POST lại với PAYMENT-SIGNATURE.
-Settlement worker gọi fundWithAuthorization. Chỉ Vault nộp được authorization này, nên USDC đi thẳng từ ví vào hold của job. Chưa finalized thì API trả 202 PENDING để client poll. Finalized rồi mới trả 202 HELD kèm PAYMENT-RESPONSE.
+Settlement worker gọi fundWithAuthorization. Chỉ Vault nộp được authorization này, nên USDC đi thẳng từ ví vào hold của job. Chưa finalized thì API trả 202 PENDING để client đọc lại trạng thái. Finalized rồi mới trả 202 HELD kèm PAYMENT-RESPONSE.
 Sau đó agent mới nhận invocation.ready. Khi quyết toán, Finance worker gọi applyDecision.
-Thường lần POST có chữ ký nhận 202 PENDING trước (Retry-After 5, Location, và PAYMENT-RESPONSE có tx hash khi đã broadcast), client poll đến HELD.
+Thường lần POST có chữ ký nhận 202 PENDING trước (Retry-After 5, Location, và PAYMENT-RESPONSE có tx hash khi đã broadcast), client đọc lại đến HELD. SDK sau đó mở luồng sự kiện SSE của thread để biết khi nào agent giao, không phải poll liên tục.
 Lệnh instant đi đúng luồng này, chỉ khác URL: POST /v1/x402/apps/:appId/commands/:command, không qua chat và offer từ agent. Body của 402 mang cả quote trong extensions.payvoke.quote; header PAYMENT-REQUIRED thì không, vì header có giới hạn kích thước. URL được ghi vào terms của quote (termsSnapshot.resource), nằm trong quote digest, nên chữ ký chỉ dùng được ở đúng URL đó. Gửi sang URL khác bị 409 QUOTE_RESOURCE_MISMATCH. Danh sách lệnh instant ở GET /v1/x402/catalog.
+Giá lệnh instant là instantAmount, hoặc bậc cao hơn theo dung lượng input (byte của text cộng kích thước file). Payvoke tính trước khi trả 402 và ghi vào quote. File upload trước (POST /v1/files, không kèm thread), mỗi file chỉ dùng cho một lần mua.
 
 Nếu bị hỏi "gửi lại chữ ký hai lần có bị trừ tiền hai lần không?":
 Không. Nonce là quote digest nên USDC chỉ chấp nhận một lần, và cùng chữ ký luôn nhận lại cùng receipt.`,

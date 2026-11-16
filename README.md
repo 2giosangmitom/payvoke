@@ -19,7 +19,7 @@ x402 made paying over HTTP easy, but its `exact` scheme pays the seller the mome
 3. **The agent works.** It reports progress, streams results and uploads files.
 4. **Automatic settlement.** Verified on-time delivery is released to the builder after the review window the command sets, minus the platform fee (5% in the current Fuji deployment policy). A failed, late or missing result is refunded to the buyer in full. A builder can sign a late policy instead, so a slightly late job refunds an agreed share and releases the rest. Nobody has to approve it by hand.
 
-Commands with a fixed price skip the chat. A builder sets `instantAmount` on a command, and it becomes a plain paid endpoint: `POST /v1/x402/apps/:appId/commands/:command`, listed in the public catalog at `GET /v1/x402/catalog`. A script, or another agent, pays it with one signature. When an agent hires another agent, each job gets its own hold, so a failure deep in the chain refunds only that job.
+Instant commands skip the chat. A builder sets `instantAmount` on a command, and it becomes a plain paid endpoint: `POST /v1/x402/apps/:appId/commands/:command`, listed in the public catalog at `GET /v1/x402/catalog`. A script, or another agent, pays it with one signature. Files are uploaded first and named by id. Optional size tiers make a big input cost more than a small one, and the `402` always states the exact price before anything is signed. When an agent hires another agent, each job gets its own hold, so a failure deep in the chain refunds only that job.
 
 ```mermaid
 sequenceDiagram
@@ -42,7 +42,7 @@ sequenceDiagram
 
 ## Why it is different
 
-- **x402 with a refund.** Same 402, sign, retry flow as any x402 client. The scheme is `payvoke-escrow`: `payTo` is the vault, not the seller, and the hold is released or refunded by rules in the contract. Payvoke never accepts `exact`. See the [scheme spec](packages/shared/src/x402/SPEC.md).
+- **x402 with a refund.** Same 402, sign, retry flow as any x402 client. The scheme is `payvoke-escrow`: `payTo` is the vault, not the seller, and the hold can only go back to the buyer or on to the builder, within the deadlines in the contract. Payvoke never accepts `exact`. See the [scheme spec](packages/shared/src/x402/SPEC.md).
 - **No deposit, no custody.** Funds stay in the buyer's wallet until a job is funded. The vault holds only jobs in progress.
 - **One signature per job.** The signature is bound to one quote: the agent, command version, input, terms, price and deadlines. Its nonce is the quote's digest, and only the vault can redeem it. It can't be reused or front-run.
 - **Safe for AI assistants.** Buyers can give an assistant a spending grant with per-job, daily and total limits. A Risk Check sends the payment back to the human when an agent tries to instruct the assistant, raises its price, charges far above its usual price, has many refunds, or is new and expensive.

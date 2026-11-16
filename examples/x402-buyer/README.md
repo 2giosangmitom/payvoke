@@ -32,13 +32,16 @@ bun start --list
 # Hire by agent name or app id; --max is the spend cap in USDC (default 1.00)
 bun start "CV Reviewer" quick_review --arg cv_text=@./cv.txt --arg goal="Senior backend role" --max 0.50
 bun start "CSV Analyst" profile --arg csv=@./sales.csv --max 0.20
+# FILE arguments: --file uploads the file first and names its id
+bun start "CSV Analyst" profile --file file=./big-sales.csv --max 1.00
+bun start "CV Reviewer" review_cv --file file=./cv.pdf --arg goal="Senior backend role" --max 2.00
 bun start "Job Finder" match --arg skills="React, TypeScript, Node" --arg location="Hà Nội" --max 0.30
 
 # Read a job again later
 bun start --job <invocationId>
 ```
 
-`--arg key=@path` reads the value from a file, and `@@` escapes a leading `@`. The SDK refuses to sign a quote above `--max` (`SPEND_CAP_EXCEEDED`), or one for another agent or command.
+`--arg key=@path` reads the value from a file as text, and `@@` escapes a leading `@`. `--file key=path` uploads a file for a FILE argument (repeat the key for a multi-file one); its type comes from the extension. Commands with price tiers cost more for bigger inputs: `--list` shows the tiers, and the `402` states the exact price. The SDK refuses to sign a quote above `--max` (`SPEND_CAP_EXCEEDED`), or one for another agent or command.
 
 A run prints something like:
 

@@ -6,7 +6,16 @@ import {
   type Payvoke,
 } from "@payvoke/x402-client";
 import { generatePrivateKey } from "viem/accounts";
-import { findItem, formatUsdc, parseArgs, parseUsdc, resolveArgs, run } from "../src/cli";
+import {
+  contentTypeOf,
+  describeItem,
+  findItem,
+  formatUsdc,
+  parseArgs,
+  parseUsdc,
+  resolveArgs,
+  run,
+} from "../src/cli";
 
 const item: CatalogItem = {
   appId: "app_1",
@@ -14,6 +23,7 @@ const item: CatalogItem = {
   command: "quick_review",
   description: "Quick review of a pasted CV",
   amount: "500000",
+  tiers: [],
   deliverySeconds: 600,
   reviewSeconds: 300,
   inputSchema: {
@@ -52,8 +62,13 @@ test("parses USDC, arguments and modes", () => {
     app: "CV Reviewer",
     command: "quick_review",
     args: { cv_text: "a=b", goal: "Staff" },
+    files: {},
     max: 750_000n,
   });
+  expect(
+    parseArgs(["app_1", "scan", "--file", "cv=./cv.pdf", "--file", "cv=./more.pdf"]),
+  ).toMatchObject({ files: { cv: ["./cv.pdf", "./more.pdf"] } });
+  expect(() => parseArgs(["a", "b", "--file", "nopath"])).toThrow();
   expect(() => parseArgs(["a", "b", "--arg", "novalue"])).toThrow();
 });
 
@@ -170,4 +185,58 @@ test("explains SDK errors and refuses to hire without a key", async () => {
     }),
   ).toBe(1);
   expect(missing.join("\n")).toContain("BUYER_PRIVATE_KEY");
+});
+
+test("uploads --file arguments and shows price tiers", async () => {
+  const scan: CatalogItem = {
+    ...item,
+    command: "scan",
+    tiers: [{ minInputBytes: 20480, amount: "800000" }],
+    inputSchema: {
+      type: "object",
+      properties: { cv: { type: "string", format: "file" } },
+      required: ["cv"],
+    },
+  };
+  expect(describeItem(scan)).toContain("bigger inputs: 0.80 USDC from 20 KB");
+  expect(describeItem(scan)).toContain("cv: file");
+  expect(contentTypeOf("a/b/CV.PDF")).toBe("application/pdf");
+  expect(() => contentTypeOf("run.exe")).toThrow(/Unsupported/);
+  const lines: string[] = [];
+  let request: HireRequest | null = null;
+  const fake = {
+    address: "0x0000000000000000000000000000000000000001",
+    signIn: async () => ({}),
+    catalog: async () => ({ items: [scan] }),
+    hire: async (r: HireRequest) => {
+      request = r;
+      await r.onEvent?.({
+        type: "uploaded",
+        field: "cv",
+        fileId: "f_1",
+        name: "cv.pdf",
+        size: 1500,
+      });
+      return {
+        invocationId: "inv_2",
+        threadId: "th_2",
+        idempotencyKey: "k",
+        amount: "500000",
+        paymentStatus: "HELD" as const,
+        executionStatus: "DELIVERED" as const,
+        transaction: tx,
+        result: { artifactVersion: 1, output: "ok", text: "ok", files: [] },
+      };
+    },
+  } as unknown as Payvoke;
+  const code = await run(["app_1", "scan", "--file", "cv=docs/cv.pdf"], {
+    env: { BUYER_PRIVATE_KEY: generatePrivateKey() },
+    log: (line) => lines.push(line),
+    create: () => fake,
+    readBytes: async () => new Uint8Array(1500),
+  });
+  expect(code).toBe(0);
+  const file = (request! as HireRequest).files!.cv as { name: string; contentType: string };
+  expect(file).toMatchObject({ name: "cv.pdf", contentType: "application/pdf" });
+  expect(lines.join("\n")).toContain("Uploaded cv.pdf (1.5 KB) for cv");
 });

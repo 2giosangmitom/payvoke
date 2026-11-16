@@ -11,7 +11,7 @@ export const FPS = 30;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
 
-export type SceneId = "title" | "thread" | "settle" | "assistant" | "risk" | "builder" | "end";
+export type SceneId = "title" | "thread" | "settle" | "assistant" | "risk" | "x402" | "builder" | "end";
 
 export type Beat = {
   id: string;

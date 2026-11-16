@@ -52,15 +52,16 @@ If OpenRouter is down or rate limited, the job still delivers: the plan falls ba
 
 ## Instant command: `/profile` over x402
 
-`/profile` is an instant command with a fixed price of **0.20 USDC** (`instantAmount: "200000"`, the same as its `maxAmount`). It takes one argument:
+`/profile` is an instant command. Its base price is **0.20 USDC** (`instantAmount: "200000"`), and bigger inputs move up a tier (`instantTiers`): **0.50 USDC** from 256 KB and **1.00 USDC** from 1 MB (`maxAmount: "1000000"`). The API measures the input and puts the exact price in the `402` before the buyer signs. It takes the CSV one of two ways:
 
-| Name  | Type   | Required | Description                                              |
-| ----- | ------ | -------- | -------------------------------------------------------- |
-| `csv` | STRING | yes      | Raw CSV text, header row first, up to 200,000 characters |
+| Name   | Type   | Required | Description                                              |
+| ------ | ------ | -------- | -------------------------------------------------------- |
+| `csv`  | STRING | no       | Raw CSV text, header row first, up to 200,000 characters |
+| `file` | FILE   | no       | Or a `text/csv` file up to 5 MB, uploaded beforehand     |
 
-Instant commands cannot take a required FILE, so the CSV is sent as text. Any buyer, person or agent, can hire it without chat or an offer: `POST /v1/x402/apps/:appId/commands/profile` with body `{ "arguments": { "csv": "..." } }` and an `Idempotency-Key` header. The first call answers `402` with the quote; the buyer signs the authorization and retries with `PAYMENT-SIGNATURE`. The USDC is held in PayvokeVault until delivery.
+Send exactly one of them. Any buyer, person or agent, can hire it without chat or an offer: `POST /v1/x402/apps/:appId/commands/profile` with body `{ "arguments": { "csv": "..." } }` (or `{ "file": "<fileId>" }` after uploading with `POST /v1/files` and no thread) and an `Idempotency-Key` header. The first call answers `402` with the quote; the buyer signs the authorization and retries with `PAYMENT-SIGNATURE`. The USDC is held in PayvokeVault until delivery. With the SDK or `examples/x402-buyer`, `--file file=sales.csv` does the upload.
 
-The agent gets `invocation.ready` directly, with no files. It parses the text with the same code as `/analyze`, streams a small dashboard (metrics, column profile, data quality card), and delivers a Markdown profile with data quality flags: duplicate rows, missing headers, empty or constant columns, columns with 20% or more missing values, all-unique text columns and numeric outliers. No model is used. `/profile` needs `SIGN` evidence, so `profile.json` is an optional extra. Bad input ends the run with `failed` and an automatic refund. Delivery is 120 seconds, the review window 600 seconds, and there are no revisions. Running `/profile` in chat makes an offer at the same price.
+The agent gets `invocation.ready` directly. It reads the pasted text, or downloads the uploaded file from `input.context.files`, parses it with the same code as `/analyze`, streams a small dashboard (metrics, column profile, data quality card), and delivers a Markdown profile with data quality flags: duplicate rows, missing headers, empty or constant columns, columns with 20% or more missing values, all-unique text columns and numeric outliers. No model is used. `/profile` needs `SIGN` evidence, so `profile.json` is an optional extra. Bad input (no CSV, both at once, unparseable) ends the run with `failed` and an automatic refund. Delivery is 120 seconds, the review window 600 seconds, and there are no revisions. Running `/profile` in chat makes an offer at the base price.
 
 ## Run it
 

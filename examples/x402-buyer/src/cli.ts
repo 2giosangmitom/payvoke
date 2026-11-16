@@ -3,6 +3,7 @@ import {
   PayvokeError,
   createPayvoke,
   type CatalogItem,
+  type FileInput,
   type HireEvent,
   type Payvoke,
   type PayvokeOptions,
@@ -14,11 +15,12 @@ export const USAGE = `Hire a Payvoke agent over x402 (escrowed USDC on Avalanche
 
 Usage:
   bun start --list
-  bun start <appId|appName> <command> [--arg key=value ...] [--max 1.00]
+  bun start <appId|appName> <command> [--arg key=value ...] [--file key=path ...] [--max 1.00]
   bun start --job <invocationId>
 
 Options:
   --arg key=value   A command argument. key=@path reads the value from a file.
+  --file key=path   Upload a file for a FILE argument (repeat the key for several).
   --max 1.00        Spend cap in USDC (default 1.00). Nothing above it is signed.
   --list            Print the instant-command catalog.
   --job <id>        Print a job's status and result.
@@ -33,7 +35,14 @@ export type Command =
   | { kind: "help" }
   | { kind: "list" }
   | { kind: "job"; invocationId: string }
-  | { kind: "hire"; app: string; command: string; args: Record<string, string>; max: bigint };
+  | {
+      kind: "hire";
+      app: string;
+      command: string;
+      args: Record<string, string>;
+      files: Record<string, string[]>;
+      max: bigint;
+    };
 
 // "1.00" USDC -> 1_000_000n atomic units (6 decimals).
 export function parseUsdc(value: string): bigint {
@@ -56,6 +65,7 @@ export const snowtrace = (hash: string) => `https://testnet.snowtrace.io/tx/${ha
 export function parseArgs(argv: string[]): Command {
   const positional: string[] = [];
   const args: Record<string, string> = {};
+  const files: Record<string, string[]> = {};
   let max = 1_000_000n;
   let list = false;
   let job: string | null = null;
@@ -75,6 +85,11 @@ export function parseArgs(argv: string[]): Command {
       const split = pair.indexOf("=");
       if (split <= 0) throw new Error(`--arg expects key=value, got ${pair}`);
       args[pair.slice(0, split)] = pair.slice(split + 1);
+    } else if (token === "--file") {
+      const pair = value();
+      const split = pair.indexOf("=");
+      if (split <= 0) throw new Error(`--file expects key=path, got ${pair}`);
+      (files[pair.slice(0, split)] ??= []).push(pair.slice(split + 1));
     } else if (token.startsWith("--")) throw new Error(`Unknown option ${token}`);
     else positional.push(token);
   }
@@ -82,7 +97,7 @@ export function parseArgs(argv: string[]): Command {
   if (job) return { kind: "job", invocationId: job };
   if (positional.length !== 2) return { kind: "help" };
   if (max <= 0n) throw new Error("--max must be above 0");
-  return { kind: "hire", app: positional[0], command: positional[1], args, max };
+  return { kind: "hire", app: positional[0], command: positional[1], args, files, max };
 }
 
 // key=@path reads the file; `@@` escapes a literal leading `@`.
@@ -115,21 +130,68 @@ export function findItem(items: CatalogItem[], app: string, command: string) {
   return item;
 }
 
+type SchemaField = {
+  type?: string;
+  format?: string;
+  maxLength?: number;
+  items?: { format?: string };
+};
+
 export function describeItem(item: CatalogItem) {
   const schema = item.inputSchema as {
-    properties?: Record<string, { type?: string; maxLength?: number }>;
+    properties?: Record<string, SchemaField>;
     required?: string[];
   };
+  const kind = (field: SchemaField) =>
+    field.format === "file" ? "file" : field.items?.format === "file" ? "files" : field.type;
   const fields = Object.entries(schema.properties ?? {}).map(
     ([name, field]) =>
-      `${name}${schema.required?.includes(name) ? "" : "?"}: ${field.type ?? "any"}${field.maxLength ? ` (max ${field.maxLength})` : ""}`,
+      `${name}${schema.required?.includes(name) ? "" : "?"}: ${kind(field) ?? "any"}${field.maxLength ? ` (max ${field.maxLength})` : ""}`,
+  );
+  const tiers = (item.tiers ?? []).map(
+    (tier) => `${formatUsdc(tier.amount)} from ${formatBytes(tier.minInputBytes)}`,
   );
   return [
     `${item.appName} /${item.command}  ${formatUsdc(item.amount)}${item.available ? "" : "  [offline]"}`,
+    ...(tiers.length ? [`  bigger inputs: ${tiers.join(", ")}`] : []),
     `  ${item.description}`,
     `  app ${item.appId} · delivery ${item.deliverySeconds}s · review ${item.reviewSeconds}s`,
     `  arguments: ${fields.join(", ") || "none"}`,
   ].join("\n");
+}
+
+// Binary units, like the web app: 1 KB = 1024 bytes.
+export const formatBytes = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${+(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : bytes >= 1024
+      ? `${+(bytes / 1024).toFixed(1)} KB`
+      : `${bytes} B`;
+
+// Content types the API accepts for buyer files, by extension.
+const TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  json: "application/json",
+  zip: "application/zip",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain",
+  csv: "text/csv",
+  md: "text/markdown",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  mp4: "video/mp4",
+};
+export function contentTypeOf(path: string) {
+  const type = TYPES[path.split(".").pop()?.toLowerCase() ?? ""];
+  if (!type) throw new Error(`Unsupported file type: ${path}`);
+  return type;
 }
 
 const time = (unix: number) => new Date(unix * 1000).toISOString();
@@ -146,6 +208,8 @@ export function describeEvent(event: HireEvent): string[] {
         `  resource     ${event.resource}`,
         `  valid until  ${time(event.validUntil)} · deliver by ${time(event.deliveryDeadline)}`,
       ];
+    case "uploaded":
+      return [`Uploaded ${event.name} (${formatBytes(event.size)}) for ${event.field}`];
     case "signed":
       return [
         `Signed USDC ReceiveWithAuthorization (nonce = quote digest), sent PAYMENT-SIGNATURE`,
@@ -177,6 +241,7 @@ export type Deps = {
   log: (line: string) => void;
   create?: (options: PayvokeOptions) => Payvoke;
   read?: (path: string) => Promise<string>;
+  readBytes?: (path: string) => Promise<Uint8Array>;
 };
 
 // "catalog" is public; "read" needs a session (key or token); "pay" needs the key.
@@ -237,10 +302,29 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     log(`Spend cap: ${formatUsdc(command.max)}`);
     log(`Signing in as ${payvoke.address}…`);
     await payvoke.signIn();
+    const readBytes = deps.readBytes ?? ((path: string) => readFile(path));
+    const files: Record<string, FileInput[]> = {};
+    for (const [field, paths] of Object.entries(command.files))
+      files[field] = await Promise.all(
+        paths.map(async (path) => ({
+          name: path.split("/").pop()!,
+          contentType: contentTypeOf(path),
+          data: await readBytes(path),
+        })),
+      );
+    // A single-file field takes one file, a multi-file field an array.
+    const schema = item.inputSchema as { properties?: Record<string, { type?: string }> };
+    const upload = Object.fromEntries(
+      Object.entries(files).map(([field, list]) => [
+        field,
+        schema.properties?.[field]?.type === "array" ? list : list[0],
+      ]),
+    );
     const job = await payvoke.hire({
       appId: item.appId,
       command: item.command,
       arguments: await resolveArgs(command.args, deps.read),
+      files: upload,
       maxAmount: command.max,
       onEvent: (event) => {
         for (const line of describeEvent(event)) log(line);
